@@ -16,7 +16,9 @@ use crate::adapters::{
     BootstrapData, CommandGitAdapter, CommandSystemAdapter, CommandTmuxAdapter, DiscoveryState,
     bootstrap_data,
 };
-use crate::agent_runtime::{poll_interval, session_name_for_workspace};
+use crate::agent_runtime::{
+    LaunchRequest, build_launch_plan, poll_interval, session_name_for_workspace, stop_plan,
+};
 use crate::domain::WorkspaceStatus;
 use crate::interactive::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
@@ -183,6 +185,10 @@ fn persist_sidebar_ratio(path: &Path, ratio_pct: u16) -> std::io::Result<()> {
     fs::write(path, serialize_sidebar_ratio(ratio_pct))
 }
 
+fn write_launcher_script(path: &Path, contents: &str) -> std::io::Result<()> {
+    fs::write(path, contents)
+}
+
 impl From<Event> for Msg {
     fn from(event: Event) -> Self {
         match event {
@@ -316,11 +322,11 @@ impl GroveApp {
 
                 match self.state.mode {
                     UiMode::List => format!(
-                        "Status: [j/k]move [Tab]focus [Enter]preview-or-interactive [q]quit | [mouse]click/drag/scroll | selected={}",
+                        "Status: [j/k]move [Tab]focus [Enter]preview-or-interactive [s]start [x]stop [q]quit | [mouse]click/drag/scroll | selected={}",
                         self.selected_status_hint()
                     ),
                     UiMode::Preview => format!(
-                        "Status: [j/k]scroll [PgUp/PgDn]scroll [G]bottom [Esc]list [Tab]focus [q]quit | [mouse]scroll/drag divider | autoscroll={} offset={} split={}%%",
+                        "Status: [j/k]scroll [PgUp/PgDn]scroll [G]bottom [Esc]list [Tab]focus [s]start [x]stop [q]quit | [mouse]scroll/drag divider | autoscroll={} offset={} split={}%%",
                         if self.preview.auto_scroll {
                             "on"
                         } else {
@@ -518,6 +524,118 @@ impl GroveApp {
         true
     }
 
+    fn can_start_selected_workspace(&self) -> bool {
+        let Some(workspace) = self.state.selected_workspace() else {
+            return false;
+        };
+        if workspace.is_main || !workspace.supported_agent {
+            return false;
+        }
+
+        matches!(
+            workspace.status,
+            WorkspaceStatus::Idle
+                | WorkspaceStatus::Done
+                | WorkspaceStatus::Error
+                | WorkspaceStatus::Unknown
+        )
+    }
+
+    fn start_selected_workspace_agent(&mut self) {
+        let Some(workspace) = self.state.selected_workspace() else {
+            return;
+        };
+        if !self.can_start_selected_workspace() {
+            return;
+        }
+
+        let request = LaunchRequest {
+            workspace_name: workspace.name.clone(),
+            workspace_path: workspace.path.clone(),
+            agent: workspace.agent,
+            prompt: None,
+            skip_permissions: false,
+        };
+        let launch_plan = build_launch_plan(&request);
+
+        if let Some(script) = &launch_plan.launcher_script
+            && let Err(error) = write_launcher_script(&script.path, &script.contents)
+        {
+            self.last_tmux_error = Some(format!("launcher script write failed: {error}"));
+            return;
+        }
+
+        for command in &launch_plan.pre_launch_cmds {
+            if let Err(error) = self.tmux_input.execute(command) {
+                self.last_tmux_error = Some(error.to_string());
+                return;
+            }
+        }
+
+        if let Err(error) = self.tmux_input.execute(&launch_plan.launch_cmd) {
+            self.last_tmux_error = Some(error.to_string());
+            return;
+        }
+
+        if let Some(selected) = self.state.selected_workspace_mut() {
+            selected.status = WorkspaceStatus::Active;
+            selected.is_orphaned = false;
+        }
+        self.last_tmux_error = None;
+        self.poll_preview();
+    }
+
+    fn can_stop_selected_workspace(&self) -> bool {
+        let Some(workspace) = self.state.selected_workspace() else {
+            return false;
+        };
+        if workspace.is_main {
+            return false;
+        }
+
+        matches!(
+            workspace.status,
+            WorkspaceStatus::Active
+                | WorkspaceStatus::Thinking
+                | WorkspaceStatus::Waiting
+                | WorkspaceStatus::Done
+                | WorkspaceStatus::Error
+        )
+    }
+
+    fn stop_selected_workspace_agent(&mut self) {
+        if !self.can_stop_selected_workspace() {
+            return;
+        }
+
+        let Some(workspace) = self.state.selected_workspace() else {
+            return;
+        };
+        let session_name = session_name_for_workspace(&workspace.name);
+        let stop_commands = stop_plan(&session_name);
+        for command in &stop_commands {
+            if let Err(error) = self.tmux_input.execute(command) {
+                self.last_tmux_error = Some(error.to_string());
+                return;
+            }
+        }
+
+        if self
+            .interactive
+            .as_ref()
+            .is_some_and(|state| state.target_session == session_name)
+        {
+            self.interactive = None;
+        }
+
+        if let Some(selected) = self.state.selected_workspace_mut() {
+            selected.status = WorkspaceStatus::Idle;
+            selected.is_orphaned = false;
+        }
+        self.last_tmux_error = None;
+        self.poll_preview();
+    }
+
     fn map_interactive_key(key_event: KeyEvent) -> Option<InteractiveKey> {
         let ctrl = key_event.modifiers.contains(Modifiers::CTRL);
         let alt = key_event.modifiers.contains(Modifiers::ALT);
@@ -650,6 +768,8 @@ impl GroveApp {
                 }
             }
             KeyCode::Escape => reduce(&mut self.state, Action::EnterListMode),
+            KeyCode::Char('s') => self.start_selected_workspace_agent(),
+            KeyCode::Char('x') => self.stop_selected_workspace_agent(),
             KeyCode::PageUp => {
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
                     self.scroll_preview(-5);
@@ -856,7 +976,7 @@ impl GroveApp {
                 self.mode_label(),
                 self.focus_label()
             ),
-            "Workspaces (j/k, arrows, Tab focus, Enter preview, Esc list, mouse enabled)"
+            "Workspaces (j/k, arrows, Tab focus, Enter preview, s start, x stop, Esc list, mouse enabled)"
                 .to_string(),
         ];
 
@@ -1246,6 +1366,117 @@ mod tests {
             Msg::Key(KeyEvent::new(KeyCode::Char('q')).with_kind(KeyEventKind::Press)),
         );
         assert!(matches!(cmd, Cmd::Quit));
+    }
+
+    #[test]
+    fn start_key_launches_selected_workspace_agent() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            commands.borrow().as_slice(),
+            &[
+                vec![
+                    "tmux".to_string(),
+                    "new-session".to_string(),
+                    "-d".to_string(),
+                    "-s".to_string(),
+                    "grove-ws-feature-a".to_string(),
+                    "-c".to_string(),
+                    "/repos/grove-feature-a".to_string(),
+                ],
+                vec![
+                    "tmux".to_string(),
+                    "set-option".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-feature-a".to_string(),
+                    "history-limit".to_string(),
+                    "10000".to_string(),
+                ],
+                vec![
+                    "tmux".to_string(),
+                    "send-keys".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-feature-a".to_string(),
+                    "codex".to_string(),
+                    "Enter".to_string(),
+                ],
+            ]
+        );
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.status),
+            Some(WorkspaceStatus::Active)
+        );
+    }
+
+    #[test]
+    fn stop_key_stops_selected_workspace_agent() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            commands.borrow().as_slice(),
+            &[
+                vec![
+                    "tmux".to_string(),
+                    "send-keys".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-feature-a".to_string(),
+                    "C-c".to_string(),
+                ],
+                vec![
+                    "tmux".to_string(),
+                    "kill-session".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-feature-a".to_string(),
+                ],
+            ]
+        );
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.status),
+            Some(WorkspaceStatus::Idle)
+        );
+    }
+
+    #[test]
+    fn start_key_ignores_main_workspace() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(commands.borrow().is_empty());
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.status),
+            Some(WorkspaceStatus::Main)
+        );
     }
 
     #[test]

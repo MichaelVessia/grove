@@ -42,6 +42,10 @@ impl AppState {
     pub fn selected_workspace(&self) -> Option<&Workspace> {
         self.workspaces.get(self.selected_index)
     }
+
+    pub fn selected_workspace_mut(&mut self) -> Option<&mut Workspace> {
+        self.workspaces.get_mut(self.selected_index)
+    }
 }
 
 pub fn reduce(state: &mut AppState, action: Action) {

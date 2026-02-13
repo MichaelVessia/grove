@@ -458,3 +458,18 @@ Exit criteria:
   Next:
   - Run manual TUI milestone validation against real tmux sessions (cursor
     overlay fidelity and persisted split behavior across restarts).
+- 2026-02-13: Wired start/stop agent actions into the TUI app loop and added
+  app-layer sequencing coverage.
+  Changes: updated `src/tui.rs` to handle non-interactive `[s]start` and
+  `[x]stop` actions using `agent_runtime::build_launch_plan` and
+  `agent_runtime::stop_plan` command sequences, update selected workspace
+  runtime status (`Idle` <-> `Active`), and refresh preview/state after action
+  completion. Added mutable selected-workspace accessor in `src/state.rs` to
+  support in-place status transitions. Expanded TUI tests for start command
+  sequencing, stop command sequencing, and main-worktree start guard.
+  Status: targeted checks pass locally (`cargo fmt`, `cargo test tui:: --lib`,
+  `cargo clippy --all-targets --all-features -- -D warnings`).
+  Next:
+  - Add prompt + skip-permissions launch inputs to the real TUI action path.
+  - Run manual TUI milestone validation with real tmux sessions for start/stop
+    flows and status transitions.
