@@ -3,6 +3,92 @@
 This document turns the PRD into a phased execution plan with explicit
 quality gates.
 
+## Update 2026-02-13, E2E Plan Phase C Structured Event Log
+
+What changed:
+- Added `src/event_log.rs`:
+  - `Event` NDJSON payload model (`ts`, `event`, `kind`, `data`)
+  - `EventLogger` trait
+  - `FileEventLogger` append-only file writer
+  - `NullEventLogger` no-op implementation
+- Added CLI support in `src/main.rs` for `--event-log <path>` with parse tests.
+- Wired runtime event logger through `src/lib.rs` and `src/tui.rs`:
+  - `run_with_event_log(...)` chooses file/no-op logger
+  - `GroveApp` now carries a logger and emits events.
+- Added initial event emit points in `src/tui.rs`:
+  - state/mode transitions: `selection_changed`, `focus_changed`,
+    `mode_changed`, `interactive_entered`, `interactive_exited`
+  - dialogs: `dialog_opened`, `dialog_confirmed`, `dialog_cancelled`
+  - lifecycle: `agent_started`, `agent_stopped`
+  - preview: `output_changed`
+  - tmux command + error reporting: `tmux_cmd`, `tmux_error`
+  - flash: `flash_shown`
+- Added `EventLogReader` utility to `tests/support/mod.rs` with:
+  - `read_events`
+  - `wait_for(kind, timeout)`
+  - `assert_sequence(...)`
+- Added focused tests:
+  - `src/event_log.rs` logger behavior tests
+  - `src/main.rs` CLI parse tests
+  - `src/tui.rs` event emission flow tests
+  - `tests/event_log_reader.rs` reader utility test
+
+Current status:
+- Phase C from `docs/e2e-testing-plan.md` is implemented and green in focused
+  local tests.
+- Phase A, B, and C are now all in place.
+
+Next steps:
+- Expand event coverage incrementally (agent status transitions, dialog payload
+  detail, preview scroll/autoscroll toggles).
+- Add one binary-level smoke test that launches with `--event-log` and
+  validates file creation in a controlled environment.
+
+## Update 2026-02-13, E2E Plan Phase B Buffer Render Assertions
+
+What changed:
+- Added buffer-render test helpers in `tests/support/render.rs` and exported the
+  module in `tests/support/mod.rs`.
+- Added phase-B view assertions in `src/tui.rs` tests:
+  - `sidebar_shows_workspace_names`
+  - `selected_workspace_row_has_selection_marker`
+  - `modal_dialog_renders_over_sidebar`
+  - `status_bar_shows_flash_message`
+  - `preview_pane_renders_ansi_colors`
+- Added render-focused property tests in `src/tui.rs`:
+  - `view_never_panics`
+  - `view_fills_status_bar_row`
+
+Current status:
+- Phase B from `docs/e2e-testing-plan.md` is implemented and green locally.
+- Phase A and Phase B are both in place.
+
+Next steps:
+- Phase C is complete, move to expanding event coverage and smoke tests.
+
+## Update 2026-02-13, E2E Plan Phase A Property Tests
+
+What changed:
+- Implemented phase 1 (Phase A) from `docs/e2e-testing-plan.md` by adding
+  `proptest` as a dev dependency (`Cargo.toml`).
+- Added property-test generators in `src/tui.rs` test module:
+  - `arb_key_event()`
+  - `arb_msg()`
+- Added four phase-A property tests in `src/tui.rs`:
+  - `no_panic_on_random_messages`
+  - `selection_always_in_bounds`
+  - `modal_exclusivity`
+  - `scroll_offset_in_bounds`
+
+Current status:
+- Phase-A property testing is in place and green locally.
+- Cargo lockfile now includes `proptest` and transitive dev dependencies.
+
+Next steps:
+- Phase 2 is complete, move to phase C (structured event log).
+- After phase C lands, expand event coverage and decide whether message
+  strategies need mouse/paste generation.
+
 ## Update 2026-02-13, Codex Interactive Plain Capture + Overlay Guard
 
 What changed:

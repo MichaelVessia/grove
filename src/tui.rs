@@ -15,6 +15,7 @@ use ftui::widgets::block::Block;
 use ftui::widgets::borders::Borders;
 use ftui::widgets::paragraph::Paragraph;
 use ftui::{App, Cmd, Model, PackedRgba, ScreenMode, Style};
+use serde_json::Value;
 
 use crate::adapters::{
     BootstrapData, CommandGitAdapter, CommandSystemAdapter, CommandTmuxAdapter, DiscoveryState,
@@ -24,6 +25,7 @@ use crate::agent_runtime::{
     LaunchRequest, build_launch_plan, poll_interval, session_name_for_workspace, stop_plan,
 };
 use crate::domain::{AgentType, WorkspaceStatus};
+use crate::event_log::{Event as LogEvent, EventLogger, FileEventLogger, NullEventLogger};
 use crate::interactive::render_cursor_overlay;
 use crate::interactive::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
@@ -114,6 +116,15 @@ enum Msg {
     Tick,
     Resize { width: u16, height: u16 },
     Noop,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TransitionSnapshot {
+    selected_index: usize,
+    selected_workspace: Option<String>,
+    focus: PaneFocus,
+    mode: UiMode,
+    interactive_session: Option<String>,
 }
 
 struct CommandTmuxInput;
@@ -616,34 +627,67 @@ struct GroveApp {
     sidebar_ratio_path: PathBuf,
     divider_drag_active: bool,
     copied_text: Option<String>,
+    event_log: Box<dyn EventLogger>,
 }
 
 impl GroveApp {
-    fn new() -> Self {
+    fn new_with_event_logger(event_log: Box<dyn EventLogger>) -> Self {
         let bootstrap = bootstrap_data(
             &CommandGitAdapter,
             &CommandTmuxAdapter,
             &CommandSystemAdapter,
         );
-        Self::from_bootstrap(bootstrap)
+        Self::from_bootstrap_with_event_logger(bootstrap, event_log)
     }
 
+    #[cfg(test)]
     fn from_bootstrap(bootstrap: BootstrapData) -> Self {
-        Self::from_bootstrap_with_tmux(bootstrap, Box::new(CommandTmuxInput))
+        Self::from_bootstrap_with_event_logger(bootstrap, Box::new(NullEventLogger))
     }
 
-    fn from_bootstrap_with_tmux(bootstrap: BootstrapData, tmux_input: Box<dyn TmuxInput>) -> Self {
-        Self::from_bootstrap_with_tmux_and_sidebar_path(
+    fn from_bootstrap_with_event_logger(
+        bootstrap: BootstrapData,
+        event_log: Box<dyn EventLogger>,
+    ) -> Self {
+        Self::from_bootstrap_with_tmux_and_event_logger(
             bootstrap,
-            tmux_input,
-            default_sidebar_ratio_path(),
+            Box::new(CommandTmuxInput),
+            event_log,
         )
     }
 
+    fn from_bootstrap_with_tmux_and_event_logger(
+        bootstrap: BootstrapData,
+        tmux_input: Box<dyn TmuxInput>,
+        event_log: Box<dyn EventLogger>,
+    ) -> Self {
+        Self::from_bootstrap_with_tmux_and_sidebar_path_and_event_logger(
+            bootstrap,
+            tmux_input,
+            default_sidebar_ratio_path(),
+            event_log,
+        )
+    }
+
+    #[cfg(test)]
     fn from_bootstrap_with_tmux_and_sidebar_path(
         bootstrap: BootstrapData,
         tmux_input: Box<dyn TmuxInput>,
         sidebar_ratio_path: PathBuf,
+    ) -> Self {
+        Self::from_bootstrap_with_tmux_and_sidebar_path_and_event_logger(
+            bootstrap,
+            tmux_input,
+            sidebar_ratio_path,
+            Box::new(NullEventLogger),
+        )
+    }
+
+    fn from_bootstrap_with_tmux_and_sidebar_path_and_event_logger(
+        bootstrap: BootstrapData,
+        tmux_input: Box<dyn TmuxInput>,
+        sidebar_ratio_path: PathBuf,
+        event_log: Box<dyn EventLogger>,
     ) -> Self {
         let sidebar_width_pct = load_sidebar_ratio(&sidebar_ratio_path);
         let mut app = Self {
@@ -665,6 +709,7 @@ impl GroveApp {
             sidebar_ratio_path,
             divider_drag_active: false,
             copied_text: None,
+            event_log,
         };
         app.refresh_preview_summary();
         app
@@ -707,8 +752,110 @@ impl GroveApp {
         }
     }
 
+    fn focus_name(focus: PaneFocus) -> &'static str {
+        match focus {
+            PaneFocus::WorkspaceList => "workspace_list",
+            PaneFocus::Preview => "preview",
+        }
+    }
+
+    fn mode_name(mode: UiMode) -> &'static str {
+        match mode {
+            UiMode::List => "list",
+            UiMode::Preview => "preview",
+        }
+    }
+
+    fn selected_workspace_name(&self) -> Option<String> {
+        self.state
+            .selected_workspace()
+            .map(|workspace| workspace.name.clone())
+    }
+
+    fn capture_transition_snapshot(&self) -> TransitionSnapshot {
+        TransitionSnapshot {
+            selected_index: self.state.selected_index,
+            selected_workspace: self.selected_workspace_name(),
+            focus: self.state.focus,
+            mode: self.state.mode,
+            interactive_session: self.interactive_target_session(),
+        }
+    }
+
+    fn emit_transition_events(&self, before: &TransitionSnapshot) {
+        let after = self.capture_transition_snapshot();
+        if after.selected_index != before.selected_index {
+            let selection_index = u64::try_from(after.selected_index).unwrap_or(u64::MAX);
+            let workspace_value = after
+                .selected_workspace
+                .clone()
+                .map(Value::from)
+                .unwrap_or(Value::Null);
+            self.event_log.log(
+                LogEvent::new("state_change", "selection_changed")
+                    .with_data("index", Value::from(selection_index))
+                    .with_data("workspace", workspace_value),
+            );
+        }
+        if after.focus != before.focus {
+            self.event_log.log(
+                LogEvent::new("state_change", "focus_changed")
+                    .with_data("focus", Value::from(Self::focus_name(after.focus))),
+            );
+        }
+        if after.mode != before.mode {
+            self.event_log.log(
+                LogEvent::new("mode_change", "mode_changed")
+                    .with_data("mode", Value::from(Self::mode_name(after.mode))),
+            );
+        }
+        match (&before.interactive_session, &after.interactive_session) {
+            (None, Some(session)) => {
+                self.event_log.log(
+                    LogEvent::new("mode_change", "interactive_entered")
+                        .with_data("session", Value::from(session.clone())),
+                );
+            }
+            (Some(session), None) => {
+                self.event_log.log(
+                    LogEvent::new("mode_change", "interactive_exited")
+                        .with_data("session", Value::from(session.clone())),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn log_dialog_event(&self, kind: &str, action: &str) {
+        self.event_log
+            .log(LogEvent::new("dialog", action).with_data("kind", Value::from(kind.to_string())));
+    }
+
+    fn log_tmux_error(&self, message: String) {
+        self.event_log
+            .log(LogEvent::new("error", "tmux_error").with_data("message", Value::from(message)));
+    }
+
+    fn execute_tmux_command(&mut self, command: &[String]) -> std::io::Result<()> {
+        self.event_log.log(
+            LogEvent::new("tmux_cmd", "execute")
+                .with_data("command", Value::from(command.join(" "))),
+        );
+        let result = self.tmux_input.execute(command);
+        if let Err(error) = &result {
+            self.log_tmux_error(error.to_string());
+        }
+        result
+    }
+
     fn show_flash(&mut self, text: impl Into<String>, is_error: bool) {
-        self.flash = Some(new_flash_message(text, is_error, Instant::now()));
+        let message = text.into();
+        self.event_log.log(
+            LogEvent::new("flash", "flash_shown")
+                .with_data("text", Value::from(message.clone()))
+                .with_data("is_error", Value::from(is_error)),
+        );
+        self.flash = Some(new_flash_message(message, is_error, Instant::now()));
     }
 
     fn status_bar_line(&self) -> String {
@@ -912,7 +1059,9 @@ impl GroveApp {
             .tmux_input
             .resize_session(&target_session, pane_width, pane_height)
         {
-            self.last_tmux_error = Some(error.to_string());
+            let message = error.to_string();
+            self.last_tmux_error = Some(message.clone());
+            self.log_tmux_error(message);
         }
     }
 
@@ -936,10 +1085,20 @@ impl GroveApp {
                 let update = self.preview.apply_capture(&output);
                 self.output_changing = update.changed_cleaned;
                 self.last_tmux_error = None;
+                if update.changed_cleaned {
+                    let line_count = u64::try_from(self.preview.lines.len()).unwrap_or(u64::MAX);
+                    self.event_log.log(
+                        LogEvent::new("preview_update", "output_changed")
+                            .with_data("line_count", Value::from(line_count))
+                            .with_data("session", Value::from(session_name.clone())),
+                    );
+                }
             }
             Err(error) => {
                 self.output_changing = false;
-                self.last_tmux_error = Some(error.to_string());
+                let message = error.to_string();
+                self.last_tmux_error = Some(message.clone());
+                self.log_tmux_error(message);
                 self.refresh_preview_summary();
             }
         }
@@ -1075,6 +1234,7 @@ impl GroveApp {
             prompt: read_workspace_launch_prompt(&workspace.path).unwrap_or_default(),
             skip_permissions: self.launch_skip_permissions,
         });
+        self.log_dialog_event("launch", "dialog_opened");
         self.last_tmux_error = None;
     }
 
@@ -1111,6 +1271,7 @@ impl GroveApp {
             agent: default_agent,
             base_branch: self.selected_base_branch(),
         });
+        self.log_dialog_event("create", "dialog_opened");
         self.state.mode = UiMode::List;
         self.state.focus = PaneFocus::WorkspaceList;
         self.last_tmux_error = None;
@@ -1173,6 +1334,7 @@ impl GroveApp {
         let Some(dialog) = self.create_dialog.as_ref().cloned() else {
             return;
         };
+        self.log_dialog_event("create", "dialog_confirmed");
 
         let workspace_name = dialog.workspace_name.trim().to_string();
         let request = CreateWorkspaceRequest {
@@ -1227,6 +1389,7 @@ impl GroveApp {
     fn handle_create_dialog_key(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Escape => {
+                self.log_dialog_event("create", "dialog_cancelled");
                 self.create_dialog = None;
             }
             KeyCode::Enter => {
@@ -1288,14 +1451,14 @@ impl GroveApp {
         }
 
         for command in &launch_plan.pre_launch_cmds {
-            if let Err(error) = self.tmux_input.execute(command) {
+            if let Err(error) = self.execute_tmux_command(command) {
                 self.last_tmux_error = Some(error.to_string());
                 self.show_flash("agent start failed", true);
                 return;
             }
         }
 
-        if let Err(error) = self.tmux_input.execute(&launch_plan.launch_cmd) {
+        if let Err(error) = self.execute_tmux_command(&launch_plan.launch_cmd) {
             self.last_tmux_error = Some(error.to_string());
             self.show_flash("agent start failed", true);
             return;
@@ -1305,6 +1468,14 @@ impl GroveApp {
             selected.status = WorkspaceStatus::Active;
             selected.is_orphaned = false;
         }
+        self.event_log.log(
+            LogEvent::new("agent_lifecycle", "agent_started")
+                .with_data("workspace", Value::from(request.workspace_name.clone()))
+                .with_data(
+                    "session",
+                    Value::from(session_name_for_workspace(&request.workspace_name)),
+                ),
+        );
         self.last_tmux_error = None;
         self.show_flash("agent started", false);
         self.poll_preview();
@@ -1314,6 +1485,7 @@ impl GroveApp {
         let Some(dialog) = self.launch_dialog.take() else {
             return;
         };
+        self.log_dialog_event("launch", "dialog_confirmed");
 
         self.launch_skip_permissions = dialog.skip_permissions;
         let prompt = if dialog.prompt.trim().is_empty() {
@@ -1327,6 +1499,7 @@ impl GroveApp {
     fn handle_launch_dialog_key(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Escape => {
+                self.log_dialog_event("launch", "dialog_cancelled");
                 self.launch_dialog = None;
             }
             KeyCode::Enter => {
@@ -1379,10 +1552,11 @@ impl GroveApp {
             self.show_flash("no workspace selected", true);
             return;
         };
-        let session_name = session_name_for_workspace(&workspace.name);
+        let workspace_name = workspace.name.clone();
+        let session_name = session_name_for_workspace(&workspace_name);
         let stop_commands = stop_plan(&session_name);
         for command in &stop_commands {
-            if let Err(error) = self.tmux_input.execute(command) {
+            if let Err(error) = self.execute_tmux_command(command) {
                 self.last_tmux_error = Some(error.to_string());
                 self.show_flash("agent stop failed", true);
                 return;
@@ -1401,6 +1575,11 @@ impl GroveApp {
             selected.status = WorkspaceStatus::Idle;
             selected.is_orphaned = false;
         }
+        self.event_log.log(
+            LogEvent::new("agent_lifecycle", "agent_stopped")
+                .with_data("workspace", Value::from(workspace_name))
+                .with_data("session", Value::from(session_name)),
+        );
         self.last_tmux_error = None;
         self.show_flash("agent stopped", false);
         self.poll_preview();
@@ -1449,12 +1628,14 @@ impl GroveApp {
             return;
         };
 
-        match self.tmux_input.execute(&command) {
+        match self.execute_tmux_command(&command) {
             Ok(()) => {
                 self.last_tmux_error = None;
             }
             Err(error) => {
-                self.last_tmux_error = Some(error.to_string());
+                let message = error.to_string();
+                self.last_tmux_error = Some(message.clone());
+                self.log_tmux_error(message);
             }
         }
     }
@@ -1466,7 +1647,9 @@ impl GroveApp {
                 self.last_tmux_error = None;
             }
             Err(error) => {
-                self.last_tmux_error = Some(error.to_string());
+                let message = error.to_string();
+                self.last_tmux_error = Some(message.clone());
+                self.log_tmux_error(message);
             }
         }
     }
@@ -2248,7 +2431,8 @@ impl Model for GroveApp {
     }
 
     fn update(&mut self, msg: Msg) -> Cmd<Self::Message> {
-        match msg {
+        let before = self.capture_transition_snapshot();
+        let cmd = match msg {
             Msg::Tick => {
                 let _ = clear_expired_flash_message(&mut self.flash, Instant::now());
                 self.poll_preview();
@@ -2285,7 +2469,9 @@ impl Model for GroveApp {
                 Cmd::None
             }
             Msg::Noop => Cmd::None,
-        }
+        };
+        self.emit_transition_events(&before);
+        cmd
     }
 
     fn view(&self, frame: &mut Frame) {
@@ -2308,7 +2494,17 @@ impl Model for GroveApp {
 }
 
 pub fn run() -> std::io::Result<()> {
-    App::new(GroveApp::new())
+    run_with_event_log(None)
+}
+
+pub fn run_with_event_log(event_log_path: Option<PathBuf>) -> std::io::Result<()> {
+    let event_log: Box<dyn EventLogger> = if let Some(path) = event_log_path {
+        Box::new(FileEventLogger::open(&path)?)
+    } else {
+        Box::new(NullEventLogger)
+    };
+
+    App::new(GroveApp::new_with_event_logger(event_log))
         .screen_mode(ScreenMode::AltScreen)
         .with_mouse()
         .run()
@@ -2316,26 +2512,41 @@ pub fn run() -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    mod render_support {
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/support/render.rs"
+        ));
+    }
+
+    use self::render_support::{
+        assert_cell_style, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
+    };
     use super::{
-        GroveApp, Msg, TmuxInput, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
-        should_render_ansi_preview,
+        GroveApp, LaunchDialogState, Msg, TmuxInput, ansi_16_color, ansi_line_to_styled_line,
+        parse_cursor_metadata, should_render_ansi_preview,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
-    use ftui::Cmd;
+    use crate::event_log::{Event as LoggedEvent, EventLogger};
     use ftui::core::event::{
         Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
         PasteEvent,
     };
+    use ftui::render::cell::StyleFlags as CellStyleFlags;
+    use ftui::{Cmd, Frame, GraphemePool};
+    use proptest::prelude::*;
     use std::cell::RefCell;
     use std::fs;
     use std::path::PathBuf;
     use std::rc::Rc;
+    use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     type RecordedCommands = Rc<RefCell<Vec<Vec<String>>>>;
     type RecordedCaptures = Rc<RefCell<Vec<Result<String, String>>>>;
     type RecordedCalls = Rc<RefCell<Vec<String>>>;
+    type RecordedEvents = Arc<Mutex<Vec<LoggedEvent>>>;
     type FixtureApp = (
         GroveApp,
         RecordedCommands,
@@ -2349,6 +2560,26 @@ mod tests {
         RecordedCaptures,
         RecordedCalls,
     );
+    type FixtureAppWithEvents = (
+        GroveApp,
+        RecordedCommands,
+        RecordedCaptures,
+        RecordedCaptures,
+        RecordedEvents,
+    );
+
+    struct RecordingEventLogger {
+        events: RecordedEvents,
+    }
+
+    impl EventLogger for RecordingEventLogger {
+        fn log(&self, event: LoggedEvent) {
+            let Ok(mut events) = self.events.lock() else {
+                return;
+            };
+            events.push(event);
+        }
+    }
 
     #[derive(Clone)]
     struct RecordingTmuxInput {
@@ -2461,6 +2692,63 @@ mod tests {
         )
     }
 
+    fn event_kinds(events: &RecordedEvents) -> Vec<String> {
+        let Ok(events) = events.lock() else {
+            return Vec::new();
+        };
+        events.iter().map(|event| event.kind.clone()).collect()
+    }
+
+    fn assert_kind_subsequence(actual: &[String], expected: &[&str]) {
+        let mut expected_index = 0usize;
+        for kind in actual {
+            if expected_index < expected.len() && kind == expected[expected_index] {
+                expected_index = expected_index.saturating_add(1);
+            }
+        }
+        assert_eq!(
+            expected_index,
+            expected.len(),
+            "expected subsequence {:?} in {:?}",
+            expected,
+            actual
+        );
+    }
+
+    fn key_press(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code).with_kind(KeyEventKind::Press)
+    }
+
+    fn arb_key_event() -> impl Strategy<Value = KeyEvent> {
+        proptest::prop_oneof![
+            Just(key_press(KeyCode::Char('j'))),
+            Just(key_press(KeyCode::Char('k'))),
+            Just(key_press(KeyCode::Char('s'))),
+            Just(key_press(KeyCode::Char('x'))),
+            Just(key_press(KeyCode::Char('n'))),
+            Just(key_press(KeyCode::Char('!'))),
+            Just(key_press(KeyCode::Char('q'))),
+            Just(key_press(KeyCode::Char('G'))),
+            Just(key_press(KeyCode::Tab)),
+            Just(key_press(KeyCode::Enter)),
+            Just(key_press(KeyCode::Escape)),
+            Just(key_press(KeyCode::Up)),
+            Just(key_press(KeyCode::Down)),
+            Just(key_press(KeyCode::PageUp)),
+            Just(key_press(KeyCode::PageDown)),
+            proptest::char::range('a', 'z').prop_map(|ch| key_press(KeyCode::Char(ch))),
+        ]
+    }
+
+    fn arb_msg() -> impl Strategy<Value = Msg> {
+        proptest::prop_oneof![
+            arb_key_event().prop_map(Msg::Key),
+            Just(Msg::Tick),
+            Just(Msg::Noop),
+            (1u16..200, 1u16..60).prop_map(|(width, height)| Msg::Resize { width, height }),
+        ]
+    }
+
     fn unique_sidebar_ratio_path(label: &str) -> PathBuf {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -2552,6 +2840,290 @@ mod tests {
             cursor_captures,
             calls,
         )
+    }
+
+    fn fixture_app_with_tmux_and_events(
+        status: WorkspaceStatus,
+        captures: Vec<Result<String, String>>,
+        cursor_captures: Vec<Result<String, String>>,
+    ) -> FixtureAppWithEvents {
+        let sidebar_ratio_path = unique_sidebar_ratio_path("fixture-with-events");
+        let commands = Rc::new(RefCell::new(Vec::new()));
+        let captures = Rc::new(RefCell::new(captures));
+        let cursor_captures = Rc::new(RefCell::new(cursor_captures));
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let tmux = RecordingTmuxInput {
+            commands: commands.clone(),
+            captures: captures.clone(),
+            cursor_captures: cursor_captures.clone(),
+            calls: Rc::new(RefCell::new(Vec::new())),
+        };
+        let event_log = RecordingEventLogger {
+            events: events.clone(),
+        };
+
+        (
+            GroveApp::from_bootstrap_with_tmux_and_sidebar_path_and_event_logger(
+                fixture_bootstrap(status),
+                Box::new(tmux),
+                sidebar_ratio_path,
+                Box::new(event_log),
+            ),
+            commands,
+            captures,
+            cursor_captures,
+            events,
+        )
+    }
+
+    fn with_rendered_frame(
+        app: &GroveApp,
+        width: u16,
+        height: u16,
+        assert_frame: impl FnOnce(&Frame),
+    ) {
+        let mut pool = GraphemePool::new();
+        let mut frame = Frame::new(width, height, &mut pool);
+        ftui::Model::view(app, &mut frame);
+        assert_frame(&frame);
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn no_panic_on_random_messages(msgs in prop::collection::vec(arb_msg(), 1..200)) {
+            let mut app = fixture_app();
+            for msg in msgs {
+                let _ = ftui::Model::update(&mut app, msg);
+            }
+        }
+
+        #[test]
+        fn selection_always_in_bounds(msgs in prop::collection::vec(arb_msg(), 1..200)) {
+            let mut app = fixture_app();
+            for msg in msgs {
+                let _ = ftui::Model::update(&mut app, msg);
+                if !app.state.workspaces.is_empty() {
+                    prop_assert!(app.state.selected_index < app.state.workspaces.len());
+                }
+            }
+        }
+
+        #[test]
+        fn modal_exclusivity(msgs in prop::collection::vec(arb_msg(), 1..200)) {
+            let mut app = fixture_app();
+            for msg in msgs {
+                let _ = ftui::Model::update(&mut app, msg);
+                let active_modals = [app.launch_dialog.is_some(), app.create_dialog.is_some(), app.interactive.is_some()]
+                    .iter()
+                    .filter(|is_active| **is_active)
+                    .count();
+                prop_assert!(active_modals <= 1);
+            }
+        }
+
+        #[test]
+        fn scroll_offset_in_bounds(msgs in prop::collection::vec(arb_msg(), 1..200)) {
+            let mut app = fixture_app();
+            for msg in msgs {
+                let _ = ftui::Model::update(&mut app, msg);
+                prop_assert!(app.preview.offset <= app.preview.lines.len());
+            }
+        }
+
+        #[test]
+        fn view_never_panics(
+            msgs in prop::collection::vec(arb_msg(), 0..100),
+            width in 20u16..200,
+            height in 5u16..60,
+        ) {
+            let mut app = fixture_app();
+            for msg in msgs {
+                let _ = ftui::Model::update(&mut app, msg);
+            }
+
+            let mut pool = GraphemePool::new();
+            let mut frame = Frame::new(width, height, &mut pool);
+            ftui::Model::view(&app, &mut frame);
+        }
+
+        #[test]
+        fn view_fills_status_bar_row(msgs in prop::collection::vec(arb_msg(), 0..50)) {
+            let mut app = fixture_app();
+            for msg in msgs {
+                let _ = ftui::Model::update(&mut app, msg);
+            }
+
+            let mut pool = GraphemePool::new();
+            let mut frame = Frame::new(80, 24, &mut pool);
+            ftui::Model::view(&app, &mut frame);
+
+            let status_row = frame.height().saturating_sub(1);
+            let status = row_text(&frame, status_row, 0, frame.width());
+            prop_assert!(!status.is_empty(), "status bar should not be blank");
+        }
+    }
+
+    #[test]
+    fn sidebar_shows_workspace_names() {
+        let app = fixture_app();
+        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            assert!(find_row_containing(frame, "grove", x_start, x_end).is_some());
+            assert!(find_row_containing(frame, "feature-a", x_start, x_end).is_some());
+        });
+    }
+
+    #[test]
+    fn selected_workspace_row_has_selection_marker() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+
+        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(selected_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let rendered_row = row_text(frame, selected_row, x_start, x_end);
+            assert!(
+                rendered_row.starts_with("> "),
+                "selected row should start with selection marker, got: {rendered_row}"
+            );
+        });
+    }
+
+    #[test]
+    fn modal_dialog_renders_over_sidebar() {
+        let mut app = fixture_app();
+        app.launch_dialog = Some(LaunchDialogState {
+            prompt: String::new(),
+            skip_permissions: false,
+        });
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            assert!(find_row_containing(frame, "Start Agent", 0, frame.width()).is_some());
+        });
+    }
+
+    #[test]
+    fn status_bar_shows_flash_message() {
+        let mut app = fixture_app();
+        app.show_flash("Agent started", false);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(status_text.contains("Agent started"));
+
+            let Some(status_col) = find_cell_with_char(frame, status_row, 0, frame.width(), 'S')
+            else {
+                panic!("status row should contain status text");
+            };
+            assert_cell_style(frame, status_col, status_row, CellStyleFlags::REVERSE);
+        });
+    }
+
+    #[test]
+    fn preview_pane_renders_ansi_colors() {
+        let mut app = fixture_app();
+        app.preview.lines = vec!["Success: all tests passed".to_string()];
+        app.preview.render_lines = vec!["\u{1b}[32mSuccess\u{1b}[0m: all tests passed".to_string()];
+
+        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+        let x_start = layout.preview.x.saturating_add(1);
+        let x_end = layout.preview.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(row) = find_row_containing(frame, "Success", x_start, x_end) else {
+                panic!("success row should be present in preview pane");
+            };
+            let Some(s_col) = find_cell_with_char(frame, row, x_start, x_end, 'S') else {
+                panic!("success row should include first character column");
+            };
+
+            assert_row_fg(frame, row, s_col, s_col.saturating_add(7), ansi_16_color(2));
+        });
+    }
+
+    #[test]
+    fn start_agent_emits_dialog_and_lifecycle_events() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(WorkspaceStatus::Idle, Vec::new(), Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        let kinds = event_kinds(&events);
+        assert_kind_subsequence(
+            &kinds,
+            &[
+                "selection_changed",
+                "dialog_opened",
+                "dialog_confirmed",
+                "agent_started",
+            ],
+        );
+        assert!(kinds.iter().any(|kind| kind == "flash_shown"));
+    }
+
+    #[test]
+    fn preview_poll_change_emits_output_changed_event() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(
+                WorkspaceStatus::Active,
+                vec![Ok("line one\nline two\n".to_string())],
+                Vec::new(),
+            );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(&mut app, Msg::Tick);
+
+        let kinds = event_kinds(&events);
+        assert!(kinds.iter().any(|kind| kind == "output_changed"));
+    }
+
+    #[test]
+    fn interactive_enter_and_exit_emit_mode_events() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(WorkspaceStatus::Active, Vec::new(), Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+        );
+
+        let kinds = event_kinds(&events);
+        assert_kind_subsequence(&kinds, &["interactive_entered", "interactive_exited"]);
     }
 
     #[test]
