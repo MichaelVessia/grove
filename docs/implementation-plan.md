@@ -446,3 +446,15 @@ Exit criteria:
     through the real TUI update flow, not just module-level units.
   - Run manual TUI milestone validation for interactive cursor behavior and
     persisted split ratio against real tmux sessions.
+- 2026-02-13: Added app-layer command sequencing tests in the real TUI update
+  flow.
+  Changes: expanded `src/tui.rs` test harness to record tmux execute/capture
+  calls, added fast interactive poll-cadence assertion (`50ms` after key input),
+  and added an end-to-end interactive update-flow test covering `Tick` preview
+  polling, cursor metadata polling, key forwarding, copy capture, paste send,
+  and `Ctrl+\` exit sequencing.
+  Status: targeted checks pass locally (`cargo fmt`, `cargo test tui:: --lib`,
+  `cargo clippy --all-targets --all-features -- -D warnings`).
+  Next:
+  - Run manual TUI milestone validation against real tmux sessions (cursor
+    overlay fidelity and persisted split behavior across restarts).

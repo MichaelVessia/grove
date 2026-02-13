@@ -1003,11 +1003,19 @@ mod tests {
 
     type RecordedCommands = Rc<RefCell<Vec<Vec<String>>>>;
     type RecordedCaptures = Rc<RefCell<Vec<Result<String, String>>>>;
+    type RecordedCalls = Rc<RefCell<Vec<String>>>;
     type FixtureApp = (
         GroveApp,
         RecordedCommands,
         RecordedCaptures,
         RecordedCaptures,
+    );
+    type FixtureAppWithCalls = (
+        GroveApp,
+        RecordedCommands,
+        RecordedCaptures,
+        RecordedCaptures,
+        RecordedCalls,
     );
 
     #[derive(Clone)]
@@ -1015,19 +1023,26 @@ mod tests {
         commands: RecordedCommands,
         captures: RecordedCaptures,
         cursor_captures: RecordedCaptures,
+        calls: RecordedCalls,
     }
 
     impl TmuxInput for RecordingTmuxInput {
         fn execute(&self, command: &[String]) -> std::io::Result<()> {
             self.commands.borrow_mut().push(command.to_vec());
+            self.calls
+                .borrow_mut()
+                .push(format!("exec:{}", command.join(" ")));
             Ok(())
         }
 
         fn capture_output(
             &self,
-            _target_session: &str,
-            _scrollback_lines: usize,
+            target_session: &str,
+            scrollback_lines: usize,
         ) -> std::io::Result<String> {
+            self.calls
+                .borrow_mut()
+                .push(format!("capture:{target_session}:{scrollback_lines}"));
             let mut captures = self.captures.borrow_mut();
             if captures.is_empty() {
                 return Ok(String::new());
@@ -1040,7 +1055,10 @@ mod tests {
             }
         }
 
-        fn capture_cursor_metadata(&self, _target_session: &str) -> std::io::Result<String> {
+        fn capture_cursor_metadata(&self, target_session: &str) -> std::io::Result<String> {
+            self.calls
+                .borrow_mut()
+                .push(format!("cursor:{target_session}"));
             let mut captures = self.cursor_captures.borrow_mut();
             if captures.is_empty() {
                 return Ok("1 0 0 120 40".to_string());
@@ -1092,6 +1110,7 @@ mod tests {
                 commands: Rc::new(RefCell::new(Vec::new())),
                 captures: Rc::new(RefCell::new(Vec::new())),
                 cursor_captures: Rc::new(RefCell::new(Vec::new())),
+                calls: Rc::new(RefCell::new(Vec::new())),
             }),
             sidebar_ratio_path,
         )
@@ -1133,6 +1152,7 @@ mod tests {
             commands: commands.clone(),
             captures: captures.clone(),
             cursor_captures: cursor_captures.clone(),
+            calls: Rc::new(RefCell::new(Vec::new())),
         };
         (
             GroveApp::from_bootstrap_with_tmux_and_sidebar_path(
@@ -1143,6 +1163,36 @@ mod tests {
             commands,
             captures,
             cursor_captures,
+        )
+    }
+
+    fn fixture_app_with_tmux_and_calls(
+        status: WorkspaceStatus,
+        captures: Vec<Result<String, String>>,
+        cursor_captures: Vec<Result<String, String>>,
+    ) -> FixtureAppWithCalls {
+        let sidebar_ratio_path = unique_sidebar_ratio_path("fixture-with-calls");
+        let commands = Rc::new(RefCell::new(Vec::new()));
+        let captures = Rc::new(RefCell::new(captures));
+        let cursor_captures = Rc::new(RefCell::new(cursor_captures));
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let tmux = RecordingTmuxInput {
+            commands: commands.clone(),
+            captures: captures.clone(),
+            cursor_captures: cursor_captures.clone(),
+            calls: calls.clone(),
+        };
+
+        (
+            GroveApp::from_bootstrap_with_tmux_and_sidebar_path(
+                fixture_bootstrap(status),
+                Box::new(tmux),
+                sidebar_ratio_path,
+            ),
+            commands,
+            captures,
+            cursor_captures,
+            calls,
         )
     }
 
@@ -1282,6 +1332,98 @@ mod tests {
                 "Escape".to_string(),
             ]]
         );
+    }
+
+    #[test]
+    fn interactive_key_reschedules_fast_poll_interval() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        let cmd = ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+        );
+
+        match cmd {
+            Cmd::Tick(interval) => assert_eq!(interval, Duration::from_millis(50)),
+            _ => panic!("expected Cmd::Tick from interactive key update"),
+        }
+    }
+
+    #[test]
+    fn interactive_update_flow_sequences_tick_copy_paste_and_exit() {
+        let (mut app, _commands, _captures, _cursor_captures, calls) =
+            fixture_app_with_tmux_and_calls(
+                WorkspaceStatus::Active,
+                vec![
+                    Ok("initial-preview".to_string()),
+                    Ok("preview-output".to_string()),
+                    Ok("copied-text".to_string()),
+                ],
+                vec![Ok("1 0 0 120 40".to_string())],
+            );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        calls.borrow_mut().clear();
+
+        ftui::Model::update(&mut app, Msg::Tick);
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('c'))
+                    .with_modifiers(Modifiers::ALT)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('v'))
+                    .with_modifiers(Modifiers::ALT)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('\\'))
+                    .with_modifiers(Modifiers::CTRL)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+
+        assert_eq!(
+            calls.borrow().as_slice(),
+            &[
+                "capture:grove-ws-feature-a:600".to_string(),
+                "cursor:grove-ws-feature-a".to_string(),
+                "exec:tmux send-keys -l -t grove-ws-feature-a x".to_string(),
+                "capture:grove-ws-feature-a:200".to_string(),
+                "exec:tmux send-keys -l -t grove-ws-feature-a copied-text".to_string(),
+            ]
+        );
+        assert!(app.interactive.is_none());
     }
 
     #[test]
