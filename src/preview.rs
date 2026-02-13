@@ -8,6 +8,7 @@ const SCROLL_BURST_DEBOUNCE_MS: u64 = 120;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewState {
     pub lines: Vec<String>,
+    pub render_lines: Vec<String>,
     pub offset: usize,
     pub auto_scroll: bool,
     pub scroll_burst_count: u32,
@@ -32,6 +33,7 @@ impl PreviewState {
     pub fn new() -> Self {
         Self {
             lines: Vec::new(),
+            render_lines: Vec::new(),
             offset: 0,
             auto_scroll: true,
             scroll_burst_count: 0,
@@ -49,6 +51,9 @@ impl PreviewState {
             if self.auto_scroll {
                 self.offset = 0;
             }
+        }
+        if change.changed_raw {
+            self.render_lines = split_output_lines(&change.render_output);
         }
 
         CaptureUpdate {
@@ -115,6 +120,16 @@ impl PreviewState {
         let start = end.saturating_sub(height);
         self.lines[start..end].to_vec()
     }
+
+    pub fn visible_render_lines(&self, height: usize) -> Vec<String> {
+        if height == 0 || self.render_lines.is_empty() {
+            return Vec::new();
+        }
+
+        let end = self.render_lines.len().saturating_sub(self.offset);
+        let start = end.saturating_sub(height);
+        self.render_lines[start..end].to_vec()
+    }
 }
 
 impl Default for PreviewState {
@@ -175,11 +190,13 @@ mod tests {
         assert!(first.changed_raw);
         assert!(first.changed_cleaned);
         assert_eq!(state.lines, vec!["hello".to_string()]);
+        assert_eq!(state.render_lines, vec!["hello".to_string()]);
 
         let second = state.apply_capture("hello\u{1b}[?1000l");
         assert!(second.changed_raw);
         assert!(!second.changed_cleaned);
         assert_eq!(state.lines, vec!["hello".to_string()]);
+        assert_eq!(state.render_lines, vec!["hello".to_string()]);
     }
 
     #[test]
@@ -234,6 +251,22 @@ mod tests {
 
         let visible = state.visible_lines(2);
         assert_eq!(visible, vec!["3".to_string(), "4".to_string()]);
+    }
+
+    #[test]
+    fn visible_render_lines_respects_offset_from_bottom() {
+        let mut state = PreviewState::new();
+        state.render_lines = vec![
+            "r1".to_string(),
+            "r2".to_string(),
+            "r3".to_string(),
+            "r4".to_string(),
+            "r5".to_string(),
+        ];
+        state.offset = 1;
+
+        let visible = state.visible_render_lines(2);
+        assert_eq!(visible, vec!["r3".to_string(), "r4".to_string()]);
     }
 
     #[test]

@@ -35,7 +35,6 @@ pub enum InteractiveKey {
     Ctrl(char),
     Function(u8),
     Char(char),
-    CtrlBackslash,
     AltC,
     AltV,
 }
@@ -77,10 +76,6 @@ impl InteractiveState {
         self.last_key_time = now;
 
         match key {
-            InteractiveKey::CtrlBackslash => {
-                self.last_escape_time = None;
-                InteractiveAction::ExitInteractive
-            }
             InteractiveKey::Escape => {
                 let should_exit = self.last_escape_time.is_some_and(|last_escape_time| {
                     now.saturating_duration_since(last_escape_time)
@@ -195,16 +190,93 @@ pub fn render_cursor_overlay(line: &str, cursor_col: usize, cursor_visible: bool
     let characters: Vec<char> = line.chars().collect();
     if cursor_col >= characters.len() {
         let padding = " ".repeat(cursor_col.saturating_sub(characters.len()));
-        return format!("{line}{padding}\u{1b}[7m \u{1b}[0m");
+        return format!("{line}{padding}|");
     }
 
-    let mut rendered = String::new();
+    let mut rendered = String::with_capacity(line.len().saturating_add(1));
     for (index, character) in characters.iter().enumerate() {
         if index == cursor_col {
-            rendered.push_str(&format!("\u{1b}[7m{character}\u{1b}[0m"));
-        } else {
-            rendered.push(*character);
+            rendered.push('|');
         }
+        rendered.push(*character);
+    }
+
+    rendered
+}
+
+pub fn render_cursor_overlay_ansi(
+    line: &str,
+    plain_line: &str,
+    cursor_col: usize,
+    cursor_visible: bool,
+) -> String {
+    if !cursor_visible {
+        return line.to_string();
+    }
+
+    let plain_len = plain_line.chars().count();
+    if cursor_col >= plain_len {
+        let padding = " ".repeat(cursor_col.saturating_sub(plain_len));
+        return format!("{line}{padding}|");
+    }
+
+    let mut rendered = String::with_capacity(line.len().saturating_add(1));
+    let mut chars = line.chars().peekable();
+    let mut visible_index = 0usize;
+    let mut inserted = false;
+
+    while let Some(character) = chars.next() {
+        if character == '\u{1b}' {
+            rendered.push(character);
+            if let Some(next) = chars.next() {
+                rendered.push(next);
+                match next {
+                    '[' => {
+                        while let Some(value) = chars.next() {
+                            rendered.push(value);
+                            if ('\u{40}'..='\u{7e}').contains(&value) {
+                                break;
+                            }
+                        }
+                    }
+                    ']' => {
+                        while let Some(value) = chars.next() {
+                            rendered.push(value);
+                            if value == '\u{7}' {
+                                break;
+                            }
+                            if value == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
+                                rendered.push('\\');
+                                break;
+                            }
+                        }
+                    }
+                    'P' | 'X' | '^' | '_' => {
+                        while let Some(value) = chars.next() {
+                            rendered.push(value);
+                            if value == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
+                                rendered.push('\\');
+                                break;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            continue;
+        }
+
+        if !inserted && visible_index == cursor_col {
+            rendered.push('|');
+            inserted = true;
+        }
+
+        rendered.push(character);
+        visible_index = visible_index.saturating_add(1);
+    }
+
+    if !inserted {
+        rendered.push('|');
     }
 
     rendered
@@ -245,8 +317,8 @@ mod tests {
 
     use super::{
         InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload, is_paste_event,
-        looks_like_mouse_fragment, render_cursor_overlay, should_snap_back_for_input,
-        tmux_send_keys_command,
+        looks_like_mouse_fragment, render_cursor_overlay, render_cursor_overlay_ansi,
+        should_snap_back_for_input, tmux_send_keys_command,
     };
 
     #[test]
@@ -278,18 +350,6 @@ mod tests {
         assert_eq!(
             state.handle_key(InteractiveKey::Escape, now + Duration::from_millis(200)),
             InteractiveAction::SendNamed("Escape".to_string())
-        );
-    }
-
-    #[test]
-    fn ctrl_backslash_exits_immediately() {
-        let now = Instant::now();
-        let mut state =
-            InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
-
-        assert_eq!(
-            state.handle_key(InteractiveKey::CtrlBackslash, now),
-            InteractiveAction::ExitInteractive
         );
     }
 
@@ -339,15 +399,23 @@ mod tests {
 
     #[test]
     fn cursor_overlay_marks_current_column() {
-        assert_eq!(
-            render_cursor_overlay("abcd", 1, true),
-            "a\u{1b}[7mb\u{1b}[0mcd"
-        );
-        assert_eq!(
-            render_cursor_overlay("ab", 4, true),
-            "ab  \u{1b}[7m \u{1b}[0m"
-        );
+        assert_eq!(render_cursor_overlay("abcd", 1, true), "a|bcd");
+        assert_eq!(render_cursor_overlay("ab", 4, true), "ab  |");
         assert_eq!(render_cursor_overlay("ab", 1, false), "ab");
+    }
+
+    #[test]
+    fn ansi_cursor_overlay_preserves_ansi_and_inserts_marker() {
+        let line = "A\u{1b}[31mBC\u{1b}[0mD";
+        let plain = "ABCD";
+        assert_eq!(
+            render_cursor_overlay_ansi(line, plain, 2, true),
+            "A\u{1b}[31mB|C\u{1b}[0mD"
+        );
+        assert_eq!(
+            render_cursor_overlay_ansi(line, plain, 6, true),
+            "A\u{1b}[31mBC\u{1b}[0mD  |"
+        );
     }
 
     #[test]
