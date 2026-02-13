@@ -18,11 +18,23 @@
         {
           default = pkgs.mkShell {
             packages = with pkgs; [
+              bash
               cargo
-              rustc
               clippy
-              rustfmt
+              coreutils
+              findutils
+              git
+              gnumake
+              gnugrep
+              gnused
+              jq
+              openssl
+              pkg-config
+              ripgrep
+              rustc
               rust-analyzer
+              rustfmt
+              tmux
             ];
           };
         });

@@ -306,3 +306,6 @@ Exit criteria:
   Status: targeted checks passed locally (`fmt`, `clippy`, `--lib`,
   `hello_domain`, `hello_cli`).
   Next: begin Phase 1 domain skeleton (workspace/state/reducer boundaries).
+- 2026-02-13: Expanded `flake.nix` dev shell dependencies so project tooling is
+  available directly in `nix develop` (Rust toolchain, `git`, `tmux`,
+  `gnumake`, `pkg-config`, `openssl`, and core shell utils).
