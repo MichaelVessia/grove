@@ -398,3 +398,35 @@ Exit criteria:
     preview updates.
   - Add interactive-mode entry/exit and key forwarding in the app loop.
   - Add mouse event handling (hit testing, divider drag, preview scroll).
+- 2026-02-13: Wired interactive-mode entry/exit and tmux key forwarding into
+  the real TUI loop.
+  Changes: updated `src/tui.rs` to stop global key remapping/quit interception
+  at the event boundary, added app-level interactive mode handling with
+  `InteractiveState` (`Enter` on running workspaces opens interactive mode,
+  `Esc Esc` / `Ctrl+\` exits), and integrated `tmux send-keys` command
+  execution for interactive key events (including literal character forwarding
+  so keys like `q` are sent to the agent instead of quitting Grove). Added
+  focused TUI unit tests covering interactive entry, forwarding, double-escape
+  exit, and non-interactive quit behavior.
+  Status: targeted TUI checks pass locally (`cargo test tui:: --lib`).
+  Next:
+  - Wire live tmux capture + polling into preview updates so interactive/preview
+    panes show real agent output.
+  - Implement mouse event handling in the TUI loop (hit testing, divider drag,
+    preview scroll).
+- 2026-02-13: Completed the Phase 5-7 follow-up wiring slice for live polling,
+  mouse handling, and interactive paste/copy actions in the real TUI loop.
+  Changes: extended `src/tui.rs` event mapping and update flow to handle
+  `Tick`/`Mouse`/`Paste`/`Resize` events, added periodic tmux output polling via
+  `Cmd::tick` + `tmux capture-pane -p -e` (with dynamic poll interval from
+  `agent_runtime::poll_interval`), enabled mouse capture and wired hit-tested
+  click/scroll/divider-drag interactions using `src/mouse.rs`, and replaced
+  interactive `Alt+C`/`Alt+V` no-ops with concrete behavior (capture tmux pane
+  text into session-local buffer, then paste back via `send-keys -l`, plus
+  bracketed paste event forwarding). Added focused TUI unit tests for each
+  behavior and polling integration.
+  Status: targeted checks pass locally (`cargo fmt`, `cargo test tui:: --lib`).
+  Next:
+  - Integrate cursor position polling/overlay in interactive mode using tmux
+    pane cursor metadata.
+  - Persist divider ratio across sessions (Phase 7 persistence target).
