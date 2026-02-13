@@ -298,3 +298,11 @@ Exit criteria:
   clean-clone tooling defined).
   Next: Phase 0.5, add minimal FrankenTUI app boot/quit lifecycle in
   alt-screen mode.
+- 2026-02-13: Phase 0.5 hello-world boot implemented.
+  Changes: added pinned FrankenTUI dependency in `Cargo.toml`/`Cargo.lock`,
+  introduced minimal alt-screen app lifecycle in `src/tui.rs`, wired binary
+  default startup to TUI in `src/main.rs`, and kept deterministic CLI hello
+  output for tests via `--print-hello`.
+  Status: targeted checks passed locally (`fmt`, `clippy`, `--lib`,
+  `hello_domain`, `hello_cli`).
+  Next: begin Phase 1 domain skeleton (workspace/state/reducer boundaries).

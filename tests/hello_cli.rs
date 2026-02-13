@@ -7,6 +7,7 @@ fn cli_prints_fixture_output() {
     let expected = support::read_fixture("hello-output.txt").expect("fixture should be readable");
 
     let output = Command::new(env!("CARGO_BIN_EXE_grove"))
+        .arg("--print-hello")
         .output()
         .expect("grove binary should run");
 

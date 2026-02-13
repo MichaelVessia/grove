@@ -1,5 +1,11 @@
+pub mod tui;
+
 pub fn hello_message(app_name: &str) -> String {
     format!("Hello from {app_name}.")
+}
+
+pub fn run_tui() -> std::io::Result<()> {
+    tui::run()
 }
 
 #[cfg(test)]
