@@ -7,10 +7,13 @@ use ftui::core::event::{
     PasteEvent,
 };
 use ftui::core::geometry::Rect;
+use ftui::layout::{Constraint, Flex};
 use ftui::render::frame::Frame;
 use ftui::widgets::Widget;
+use ftui::widgets::block::Block;
+use ftui::widgets::borders::Borders;
 use ftui::widgets::paragraph::Paragraph;
-use ftui::{App, Cmd, Model, ScreenMode};
+use ftui::{App, Cmd, Model, PackedRgba, ScreenMode, Style};
 
 use crate::adapters::{
     BootstrapData, CommandGitAdapter, CommandSystemAdapter, CommandTmuxAdapter, DiscoveryState,
@@ -25,8 +28,7 @@ use crate::interactive::{
     render_cursor_overlay, tmux_send_keys_command,
 };
 use crate::mouse::{
-    HitRegion, LayoutMetrics, clamp_sidebar_ratio, hit_test, parse_sidebar_ratio, ratio_from_drag,
-    serialize_sidebar_ratio,
+    clamp_sidebar_ratio, parse_sidebar_ratio, ratio_from_drag, serialize_sidebar_ratio,
 };
 use crate::preview::{FlashMessage, PreviewState, clear_expired_flash_message, new_flash_message};
 use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
@@ -34,6 +36,29 @@ use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
 const DEFAULT_SIDEBAR_WIDTH_PCT: u16 = 33;
 const SIDEBAR_RATIO_FILENAME: &str = ".grove-sidebar-width";
 const WORKSPACE_LAUNCH_PROMPT_FILENAME: &str = ".grove-prompt";
+const HEADER_HEIGHT: u16 = 1;
+const STATUS_HEIGHT: u16 = 1;
+const DIVIDER_WIDTH: u16 = 1;
+const WORKSPACE_ITEM_HEIGHT: u16 = 2;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HitRegion {
+    WorkspaceList,
+    Preview,
+    Divider,
+    StatusLine,
+    Header,
+    Outside,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ViewLayout {
+    header: Rect,
+    sidebar: Rect,
+    divider: Rect,
+    preview: Rect,
+    status: Rect,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CursorMetadata {
@@ -499,15 +524,6 @@ impl GroveApp {
         }
     }
 
-    fn selected_preview_height(&self, total_height: usize) -> usize {
-        let workspace_rows = match self.discovery_state {
-            DiscoveryState::Ready => self.state.workspaces.len(),
-            _ => 1,
-        };
-        let reserved = 3 + workspace_rows + 2 + 2;
-        total_height.saturating_sub(reserved).max(1)
-    }
-
     fn scroll_preview(&mut self, delta: i32) {
         let _ = self.preview.scroll(delta, Instant::now());
     }
@@ -956,13 +972,67 @@ impl GroveApp {
         }
     }
 
-    fn layout_metrics(&self) -> LayoutMetrics {
-        LayoutMetrics {
-            total_width: self.viewport_width,
-            total_height: self.viewport_height,
-            sidebar_width_pct: self.sidebar_width_pct,
-            status_line_height: 1,
+    fn view_layout_for_size(width: u16, height: u16, sidebar_width_pct: u16) -> ViewLayout {
+        let area = Rect::from_size(width, height);
+        let rows = Flex::vertical()
+            .constraints([
+                Constraint::Fixed(HEADER_HEIGHT),
+                Constraint::Fill,
+                Constraint::Fixed(STATUS_HEIGHT),
+            ])
+            .split(area);
+
+        let sidebar_width = ((u32::from(rows[1].width) * u32::from(sidebar_width_pct)) / 100)
+            .try_into()
+            .unwrap_or(rows[1].width);
+        let cols = Flex::horizontal()
+            .constraints([
+                Constraint::Fixed(sidebar_width),
+                Constraint::Fixed(DIVIDER_WIDTH),
+                Constraint::Fill,
+            ])
+            .split(rows[1]);
+
+        ViewLayout {
+            header: rows[0],
+            sidebar: cols[0],
+            divider: cols[1],
+            preview: cols[2],
+            status: rows[2],
         }
+    }
+
+    fn view_layout(&self) -> ViewLayout {
+        Self::view_layout_for_size(
+            self.viewport_width,
+            self.viewport_height,
+            self.sidebar_width_pct,
+        )
+    }
+
+    fn hit_region_for_point(&self, x: u16, y: u16) -> HitRegion {
+        let layout = self.view_layout();
+
+        if x >= self.viewport_width || y >= self.viewport_height {
+            return HitRegion::Outside;
+        }
+        if y < layout.header.bottom() {
+            return HitRegion::Header;
+        }
+        if y >= layout.status.y {
+            return HitRegion::StatusLine;
+        }
+        if x >= layout.divider.x && x < layout.divider.right() {
+            return HitRegion::Divider;
+        }
+        if x >= layout.sidebar.x && x < layout.sidebar.right() {
+            return HitRegion::WorkspaceList;
+        }
+        if x >= layout.preview.x && x < layout.preview.right() {
+            return HitRegion::Preview;
+        }
+
+        HitRegion::Outside
     }
 
     fn apply_interactive_cursor_overlay(
@@ -1013,12 +1083,13 @@ impl GroveApp {
             return;
         }
 
-        const LIST_START_ROW: u16 = 3;
-        if y < LIST_START_ROW {
+        let layout = self.view_layout();
+        let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
+        if y < sidebar_inner.y || y >= sidebar_inner.bottom() {
             return;
         }
 
-        let row = usize::from(y - LIST_START_ROW);
+        let row = usize::from((y - sidebar_inner.y) / WORKSPACE_ITEM_HEIGHT);
         if row >= self.state.workspaces.len() {
             return;
         }
@@ -1035,7 +1106,7 @@ impl GroveApp {
             return;
         }
 
-        let region = hit_test(self.layout_metrics(), mouse_event.x, mouse_event.y);
+        let region = self.hit_region_for_point(mouse_event.x, mouse_event.y);
 
         match mouse_event.kind {
             MouseEventKind::Down(MouseButton::Left) => match region {
@@ -1051,7 +1122,7 @@ impl GroveApp {
                     self.state.focus = PaneFocus::Preview;
                     self.state.mode = UiMode::Preview;
                 }
-                HitRegion::StatusLine | HitRegion::Outside => {}
+                HitRegion::StatusLine | HitRegion::Header | HitRegion::Outside => {}
             },
             MouseEventKind::Drag(MouseButton::Left) => {
                 if self.divider_drag_active {
@@ -1128,6 +1199,214 @@ impl GroveApp {
             since_last_key,
             self.output_changing,
         )
+    }
+
+    fn pane_border_style(&self, focused: bool) -> Style {
+        if focused {
+            return Style::new().fg(PackedRgba::rgb(56, 189, 248)).bold();
+        }
+
+        Style::new().fg(PackedRgba::rgb(107, 114, 128))
+    }
+
+    fn render_header(&self, frame: &mut Frame, area: Rect) {
+        if area.is_empty() {
+            return;
+        }
+
+        let header = format!(
+            "Grove | Repo: {} | Mode: {} | Focus: {}",
+            self.repo_name,
+            self.mode_label(),
+            self.focus_label()
+        );
+        Paragraph::new(header).render(area, frame);
+    }
+
+    fn render_sidebar(&self, frame: &mut Frame, area: Rect) {
+        if area.is_empty() {
+            return;
+        }
+
+        let block = Block::new()
+            .title("Workspaces")
+            .borders(Borders::ALL)
+            .border_style(self.pane_border_style(
+                self.state.focus == PaneFocus::WorkspaceList && self.launch_dialog.is_none(),
+            ));
+        let inner = block.inner(area);
+        block.render(area, frame);
+
+        if inner.is_empty() {
+            return;
+        }
+
+        let mut lines: Vec<String> = Vec::new();
+        match &self.discovery_state {
+            DiscoveryState::Error(message) => {
+                lines.push("Discovery error".to_string());
+                lines.push(message.clone());
+            }
+            DiscoveryState::Empty => {
+                lines.push("No workspaces".to_string());
+            }
+            DiscoveryState::Ready => {
+                let max_items = usize::from(inner.height / WORKSPACE_ITEM_HEIGHT);
+                for (idx, workspace) in self.state.workspaces.iter().take(max_items).enumerate() {
+                    let selected = if idx == self.state.selected_index {
+                        ">"
+                    } else {
+                        " "
+                    };
+                    lines.push(format!(
+                        "{} {} {}",
+                        selected,
+                        workspace.status.icon(),
+                        workspace.name
+                    ));
+                    lines.push(format!(
+                        "  {} | {}{}",
+                        workspace.branch,
+                        workspace.agent.label(),
+                        if workspace.is_orphaned {
+                            " | session ended"
+                        } else {
+                            ""
+                        }
+                    ));
+                }
+            }
+        }
+
+        Paragraph::new(lines.join("\n")).render(inner, frame);
+    }
+
+    fn render_divider(&self, frame: &mut Frame, area: Rect) {
+        if area.is_empty() {
+            return;
+        }
+
+        let glyph = if self.divider_drag_active {
+            "█"
+        } else {
+            "│"
+        };
+        let divider = std::iter::repeat(glyph)
+            .take(usize::from(area.height))
+            .collect::<Vec<&str>>()
+            .join("\n");
+        Paragraph::new(divider)
+            .style(Style::new().fg(PackedRgba::rgb(107, 114, 128)))
+            .render(area, frame);
+    }
+
+    fn render_preview_pane(&self, frame: &mut Frame, area: Rect) {
+        if area.is_empty() {
+            return;
+        }
+
+        let title = if self.interactive.is_some() {
+            "Preview (Interactive)"
+        } else {
+            "Preview"
+        };
+        let block = Block::new()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(self.pane_border_style(
+                self.state.focus == PaneFocus::Preview && self.launch_dialog.is_none(),
+            ));
+        let inner = block.inner(area);
+        block.render(area, frame);
+
+        if inner.is_empty() {
+            return;
+        }
+
+        let selected_workspace = self
+            .state
+            .selected_workspace()
+            .map(|workspace| {
+                format!(
+                    "{} | {} | {}",
+                    workspace.name,
+                    workspace.branch,
+                    workspace.path.display()
+                )
+            })
+            .unwrap_or_else(|| "none".to_string());
+
+        let mut lines = vec![format!("Selected: {selected_workspace}"), String::new()];
+        let metadata_rows = lines.len();
+        let preview_height = usize::from(inner.height)
+            .saturating_sub(metadata_rows)
+            .max(1);
+
+        let mut visible_lines = self.preview.visible_lines(preview_height);
+        self.apply_interactive_cursor_overlay(&mut visible_lines, preview_height);
+        if visible_lines.is_empty() {
+            lines.push("(no preview output)".to_string());
+        } else {
+            lines.extend(visible_lines);
+        }
+
+        Paragraph::new(lines.join("\n")).render(inner, frame);
+    }
+
+    fn render_status_line(&self, frame: &mut Frame, area: Rect) {
+        if area.is_empty() {
+            return;
+        }
+
+        Paragraph::new(self.status_bar_line())
+            .style(Style::new().reverse())
+            .render(area, frame);
+    }
+
+    fn render_launch_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
+        let Some(dialog) = self.launch_dialog.as_ref() else {
+            return;
+        };
+        if area.width < 20 || area.height < 8 {
+            return;
+        }
+
+        let dialog_width = area.width.saturating_sub(8).min(100);
+        let dialog_height = 8u16;
+        let dialog_x = area.x + area.width.saturating_sub(dialog_width) / 2;
+        let dialog_y = area.y + area.height.saturating_sub(dialog_height) / 2;
+        let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+
+        let block = Block::new()
+            .title("Start Agent")
+            .borders(Borders::ALL)
+            .border_style(Style::new().fg(PackedRgba::rgb(56, 189, 248)).bold());
+        let inner = block.inner(dialog_area);
+        block.render(dialog_area, frame);
+
+        if inner.is_empty() {
+            return;
+        }
+
+        let body = [
+            "Edit prompt, [Tab] toggles unsafe, [Enter] starts, [Esc] cancels".to_string(),
+            String::new(),
+            format!(
+                "Unsafe launch: {}",
+                if dialog.skip_permissions { "on" } else { "off" }
+            ),
+            format!(
+                "Prompt: {}",
+                if dialog.prompt.is_empty() {
+                    "(empty)".to_string()
+                } else {
+                    dialog.prompt.clone()
+                }
+            ),
+        ]
+        .join("\n");
+
+        Paragraph::new(body).render(inner, frame);
     }
 
     fn shell_lines(&self, preview_height: usize) -> Vec<String> {
@@ -1271,10 +1550,20 @@ impl Model for GroveApp {
     }
 
     fn view(&self, frame: &mut Frame) {
+        frame.enable_hit_testing();
         let area = Rect::from_size(frame.buffer.width(), frame.buffer.height());
-        let preview_height = self.selected_preview_height(usize::from(frame.buffer.height()));
-        let content = self.shell_lines(preview_height).join("\n");
-        Paragraph::new(content).render(area, frame);
+        let layout = Self::view_layout_for_size(
+            frame.buffer.width(),
+            frame.buffer.height(),
+            self.sidebar_width_pct,
+        );
+
+        self.render_header(frame, layout.header);
+        self.render_sidebar(frame, layout.sidebar);
+        self.render_divider(frame, layout.divider);
+        self.render_preview_pane(frame, layout.preview);
+        self.render_status_line(frame, layout.status);
+        self.render_launch_dialog_overlay(frame, area);
     }
 }
 

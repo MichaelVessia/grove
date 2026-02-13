@@ -530,3 +530,35 @@ Exit criteria:
   Next:
   - Complete manual UI validation for mouse-driven divider persistence and
     interactive cursor overlay fidelity (not covered by the scripted smoke run).
+- 2026-02-13: Manual UI pass identified major visual/layout drift from PRD and
+  Sidecar-like shell expectations.
+  Changes: reviewed live UI output against current implementation and validated
+  that `src/tui.rs` still renders a monolithic newline-joined `Paragraph`
+  (`shell_lines`) instead of true pane composition. Confirmed missing PRD
+  layout architecture pieces: `Flex` split-based two-pane render path,
+  bordered sidebar/preview panels, and frame-level hit-region registration in
+  `view()`.
+  Status: backend/runtime lifecycle behavior is present, but UI composition is
+  still effectively a text dump, causing the non-Sidecar appearance.
+  Next:
+  - Refactor `view()` to render real two-pane chrome (`header + sidebar +
+    divider + preview + status`) using `ftui::layout::Flex` and `Block`.
+  - Move workspace row rendering and preview rendering into dedicated pane
+    renderers instead of `shell_lines`.
+  - Replace hard-coded mouse row mapping with pane-relative hit registration
+    in `view()` for accurate click selection and divider behavior.
+- 2026-02-13: Implemented structural two-pane TUI composition for Sidecar-like
+  layout parity.
+  Changes: refactored `src/tui.rs` rendering path from monolithic text dump to
+  explicit pane composition with `Flex` layout (`header`, `sidebar`, `divider`,
+  `preview`, `status`), introduced dedicated pane renderers (including bordered
+  sidebar/preview panels), added centered start-agent modal overlay rendering,
+  and replaced hard-coded mouse row mapping with geometry-driven region
+  detection and pane-relative workspace row selection.
+  Status: structural parity goal met for layout architecture, existing TUI unit
+  tests remain green after refactor.
+  Next:
+  - Follow up with frame-registered hit IDs in `view()` (instead of geometry
+    math in update path) for full PRD hit-grid alignment.
+  - Add render-focused assertions around pane boundaries and modal placement to
+    lock layout structure against regressions.
