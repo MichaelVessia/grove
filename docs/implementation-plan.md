@@ -386,3 +386,15 @@ Exit criteria:
     modal dialogs).
   - Add end-to-end tests around command execution sequencing in the real app
     layer, not only module-level logic.
+- 2026-02-13: Began wiring Phase 5 runtime behavior into the real TUI loop.
+  Changes: updated `src/tui.rs` event handling to route key events through app
+  logic, replaced preview placeholder text with `PreviewState`-driven rendering,
+  added preview content refresh on selection changes/enter-preview, and wired
+  preview scrolling controls (`j/k`, `PgUp/PgDn`, `G`) with auto-scroll state
+  surfaced in the status bar.
+  Status: targeted TUI unit tests pass locally (`cargo test tui:: --lib`).
+  Next:
+  - Continue Phase 5-7 wiring with live tmux capture/poll integration for
+    preview updates.
+  - Add interactive-mode entry/exit and key forwarding in the app loop.
+  - Add mouse event handling (hit testing, divider drag, preview scroll).
