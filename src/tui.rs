@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -8,7 +9,7 @@ use ftui::core::event::{
 };
 use ftui::core::geometry::Rect;
 use ftui::layout::{Constraint, Flex};
-use ftui::render::frame::Frame;
+use ftui::render::frame::{Frame, HitGrid, HitId, HitRegion as FrameHitRegion};
 use ftui::text::{Line as FtLine, Span as FtSpan, Text as FtText};
 use ftui::widgets::Widget;
 use ftui::widgets::block::Block;
@@ -50,6 +51,14 @@ const STATUS_HEIGHT: u16 = 1;
 const DIVIDER_WIDTH: u16 = 1;
 const WORKSPACE_ITEM_HEIGHT: u16 = 2;
 const PREVIEW_METADATA_ROWS: u16 = 2;
+const HIT_ID_HEADER: u32 = 1;
+const HIT_ID_WORKSPACE_LIST: u32 = 2;
+const HIT_ID_PREVIEW: u32 = 3;
+const HIT_ID_DIVIDER: u32 = 4;
+const HIT_ID_STATUS: u32 = 5;
+const HIT_ID_WORKSPACE_ROW: u32 = 6;
+const HIT_ID_CREATE_DIALOG: u32 = 7;
+const HIT_ID_LAUNCH_DIALOG: u32 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HitRegion {
@@ -90,6 +99,68 @@ struct CreateDialogState {
     workspace_name: String,
     agent: AgentType,
     base_branch: String,
+    existing_branch: String,
+    branch_mode: CreateBranchMode,
+    focused_field: CreateDialogField,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CreateBranchMode {
+    NewBranch,
+    ExistingBranch,
+}
+
+impl CreateBranchMode {
+    fn toggle(self) -> Self {
+        match self {
+            Self::NewBranch => Self::ExistingBranch,
+            Self::ExistingBranch => Self::NewBranch,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::NewBranch => "new",
+            Self::ExistingBranch => "existing",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CreateDialogField {
+    WorkspaceName,
+    BranchInput,
+    Agent,
+    BranchMode,
+}
+
+impl CreateDialogField {
+    fn next(self) -> Self {
+        match self {
+            Self::WorkspaceName => Self::BranchInput,
+            Self::BranchInput => Self::Agent,
+            Self::Agent => Self::BranchMode,
+            Self::BranchMode => Self::WorkspaceName,
+        }
+    }
+
+    fn previous(self) -> Self {
+        match self {
+            Self::WorkspaceName => Self::BranchMode,
+            Self::BranchInput => Self::WorkspaceName,
+            Self::Agent => Self::BranchInput,
+            Self::BranchMode => Self::Agent,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::WorkspaceName => "name",
+            Self::BranchInput => "branch",
+            Self::Agent => "agent",
+            Self::BranchMode => "mode",
+        }
+    }
 }
 
 trait TmuxInput {
@@ -629,6 +700,7 @@ struct GroveApp {
     divider_drag_active: bool,
     copied_text: Option<String>,
     event_log: Box<dyn EventLogger>,
+    last_hit_grid: RefCell<Option<HitGrid>>,
 }
 
 impl GroveApp {
@@ -711,6 +783,7 @@ impl GroveApp {
             divider_drag_active: false,
             copied_text: None,
             event_log,
+            last_hit_grid: RefCell::new(None),
         };
         app.refresh_preview_summary();
         app
@@ -827,9 +900,20 @@ impl GroveApp {
         }
     }
 
+    fn log_dialog_event_with_fields(
+        &self,
+        kind: &str,
+        action: &str,
+        fields: impl IntoIterator<Item = (String, Value)>,
+    ) {
+        let event = LogEvent::new("dialog", action)
+            .with_data("kind", Value::from(kind.to_string()))
+            .with_data_fields(fields);
+        self.event_log.log(event);
+    }
+
     fn log_dialog_event(&self, kind: &str, action: &str) {
-        self.event_log
-            .log(LogEvent::new("dialog", action).with_data("kind", Value::from(kind.to_string())));
+        self.log_dialog_event_with_fields(kind, action, std::iter::empty());
     }
 
     fn log_tmux_error(&self, message: String) {
@@ -981,10 +1065,18 @@ impl GroveApp {
             DiscoveryState::Empty => "Status: no worktrees found [q]quit".to_string(),
             DiscoveryState::Ready => {
                 if let Some(dialog) = &self.create_dialog {
+                    let branch_value = match dialog.branch_mode {
+                        CreateBranchMode::NewBranch => dialog.base_branch.replace('\n', "\\n"),
+                        CreateBranchMode::ExistingBranch => {
+                            dialog.existing_branch.replace('\n', "\\n")
+                        }
+                    };
                     return format!(
-                        "Status: New workspace | [type]name [Tab]agent={} [Enter]create [Esc]cancel | base={} name=\"{}\"",
+                        "Status: New workspace | [Tab/Shift+Tab]field={} [Left/Right]toggle [type]edit [Enter]create [Esc]cancel | mode={} agent={} branch=\"{}\" name=\"{}\"",
+                        dialog.focused_field.label(),
+                        dialog.branch_mode.label(),
                         dialog.agent.label(),
-                        dialog.base_branch,
+                        branch_value,
                         dialog.workspace_name
                     );
                 }
@@ -1217,7 +1309,61 @@ impl GroveApp {
     }
 
     fn scroll_preview(&mut self, delta: i32) {
-        let _ = self.preview.scroll(delta, Instant::now());
+        let old_offset = self.preview.offset;
+        let old_auto_scroll = self.preview.auto_scroll;
+        let changed = self.preview.scroll(delta, Instant::now());
+        if changed {
+            let offset = u64::try_from(self.preview.offset).unwrap_or(u64::MAX);
+            self.event_log.log(
+                LogEvent::new("preview_update", "scrolled")
+                    .with_data("delta", Value::from(i64::from(delta)))
+                    .with_data("offset", Value::from(offset)),
+            );
+        }
+        if old_auto_scroll != self.preview.auto_scroll {
+            self.event_log.log(
+                LogEvent::new("preview_update", "autoscroll_toggled")
+                    .with_data("enabled", Value::from(self.preview.auto_scroll))
+                    .with_data(
+                        "offset",
+                        Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
+                    )
+                    .with_data(
+                        "previous_offset",
+                        Value::from(u64::try_from(old_offset).unwrap_or(u64::MAX)),
+                    ),
+            );
+        }
+    }
+
+    fn jump_preview_to_bottom(&mut self) {
+        let old_offset = self.preview.offset;
+        let old_auto_scroll = self.preview.auto_scroll;
+        self.preview.jump_to_bottom();
+        if old_offset != self.preview.offset {
+            self.event_log.log(
+                LogEvent::new("preview_update", "scrolled")
+                    .with_data("delta", Value::from("jump_bottom"))
+                    .with_data(
+                        "offset",
+                        Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
+                    )
+                    .with_data(
+                        "previous_offset",
+                        Value::from(u64::try_from(old_offset).unwrap_or(u64::MAX)),
+                    ),
+            );
+        }
+        if old_auto_scroll != self.preview.auto_scroll {
+            self.event_log.log(
+                LogEvent::new("preview_update", "autoscroll_toggled")
+                    .with_data("enabled", Value::from(self.preview.auto_scroll))
+                    .with_data(
+                        "offset",
+                        Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
+                    ),
+            );
+        }
     }
 
     fn persist_sidebar_ratio(&mut self) {
@@ -1342,11 +1488,27 @@ impl GroveApp {
             return;
         }
 
+        let prompt = read_workspace_launch_prompt(&workspace.path).unwrap_or_default();
+        let skip_permissions = self.launch_skip_permissions;
         self.launch_dialog = Some(LaunchDialogState {
-            prompt: read_workspace_launch_prompt(&workspace.path).unwrap_or_default(),
-            skip_permissions: self.launch_skip_permissions,
+            prompt: prompt.clone(),
+            skip_permissions,
         });
-        self.log_dialog_event("launch", "dialog_opened");
+        self.log_dialog_event_with_fields(
+            "launch",
+            "dialog_opened",
+            [
+                ("workspace".to_string(), Value::from(workspace.name.clone())),
+                (
+                    "prompt_len".to_string(),
+                    Value::from(u64::try_from(prompt.len()).unwrap_or(u64::MAX)),
+                ),
+                (
+                    "skip_permissions".to_string(),
+                    Value::from(skip_permissions),
+                ),
+            ],
+        );
         self.last_tmux_error = None;
     }
 
@@ -1382,11 +1544,35 @@ impl GroveApp {
             workspace_name: String::new(),
             agent: default_agent,
             base_branch: self.selected_base_branch(),
+            existing_branch: String::new(),
+            branch_mode: CreateBranchMode::NewBranch,
+            focused_field: CreateDialogField::WorkspaceName,
         });
-        self.log_dialog_event("create", "dialog_opened");
+        self.log_dialog_event_with_fields(
+            "create",
+            "dialog_opened",
+            [
+                ("agent".to_string(), Value::from(default_agent.label())),
+                (
+                    "branch_mode".to_string(),
+                    Value::from(CreateBranchMode::NewBranch.label()),
+                ),
+            ],
+        );
         self.state.mode = UiMode::List;
         self.state.focus = PaneFocus::WorkspaceList;
         self.last_tmux_error = None;
+    }
+
+    fn toggle_create_dialog_agent(dialog: &mut CreateDialogState) {
+        dialog.agent = match dialog.agent {
+            AgentType::Claude => AgentType::Codex,
+            AgentType::Codex => AgentType::Claude,
+        };
+    }
+
+    fn toggle_create_dialog_branch_mode(dialog: &mut CreateDialogState) {
+        dialog.branch_mode = dialog.branch_mode.toggle();
     }
 
     fn workspace_lifecycle_error_message(error: &WorkspaceLifecycleError) -> String {
@@ -1446,14 +1632,39 @@ impl GroveApp {
         let Some(dialog) = self.create_dialog.as_ref().cloned() else {
             return;
         };
-        self.log_dialog_event("create", "dialog_confirmed");
+        let branch_value = match dialog.branch_mode {
+            CreateBranchMode::NewBranch => dialog.base_branch.clone(),
+            CreateBranchMode::ExistingBranch => dialog.existing_branch.clone(),
+        };
+        self.log_dialog_event_with_fields(
+            "create",
+            "dialog_confirmed",
+            [
+                (
+                    "workspace_name".to_string(),
+                    Value::from(dialog.workspace_name.clone()),
+                ),
+                ("agent".to_string(), Value::from(dialog.agent.label())),
+                (
+                    "branch_mode".to_string(),
+                    Value::from(dialog.branch_mode.label()),
+                ),
+                ("branch_value".to_string(), Value::from(branch_value)),
+            ],
+        );
 
         let workspace_name = dialog.workspace_name.trim().to_string();
+        let branch_mode = match dialog.branch_mode {
+            CreateBranchMode::NewBranch => BranchMode::NewBranch {
+                base_branch: dialog.base_branch.trim().to_string(),
+            },
+            CreateBranchMode::ExistingBranch => BranchMode::ExistingBranch {
+                existing_branch: dialog.existing_branch.trim().to_string(),
+            },
+        };
         let request = CreateWorkspaceRequest {
             workspace_name: workspace_name.clone(),
-            branch_mode: BranchMode::NewBranch {
-                base_branch: dialog.base_branch,
-            },
+            branch_mode,
             agent: dialog.agent,
         };
 
@@ -1509,22 +1720,77 @@ impl GroveApp {
             }
             KeyCode::Tab => {
                 if let Some(dialog) = self.create_dialog.as_mut() {
-                    dialog.agent = match dialog.agent {
-                        AgentType::Claude => AgentType::Codex,
-                        AgentType::Codex => AgentType::Claude,
-                    };
+                    dialog.focused_field = dialog.focused_field.next();
+                }
+            }
+            KeyCode::BackTab => {
+                if let Some(dialog) = self.create_dialog.as_mut() {
+                    dialog.focused_field = dialog.focused_field.previous();
+                }
+            }
+            KeyCode::Left | KeyCode::Right => {
+                if let Some(dialog) = self.create_dialog.as_mut() {
+                    match dialog.focused_field {
+                        CreateDialogField::Agent => Self::toggle_create_dialog_agent(dialog),
+                        CreateDialogField::BranchMode => {
+                            Self::toggle_create_dialog_branch_mode(dialog);
+                        }
+                        CreateDialogField::WorkspaceName | CreateDialogField::BranchInput => {}
+                    }
                 }
             }
             KeyCode::Backspace => {
                 if let Some(dialog) = self.create_dialog.as_mut() {
-                    dialog.workspace_name.pop();
+                    match dialog.focused_field {
+                        CreateDialogField::WorkspaceName => {
+                            dialog.workspace_name.pop();
+                        }
+                        CreateDialogField::BranchInput => match dialog.branch_mode {
+                            CreateBranchMode::NewBranch => {
+                                dialog.base_branch.pop();
+                            }
+                            CreateBranchMode::ExistingBranch => {
+                                dialog.existing_branch.pop();
+                            }
+                        },
+                        CreateDialogField::Agent | CreateDialogField::BranchMode => {}
+                    }
                 }
             }
             KeyCode::Char(character) if key_event.modifiers.is_empty() => {
-                if (character.is_ascii_alphanumeric() || character == '-' || character == '_')
-                    && let Some(dialog) = self.create_dialog.as_mut()
-                {
-                    dialog.workspace_name.push(character);
+                if let Some(dialog) = self.create_dialog.as_mut() {
+                    match dialog.focused_field {
+                        CreateDialogField::WorkspaceName => {
+                            if character.is_ascii_alphanumeric()
+                                || character == '-'
+                                || character == '_'
+                            {
+                                dialog.workspace_name.push(character);
+                            }
+                        }
+                        CreateDialogField::BranchInput => {
+                            if !character.is_control() {
+                                match dialog.branch_mode {
+                                    CreateBranchMode::NewBranch => {
+                                        dialog.base_branch.push(character)
+                                    }
+                                    CreateBranchMode::ExistingBranch => {
+                                        dialog.existing_branch.push(character);
+                                    }
+                                }
+                            }
+                        }
+                        CreateDialogField::Agent => {
+                            if character == ' ' {
+                                Self::toggle_create_dialog_agent(dialog);
+                            }
+                        }
+                        CreateDialogField::BranchMode => {
+                            if character == ' ' {
+                                Self::toggle_create_dialog_branch_mode(dialog);
+                            }
+                        }
+                    }
                 }
             }
             _ => {}
@@ -1597,7 +1863,22 @@ impl GroveApp {
         let Some(dialog) = self.launch_dialog.take() else {
             return;
         };
-        self.log_dialog_event("launch", "dialog_confirmed");
+        let workspace_name = self.selected_workspace_name().unwrap_or_default();
+        self.log_dialog_event_with_fields(
+            "launch",
+            "dialog_confirmed",
+            [
+                ("workspace".to_string(), Value::from(workspace_name)),
+                (
+                    "prompt_len".to_string(),
+                    Value::from(u64::try_from(dialog.prompt.len()).unwrap_or(u64::MAX)),
+                ),
+                (
+                    "skip_permissions".to_string(),
+                    Value::from(dialog.skip_permissions),
+                ),
+            ],
+        );
 
         self.launch_skip_permissions = dialog.skip_permissions;
         let prompt = if dialog.prompt.trim().is_empty() {
@@ -1859,7 +2140,7 @@ impl GroveApp {
             }
             KeyCode::Char('G') => {
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    self.preview.jump_to_bottom();
+                    self.jump_preview_to_bottom();
                 }
             }
             KeyCode::Char('j') | KeyCode::Down => {
@@ -1918,35 +2199,65 @@ impl GroveApp {
         )
     }
 
-    fn hit_region_for_point(&self, x: u16, y: u16) -> HitRegion {
+    fn divider_hit_area(layout: ViewLayout, viewport_width: u16) -> Rect {
+        let left = layout.divider.x.saturating_sub(1);
+        let right = layout.divider.right().saturating_add(1).min(viewport_width);
+        Rect::new(
+            left,
+            layout.divider.y,
+            right.saturating_sub(left),
+            layout.divider.height,
+        )
+    }
+
+    fn hit_region_for_point(&self, x: u16, y: u16) -> (HitRegion, Option<u64>) {
+        if let Some((id, _region, data)) = self
+            .last_hit_grid
+            .borrow()
+            .as_ref()
+            .and_then(|grid| grid.hit_test(x, y))
+        {
+            let mapped = match id.id() {
+                HIT_ID_HEADER => HitRegion::Header,
+                HIT_ID_STATUS => HitRegion::StatusLine,
+                HIT_ID_DIVIDER => HitRegion::Divider,
+                HIT_ID_PREVIEW => HitRegion::Preview,
+                HIT_ID_WORKSPACE_LIST | HIT_ID_WORKSPACE_ROW => HitRegion::WorkspaceList,
+                HIT_ID_CREATE_DIALOG | HIT_ID_LAUNCH_DIALOG => HitRegion::Outside,
+                _ => HitRegion::Outside,
+            };
+            let row_data = if id.id() == HIT_ID_WORKSPACE_ROW {
+                Some(data)
+            } else {
+                None
+            };
+            return (mapped, row_data);
+        }
+
         let layout = self.view_layout();
 
         if x >= self.viewport_width || y >= self.viewport_height {
-            return HitRegion::Outside;
+            return (HitRegion::Outside, None);
         }
         if y < layout.header.bottom() {
-            return HitRegion::Header;
+            return (HitRegion::Header, None);
         }
         if y >= layout.status.y {
-            return HitRegion::StatusLine;
-        }
-        let divider_left = layout.divider.x.saturating_sub(1);
-        let divider_right = layout
-            .divider
-            .right()
-            .saturating_add(1)
-            .min(self.viewport_width);
-        if x >= divider_left && x < divider_right {
-            return HitRegion::Divider;
-        }
-        if x >= layout.sidebar.x && x < layout.sidebar.right() {
-            return HitRegion::WorkspaceList;
-        }
-        if x >= layout.preview.x && x < layout.preview.right() {
-            return HitRegion::Preview;
+            return (HitRegion::StatusLine, None);
         }
 
-        HitRegion::Outside
+        let divider_area = Self::divider_hit_area(layout, self.viewport_width);
+        if x >= divider_area.x && x < divider_area.right() {
+            return (HitRegion::Divider, None);
+        }
+        if x >= layout.sidebar.x && x < layout.sidebar.right() {
+            return (HitRegion::WorkspaceList, None);
+        }
+        if x >= layout.preview.x && x < layout.preview.right() {
+            return (HitRegion::Preview, None);
+        }
+
+        (HitRegion::Outside, None)
     }
 
     fn interactive_cursor_target(&self, preview_height: usize) -> Option<(usize, usize, bool)> {
@@ -2048,6 +2359,19 @@ impl GroveApp {
         }
     }
 
+    fn select_workspace_by_index(&mut self, index: usize) {
+        if index >= self.state.workspaces.len() {
+            return;
+        }
+        if index == self.state.selected_index {
+            return;
+        }
+
+        self.state.selected_index = index;
+        self.preview.reset_for_selection_change();
+        self.poll_preview();
+    }
+
     fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {
         if let Some(state) = self.interactive.as_mut() {
             state.note_mouse_event(Instant::now());
@@ -2057,7 +2381,7 @@ impl GroveApp {
             return;
         }
 
-        let region = self.hit_region_for_point(mouse_event.x, mouse_event.y);
+        let (region, row_data) = self.hit_region_for_point(mouse_event.x, mouse_event.y);
 
         match mouse_event.kind {
             MouseEventKind::Down(MouseButton::Left) => match region {
@@ -2067,7 +2391,13 @@ impl GroveApp {
                 HitRegion::WorkspaceList => {
                     self.state.focus = PaneFocus::WorkspaceList;
                     self.state.mode = UiMode::List;
-                    self.select_workspace_by_mouse(mouse_event.y);
+                    if let Some(row_data) = row_data {
+                        if let Ok(index) = usize::try_from(row_data) {
+                            self.select_workspace_by_index(index);
+                        }
+                    } else {
+                        self.select_workspace_by_mouse(mouse_event.y);
+                    }
                 }
                 HitRegion::Preview => {
                     self.state.focus = PaneFocus::Preview;
@@ -2183,6 +2513,7 @@ impl GroveApp {
             self.focus_label()
         );
         Paragraph::new(header).render(area, frame);
+        let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
     }
 
     fn render_sidebar(&self, frame: &mut Frame, area: Rect) {
@@ -2198,6 +2529,7 @@ impl GroveApp {
             ));
         let inner = block.inner(area);
         block.render(area, frame);
+        let _ = frame.register_hit_region(area, HitId::new(HIT_ID_WORKSPACE_LIST));
 
         if inner.is_empty() {
             return;
@@ -2236,6 +2568,22 @@ impl GroveApp {
                             ""
                         }
                     ));
+                    if let Ok(data) = u64::try_from(idx) {
+                        let row_y = inner.y.saturating_add(
+                            u16::try_from(idx)
+                                .unwrap_or(u16::MAX)
+                                .saturating_mul(WORKSPACE_ITEM_HEIGHT),
+                        );
+                        let row_height =
+                            WORKSPACE_ITEM_HEIGHT.min(inner.bottom().saturating_sub(row_y));
+                        let row_rect = Rect::new(inner.x, row_y, inner.width, row_height);
+                        let _ = frame.register_hit(
+                            row_rect,
+                            HitId::new(HIT_ID_WORKSPACE_ROW),
+                            FrameHitRegion::Content,
+                            data,
+                        );
+                    }
                 }
             }
         }
@@ -2260,6 +2608,10 @@ impl GroveApp {
         Paragraph::new(divider)
             .style(Style::new().fg(PackedRgba::rgb(107, 114, 128)))
             .render(area, frame);
+        let left = area.x.saturating_sub(1);
+        let right = area.right().saturating_add(1).min(frame.width());
+        let divider_hit_area = Rect::new(left, area.y, right.saturating_sub(left), area.height);
+        let _ = frame.register_hit_region(divider_hit_area, HitId::new(HIT_ID_DIVIDER));
     }
 
     fn render_preview_pane(&self, frame: &mut Frame, area: Rect) {
@@ -2281,6 +2633,7 @@ impl GroveApp {
                 ));
         let inner = block.inner(area);
         block.render(area, frame);
+        let _ = frame.register_hit_region(area, HitId::new(HIT_ID_PREVIEW));
 
         if inner.is_empty() {
             return;
@@ -2363,6 +2716,7 @@ impl GroveApp {
         Paragraph::new(self.status_bar_line())
             .style(Style::new().reverse())
             .render(area, frame);
+        let _ = frame.register_hit_region(area, HitId::new(HIT_ID_STATUS));
     }
 
     fn render_launch_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
@@ -2385,6 +2739,12 @@ impl GroveApp {
             .border_style(Style::new().fg(PackedRgba::rgb(56, 189, 248)).bold());
         let inner = block.inner(dialog_area);
         block.render(dialog_area, frame);
+        let _ = frame.register_hit(
+            dialog_area,
+            HitId::new(HIT_ID_LAUNCH_DIALOG),
+            FrameHitRegion::Content,
+            0,
+        );
 
         if inner.is_empty() {
             return;
@@ -2415,12 +2775,12 @@ impl GroveApp {
         let Some(dialog) = self.create_dialog.as_ref() else {
             return;
         };
-        if area.width < 20 || area.height < 8 {
+        if area.width < 20 || area.height < 10 {
             return;
         }
 
         let dialog_width = area.width.saturating_sub(8).min(90);
-        let dialog_height = 8u16;
+        let dialog_height = 10u16;
         let dialog_x = area.x + area.width.saturating_sub(dialog_width) / 2;
         let dialog_y = area.y + area.height.saturating_sub(dialog_height) / 2;
         let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
@@ -2431,17 +2791,30 @@ impl GroveApp {
             .border_style(Style::new().fg(PackedRgba::rgb(56, 189, 248)).bold());
         let inner = block.inner(dialog_area);
         block.render(dialog_area, frame);
+        let _ = frame.register_hit(
+            dialog_area,
+            HitId::new(HIT_ID_CREATE_DIALOG),
+            FrameHitRegion::Content,
+            0,
+        );
 
         if inner.is_empty() {
             return;
         }
 
+        let active_branch_value = match dialog.branch_mode {
+            CreateBranchMode::NewBranch => dialog.base_branch.as_str(),
+            CreateBranchMode::ExistingBranch => dialog.existing_branch.as_str(),
+        };
         let body = [
-            "Type workspace name, [Tab] toggles agent, [Enter] creates".to_string(),
-            String::new(),
+            "Create workspace: [Tab/Shift+Tab] field, [Left/Right] toggle mode/agent, [Enter] create".to_string(),
+            format!("Focus: {}", dialog.focused_field.label()),
             format!("Name: {}", dialog.workspace_name),
-            format!("Agent: {}", dialog.agent.label()),
+            format!("Branch mode: {}", dialog.branch_mode.label()),
+            format!("Branch value: {}", active_branch_value),
             format!("Base branch: {}", dialog.base_branch),
+            format!("Existing branch: {}", dialog.existing_branch),
+            format!("Agent: {}", dialog.agent.label()),
         ]
         .join("\n");
 
@@ -2609,6 +2982,7 @@ impl Model for GroveApp {
         self.render_status_line(frame, layout.status);
         self.render_create_dialog_overlay(frame, area);
         self.render_launch_dialog_overlay(frame, area);
+        self.last_hit_grid.replace(frame.hit_grid.clone());
     }
 }
 
@@ -2642,8 +3016,10 @@ mod tests {
         assert_cell_style, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
     };
     use super::{
-        GroveApp, LaunchDialogState, Msg, SIDEBAR_RATIO_FILENAME, TmuxInput, ansi_16_color,
-        ansi_line_to_styled_line, parse_cursor_metadata, should_render_ansi_preview,
+        CreateBranchMode, CreateDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
+        HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogState, Msg, SIDEBAR_RATIO_FILENAME,
+        TmuxInput, WORKSPACE_ITEM_HEIGHT, ansi_16_color, ansi_line_to_styled_line,
+        parse_cursor_metadata, should_render_ansi_preview,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -2653,8 +3029,12 @@ mod tests {
         PasteEvent,
     };
     use ftui::render::cell::StyleFlags as CellStyleFlags;
+    use ftui::render::frame::HitId;
+    use ftui::widgets::block::Block;
+    use ftui::widgets::borders::Borders;
     use ftui::{Cmd, Frame, GraphemePool};
     use proptest::prelude::*;
+    use serde_json::Value;
     use std::cell::RefCell;
     use std::fs;
     use std::path::PathBuf;
@@ -2816,6 +3196,13 @@ mod tests {
             return Vec::new();
         };
         events.iter().map(|event| event.kind.clone()).collect()
+    }
+
+    fn recorded_events(events: &RecordedEvents) -> Vec<LoggedEvent> {
+        let Ok(events) = events.lock() else {
+            return Vec::new();
+        };
+        events.clone()
     }
 
     fn assert_kind_subsequence(actual: &[String], expected: &[&str]) {
@@ -3170,6 +3557,67 @@ mod tests {
     }
 
     #[test]
+    fn view_registers_hit_regions_for_panes_and_workspace_rows() {
+        let app = fixture_app();
+        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+        let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            assert_eq!(
+                frame
+                    .hit_test(layout.header.x, layout.header.y)
+                    .map(|hit| hit.0),
+                Some(HitId::new(HIT_ID_HEADER))
+            );
+            assert_eq!(
+                frame
+                    .hit_test(layout.preview.x, layout.preview.y)
+                    .map(|hit| hit.0),
+                Some(HitId::new(HIT_ID_PREVIEW))
+            );
+            assert_eq!(
+                frame
+                    .hit_test(layout.status.x, layout.status.y)
+                    .map(|hit| hit.0),
+                Some(HitId::new(HIT_ID_STATUS))
+            );
+            assert_eq!(
+                frame
+                    .hit_test(sidebar_inner.x, sidebar_inner.y)
+                    .map(|hit| hit.0),
+                Some(HitId::new(HIT_ID_WORKSPACE_ROW))
+            );
+            assert_eq!(
+                frame
+                    .hit_test(sidebar_inner.x, sidebar_inner.y)
+                    .map(|hit| hit.2),
+                Some(0)
+            );
+        });
+    }
+
+    #[test]
+    fn mouse_workspace_selection_uses_row_hit_data_after_render() {
+        let mut app = fixture_app();
+        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+        let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
+        let second_row_y = sidebar_inner.y.saturating_add(WORKSPACE_ITEM_HEIGHT);
+
+        with_rendered_frame(&app, 100, 40, |_frame| {});
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Down(MouseButton::Left),
+                sidebar_inner.x,
+                second_row_y,
+            )),
+        );
+
+        assert_eq!(app.state.selected_index, 1);
+    }
+
+    #[test]
     fn start_agent_emits_dialog_and_lifecycle_events() {
         let (mut app, _commands, _captures, _cursor_captures, events) =
             fixture_app_with_tmux_and_events(WorkspaceStatus::Idle, Vec::new(), Vec::new());
@@ -3217,6 +3665,81 @@ mod tests {
 
         let kinds = event_kinds(&events);
         assert!(kinds.iter().any(|kind| kind == "output_changed"));
+    }
+
+    #[test]
+    fn preview_scroll_emits_scrolled_and_autoscroll_events() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(WorkspaceStatus::Idle, Vec::new(), Vec::new());
+        app.preview.lines = (1..=30).map(|value| value.to_string()).collect();
+        app.preview.offset = 0;
+        app.preview.auto_scroll = true;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(MouseEventKind::ScrollUp, 90, 10)),
+        );
+
+        let kinds = event_kinds(&events);
+        assert!(kinds.iter().any(|kind| kind == "scrolled"));
+        assert!(kinds.iter().any(|kind| kind == "autoscroll_toggled"));
+    }
+
+    #[test]
+    fn create_dialog_confirmed_event_includes_branch_payload() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(WorkspaceStatus::Idle, Vec::new(), Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
+        );
+        for character in ['f', 'o', 'o'] {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
+            );
+        }
+        for _ in 0..3 {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+            );
+        }
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        let dialog_confirmed = recorded_events(&events)
+            .into_iter()
+            .find(|event| event.kind == "dialog_confirmed" && event.event == "dialog")
+            .expect("dialog_confirmed event should be logged");
+        assert_eq!(
+            dialog_confirmed
+                .data
+                .get("branch_mode")
+                .and_then(Value::as_str),
+            Some("existing")
+        );
+        assert_eq!(
+            dialog_confirmed
+                .data
+                .get("workspace_name")
+                .and_then(Value::as_str),
+            Some("foo")
+        );
     }
 
     #[test]
@@ -3530,7 +4053,7 @@ mod tests {
     }
 
     #[test]
-    fn create_dialog_tab_toggles_agent() {
+    fn create_dialog_tab_cycles_focus_field() {
         let mut app = fixture_app();
         ftui::Model::update(
             &mut app,
@@ -3542,8 +4065,113 @@ mod tests {
         );
 
         assert_eq!(
+            app.create_dialog
+                .as_ref()
+                .map(|dialog| dialog.focused_field),
+            Some(CreateDialogField::BranchInput)
+        );
+    }
+
+    #[test]
+    fn create_dialog_right_on_agent_field_toggles_agent() {
+        let mut app = fixture_app();
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
             app.create_dialog.as_ref().map(|dialog| dialog.agent),
             Some(AgentType::Codex)
+        );
+    }
+
+    #[test]
+    fn create_dialog_branch_field_edits_base_branch_in_new_mode() {
+        let mut app = fixture_app();
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+
+        for _ in 0..4 {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Backspace).with_kind(KeyEventKind::Press)),
+            );
+        }
+        for character in ['d', 'e', 'v'] {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
+            );
+        }
+
+        assert_eq!(
+            app.create_dialog
+                .as_ref()
+                .map(|dialog| dialog.base_branch.clone()),
+            Some("dev".to_string())
+        );
+    }
+
+    #[test]
+    fn create_dialog_can_toggle_existing_mode_and_edit_existing_branch() {
+        let mut app = fixture_app();
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
+        );
+        for _ in 0..3 {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+            );
+        }
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        for character in ['f', 'e', 'a', 't', '/', 'x'] {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
+            );
+        }
+
+        assert_eq!(
+            app.create_dialog.as_ref().map(|dialog| dialog.branch_mode),
+            Some(CreateBranchMode::ExistingBranch)
+        );
+        assert_eq!(
+            app.create_dialog
+                .as_ref()
+                .map(|dialog| dialog.existing_branch.clone()),
+            Some("feat/x".to_string())
         );
     }
 
@@ -3590,6 +4218,42 @@ mod tests {
 
         assert!(app.create_dialog.is_some());
         assert!(app.status_bar_line().contains("workspace name is required"));
+    }
+
+    #[test]
+    fn create_dialog_existing_mode_without_branch_shows_validation_flash() {
+        let mut app = fixture_app();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
+        );
+        for character in ['f', 'o', 'o'] {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
+            );
+        }
+        for _ in 0..3 {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+            );
+        }
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(app.create_dialog.is_some());
+        assert!(
+            app.status_bar_line()
+                .contains("existing branch is required")
+        );
     }
 
     #[test]

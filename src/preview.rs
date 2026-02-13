@@ -81,6 +81,7 @@ impl PreviewState {
 
         if change.changed_cleaned {
             self.lines = split_output_lines(&change.cleaned_output);
+            self.offset = self.offset.min(self.lines.len());
             if self.auto_scroll {
                 self.offset = 0;
             }
@@ -120,7 +121,10 @@ impl PreviewState {
 
         if delta < 0 {
             self.auto_scroll = false;
-            self.offset = self.offset.saturating_add(delta.unsigned_abs() as usize);
+            self.offset = self
+                .offset
+                .saturating_add(delta.unsigned_abs() as usize)
+                .min(self.lines.len());
             return true;
         }
 
@@ -254,6 +258,32 @@ mod tests {
         assert!(state.scroll(1, base + Duration::from_millis(400)));
         assert!(state.auto_scroll);
         assert_eq!(state.offset, 0);
+    }
+
+    #[test]
+    fn scroll_up_clamps_offset_to_available_lines() {
+        let mut state = PreviewState::new();
+        state.lines = vec!["1".to_string(), "2".to_string()];
+
+        assert!(state.scroll(-10, Instant::now()));
+        assert_eq!(state.offset, 2);
+    }
+
+    #[test]
+    fn apply_capture_clamps_existing_offset_when_output_shrinks() {
+        let mut state = PreviewState::new();
+        state.lines = vec![
+            "1".to_string(),
+            "2".to_string(),
+            "3".to_string(),
+            "4".to_string(),
+        ];
+        state.offset = 3;
+        state.auto_scroll = false;
+
+        state.apply_capture("line-a\nline-b");
+        assert_eq!(state.lines.len(), 2);
+        assert_eq!(state.offset, 2);
     }
 
     #[test]

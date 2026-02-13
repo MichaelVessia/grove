@@ -35,6 +35,9 @@ fn main() -> std::io::Result<()> {
     let cli = parse_cli_args(std::env::args().skip(1))?;
 
     if cli.print_hello {
+        if let Some(event_log_path) = cli.event_log_path.as_ref() {
+            let _ = grove::event_log::FileEventLogger::open(event_log_path)?;
+        }
         println!("{}", grove::hello_message("grove"));
         return Ok(());
     }

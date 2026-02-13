@@ -3,6 +3,84 @@
 This document turns the PRD into a phased execution plan with explicit
 quality gates.
 
+## Open Items Checklist (2026-02-13)
+
+- [x] Frame-registered hit IDs in `view()` and update-path mouse routing from hit grid
+- [x] New-workspace modal: existing-branch attach mode + base-branch editing
+- [ ] Manual interaction pass for `n` create flow + divider drag across terminal emulators
+- [x] Event-log follow-up: expanded event coverage + binary smoke test for `--event-log`
+- [ ] Phase 8 closure items: performance/long-session/restart-reattach validation
+
+## Update 2026-02-13, Open-Item Sweep (Hit Grid, Create Dialog, Event Log, Reattach Smoke)
+
+What changed:
+- Implemented hit-grid-first mouse routing in `src/tui.rs`:
+  - registered pane hit IDs in `view()` renderers (header/sidebar/divider/preview/status)
+  - registered per-workspace-row hit data for click selection
+  - cached last frame hit grid and routed mouse updates through hit-test IDs (geometry kept as fallback)
+  - added render/mouse tests:
+    - `tui::tests::view_registers_hit_regions_for_panes_and_workspace_rows`
+    - `tui::tests::mouse_workspace_selection_uses_row_hit_data_after_render`
+- Implemented full create-dialog branch controls in `src/tui.rs`:
+  - new vs existing branch mode toggle
+  - editable active branch field (base branch for new mode, existing branch for attach mode)
+  - tab/shift-tab field focus cycle with focused-field status hints
+  - confirmation now maps to `BranchMode::NewBranch` or `BranchMode::ExistingBranch`
+  - added targeted tests for focus cycle, mode toggle, branch editing, and validation paths.
+- Expanded event-log coverage in `src/tui.rs`:
+  - emits `preview_update/scrolled`
+  - emits `preview_update/autoscroll_toggled`
+  - enriches dialog open/confirm events with payload fields (workspace, mode, branch value, prompt length, skip-permissions).
+- Added binary smoke coverage for event-log path:
+  - `tests/event_log_cli_smoke.rs` validates `--event-log` file creation on CLI run (`--print-hello` path).
+  - `src/main.rs` now creates event-log file in `--print-hello` mode when `--event-log` is supplied.
+- Added restart/reattach validation harness:
+  - `scripts/check-restart-reattach.sh`
+  - automated local smoke verifies agent session survives Grove restart and interactive reattach works.
+- Fixed preview offset invariant at source in `src/preview.rs`:
+  - clamps scroll offset to available lines on scroll and capture updates
+  - added regression tests:
+    - `preview::tests::scroll_up_clamps_offset_to_available_lines`
+    - `preview::tests::apply_capture_clamps_existing_offset_when_output_shrinks`
+
+Current status:
+- Completed checklist items:
+  - hit-grid routing
+  - create-dialog branch/base controls
+  - event-log expansion + binary smoke
+- Phase 8 progress:
+  - performance/flicker harness remains green (`scripts/check-codex-flicker.sh`)
+  - restart/reattach smoke now automated and green (`scripts/check-restart-reattach.sh`)
+- Remaining unchecked items are manual-only validation passes.
+
+Next steps:
+- Run manual terminal-emulator pass for create-dialog flow + divider drag in your normal environments.
+- Run/record a long-session manual validation (>=30m) to close remaining Phase 8 manual criteria.
+
+## Update 2026-02-13, Interactive Idle Poll Backoff for Flicker
+
+What changed:
+- Updated interactive polling logic in `src/agent_runtime.rs`:
+  - when in interactive mode, selected workspace, inactivity is over 10s, and
+    captured output is unchanged, next poll now backs off to `2s` (was `500ms`).
+  - active interactive paths remain unchanged (`50ms` under 2s inactivity,
+    `200ms` under 10s inactivity, `500ms` while output is changing).
+- Extended `poll_intervals_follow_preview_and_interactive_rules` test to cover
+  the new idle-unchanged backoff case.
+
+Current status:
+- Targeted runtime test passes locally.
+- Codex flicker harness (`scripts/check-codex-flicker.sh`) remains green after
+  change.
+- Snapshot analysis still indicates unchanged repeated captures in the reported
+  repro, now polled less aggressively when idle.
+
+Next steps:
+- Re-test the same real interactive repro and capture a new
+  `.grove-debug-snapshot.json` to confirm cadence and perceived flicker drop.
+- If flicker remains, next step is adding per-tick render timing and cursor
+  metadata deltas to snapshot/event log for tighter attribution.
+
 ## Update 2026-02-13, Debug Snapshot Hotkey (Ctrl+D)
 
 What changed:
