@@ -161,7 +161,7 @@ impl InteractiveState {
             }
         }
 
-        if character == '['
+        if is_mouse_fragment_start(character)
             && self
                 .last_mouse_event_time
                 .is_some_and(|last_mouse_event_time| {
@@ -175,6 +175,10 @@ impl InteractiveState {
 
         false
     }
+}
+
+fn is_mouse_fragment_start(character: char) -> bool {
+    matches!(character, '[' | '<' | 'M' | 'm')
 }
 
 fn is_mouse_fragment_character(character: char) -> bool {
@@ -477,6 +481,44 @@ mod tests {
         assert!(state.should_drop_split_mouse_fragment(';', now + Duration::from_millis(7)));
         assert!(state.should_drop_split_mouse_fragment('5', now + Duration::from_millis(8)));
         assert!(state.should_drop_split_mouse_fragment('M', now + Duration::from_millis(9)));
+    }
+
+    #[test]
+    fn split_mouse_fragment_filter_drops_sequence_when_prefix_bracket_is_missing() {
+        let now = Instant::now();
+        let mut state =
+            InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+        state.note_mouse_event(now);
+
+        assert!(state.should_drop_split_mouse_fragment('<', now));
+        assert!(state.should_drop_split_mouse_fragment('6', now + Duration::from_millis(1)));
+        assert!(state.should_drop_split_mouse_fragment('5', now + Duration::from_millis(2)));
+        assert!(state.should_drop_split_mouse_fragment(';', now + Duration::from_millis(3)));
+        assert!(state.should_drop_split_mouse_fragment('1', now + Duration::from_millis(4)));
+        assert!(state.should_drop_split_mouse_fragment('0', now + Duration::from_millis(5)));
+        assert!(state.should_drop_split_mouse_fragment(';', now + Duration::from_millis(6)));
+        assert!(state.should_drop_split_mouse_fragment('4', now + Duration::from_millis(7)));
+        assert!(state.should_drop_split_mouse_fragment('M', now + Duration::from_millis(8)));
+    }
+
+    #[test]
+    fn split_mouse_fragment_filter_drops_boundary_marker_then_sequence() {
+        let now = Instant::now();
+        let mut state =
+            InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+        state.note_mouse_event(now);
+
+        assert!(state.should_drop_split_mouse_fragment('M', now));
+        assert!(state.should_drop_split_mouse_fragment('[', now + Duration::from_millis(1)));
+        assert!(state.should_drop_split_mouse_fragment('<', now + Duration::from_millis(2)));
+        assert!(state.should_drop_split_mouse_fragment('3', now + Duration::from_millis(3)));
+        assert!(state.should_drop_split_mouse_fragment('5', now + Duration::from_millis(4)));
+        assert!(state.should_drop_split_mouse_fragment(';', now + Duration::from_millis(5)));
+        assert!(state.should_drop_split_mouse_fragment('1', now + Duration::from_millis(6)));
+        assert!(state.should_drop_split_mouse_fragment('0', now + Duration::from_millis(7)));
+        assert!(state.should_drop_split_mouse_fragment(';', now + Duration::from_millis(8)));
+        assert!(state.should_drop_split_mouse_fragment('5', now + Duration::from_millis(9)));
+        assert!(state.should_drop_split_mouse_fragment('M', now + Duration::from_millis(10)));
     }
 
     #[test]

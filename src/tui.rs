@@ -1,7 +1,9 @@
 use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use ftui::core::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -44,13 +46,13 @@ use crate::workspace_lifecycle::{
 
 const DEFAULT_SIDEBAR_WIDTH_PCT: u16 = 33;
 const SIDEBAR_RATIO_FILENAME: &str = ".grove-sidebar-width";
-const DEBUG_SNAPSHOT_FILENAME: &str = ".grove-debug-snapshot.json";
 const WORKSPACE_LAUNCH_PROMPT_FILENAME: &str = ".grove-prompt";
 const HEADER_HEIGHT: u16 = 1;
 const STATUS_HEIGHT: u16 = 1;
 const DIVIDER_WIDTH: u16 = 1;
 const WORKSPACE_ITEM_HEIGHT: u16 = 2;
 const PREVIEW_METADATA_ROWS: u16 = 2;
+const TICK_EARLY_TOLERANCE_MS: u64 = 5;
 const HIT_ID_HEADER: u32 = 1;
 const HIT_ID_WORKSPACE_LIST: u32 = 2;
 const HIT_ID_PREVIEW: u32 = 3;
@@ -687,6 +689,9 @@ struct GroveApp {
     copied_text: Option<String>,
     event_log: Box<dyn EventLogger>,
     last_hit_grid: RefCell<Option<HitGrid>>,
+    next_tick_due_at: Option<Instant>,
+    debug_record_start_ts: Option<u64>,
+    frame_render_seq: RefCell<u64>,
 }
 
 impl GroveApp {
@@ -701,6 +706,22 @@ impl GroveApp {
             Box::new(CommandTmuxInput),
             default_sidebar_ratio_path(),
             event_log,
+            None,
+        )
+    }
+
+    fn new_with_debug_recorder(event_log: Box<dyn EventLogger>, app_start_ts: u64) -> Self {
+        let bootstrap = bootstrap_data(
+            &CommandGitAdapter,
+            &CommandTmuxAdapter,
+            &CommandSystemAdapter,
+        );
+        Self::from_parts(
+            bootstrap,
+            Box::new(CommandTmuxInput),
+            default_sidebar_ratio_path(),
+            event_log,
+            Some(app_start_ts),
         )
     }
 
@@ -709,6 +730,7 @@ impl GroveApp {
         tmux_input: Box<dyn TmuxInput>,
         sidebar_ratio_path: PathBuf,
         event_log: Box<dyn EventLogger>,
+        debug_record_start_ts: Option<u64>,
     ) -> Self {
         let sidebar_width_pct = load_sidebar_ratio(&sidebar_ratio_path);
         let mut app = Self {
@@ -732,6 +754,9 @@ impl GroveApp {
             copied_text: None,
             event_log,
             last_hit_grid: RefCell::new(None),
+            next_tick_due_at: None,
+            debug_record_start_ts,
+            frame_render_seq: RefCell::new(0),
         };
         app.refresh_preview_summary();
         app
@@ -891,115 +916,81 @@ impl GroveApp {
         self.flash = Some(new_flash_message(message, is_error, Instant::now()));
     }
 
-    fn debug_snapshot_path(&self) -> PathBuf {
-        self.sidebar_ratio_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(DEBUG_SNAPSHOT_FILENAME)
+    fn frame_lines_hash(lines: &[String]) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        lines.hash(&mut hasher);
+        hasher.finish()
     }
 
-    fn write_debug_snapshot(&mut self) {
-        let ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or(Duration::ZERO)
-            .as_millis() as u64;
+    fn frame_buffer_lines(frame: &Frame) -> Vec<String> {
+        let height = frame.buffer.height();
+        let mut lines = Vec::with_capacity(usize::from(height));
+        for y in 0..height {
+            let mut row = String::with_capacity(usize::from(frame.buffer.width()));
+            for cell in frame.buffer.row_cells(y) {
+                let value = cell.content.as_char().unwrap_or(' ');
+                row.push(value);
+            }
+            lines.push(row.trim_end_matches(' ').to_string());
+        }
 
-        let workspace_value = self
-            .state
-            .selected_workspace()
-            .map(|ws| {
-                serde_json::json!({
-                    "name": ws.name,
-                    "agent": ws.agent.label(),
-                    "status": format!("{:?}", ws.status),
-                    "branch": ws.branch,
-                })
-            })
-            .unwrap_or(Value::Null);
+        lines
+    }
 
-        let interactive_value = self
-            .interactive
-            .as_ref()
-            .map(|state| {
-                serde_json::json!({
-                    "cursor_row": state.cursor_row,
-                    "cursor_col": state.cursor_col,
-                    "visible": state.cursor_visible,
-                    "pane_width": state.pane_width,
-                    "pane_height": state.pane_height,
-                    "session": state.target_session,
-                })
-            })
-            .unwrap_or(Value::Null);
-
-        let recent_captures: Vec<Value> = self
-            .preview
-            .recent_captures
-            .iter()
-            .map(|record| {
-                serde_json::json!({
-                    "ts": record.ts,
-                    "raw_output": record.raw_output,
-                    "cleaned_output": record.cleaned_output,
-                    "render_output": record.render_output,
-                    "changed_raw": record.changed_raw,
-                    "changed_cleaned": record.changed_cleaned,
-                    "digest": {
-                        "raw_hash": record.digest.raw_hash,
-                        "raw_len": record.digest.raw_len,
-                        "cleaned_hash": record.digest.cleaned_hash,
-                    },
-                })
-            })
-            .collect();
-
-        let mode_label = if self.interactive.is_some() {
-            "interactive"
-        } else {
-            Self::mode_name(self.state.mode)
+    fn log_frame_render(&self, frame: &Frame) {
+        let Some(app_start_ts) = self.debug_record_start_ts else {
+            return;
         };
 
-        let snapshot = serde_json::json!({
-            "ts": ts,
-            "workspace": workspace_value,
-            "mode": mode_label,
-            "focus": Self::focus_name(self.state.focus),
-            "viewport": {
-                "width": self.viewport_width,
-                "height": self.viewport_height,
-            },
-            "sidebar_width_pct": self.sidebar_width_pct,
-            "interactive": interactive_value,
-            "preview": {
-                "line_count": self.preview.lines.len(),
-                "render_line_count": self.preview.render_lines.len(),
-                "offset": self.preview.offset,
-                "auto_scroll": self.preview.auto_scroll,
-            },
-            "recent_captures": recent_captures,
-            "current_render_lines": self.preview.render_lines,
-            "current_clean_lines": self.preview.lines,
-            "last_tmux_error": self.last_tmux_error,
-        });
+        let lines = Self::frame_buffer_lines(frame);
+        let frame_hash = Self::frame_lines_hash(&lines);
+        let mut seq = self.frame_render_seq.borrow_mut();
+        *seq = seq.saturating_add(1);
+        let seq_value = *seq;
 
-        let path = self.debug_snapshot_path();
-        match serde_json::to_string_pretty(&snapshot) {
-            Ok(json) => match fs::write(&path, json) {
-                Ok(()) => {
-                    self.show_flash(format!("Debug snapshot saved to {}", path.display()), false);
-                }
-                Err(error) => {
-                    self.show_flash(format!("Debug snapshot failed: {error}"), true);
-                }
-            },
-            Err(error) => {
-                self.show_flash(format!("Debug snapshot serialize failed: {error}"), true);
-            }
-        }
+        let selected_workspace = self
+            .state
+            .selected_workspace()
+            .map(|workspace| workspace.name.clone())
+            .unwrap_or_default();
+        let interactive_session = self
+            .interactive
+            .as_ref()
+            .map(|state| state.target_session.clone())
+            .unwrap_or_default();
+
+        self.event_log.log(
+            LogEvent::new("frame", "rendered")
+                .with_data("seq", Value::from(seq_value))
+                .with_data("app_start_ts", Value::from(app_start_ts))
+                .with_data("width", Value::from(frame.buffer.width()))
+                .with_data("height", Value::from(frame.buffer.height()))
+                .with_data("line_count", Value::from(u64::try_from(lines.len()).unwrap_or(u64::MAX)))
+                .with_data("frame_hash", Value::from(frame_hash))
+                .with_data("mode", Value::from(self.mode_label()))
+                .with_data("focus", Value::from(self.focus_label()))
+                .with_data("selected_workspace", Value::from(selected_workspace))
+                .with_data("interactive_session", Value::from(interactive_session))
+                .with_data("sidebar_width_pct", Value::from(self.sidebar_width_pct))
+                .with_data(
+                    "preview_offset",
+                    Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
+                )
+                .with_data("preview_auto_scroll", Value::from(self.preview.auto_scroll))
+                .with_data("output_changing", Value::from(self.output_changing))
+                .with_data(
+                    "frame_lines",
+                    Value::Array(lines.into_iter().map(Value::from).collect()),
+                ),
+        );
     }
 
     fn unsafe_label(&self) -> &'static str {
-        if self.launch_skip_permissions { "on" } else { "off" }
+        if self.launch_skip_permissions {
+            "on"
+        } else {
+            "off"
+        }
     }
 
     fn status_bar_line(&self) -> String {
@@ -1060,7 +1051,11 @@ impl GroveApp {
                     ),
                     UiMode::Preview => format!(
                         "Status: [j/k]scroll [PgUp/PgDn]scroll [G]bottom [Esc]list [Tab]focus [n]new [s]start [x]stop [!]unsafe [q]quit | [mouse]scroll/drag divider | autoscroll={} offset={} split={}%% unsafe={}",
-                        if self.preview.auto_scroll { "on" } else { "off" },
+                        if self.preview.auto_scroll {
+                            "on"
+                        } else {
+                            "off"
+                        },
                         self.preview.offset,
                         self.sidebar_width_pct,
                         self.unsafe_label(),
@@ -1295,9 +1290,10 @@ impl GroveApp {
     }
 
     fn persist_sidebar_ratio(&mut self) {
-        if let Err(error) =
-            fs::write(&self.sidebar_ratio_path, serialize_sidebar_ratio(self.sidebar_width_pct))
-        {
+        if let Err(error) = fs::write(
+            &self.sidebar_ratio_path,
+            serialize_sidebar_ratio(self.sidebar_width_pct),
+        ) {
             self.last_tmux_error = Some(format!("sidebar ratio persist failed: {error}"));
         }
     }
@@ -1326,10 +1322,6 @@ impl GroveApp {
             }
             _ => false,
         }
-    }
-
-    fn is_debug_snapshot_key(key_event: &KeyEvent) -> bool {
-        key_event.code == KeyCode::Char('d') && key_event.modifiers.contains(Modifiers::CTRL)
     }
 
     fn can_enter_interactive(&self) -> bool {
@@ -2337,11 +2329,6 @@ impl GroveApp {
             return false;
         }
 
-        if Self::is_debug_snapshot_key(&key_event) {
-            self.write_debug_snapshot();
-            return false;
-        }
-
         if self.create_dialog.is_some() {
             self.handle_create_dialog_key(key_event);
             return false;
@@ -2386,6 +2373,22 @@ impl GroveApp {
             since_last_key,
             self.output_changing,
         )
+    }
+
+    fn schedule_next_tick(&mut self) -> Cmd<Msg> {
+        let interval = self.next_poll_interval();
+        self.next_tick_due_at = Some(Instant::now() + interval);
+        Cmd::tick(interval)
+    }
+
+    fn tick_is_due(&self, now: Instant) -> bool {
+        let Some(due_at) = self.next_tick_due_at else {
+            return true;
+        };
+
+        let tolerance = Duration::from_millis(TICK_EARLY_TOLERANCE_MS);
+        let now_with_tolerance = now.checked_add(tolerance).unwrap_or(now);
+        now_with_tolerance >= due_at
     }
 
     fn pane_border_style(&self, focused: bool) -> Style {
@@ -2810,7 +2813,7 @@ impl Model for GroveApp {
     fn init(&mut self) -> Cmd<Self::Message> {
         self.poll_preview();
         Cmd::batch(vec![
-            Cmd::tick(self.next_poll_interval()),
+            self.schedule_next_tick(),
             Cmd::set_mouse_capture(true),
         ])
     }
@@ -2819,24 +2822,30 @@ impl Model for GroveApp {
         let before = self.capture_transition_snapshot();
         let cmd = match msg {
             Msg::Tick => {
+                let now = Instant::now();
                 let _ = clear_expired_flash_message(&mut self.flash, Instant::now());
-                self.poll_preview();
-                Cmd::tick(self.next_poll_interval())
+                if !self.tick_is_due(now) {
+                    Cmd::None
+                } else {
+                    self.next_tick_due_at = None;
+                    self.poll_preview();
+                    self.schedule_next_tick()
+                }
             }
             Msg::Key(key_event) => {
                 if self.handle_key(key_event) {
                     Cmd::Quit
                 } else {
-                    Cmd::tick(self.next_poll_interval())
+                    self.schedule_next_tick()
                 }
             }
             Msg::Mouse(mouse_event) => {
                 self.handle_mouse_event(mouse_event);
-                Cmd::tick(self.next_poll_interval())
+                self.schedule_next_tick()
             }
             Msg::Paste(paste_event) => {
                 self.handle_paste_event(paste_event);
-                Cmd::tick(self.next_poll_interval())
+                self.schedule_next_tick()
             }
             Msg::Resize { width, height } => {
                 self.viewport_width = width;
@@ -2876,6 +2885,7 @@ impl Model for GroveApp {
         self.render_create_dialog_overlay(frame, area);
         self.render_launch_dialog_overlay(frame, area);
         self.last_hit_grid.replace(frame.hit_grid.clone());
+        self.log_frame_render(frame);
     }
 }
 
@@ -2884,13 +2894,36 @@ pub fn run() -> std::io::Result<()> {
 }
 
 pub fn run_with_event_log(event_log_path: Option<PathBuf>) -> std::io::Result<()> {
+    run_with_logger(event_log_path, None)
+}
+
+pub fn run_with_debug_record(event_log_path: PathBuf, app_start_ts: u64) -> std::io::Result<()> {
+    run_with_logger(Some(event_log_path), Some(app_start_ts))
+}
+
+fn run_with_logger(
+    event_log_path: Option<PathBuf>,
+    debug_record_start_ts: Option<u64>,
+) -> std::io::Result<()> {
     let event_log: Box<dyn EventLogger> = if let Some(path) = event_log_path {
         Box::new(FileEventLogger::open(&path)?)
     } else {
         Box::new(NullEventLogger)
     };
 
-    App::new(GroveApp::new_with_event_logger(event_log))
+    if let Some(app_start_ts) = debug_record_start_ts {
+        event_log.log(
+            LogEvent::new("debug_record", "started").with_data("app_start_ts", Value::from(app_start_ts)),
+        );
+    }
+
+    let app = if let Some(app_start_ts) = debug_record_start_ts {
+        GroveApp::new_with_debug_recorder(event_log, app_start_ts)
+    } else {
+        GroveApp::new_with_event_logger(event_log)
+    };
+
+    App::new(app)
         .screen_mode(ScreenMode::AltScreen)
         .with_mouse()
         .run()
@@ -2910,9 +2943,8 @@ mod tests {
     };
     use super::{
         CreateBranchMode, CreateDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
-        HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogState, Msg, SIDEBAR_RATIO_FILENAME,
-        TmuxInput, WORKSPACE_ITEM_HEIGHT, ansi_16_color, ansi_line_to_styled_line,
-        parse_cursor_metadata,
+        HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogState, Msg, TmuxInput,
+        WORKSPACE_ITEM_HEIGHT, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -3082,6 +3114,7 @@ mod tests {
             }),
             sidebar_ratio_path,
             Box::new(NullEventLogger),
+            None,
         )
     }
 
@@ -3117,6 +3150,10 @@ mod tests {
 
     fn key_press(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code).with_kind(KeyEventKind::Press)
+    }
+
+    fn force_tick_due(app: &mut GroveApp) {
+        app.next_tick_due_at = Some(Instant::now());
     }
 
     fn arb_key_event() -> impl Strategy<Value = KeyEvent> {
@@ -3206,6 +3243,7 @@ mod tests {
                 Box::new(tmux),
                 sidebar_ratio_path,
                 Box::new(NullEventLogger),
+                None,
             ),
             commands,
             captures,
@@ -3236,6 +3274,7 @@ mod tests {
                 Box::new(tmux),
                 sidebar_ratio_path,
                 Box::new(NullEventLogger),
+                None,
             ),
             commands,
             captures,
@@ -3270,6 +3309,7 @@ mod tests {
                 Box::new(tmux),
                 sidebar_ratio_path,
                 Box::new(event_log),
+                None,
             ),
             commands,
             captures,
@@ -3557,6 +3597,7 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
         );
+        force_tick_due(&mut app);
         ftui::Model::update(&mut app, Msg::Tick);
 
         let kinds = event_kinds(&events);
@@ -4353,6 +4394,60 @@ mod tests {
     }
 
     #[test]
+    fn interactive_filters_split_mouse_fragment_without_opening_bracket() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        let Some(state) = app.interactive.as_mut() else {
+            panic!("interactive state should be active");
+        };
+        state.note_mouse_event(Instant::now());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('<')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(commands.borrow().is_empty());
+    }
+
+    #[test]
+    fn interactive_filters_boundary_marker_before_split_mouse_fragment() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        let Some(state) = app.interactive.as_mut() else {
+            panic!("interactive state should be active");
+        };
+        state.note_mouse_event(Instant::now());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('M')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(commands.borrow().is_empty());
+    }
+
+    #[test]
     fn interactive_still_forwards_bracket_when_not_mouse_fragment() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -4545,6 +4640,7 @@ mod tests {
 
         calls.borrow_mut().clear();
 
+        force_tick_due(&mut app);
         ftui::Model::update(&mut app, Msg::Tick);
         ftui::Model::update(
             &mut app,
@@ -4605,6 +4701,7 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
         );
+        force_tick_due(&mut app);
         ftui::Model::update(&mut app, Msg::Tick);
 
         assert!(
@@ -4632,6 +4729,7 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
         );
+        force_tick_due(&mut app);
         ftui::Model::update(&mut app, Msg::Tick);
 
         assert!(
@@ -4656,12 +4754,31 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
         );
+        force_tick_due(&mut app);
         ftui::Model::update(&mut app, Msg::Tick);
 
         assert_eq!(
             app.preview.lines,
             vec!["line one".to_string(), "line two".to_string()]
         );
+    }
+
+    #[test]
+    fn stale_tick_before_due_is_ignored() {
+        let (mut app, _commands, _captures, _cursor_captures, calls) =
+            fixture_app_with_tmux_and_calls(
+                WorkspaceStatus::Active,
+                vec![Ok("line".to_string())],
+                Vec::new(),
+            );
+
+        app.state.selected_index = 1;
+        app.next_tick_due_at = Some(Instant::now() + Duration::from_secs(5));
+
+        let cmd = ftui::Model::update(&mut app, Msg::Tick);
+
+        assert!(matches!(cmd, Cmd::None));
+        assert!(calls.borrow().is_empty());
     }
 
     #[test]
@@ -4715,6 +4832,7 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
         );
+        force_tick_due(&mut app);
         ftui::Model::update(&mut app, Msg::Tick);
 
         let rendered = app.shell_lines(8).join("\n");
@@ -5005,9 +5123,7 @@ mod tests {
             BootstrapData {
                 repo_name: "grove".to_string(),
                 workspaces: Vec::new(),
-                discovery_state: DiscoveryState::Error(
-                    "fatal: not a git repository".to_string(),
-                ),
+                discovery_state: DiscoveryState::Error("fatal: not a git repository".to_string()),
                 orphaned_sessions: Vec::new(),
             },
             Box::new(RecordingTmuxInput {
@@ -5018,6 +5134,7 @@ mod tests {
             }),
             sidebar_ratio_path,
             Box::new(NullEventLogger),
+            None,
         );
         let lines = app.shell_lines(8);
         let content = lines.join("\n");
@@ -5082,171 +5199,90 @@ mod tests {
         assert!(app.preview.auto_scroll);
     }
 
-    fn ctrl_d_key() -> KeyEvent {
-        KeyEvent::new(KeyCode::Char('d'))
-            .with_kind(KeyEventKind::Press)
-            .with_modifiers(Modifiers::CTRL)
-    }
-
-    fn unique_snapshot_dir(label: &str) -> PathBuf {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or(Duration::from_secs(0))
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "grove-snapshot-{label}-{}-{timestamp}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&path).expect("temp snapshot directory should exist");
-        path
-    }
-
-    fn fixture_app_in_snapshot_dir(label: &str, status: WorkspaceStatus) -> (GroveApp, PathBuf) {
-        let dir = unique_snapshot_dir(label);
-        let sidebar_ratio_path = dir.join(SIDEBAR_RATIO_FILENAME);
-        let (app, _commands, _captures, _cursor_captures) = fixture_app_with_tmux_and_sidebar_path(
-            status,
-            Vec::new(),
-            Vec::new(),
+    #[test]
+    fn frame_debug_record_logs_every_view() {
+        let sidebar_ratio_path = unique_sidebar_ratio_path("frame-log");
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let event_log = RecordingEventLogger {
+            events: events.clone(),
+        };
+        let app = GroveApp::from_parts(
+            fixture_bootstrap(WorkspaceStatus::Idle),
+            Box::new(RecordingTmuxInput {
+                commands: Rc::new(RefCell::new(Vec::new())),
+                captures: Rc::new(RefCell::new(Vec::new())),
+                cursor_captures: Rc::new(RefCell::new(Vec::new())),
+                calls: Rc::new(RefCell::new(Vec::new())),
+            }),
             sidebar_ratio_path,
-        );
-        (app, dir)
-    }
-
-    #[test]
-    fn ctrl_d_triggers_debug_snapshot_in_normal_mode() {
-        let (mut app, dir) = fixture_app_in_snapshot_dir("normal", WorkspaceStatus::Idle);
-
-        ftui::Model::update(&mut app, Msg::Key(ctrl_d_key()));
-
-        let flash = app.flash.as_ref().expect("flash should be set");
-        assert!(
-            flash.text.contains("snapshot"),
-            "flash text should mention snapshot: {}",
-            flash.text
-        );
-        assert!(!flash.is_error);
-
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn ctrl_d_triggers_debug_snapshot_in_interactive_mode() {
-        let dir = unique_snapshot_dir("interactive");
-        let sidebar_ratio_path = dir.join(SIDEBAR_RATIO_FILENAME);
-        let (mut app, _commands, _captures, _cursor_captures) =
-            fixture_app_with_tmux_and_sidebar_path(
-                WorkspaceStatus::Active,
-                Vec::new(),
-                Vec::new(),
-                sidebar_ratio_path,
-            );
-
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-        );
-        assert!(app.interactive.is_some());
-
-        ftui::Model::update(&mut app, Msg::Key(ctrl_d_key()));
-
-        let flash = app.flash.as_ref().expect("flash should be set");
-        assert!(flash.text.contains("snapshot"));
-        assert!(!flash.is_error);
-        assert!(
-            app.interactive.is_some(),
-            "interactive mode should remain active"
+            Box::new(event_log),
+            Some(1_771_023_000_000),
         );
 
-        let _ = fs::remove_dir_all(dir);
-    }
+        with_rendered_frame(&app, 100, 40, |_frame| {});
+        with_rendered_frame(&app, 100, 40, |_frame| {});
 
-    #[test]
-    fn ctrl_d_triggers_debug_snapshot_during_dialog() {
-        let (mut app, dir) = fixture_app_in_snapshot_dir("dialog", WorkspaceStatus::Idle);
-        app.launch_dialog = Some(LaunchDialogState {
-            prompt: String::new(),
-            skip_permissions: false,
-        });
-
-        ftui::Model::update(&mut app, Msg::Key(ctrl_d_key()));
-
-        let flash = app.flash.as_ref().expect("flash should be set");
-        assert!(flash.text.contains("snapshot"));
-        assert!(!flash.is_error);
-        assert!(app.launch_dialog.is_some(), "dialog should remain open");
-
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn debug_snapshot_file_is_valid_json() {
-        let (mut app, dir) = fixture_app_in_snapshot_dir("json", WorkspaceStatus::Idle);
-
-        ftui::Model::update(&mut app, Msg::Key(ctrl_d_key()));
-
-        let snapshot_path = app.debug_snapshot_path();
-        let raw = fs::read_to_string(&snapshot_path).expect("snapshot file should exist");
-        let parsed: serde_json::Value =
-            serde_json::from_str(&raw).expect("snapshot should be valid JSON");
-
-        assert!(parsed.get("ts").is_some());
-        assert!(parsed.get("workspace").is_some());
-        assert!(parsed.get("mode").is_some());
-        assert!(parsed.get("focus").is_some());
-        assert!(parsed.get("viewport").is_some());
-        assert!(parsed.get("sidebar_width_pct").is_some());
-        assert!(parsed.get("preview").is_some());
-        assert!(parsed.get("recent_captures").is_some());
-        assert!(parsed.get("current_render_lines").is_some());
-        assert!(parsed.get("current_clean_lines").is_some());
-        assert!(parsed.get("last_tmux_error").is_some());
-
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn debug_snapshot_includes_recent_captures() {
-        let (mut app, dir) = fixture_app_in_snapshot_dir("captures", WorkspaceStatus::Idle);
-
-        app.preview.recent_captures.clear();
-        app.preview.apply_capture("capture-one");
-        app.preview.apply_capture("capture-two");
-        app.preview.apply_capture("capture-three");
-
-        ftui::Model::update(&mut app, Msg::Key(ctrl_d_key()));
-
-        let snapshot_path = app.debug_snapshot_path();
-        let raw = fs::read_to_string(&snapshot_path).expect("snapshot file should exist");
-        let parsed: serde_json::Value =
-            serde_json::from_str(&raw).expect("snapshot should be valid JSON");
-
-        let captures = parsed
-            .get("recent_captures")
-            .and_then(|val| val.as_array())
-            .expect("recent_captures should be an array");
-
-        assert_eq!(captures.len(), 3);
+        let recorded = recorded_events(&events);
+        let frame_events: Vec<LoggedEvent> = recorded
+            .into_iter()
+            .filter(|event| event.event == "frame" && event.kind == "rendered")
+            .collect();
+        assert_eq!(frame_events.len(), 2);
         assert_eq!(
-            captures[0].get("raw_output").unwrap().as_str().unwrap(),
-            "capture-one"
+            frame_events[0].data.get("seq").and_then(Value::as_u64),
+            Some(1)
         );
         assert_eq!(
-            captures[2].get("raw_output").unwrap().as_str().unwrap(),
-            "capture-three"
+            frame_events[1].data.get("seq").and_then(Value::as_u64),
+            Some(2)
         );
+        assert_eq!(
+            frame_events[0]
+                .data
+                .get("app_start_ts")
+                .and_then(Value::as_u64),
+            Some(1_771_023_000_000)
+        );
+    }
 
-        for capture in captures {
-            assert!(capture.get("ts").is_some());
-            assert!(capture.get("digest").is_some());
-            assert!(capture.get("changed_raw").is_some());
-            assert!(capture.get("changed_cleaned").is_some());
-        }
+    #[test]
+    fn frame_debug_record_includes_frame_lines() {
+        let sidebar_ratio_path = unique_sidebar_ratio_path("frame-lines");
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let event_log = RecordingEventLogger {
+            events: events.clone(),
+        };
+        let mut app = GroveApp::from_parts(
+            fixture_bootstrap(WorkspaceStatus::Idle),
+            Box::new(RecordingTmuxInput {
+                commands: Rc::new(RefCell::new(Vec::new())),
+                captures: Rc::new(RefCell::new(Vec::new())),
+                cursor_captures: Rc::new(RefCell::new(Vec::new())),
+                calls: Rc::new(RefCell::new(Vec::new())),
+            }),
+            sidebar_ratio_path,
+            Box::new(event_log),
+            Some(1_771_023_000_123),
+        );
+        app.preview.lines = vec!["render-check".to_string()];
+        app.preview.render_lines = app.preview.lines.clone();
 
-        let _ = fs::remove_dir_all(dir);
+        with_rendered_frame(&app, 80, 24, |_frame| {});
+
+        let frame_event = recorded_events(&events)
+            .into_iter()
+            .find(|event| event.event == "frame" && event.kind == "rendered")
+            .expect("frame event should be present");
+
+        let lines = frame_event
+            .data
+            .get("frame_lines")
+            .and_then(Value::as_array)
+            .expect("frame_lines should be array");
+        assert!(lines.iter().any(|line| {
+            line.as_str()
+                .is_some_and(|text| text.contains("render-check"))
+        }));
+        assert!(frame_event.data.get("frame_hash").is_some());
     }
 }

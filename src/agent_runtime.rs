@@ -406,7 +406,10 @@ pub fn poll_interval(
     }
 }
 
-pub(crate) fn evaluate_capture_change(previous: Option<&OutputDigest>, raw_output: &str) -> CaptureChange {
+pub(crate) fn evaluate_capture_change(
+    previous: Option<&OutputDigest>,
+    raw_output: &str,
+) -> CaptureChange {
     let render_output = strip_non_sgr_control_sequences(raw_output);
     let cleaned_output = strip_mouse_fragments(&strip_sgr_sequences(&render_output));
     let digest = OutputDigest {
@@ -439,15 +442,16 @@ fn is_safe_text_character(character: char) -> bool {
 }
 
 pub(crate) fn strip_mouse_fragments(input: &str) -> String {
-    let mut cleaned = input
-        .replace("[?1000h", "")
-        .replace("[?1000l", "")
-        .replace("[?1006h", "")
-        .replace("[?1006l", "");
+    let mut cleaned = input.to_string();
 
-    cleaned = strip_sequence(&cleaned, "[<", &["M", "m"]);
+    for mode in [1000u16, 1002, 1003, 1005, 1006, 1015, 2004] {
+        cleaned = cleaned.replace(&format!("\u{1b}[?{mode}h"), "");
+        cleaned = cleaned.replace(&format!("\u{1b}[?{mode}l"), "");
+        cleaned = cleaned.replace(&format!("[?{mode}h"), "");
+        cleaned = cleaned.replace(&format!("[?{mode}l"), "");
+    }
 
-    cleaned
+    strip_partial_mouse_sequences(&cleaned)
 }
 
 fn strip_non_sgr_control_sequences(input: &str) -> String {
@@ -556,36 +560,67 @@ where
     }
 }
 
-fn strip_sequence(input: &str, prefix: &str, suffixes: &[&str]) -> String {
-    let mut result = String::new();
-    let mut rest = input;
+fn strip_partial_mouse_sequences(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut output: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut index = 0usize;
 
-    while let Some(start) = rest.find(prefix) {
-        let (before, after_start) = rest.split_at(start);
-        result.push_str(before);
-        let after_prefix = &after_start[prefix.len()..];
-
-        let mut cut_at: Option<usize> = None;
-        for suffix in suffixes {
-            if let Some(position) = after_prefix.find(suffix) {
-                let end = position + suffix.len();
-                cut_at = match cut_at {
-                    Some(existing) if existing < end => Some(existing),
-                    _ => Some(end),
-                };
-            }
+    while index < bytes.len() {
+        if let Some(end) = parse_mouse_fragment_end(bytes, index) {
+            index = end;
+            continue;
         }
 
-        if let Some(end) = cut_at {
-            rest = &after_prefix[end..];
-        } else {
-            rest = after_start;
-            break;
-        }
+        output.push(bytes[index]);
+        index += 1;
     }
 
-    result.push_str(rest);
-    result
+    String::from_utf8(output).unwrap_or_default()
+}
+
+fn parse_mouse_fragment_end(bytes: &[u8], start: usize) -> Option<usize> {
+    if bytes.get(start) == Some(&b'[') && bytes.get(start.saturating_add(1)) == Some(&b'<') {
+        return parse_sgr_mouse_tail(bytes, start.saturating_add(2));
+    }
+    if matches!(bytes.get(start), Some(b'M' | b'm'))
+        && bytes.get(start.saturating_add(1)) == Some(&b'[')
+        && bytes.get(start.saturating_add(2)) == Some(&b'<')
+    {
+        return parse_sgr_mouse_tail(bytes, start.saturating_add(3));
+    }
+
+    None
+}
+
+fn parse_sgr_mouse_tail(bytes: &[u8], mut index: usize) -> Option<usize> {
+    index = consume_ascii_digits(bytes, index)?;
+
+    if bytes.get(index) != Some(&b';') {
+        return None;
+    }
+    index = index.saturating_add(1);
+    index = consume_ascii_digits(bytes, index)?;
+
+    if bytes.get(index) != Some(&b';') {
+        return None;
+    }
+    index = index.saturating_add(1);
+    index = consume_ascii_digits(bytes, index)?;
+
+    if matches!(bytes.get(index), Some(b'M' | b'm')) {
+        index = index.saturating_add(1);
+    }
+
+    Some(index)
+}
+
+fn consume_ascii_digits(bytes: &[u8], mut start: usize) -> Option<usize> {
+    let initial = start;
+    while matches!(bytes.get(start), Some(b'0'..=b'9')) {
+        start = start.saturating_add(1);
+    }
+
+    if start == initial { None } else { Some(start) }
 }
 
 fn build_launcher_script(agent_cmd: &str, prompt: &str, launcher_path: &Path) -> String {
@@ -611,7 +646,7 @@ mod tests {
         CaptureChange, LaunchRequest, SessionActivity, build_launch_plan, default_agent_command,
         detect_status, detect_waiting_prompt, evaluate_capture_change,
         normalized_agent_command_override, poll_interval, reconcile_with_sessions,
-        sanitize_workspace_name, session_name_for_workspace, stop_plan,
+        sanitize_workspace_name, session_name_for_workspace, stop_plan, strip_mouse_fragments,
     };
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
@@ -910,5 +945,33 @@ mod tests {
         let change = evaluate_capture_change(None, raw);
         assert_eq!(change.cleaned_output, "ABC\n");
         assert_eq!(change.render_output, "ABC\n");
+    }
+
+    #[test]
+    fn capture_change_ignores_truncated_partial_mouse_fragments() {
+        let first = evaluate_capture_change(None, "prompt [<65;103;31");
+        assert_eq!(first.cleaned_output, "prompt ");
+
+        let second = evaluate_capture_change(Some(&first.digest), "prompt [<65;103;32");
+        assert!(!second.changed_cleaned);
+        assert_eq!(second.cleaned_output, "prompt ");
+    }
+
+    #[test]
+    fn strip_mouse_fragments_removes_terminal_modes_and_preserves_normal_brackets() {
+        assert_eq!(strip_mouse_fragments("value[?1002h"), "value");
+        assert_eq!(strip_mouse_fragments("keep [test]"), "keep [test]");
+    }
+
+    #[test]
+    fn strip_mouse_fragments_removes_boundary_prefixed_partial_sequences() {
+        assert_eq!(
+            strip_mouse_fragments("prompt M[<64;107;16M"),
+            "prompt "
+        );
+        assert_eq!(
+            strip_mouse_fragments("prompt m[<65;107;14"),
+            "prompt "
+        );
     }
 }
