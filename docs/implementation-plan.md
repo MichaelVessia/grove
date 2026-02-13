@@ -518,3 +518,15 @@ Exit criteria:
   Next:
   - Run manual TUI milestone validation with real tmux sessions for start/stop,
     dialog prompt launch, cursor overlay, persisted split ratio, and flash UX.
+- 2026-02-13: Ran scripted manual tmux smoke validation against real TUI runtime
+  (non-mocked).
+  Changes: executed a real-session smoke workflow by creating a temporary git
+  worktree with Grove markers + `.grove-prompt`, launching Grove in tmux,
+  selecting workspace, confirming start dialog, verifying agent tmux session
+  creation, stopping via `[x]`, verifying session removal, and quitting Grove.
+  Validated launcher script materialization (`.grove-start.sh`) from prompt.
+  Status: smoke checks passed (`START_OK`, `STOP_OK`, `QUIT_OK`, `LAUNCHER_OK`)
+  and temporary worktree/session artifacts were cleaned up.
+  Next:
+  - Complete manual UI validation for mouse-driven divider persistence and
+    interactive cursor overlay fidelity (not covered by the scripted smoke run).
