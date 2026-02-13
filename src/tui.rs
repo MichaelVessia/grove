@@ -33,6 +33,7 @@ use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
 
 const DEFAULT_SIDEBAR_WIDTH_PCT: u16 = 33;
 const SIDEBAR_RATIO_FILENAME: &str = ".grove-sidebar-width";
+const WORKSPACE_LAUNCH_PROMPT_FILENAME: &str = ".grove-prompt";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CursorMetadata {
@@ -189,6 +190,16 @@ fn write_launcher_script(path: &Path, contents: &str) -> std::io::Result<()> {
     fs::write(path, contents)
 }
 
+fn read_workspace_launch_prompt(workspace_path: &Path) -> Option<String> {
+    let raw = fs::read_to_string(workspace_path.join(WORKSPACE_LAUNCH_PROMPT_FILENAME)).ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    Some(trimmed.to_string())
+}
+
 impl From<Event> for Msg {
     fn from(event: Event) -> Self {
         match event {
@@ -214,6 +225,7 @@ struct GroveApp {
     viewport_width: u16,
     viewport_height: u16,
     sidebar_width_pct: u16,
+    launch_skip_permissions: bool,
     sidebar_ratio_path: PathBuf,
     divider_drag_active: bool,
     copied_text: Option<String>,
@@ -259,6 +271,7 @@ impl GroveApp {
             viewport_width: 120,
             viewport_height: 40,
             sidebar_width_pct,
+            launch_skip_permissions: false,
             sidebar_ratio_path,
             divider_drag_active: false,
             copied_text: None,
@@ -314,19 +327,36 @@ impl GroveApp {
                 if self.interactive.is_some() {
                     if let Some(message) = &self.last_tmux_error {
                         return format!(
-                            "Status: -- INSERT -- [Esc Esc]exit [Ctrl+\\]exit | tmux error: {message}"
+                            "Status: -- INSERT -- [Esc Esc]exit [Ctrl+\\]exit | unsafe={} | tmux error: {message}",
+                            if self.launch_skip_permissions {
+                                "on"
+                            } else {
+                                "off"
+                            }
                         );
                     }
-                    return "Status: -- INSERT -- [Esc Esc]exit [Ctrl+\\]exit".to_string();
+                    return format!(
+                        "Status: -- INSERT -- [Esc Esc]exit [Ctrl+\\]exit | unsafe={}",
+                        if self.launch_skip_permissions {
+                            "on"
+                        } else {
+                            "off"
+                        }
+                    );
                 }
 
                 match self.state.mode {
                     UiMode::List => format!(
-                        "Status: [j/k]move [Tab]focus [Enter]preview-or-interactive [s]start [x]stop [q]quit | [mouse]click/drag/scroll | selected={}",
-                        self.selected_status_hint()
+                        "Status: [j/k]move [Tab]focus [Enter]preview-or-interactive [s]start [x]stop [!]unsafe [q]quit | [mouse]click/drag/scroll | selected={} unsafe={}",
+                        self.selected_status_hint(),
+                        if self.launch_skip_permissions {
+                            "on"
+                        } else {
+                            "off"
+                        }
                     ),
                     UiMode::Preview => format!(
-                        "Status: [j/k]scroll [PgUp/PgDn]scroll [G]bottom [Esc]list [Tab]focus [s]start [x]stop [q]quit | [mouse]scroll/drag divider | autoscroll={} offset={} split={}%%",
+                        "Status: [j/k]scroll [PgUp/PgDn]scroll [G]bottom [Esc]list [Tab]focus [s]start [x]stop [!]unsafe [q]quit | [mouse]scroll/drag divider | autoscroll={} offset={} split={}%% unsafe={}",
                         if self.preview.auto_scroll {
                             "on"
                         } else {
@@ -334,6 +364,11 @@ impl GroveApp {
                         },
                         self.preview.offset,
                         self.sidebar_width_pct,
+                        if self.launch_skip_permissions {
+                            "on"
+                        } else {
+                            "off"
+                        },
                     ),
                 }
             }
@@ -542,19 +577,20 @@ impl GroveApp {
     }
 
     fn start_selected_workspace_agent(&mut self) {
-        let Some(workspace) = self.state.selected_workspace() else {
-            return;
-        };
         if !self.can_start_selected_workspace() {
             return;
         }
+        let Some(workspace) = self.state.selected_workspace() else {
+            return;
+        };
+        let prompt = read_workspace_launch_prompt(&workspace.path);
 
         let request = LaunchRequest {
             workspace_name: workspace.name.clone(),
             workspace_path: workspace.path.clone(),
             agent: workspace.agent,
-            prompt: None,
-            skip_permissions: false,
+            prompt,
+            skip_permissions: self.launch_skip_permissions,
         };
         let launch_plan = build_launch_plan(&request);
 
@@ -768,6 +804,9 @@ impl GroveApp {
                 }
             }
             KeyCode::Escape => reduce(&mut self.state, Action::EnterListMode),
+            KeyCode::Char('!') => {
+                self.launch_skip_permissions = !self.launch_skip_permissions;
+            }
             KeyCode::Char('s') => self.start_selected_workspace_agent(),
             KeyCode::Char('x') => self.stop_selected_workspace_agent(),
             KeyCode::PageUp => {
@@ -976,7 +1015,7 @@ impl GroveApp {
                 self.mode_label(),
                 self.focus_label()
             ),
-            "Workspaces (j/k, arrows, Tab focus, Enter preview, s start, x stop, Esc list, mouse enabled)"
+            "Workspaces (j/k, arrows, Tab focus, Enter preview, s start, x stop, ! unsafe toggle, Esc list, mouse enabled)"
                 .to_string(),
         ];
 
@@ -1247,6 +1286,19 @@ mod tests {
         ))
     }
 
+    fn unique_temp_workspace_dir(label: &str) -> PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "grove-test-workspace-{label}-{}-{timestamp}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&path).expect("temp workspace directory should exist");
+        path
+    }
+
     fn fixture_app_with_tmux(
         status: WorkspaceStatus,
         captures: Vec<Result<String, String>>,
@@ -1418,6 +1470,79 @@ mod tests {
                 .map(|workspace| workspace.status),
             Some(WorkspaceStatus::Active)
         );
+    }
+
+    #[test]
+    fn unsafe_toggle_changes_launch_command_flags() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('!')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            commands.borrow().last(),
+            Some(&vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "codex --dangerously-bypass-approvals-and-sandbox".to_string(),
+                "Enter".to_string(),
+            ])
+        );
+        assert!(app.launch_skip_permissions);
+    }
+
+    #[test]
+    fn start_key_uses_workspace_prompt_file_launcher_script() {
+        let workspace_dir = unique_temp_workspace_dir("prompt");
+        let prompt_path = workspace_dir.join(".grove-prompt");
+        fs::write(&prompt_path, "fix bug\nand add tests").expect("prompt file should be writable");
+
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+        app.state.workspaces[1].path = workspace_dir.clone();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            commands.borrow().last(),
+            Some(&vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                format!("bash {}/.grove-start.sh", workspace_dir.display()),
+                "Enter".to_string(),
+            ])
+        );
+
+        let launcher_path = workspace_dir.join(".grove-start.sh");
+        let launcher_script =
+            fs::read_to_string(&launcher_path).expect("launcher script should be written");
+        assert!(launcher_script.contains("fix bug"));
+        assert!(launcher_script.contains("and add tests"));
+        assert!(launcher_script.contains("codex"));
+
+        let _ = fs::remove_dir_all(workspace_dir);
     }
 
     #[test]

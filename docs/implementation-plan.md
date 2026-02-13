@@ -473,3 +473,19 @@ Exit criteria:
   - Add prompt + skip-permissions launch inputs to the real TUI action path.
   - Run manual TUI milestone validation with real tmux sessions for start/stop
     flows and status transitions.
+- 2026-02-13: Added prompt + skip-permissions launch inputs to the real start
+  action path.
+  Changes: updated `src/tui.rs` start flow to read optional per-workspace
+  prompt file (`.grove-prompt`) and pass prompt to
+  `agent_runtime::build_launch_plan` (launcher script path), added explicit
+  unsafe launch toggle (`!`) with default-off behavior and status-bar
+  visibility, and threaded skip-permissions into launch request construction.
+  Expanded TUI tests for unsafe toggle command flags and prompt-file launcher
+  script sequencing.
+  Status: targeted checks pass locally (`cargo fmt`, `cargo test tui:: --lib`,
+  `cargo clippy --all-targets --all-features -- -D warnings`).
+  Next:
+  - Add modal/dialog-driven launch prompt and skip-permissions controls to align
+    with PRD UX (instead of file/key-based interim input).
+  - Run manual TUI milestone validation with real tmux sessions for start/stop,
+    prompt launch, and status transitions.
