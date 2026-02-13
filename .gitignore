@@ -1,3 +1,7 @@
 .reference/
 /target/
 .direnv/
+.grove-agent
+.grove-base
+.grove-start.sh
+.grove-setup.sh

@@ -22,7 +22,7 @@ use crate::adapters::{
 use crate::agent_runtime::{
     LaunchRequest, build_launch_plan, poll_interval, session_name_for_workspace, stop_plan,
 };
-use crate::domain::WorkspaceStatus;
+use crate::domain::{AgentType, WorkspaceStatus};
 use crate::interactive::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
     render_cursor_overlay, tmux_send_keys_command,
@@ -32,6 +32,10 @@ use crate::mouse::{
 };
 use crate::preview::{FlashMessage, PreviewState, clear_expired_flash_message, new_flash_message};
 use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
+use crate::workspace_lifecycle::{
+    BranchMode, CommandGitRunner, CommandSetupScriptRunner, CreateWorkspaceRequest,
+    WorkspaceLifecycleError, create_workspace,
+};
 
 const DEFAULT_SIDEBAR_WIDTH_PCT: u16 = 33;
 const SIDEBAR_RATIO_FILENAME: &str = ".grove-sidebar-width";
@@ -73,6 +77,13 @@ struct CursorMetadata {
 struct LaunchDialogState {
     prompt: String,
     skip_permissions: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CreateDialogState {
+    workspace_name: String,
+    agent: AgentType,
+    base_branch: String,
 }
 
 trait TmuxInput {
@@ -252,6 +263,7 @@ struct GroveApp {
     flash: Option<FlashMessage>,
     interactive: Option<InteractiveState>,
     launch_dialog: Option<LaunchDialogState>,
+    create_dialog: Option<CreateDialogState>,
     tmux_input: Box<dyn TmuxInput>,
     last_tmux_error: Option<String>,
     output_changing: bool,
@@ -300,6 +312,7 @@ impl GroveApp {
             flash: None,
             interactive: None,
             launch_dialog: None,
+            create_dialog: None,
             tmux_input,
             last_tmux_error: None,
             output_changing: false,
@@ -370,6 +383,14 @@ impl GroveApp {
             }
             DiscoveryState::Empty => "Status: no worktrees found [q]quit".to_string(),
             DiscoveryState::Ready => {
+                if let Some(dialog) = &self.create_dialog {
+                    return format!(
+                        "Status: New workspace | [type]name [Tab]agent={} [Enter]create [Esc]cancel | base={} name=\"{}\"",
+                        dialog.agent.label(),
+                        dialog.base_branch,
+                        dialog.workspace_name
+                    );
+                }
                 if let Some(dialog) = &self.launch_dialog {
                     return format!(
                         "Status: Start agent dialog | [type]prompt [Backspace]delete [Tab]unsafe={} [Enter]start [Esc]cancel | prompt=\"{}\"",
@@ -400,7 +421,7 @@ impl GroveApp {
 
                 match self.state.mode {
                     UiMode::List => format!(
-                        "Status: [j/k]move [Tab]focus [Enter]preview-or-interactive [s]start [x]stop [!]unsafe [q]quit | [mouse]click/drag/scroll | selected={} unsafe={}",
+                        "Status: [j/k]move [Tab]focus [Enter]preview-or-interactive [n]new [s]start [x]stop [!]unsafe [q]quit | [mouse]click/drag/scroll | selected={} unsafe={}",
                         self.selected_status_hint(),
                         if self.launch_skip_permissions {
                             "on"
@@ -409,7 +430,7 @@ impl GroveApp {
                         }
                     ),
                     UiMode::Preview => format!(
-                        "Status: [j/k]scroll [PgUp/PgDn]scroll [G]bottom [Esc]list [Tab]focus [s]start [x]stop [!]unsafe [q]quit | [mouse]scroll/drag divider | autoscroll={} offset={} split={}%% unsafe={}",
+                        "Status: [j/k]scroll [PgUp/PgDn]scroll [G]bottom [Esc]list [Tab]focus [n]new [s]start [x]stop [!]unsafe [q]quit | [mouse]scroll/drag divider | autoscroll={} offset={} split={}%% unsafe={}",
                         if self.preview.auto_scroll {
                             "on"
                         } else {
@@ -443,6 +464,10 @@ impl GroveApp {
                 )
             })
             .unwrap_or_else(|| "No workspace selected".to_string())
+    }
+
+    fn modal_open(&self) -> bool {
+        self.launch_dialog.is_some() || self.create_dialog.is_some()
     }
 
     fn refresh_preview_summary(&mut self) {
@@ -650,6 +675,184 @@ impl GroveApp {
             skip_permissions: self.launch_skip_permissions,
         });
         self.last_tmux_error = None;
+    }
+
+    fn selected_base_branch(&self) -> String {
+        let selected = self.state.selected_workspace();
+        if let Some(workspace) = selected
+            && let Some(base_branch) = workspace.base_branch.as_ref()
+            && !base_branch.trim().is_empty()
+        {
+            return base_branch.clone();
+        }
+
+        if let Some(workspace) = selected
+            && !workspace.branch.trim().is_empty()
+            && workspace.branch != "(detached)"
+        {
+            return workspace.branch.clone();
+        }
+
+        "main".to_string()
+    }
+
+    fn open_create_dialog(&mut self) {
+        if self.modal_open() {
+            return;
+        }
+
+        let default_agent = self
+            .state
+            .selected_workspace()
+            .map_or(AgentType::Claude, |workspace| workspace.agent);
+        self.create_dialog = Some(CreateDialogState {
+            workspace_name: String::new(),
+            agent: default_agent,
+            base_branch: self.selected_base_branch(),
+        });
+        self.state.mode = UiMode::List;
+        self.state.focus = PaneFocus::WorkspaceList;
+        self.last_tmux_error = None;
+    }
+
+    fn workspace_lifecycle_error_message(error: &WorkspaceLifecycleError) -> String {
+        match error {
+            WorkspaceLifecycleError::EmptyWorkspaceName => "workspace name is required".to_string(),
+            WorkspaceLifecycleError::InvalidWorkspaceName => {
+                "workspace name must be [A-Za-z0-9_-]".to_string()
+            }
+            WorkspaceLifecycleError::EmptyBaseBranch => "base branch is required".to_string(),
+            WorkspaceLifecycleError::EmptyExistingBranch => {
+                "existing branch is required".to_string()
+            }
+            WorkspaceLifecycleError::EmptyBranchName => "branch name is required".to_string(),
+            WorkspaceLifecycleError::RepoNameUnavailable => "repo name unavailable".to_string(),
+            WorkspaceLifecycleError::CannotDeleteMainWorkspace => {
+                "cannot delete main workspace".to_string()
+            }
+            WorkspaceLifecycleError::GitCommandFailed(message) => {
+                format!("git command failed: {message}")
+            }
+            WorkspaceLifecycleError::Io(message) => format!("io error: {message}"),
+        }
+    }
+
+    fn refresh_workspaces(&mut self, preferred_workspace_name: Option<String>) {
+        let fallback_name = self
+            .state
+            .selected_workspace()
+            .map(|workspace| workspace.name.clone());
+        let target_name = preferred_workspace_name.or(fallback_name);
+        let previous_mode = self.state.mode;
+        let previous_focus = self.state.focus;
+        let bootstrap = bootstrap_data(
+            &CommandGitAdapter,
+            &CommandTmuxAdapter,
+            &CommandSystemAdapter,
+        );
+
+        self.repo_name = bootstrap.repo_name;
+        self.discovery_state = bootstrap.discovery_state;
+        self.state = AppState::new(bootstrap.workspaces);
+        if let Some(name) = target_name
+            && let Some(index) = self
+                .state
+                .workspaces
+                .iter()
+                .position(|workspace| workspace.name == name)
+        {
+            self.state.selected_index = index;
+        }
+        self.state.mode = previous_mode;
+        self.state.focus = previous_focus;
+        self.poll_preview();
+    }
+
+    fn confirm_create_dialog(&mut self) {
+        let Some(dialog) = self.create_dialog.as_ref().cloned() else {
+            return;
+        };
+
+        let workspace_name = dialog.workspace_name.trim().to_string();
+        let request = CreateWorkspaceRequest {
+            workspace_name: workspace_name.clone(),
+            branch_mode: BranchMode::NewBranch {
+                base_branch: dialog.base_branch,
+            },
+            agent: dialog.agent,
+        };
+
+        if let Err(error) = request.validate() {
+            self.show_flash(Self::workspace_lifecycle_error_message(&error), true);
+            return;
+        }
+
+        let Ok(repo_root) = std::env::current_dir() else {
+            self.show_flash("cannot resolve current directory", true);
+            return;
+        };
+        let git = CommandGitRunner;
+        let setup = CommandSetupScriptRunner;
+        match create_workspace(&repo_root, &request, &git, &setup) {
+            Ok(result) => {
+                self.create_dialog = None;
+                self.refresh_workspaces(Some(workspace_name.clone()));
+                self.state.mode = UiMode::List;
+                self.state.focus = PaneFocus::WorkspaceList;
+                if result.warnings.is_empty() {
+                    self.show_flash(format!("workspace '{}' created", workspace_name), false);
+                } else if let Some(first_warning) = result.warnings.first() {
+                    self.show_flash(
+                        format!(
+                            "workspace '{}' created, warning: {}",
+                            workspace_name, first_warning
+                        ),
+                        true,
+                    );
+                }
+            }
+            Err(error) => {
+                self.show_flash(
+                    format!(
+                        "workspace create failed: {}",
+                        Self::workspace_lifecycle_error_message(&error)
+                    ),
+                    true,
+                );
+            }
+        }
+    }
+
+    fn handle_create_dialog_key(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Escape => {
+                self.create_dialog = None;
+            }
+            KeyCode::Enter => {
+                self.confirm_create_dialog();
+            }
+            KeyCode::Tab => {
+                if let Some(dialog) = self.create_dialog.as_mut() {
+                    dialog.agent = match dialog.agent {
+                        AgentType::Claude => AgentType::Codex,
+                        AgentType::Codex => AgentType::Claude,
+                    };
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(dialog) = self.create_dialog.as_mut() {
+                    dialog.workspace_name.pop();
+                }
+            }
+            KeyCode::Char(character) if key_event.modifiers.is_empty() => {
+                if (character.is_ascii_alphanumeric() || character == '-' || character == '_')
+                    && let Some(dialog) = self.create_dialog.as_mut()
+                {
+                    dialog.workspace_name.push(character);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn start_selected_workspace_agent_with_options(
@@ -937,6 +1140,7 @@ impl GroveApp {
             KeyCode::Char('!') => {
                 self.launch_skip_permissions = !self.launch_skip_permissions;
             }
+            KeyCode::Char('n') | KeyCode::Char('N') => self.open_create_dialog(),
             KeyCode::Char('s') => self.open_start_dialog(),
             KeyCode::Char('x') => self.stop_selected_workspace_agent(),
             KeyCode::PageUp => {
@@ -1022,7 +1226,13 @@ impl GroveApp {
         if y >= layout.status.y {
             return HitRegion::StatusLine;
         }
-        if x >= layout.divider.x && x < layout.divider.right() {
+        let divider_left = layout.divider.x.saturating_sub(1);
+        let divider_right = layout
+            .divider
+            .right()
+            .saturating_add(1)
+            .min(self.viewport_width);
+        if x >= divider_left && x < divider_right {
             return HitRegion::Divider;
         }
         if x >= layout.sidebar.x && x < layout.sidebar.right() {
@@ -1102,7 +1312,7 @@ impl GroveApp {
     }
 
     fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {
-        if self.launch_dialog.is_some() {
+        if self.modal_open() {
             return;
         }
 
@@ -1157,6 +1367,11 @@ impl GroveApp {
 
     fn handle_key(&mut self, key_event: KeyEvent) -> bool {
         if key_event.kind != KeyEventKind::Press {
+            return false;
+        }
+
+        if self.create_dialog.is_some() {
+            self.handle_create_dialog_key(key_event);
             return false;
         }
 
@@ -1232,7 +1447,7 @@ impl GroveApp {
             .title("Workspaces")
             .borders(Borders::ALL)
             .border_style(self.pane_border_style(
-                self.state.focus == PaneFocus::WorkspaceList && self.launch_dialog.is_none(),
+                self.state.focus == PaneFocus::WorkspaceList && !self.modal_open(),
             ));
         let inner = block.inner(area);
         block.render(area, frame);
@@ -1310,12 +1525,13 @@ impl GroveApp {
         } else {
             "Preview"
         };
-        let block = Block::new()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(self.pane_border_style(
-                self.state.focus == PaneFocus::Preview && self.launch_dialog.is_none(),
-            ));
+        let block =
+            Block::new()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(self.pane_border_style(
+                    self.state.focus == PaneFocus::Preview && !self.modal_open(),
+                ));
         let inner = block.inner(area);
         block.render(area, frame);
 
@@ -1403,6 +1619,43 @@ impl GroveApp {
                     dialog.prompt.clone()
                 }
             ),
+        ]
+        .join("\n");
+
+        Paragraph::new(body).render(inner, frame);
+    }
+
+    fn render_create_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
+        let Some(dialog) = self.create_dialog.as_ref() else {
+            return;
+        };
+        if area.width < 20 || area.height < 8 {
+            return;
+        }
+
+        let dialog_width = area.width.saturating_sub(8).min(90);
+        let dialog_height = 8u16;
+        let dialog_x = area.x + area.width.saturating_sub(dialog_width) / 2;
+        let dialog_y = area.y + area.height.saturating_sub(dialog_height) / 2;
+        let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+
+        let block = Block::new()
+            .title("New Workspace")
+            .borders(Borders::ALL)
+            .border_style(Style::new().fg(PackedRgba::rgb(56, 189, 248)).bold());
+        let inner = block.inner(dialog_area);
+        block.render(dialog_area, frame);
+
+        if inner.is_empty() {
+            return;
+        }
+
+        let body = [
+            "Type workspace name, [Tab] toggles agent, [Enter] creates".to_string(),
+            String::new(),
+            format!("Name: {}", dialog.workspace_name),
+            format!("Agent: {}", dialog.agent.label()),
+            format!("Base branch: {}", dialog.base_branch),
         ]
         .join("\n");
 
@@ -1563,6 +1816,7 @@ impl Model for GroveApp {
         self.render_divider(frame, layout.divider);
         self.render_preview_pane(frame, layout.preview);
         self.render_status_line(frame, layout.status);
+        self.render_create_dialog_overlay(frame, area);
         self.render_launch_dialog_overlay(frame, area);
     }
 }
@@ -2062,6 +2316,90 @@ mod tests {
     }
 
     #[test]
+    fn new_workspace_key_opens_create_dialog() {
+        let mut app = fixture_app();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            app.create_dialog.as_ref().map(|dialog| dialog.agent),
+            Some(AgentType::Claude)
+        );
+        assert_eq!(
+            app.create_dialog
+                .as_ref()
+                .map(|dialog| dialog.base_branch.clone()),
+            Some("main".to_string())
+        );
+    }
+
+    #[test]
+    fn create_dialog_tab_toggles_agent() {
+        let mut app = fixture_app();
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            app.create_dialog.as_ref().map(|dialog| dialog.agent),
+            Some(AgentType::Codex)
+        );
+    }
+
+    #[test]
+    fn create_dialog_blocks_navigation_and_escape_cancels() {
+        let mut app = fixture_app();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(app.state.selected_index, 0);
+        assert_eq!(
+            app.create_dialog
+                .as_ref()
+                .map(|dialog| dialog.workspace_name.clone()),
+            Some("j".to_string())
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+        );
+        assert!(app.create_dialog.is_none());
+    }
+
+    #[test]
+    fn create_dialog_enter_without_name_shows_validation_flash() {
+        let mut app = fixture_app();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(app.create_dialog.is_some());
+        assert!(app.status_bar_line().contains("workspace name is required"));
+    }
+
+    #[test]
     fn stop_key_stops_selected_workspace_agent() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -2538,6 +2876,37 @@ mod tests {
         );
 
         assert_eq!(app.sidebar_width_pct, 55);
+    }
+
+    #[test]
+    fn mouse_drag_near_divider_still_updates_sidebar_ratio() {
+        let mut app = fixture_app();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Down(MouseButton::Left),
+                32,
+                8,
+            )),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Drag(MouseButton::Left),
+                50,
+                8,
+            )),
+        );
+
+        assert_eq!(app.sidebar_width_pct, 50);
     }
 
     #[test]

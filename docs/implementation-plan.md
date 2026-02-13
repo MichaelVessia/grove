@@ -562,3 +562,19 @@ Exit criteria:
     math in update path) for full PRD hit-grid alignment.
   - Add render-focused assertions around pane boundaries and modal placement to
     lock layout structure against regressions.
+- 2026-02-13: Fixed post-layout usability gaps for workspace creation and
+  divider mouse drag.
+  Changes: added a keyboard-driven new-workspace modal in `src/tui.rs`
+  (`[n]/[N]` open, type name, `[Tab]` toggle agent Claude/Codex, `[Enter]`
+  create, `[Esc]` cancel), wired modal confirmation to real workspace lifecycle
+  backend (`workspace_lifecycle::create_workspace`) with git/setup execution and
+  list refresh via `bootstrap_data`, and expanded divider hit detection to
+  accept near-divider mouse down positions so drag-resize reliably triggers.
+  Also updated status hints and added focused TUI unit coverage for new dialog
+  behavior and near-divider drag.
+  Status: targeted TUI tests are green locally after changes.
+  Next:
+  - Add branch-mode controls (existing-branch attach) and base-branch editing to
+    the new-workspace modal for full Phase 3 parity.
+  - Run manual interaction pass in live terminal for `n` create flow and drag
+    behavior across different terminal emulators.
