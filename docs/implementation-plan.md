@@ -281,3 +281,10 @@ Exit criteria:
 - If a phase is large, split into `phase-xa`/`phase-xb`, each with its own
   TDD cycles and manual milestone
 - Never merge a phase without both gates (TDD + manual) complete
+
+## Maintenance Notes
+
+- 2026-02-13: Added repo instruction to always update this plan document after
+  completed work, before handoff.
+- 2026-02-13: Added lowercase `claude.md` symlink to `AGENTS.md` for tool
+  compatibility.
