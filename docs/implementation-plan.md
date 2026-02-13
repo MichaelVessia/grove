@@ -430,3 +430,19 @@ Exit criteria:
   - Integrate cursor position polling/overlay in interactive mode using tmux
     pane cursor metadata.
   - Persist divider ratio across sessions (Phase 7 persistence target).
+- 2026-02-13: Completed the remaining Phase 5-7 follow-up items from the TUI
+  wiring backlog.
+  Changes: updated `src/tui.rs` to poll tmux cursor metadata
+  (`display-message -p`) alongside pane capture polling, parse cursor position
+  and visibility, update `InteractiveState` cursor fields, and render cursor
+  overlay on the preview lines shown during interactive mode. Added sidebar
+  split persistence using `.grove-sidebar-width` (load on startup, save on
+  divider drag changes). Expanded focused TUI tests for cursor metadata parsing,
+  cursor overlay rendering in interactive mode, and cross-session split-ratio
+  persistence.
+  Status: targeted checks pass locally (`cargo fmt`, `cargo test tui:: --lib`).
+  Next:
+  - Add app-layer end-to-end tests for command sequencing (launch/stop/poll)
+    through the real TUI update flow, not just module-level units.
+  - Run manual TUI milestone validation for interactive cursor behavior and
+    persisted split ratio against real tmux sessions.

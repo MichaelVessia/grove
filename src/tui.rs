@@ -1,3 +1,5 @@
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use ftui::core::event::{
@@ -18,11 +20,26 @@ use crate::agent_runtime::{poll_interval, session_name_for_workspace};
 use crate::domain::WorkspaceStatus;
 use crate::interactive::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
-    tmux_send_keys_command,
+    render_cursor_overlay, tmux_send_keys_command,
 };
-use crate::mouse::{HitRegion, LayoutMetrics, clamp_sidebar_ratio, hit_test, ratio_from_drag};
+use crate::mouse::{
+    HitRegion, LayoutMetrics, clamp_sidebar_ratio, hit_test, parse_sidebar_ratio, ratio_from_drag,
+    serialize_sidebar_ratio,
+};
 use crate::preview::PreviewState;
 use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
+
+const DEFAULT_SIDEBAR_WIDTH_PCT: u16 = 33;
+const SIDEBAR_RATIO_FILENAME: &str = ".grove-sidebar-width";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CursorMetadata {
+    cursor_visible: bool,
+    cursor_col: u16,
+    cursor_row: u16,
+    pane_width: u16,
+    pane_height: u16,
+}
 
 trait TmuxInput {
     fn execute(&self, command: &[String]) -> std::io::Result<()>;
@@ -31,6 +48,7 @@ trait TmuxInput {
         target_session: &str,
         scrollback_lines: usize,
     ) -> std::io::Result<String>;
+    fn capture_cursor_metadata(&self, target_session: &str) -> std::io::Result<String>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +111,76 @@ impl TmuxInput for CommandTmuxInput {
             std::io::Error::other(format!("tmux output utf8 decode failed: {error}"))
         })
     }
+
+    fn capture_cursor_metadata(&self, target_session: &str) -> std::io::Result<String> {
+        let output = std::process::Command::new("tmux")
+            .args([
+                "display-message",
+                "-p",
+                "-t",
+                target_session,
+                "#{cursor_flag} #{cursor_x} #{cursor_y} #{pane_width} #{pane_height}",
+            ])
+            .output()?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(std::io::Error::other(format!(
+                "tmux cursor metadata failed for '{target_session}': {stderr}"
+            )));
+        }
+
+        String::from_utf8(output.stdout).map_err(|error| {
+            std::io::Error::other(format!("tmux cursor metadata utf8 decode failed: {error}"))
+        })
+    }
+}
+
+fn parse_cursor_flag(value: &str) -> Option<bool> {
+    match value.trim() {
+        "1" | "on" | "true" => Some(true),
+        "0" | "off" | "false" => Some(false),
+        _ => None,
+    }
+}
+
+fn parse_cursor_metadata(raw: &str) -> Option<CursorMetadata> {
+    let mut fields = raw.split_whitespace();
+    let cursor_visible = parse_cursor_flag(fields.next()?)?;
+    let cursor_col = fields.next()?.parse::<u16>().ok()?;
+    let cursor_row = fields.next()?.parse::<u16>().ok()?;
+    let pane_width = fields.next()?.parse::<u16>().ok()?;
+    let pane_height = fields.next()?.parse::<u16>().ok()?;
+    if fields.next().is_some() {
+        return None;
+    }
+
+    Some(CursorMetadata {
+        cursor_visible,
+        cursor_col,
+        cursor_row,
+        pane_width,
+        pane_height,
+    })
+}
+
+fn default_sidebar_ratio_path() -> PathBuf {
+    match std::env::current_dir() {
+        Ok(cwd) => cwd.join(SIDEBAR_RATIO_FILENAME),
+        Err(_) => PathBuf::from(SIDEBAR_RATIO_FILENAME),
+    }
+}
+
+fn load_sidebar_ratio(path: &Path) -> u16 {
+    let Ok(raw) = fs::read_to_string(path) else {
+        return DEFAULT_SIDEBAR_WIDTH_PCT;
+    };
+
+    parse_sidebar_ratio(&raw).unwrap_or(DEFAULT_SIDEBAR_WIDTH_PCT)
+}
+
+fn persist_sidebar_ratio(path: &Path, ratio_pct: u16) -> std::io::Result<()> {
+    fs::write(path, serialize_sidebar_ratio(ratio_pct))
 }
 
 impl From<Event> for Msg {
@@ -120,6 +208,7 @@ struct GroveApp {
     viewport_width: u16,
     viewport_height: u16,
     sidebar_width_pct: u16,
+    sidebar_ratio_path: PathBuf,
     divider_drag_active: bool,
     copied_text: Option<String>,
 }
@@ -139,6 +228,19 @@ impl GroveApp {
     }
 
     fn from_bootstrap_with_tmux(bootstrap: BootstrapData, tmux_input: Box<dyn TmuxInput>) -> Self {
+        Self::from_bootstrap_with_tmux_and_sidebar_path(
+            bootstrap,
+            tmux_input,
+            default_sidebar_ratio_path(),
+        )
+    }
+
+    fn from_bootstrap_with_tmux_and_sidebar_path(
+        bootstrap: BootstrapData,
+        tmux_input: Box<dyn TmuxInput>,
+        sidebar_ratio_path: PathBuf,
+    ) -> Self {
+        let sidebar_width_pct = load_sidebar_ratio(&sidebar_ratio_path);
         let mut app = Self {
             repo_name: bootstrap.repo_name,
             state: AppState::new(bootstrap.workspaces),
@@ -150,7 +252,8 @@ impl GroveApp {
             output_changing: false,
             viewport_width: 120,
             viewport_height: 40,
-            sidebar_width_pct: 33,
+            sidebar_width_pct,
+            sidebar_ratio_path,
             divider_drag_active: false,
             copied_text: None,
         };
@@ -273,10 +376,39 @@ impl GroveApp {
         None
     }
 
+    fn interactive_target_session(&self) -> Option<String> {
+        self.interactive
+            .as_ref()
+            .map(|state| state.target_session.clone())
+    }
+
+    fn poll_interactive_cursor(&mut self, target_session: &str) {
+        let Ok(raw_metadata) = self.tmux_input.capture_cursor_metadata(target_session) else {
+            return;
+        };
+        let Some(metadata) = parse_cursor_metadata(&raw_metadata) else {
+            return;
+        };
+        let Some(state) = self.interactive.as_mut() else {
+            return;
+        };
+
+        state.update_cursor(
+            metadata.cursor_row,
+            metadata.cursor_col,
+            metadata.cursor_visible,
+            metadata.pane_height,
+            metadata.pane_width,
+        );
+    }
+
     fn poll_preview(&mut self) {
         let Some(session_name) = self.selected_session_for_live_preview() else {
             self.output_changing = false;
             self.refresh_preview_summary();
+            if let Some(target_session) = self.interactive_target_session() {
+                self.poll_interactive_cursor(&target_session);
+            }
             return;
         };
 
@@ -292,6 +424,10 @@ impl GroveApp {
                 self.refresh_preview_summary();
             }
         }
+
+        if let Some(target_session) = self.interactive_target_session() {
+            self.poll_interactive_cursor(&target_session);
+        }
     }
 
     fn selected_preview_height(&self, total_height: usize) -> usize {
@@ -305,6 +441,13 @@ impl GroveApp {
 
     fn scroll_preview(&mut self, delta: i32) {
         let _ = self.preview.scroll(delta, Instant::now());
+    }
+
+    fn persist_sidebar_ratio(&mut self) {
+        if let Err(error) = persist_sidebar_ratio(&self.sidebar_ratio_path, self.sidebar_width_pct)
+        {
+            self.last_tmux_error = Some(format!("sidebar ratio persist failed: {error}"));
+        }
     }
 
     fn move_selection(&mut self, action: Action) {
@@ -549,6 +692,49 @@ impl GroveApp {
         }
     }
 
+    fn apply_interactive_cursor_overlay(
+        &self,
+        visible_lines: &mut [String],
+        preview_height: usize,
+    ) {
+        let Some(interactive) = self.interactive.as_ref() else {
+            return;
+        };
+        if self.preview.lines.is_empty() {
+            return;
+        }
+
+        let pane_height = usize::from(interactive.pane_height.max(1));
+        let cursor_row = usize::from(interactive.cursor_row);
+        if cursor_row >= pane_height {
+            return;
+        }
+
+        let preview_len = self.preview.lines.len();
+        let pane_start = preview_len.saturating_sub(pane_height);
+        let cursor_line = pane_start.saturating_add(cursor_row);
+        if cursor_line >= preview_len {
+            return;
+        }
+
+        let end = preview_len.saturating_sub(self.preview.offset);
+        let start = end.saturating_sub(preview_height);
+        if cursor_line < start || cursor_line >= end {
+            return;
+        }
+
+        let visible_index = cursor_line - start;
+        let Some(line) = visible_lines.get_mut(visible_index) else {
+            return;
+        };
+
+        *line = render_cursor_overlay(
+            line,
+            usize::from(interactive.cursor_col),
+            interactive.cursor_visible,
+        );
+    }
+
     fn select_workspace_by_mouse(&mut self, y: u16) {
         if !matches!(self.discovery_state, DiscoveryState::Ready) {
             return;
@@ -592,8 +778,12 @@ impl GroveApp {
             },
             MouseEventKind::Drag(MouseButton::Left) => {
                 if self.divider_drag_active {
-                    self.sidebar_width_pct =
+                    let ratio =
                         clamp_sidebar_ratio(ratio_from_drag(self.viewport_width, mouse_event.x));
+                    if ratio != self.sidebar_width_pct {
+                        self.sidebar_width_pct = ratio;
+                        self.persist_sidebar_ratio();
+                    }
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
@@ -717,7 +907,8 @@ impl GroveApp {
         lines.push(String::new());
         lines.push("Preview Pane".to_string());
         lines.push(format!("Selected workspace: {}", selected_workspace));
-        let visible_lines = self.preview.visible_lines(preview_height);
+        let mut visible_lines = self.preview.visible_lines(preview_height);
+        self.apply_interactive_cursor_overlay(&mut visible_lines, preview_height);
         if visible_lines.is_empty() {
             lines.push("(no preview output)".to_string());
         } else {
@@ -764,6 +955,15 @@ impl Model for GroveApp {
             Msg::Resize { width, height } => {
                 self.viewport_width = width;
                 self.viewport_height = height;
+                if let Some(state) = self.interactive.as_mut() {
+                    state.update_cursor(
+                        state.cursor_row,
+                        state.cursor_col,
+                        state.cursor_visible,
+                        height,
+                        width,
+                    );
+                }
                 Cmd::None
             }
             Msg::Noop => Cmd::None,
@@ -787,7 +987,7 @@ pub fn run() -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{GroveApp, Msg, TmuxInput};
+    use super::{GroveApp, Msg, TmuxInput, parse_cursor_metadata};
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
     use ftui::Cmd;
@@ -796,13 +996,25 @@ mod tests {
         PasteEvent,
     };
     use std::cell::RefCell;
+    use std::fs;
     use std::path::PathBuf;
     use std::rc::Rc;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    type RecordedCommands = Rc<RefCell<Vec<Vec<String>>>>;
+    type RecordedCaptures = Rc<RefCell<Vec<Result<String, String>>>>;
+    type FixtureApp = (
+        GroveApp,
+        RecordedCommands,
+        RecordedCaptures,
+        RecordedCaptures,
+    );
 
     #[derive(Clone)]
     struct RecordingTmuxInput {
-        commands: Rc<RefCell<Vec<Vec<String>>>>,
-        captures: Rc<RefCell<Vec<Result<String, String>>>>,
+        commands: RecordedCommands,
+        captures: RecordedCaptures,
+        cursor_captures: RecordedCaptures,
     }
 
     impl TmuxInput for RecordingTmuxInput {
@@ -819,6 +1031,19 @@ mod tests {
             let mut captures = self.captures.borrow_mut();
             if captures.is_empty() {
                 return Ok(String::new());
+            }
+
+            let next = captures.remove(0);
+            match next {
+                Ok(output) => Ok(output),
+                Err(error) => Err(std::io::Error::other(error)),
+            }
+        }
+
+        fn capture_cursor_metadata(&self, _target_session: &str) -> std::io::Result<String> {
+            let mut captures = self.cursor_captures.borrow_mut();
+            if captures.is_empty() {
+                return Ok("1 0 0 120 40".to_string());
             }
 
             let next = captures.remove(0);
@@ -860,27 +1085,64 @@ mod tests {
     }
 
     fn fixture_app() -> GroveApp {
-        GroveApp::from_bootstrap(fixture_bootstrap(WorkspaceStatus::Idle))
+        let sidebar_ratio_path = unique_sidebar_ratio_path("fixture");
+        GroveApp::from_bootstrap_with_tmux_and_sidebar_path(
+            fixture_bootstrap(WorkspaceStatus::Idle),
+            Box::new(RecordingTmuxInput {
+                commands: Rc::new(RefCell::new(Vec::new())),
+                captures: Rc::new(RefCell::new(Vec::new())),
+                cursor_captures: Rc::new(RefCell::new(Vec::new())),
+            }),
+            sidebar_ratio_path,
+        )
+    }
+
+    fn unique_sidebar_ratio_path(label: &str) -> PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "grove-sidebar-width-{label}-{}-{timestamp}.txt",
+            std::process::id()
+        ))
     }
 
     fn fixture_app_with_tmux(
         status: WorkspaceStatus,
         captures: Vec<Result<String, String>>,
-    ) -> (
-        GroveApp,
-        Rc<RefCell<Vec<Vec<String>>>>,
-        Rc<RefCell<Vec<Result<String, String>>>>,
-    ) {
+    ) -> FixtureApp {
+        fixture_app_with_tmux_and_sidebar_path(
+            status,
+            captures,
+            Vec::new(),
+            unique_sidebar_ratio_path("fixture-with-tmux"),
+        )
+    }
+
+    fn fixture_app_with_tmux_and_sidebar_path(
+        status: WorkspaceStatus,
+        captures: Vec<Result<String, String>>,
+        cursor_captures: Vec<Result<String, String>>,
+        sidebar_ratio_path: PathBuf,
+    ) -> FixtureApp {
         let commands = Rc::new(RefCell::new(Vec::new()));
         let captures = Rc::new(RefCell::new(captures));
+        let cursor_captures = Rc::new(RefCell::new(cursor_captures));
         let tmux = RecordingTmuxInput {
             commands: commands.clone(),
             captures: captures.clone(),
+            cursor_captures: cursor_captures.clone(),
         };
         (
-            GroveApp::from_bootstrap_with_tmux(fixture_bootstrap(status), Box::new(tmux)),
+            GroveApp::from_bootstrap_with_tmux_and_sidebar_path(
+                fixture_bootstrap(status),
+                Box::new(tmux),
+                sidebar_ratio_path,
+            ),
             commands,
             captures,
+            cursor_captures,
         )
     }
 
@@ -938,7 +1200,7 @@ mod tests {
 
     #[test]
     fn enter_on_active_workspace_starts_interactive_mode() {
-        let (mut app, _commands, _captures) =
+        let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
 
         ftui::Model::update(
@@ -956,7 +1218,7 @@ mod tests {
 
     #[test]
     fn interactive_keys_forward_to_tmux_session() {
-        let (mut app, commands, _captures) =
+        let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
 
         ftui::Model::update(
@@ -988,7 +1250,7 @@ mod tests {
 
     #[test]
     fn double_escape_exits_interactive_mode() {
-        let (mut app, commands, _captures) =
+        let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
 
         ftui::Model::update(
@@ -1024,7 +1286,7 @@ mod tests {
 
     #[test]
     fn tick_polls_live_tmux_output_into_preview() {
-        let (mut app, _commands, _captures) = fixture_app_with_tmux(
+        let (mut app, _commands, _captures, _cursor_captures) = fixture_app_with_tmux(
             WorkspaceStatus::Active,
             vec![
                 Ok("line one\nline two\n".to_string()),
@@ -1042,6 +1304,111 @@ mod tests {
             app.preview.lines,
             vec!["line one".to_string(), "line two".to_string()]
         );
+    }
+
+    #[test]
+    fn parse_cursor_metadata_requires_five_fields() {
+        assert_eq!(
+            parse_cursor_metadata("1 4 2 120 40"),
+            Some(super::CursorMetadata {
+                cursor_visible: true,
+                cursor_col: 4,
+                cursor_row: 2,
+                pane_width: 120,
+                pane_height: 40,
+            })
+        );
+        assert!(parse_cursor_metadata("1 4 2 120").is_none());
+        assert!(parse_cursor_metadata("invalid").is_none());
+    }
+
+    #[test]
+    fn tick_polls_cursor_metadata_and_renders_overlay() {
+        let sidebar_ratio_path = unique_sidebar_ratio_path("cursor-overlay");
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux_and_sidebar_path(
+                WorkspaceStatus::Active,
+                vec![
+                    Ok("first\nsecond\nthird\n".to_string()),
+                    Ok("first\nsecond\nthird\n".to_string()),
+                ],
+                vec![Ok("1 1 1 120 3".to_string())],
+                sidebar_ratio_path,
+            );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(&mut app, Msg::Tick);
+
+        let rendered = app.shell_lines(8).join("\n");
+        assert_eq!(
+            app.interactive.as_ref().map(|state| (
+                state.cursor_row,
+                state.cursor_col,
+                state.pane_height
+            )),
+            Some((1, 1, 3))
+        );
+        assert!(rendered.contains("\u{1b}[7m"), "{rendered}");
+    }
+
+    #[test]
+    fn divider_ratio_persists_across_app_instances() {
+        let sidebar_ratio_path = unique_sidebar_ratio_path("persist");
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux_and_sidebar_path(
+                WorkspaceStatus::Idle,
+                Vec::new(),
+                Vec::new(),
+                sidebar_ratio_path.clone(),
+            );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Down(MouseButton::Left),
+                33,
+                8,
+            )),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Drag(MouseButton::Left),
+                52,
+                8,
+            )),
+        );
+
+        assert_eq!(app.sidebar_width_pct, 52);
+        assert_eq!(
+            fs::read_to_string(&sidebar_ratio_path).expect("ratio file should be written"),
+            "52"
+        );
+
+        let (app_reloaded, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux_and_sidebar_path(
+                WorkspaceStatus::Idle,
+                Vec::new(),
+                Vec::new(),
+                sidebar_ratio_path.clone(),
+            );
+
+        assert_eq!(app_reloaded.sidebar_width_pct, 52);
+        let _ = fs::remove_file(sidebar_ratio_path);
     }
 
     #[test]
@@ -1142,7 +1509,7 @@ mod tests {
 
     #[test]
     fn bracketed_paste_event_forwards_wrapped_literal() {
-        let (mut app, commands, _captures) =
+        let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
 
         ftui::Model::update(
@@ -1171,7 +1538,7 @@ mod tests {
 
     #[test]
     fn alt_copy_then_alt_paste_uses_captured_text() {
-        let (mut app, commands, captures) = fixture_app_with_tmux(
+        let (mut app, commands, captures, _cursor_captures) = fixture_app_with_tmux(
             WorkspaceStatus::Active,
             vec![Ok(String::new()), Ok("copy me".to_string())],
         );
@@ -1258,7 +1625,7 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
         );
-        assert_eq!(was_auto_scroll, true);
+        assert!(was_auto_scroll);
         assert!(!app.preview.auto_scroll);
         assert!(app.preview.offset > 0);
 
