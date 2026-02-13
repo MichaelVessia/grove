@@ -23,10 +23,6 @@ pub fn missing_workspace_paths(workspaces: &[Workspace]) -> Vec<PathBuf> {
     missing
 }
 
-pub fn should_prune_worktrees(missing_paths: &[PathBuf]) -> bool {
-    !missing_paths.is_empty()
-}
-
 pub fn orphaned_sessions(
     running_sessions: &HashSet<String>,
     workspaces: &[Workspace],
@@ -69,7 +65,7 @@ mod tests {
 
     use super::{
         bump_generation, drop_missing_generations, missing_workspace_paths, orphaned_sessions,
-        recover_working_directory, should_prune_worktrees,
+        recover_working_directory,
     };
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
@@ -134,7 +130,6 @@ mod tests {
 
         let missing = missing_workspace_paths(&workspaces);
         assert_eq!(missing, vec![temp.path.join("missing")]);
-        assert!(should_prune_worktrees(&missing));
     }
 
     #[test]

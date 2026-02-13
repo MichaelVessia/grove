@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
-const TMUX_SESSION_PREFIX: &str = "grove-ws-";
+pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
 const WAITING_PATTERNS: [&str; 6] = [
     "[y/n]",
     "(y/n)",
@@ -20,7 +20,7 @@ const DONE_PATTERNS: [&str; 3] = ["task completed", "finished", "exited with cod
 const ERROR_PATTERNS: [&str; 4] = ["error:", "failed", "panic:", "traceback"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SessionActivity {
+pub(crate) enum SessionActivity {
     Idle,
     Active,
     Waiting,
@@ -57,14 +57,14 @@ pub struct ReconciliationResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OutputDigest {
+pub(crate) struct OutputDigest {
     pub raw_hash: u64,
     pub raw_len: usize,
     pub cleaned_hash: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CaptureChange {
+pub(crate) struct CaptureChange {
     pub digest: OutputDigest,
     pub changed_raw: bool,
     pub changed_cleaned: bool,
@@ -72,7 +72,7 @@ pub struct CaptureChange {
     pub render_output: String,
 }
 
-pub fn sanitize_workspace_name(name: &str) -> String {
+pub(crate) fn sanitize_workspace_name(name: &str) -> String {
     let mut out = String::new();
     let mut last_dash = false;
 
@@ -202,7 +202,7 @@ pub fn stop_plan(session_name: &str) -> Vec<Vec<String>> {
     ]
 }
 
-pub fn build_agent_command(agent: AgentType, skip_permissions: bool) -> String {
+pub(crate) fn build_agent_command(agent: AgentType, skip_permissions: bool) -> String {
     if let Some(command_override) = env_agent_command_override(agent) {
         return command_override;
     }
@@ -237,7 +237,7 @@ fn normalized_agent_command_override(value: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-pub fn detect_waiting_prompt(output: &str) -> Option<String> {
+pub(crate) fn detect_waiting_prompt(output: &str) -> Option<String> {
     let lines: Vec<&str> = output.lines().collect();
     let start = lines.len().saturating_sub(5);
 
@@ -254,7 +254,7 @@ pub fn detect_waiting_prompt(output: &str) -> Option<String> {
     None
 }
 
-pub fn detect_status(
+pub(crate) fn detect_status(
     output: &str,
     session_activity: SessionActivity,
     is_main: bool,
@@ -406,7 +406,7 @@ pub fn poll_interval(
     }
 }
 
-pub fn evaluate_capture_change(previous: Option<&OutputDigest>, raw_output: &str) -> CaptureChange {
+pub(crate) fn evaluate_capture_change(previous: Option<&OutputDigest>, raw_output: &str) -> CaptureChange {
     let render_output = strip_non_sgr_control_sequences(raw_output);
     let cleaned_output = strip_mouse_fragments(&strip_sgr_sequences(&render_output));
     let digest = OutputDigest {
@@ -438,7 +438,7 @@ fn is_safe_text_character(character: char) -> bool {
     matches!(character, '\n' | '\t') || !character.is_control()
 }
 
-pub fn strip_mouse_fragments(input: &str) -> String {
+pub(crate) fn strip_mouse_fragments(input: &str) -> String {
     let mut cleaned = input
         .replace("[?1000h", "")
         .replace("[?1000l", "")

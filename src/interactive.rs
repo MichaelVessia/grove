@@ -181,7 +181,7 @@ fn is_mouse_fragment_character(character: char) -> bool {
     matches!(character, '[' | '<' | ';' | 'M' | 'm') || character.is_ascii_digit()
 }
 
-pub fn key_to_action(key: InteractiveKey) -> InteractiveAction {
+fn key_to_action(key: InteractiveKey) -> InteractiveAction {
     match key {
         InteractiveKey::Enter => InteractiveAction::SendNamed("Enter".to_string()),
         InteractiveKey::Tab => InteractiveAction::SendNamed("Tab".to_string()),
@@ -230,7 +230,7 @@ pub fn tmux_send_keys_command(
     }
 }
 
-pub fn is_paste_event(text: &str) -> bool {
+fn is_paste_event(text: &str) -> bool {
     text.contains('\n') || text.chars().count() > 10
 }
 
@@ -342,43 +342,13 @@ pub fn render_cursor_overlay_ansi(
     rendered
 }
 
-pub fn looks_like_mouse_fragment(fragment: &str) -> bool {
-    let trimmed = fragment.trim();
-    if trimmed.is_empty() {
-        return false;
-    }
-
-    trimmed.starts_with("[<")
-        || trimmed.starts_with("\u{1b}[<")
-        || (trimmed.ends_with('M') || trimmed.ends_with('m'))
-            && trimmed.chars().all(|character| {
-                matches!(character, '[' | '<' | ';' | 'M' | 'm') || character.is_ascii_digit()
-            })
-}
-
-pub fn should_snap_back_for_input(fragment: &str) -> bool {
-    let trimmed = fragment.trim();
-    if trimmed.is_empty() {
-        return false;
-    }
-    if trimmed == "Escape" || looks_like_mouse_fragment(trimmed) {
-        return false;
-    }
-    if trimmed == "[" {
-        return false;
-    }
-
-    true
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::{Duration, Instant};
 
     use super::{
         InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload, is_paste_event,
-        looks_like_mouse_fragment, render_cursor_overlay, render_cursor_overlay_ansi,
-        should_snap_back_for_input, tmux_send_keys_command,
+        render_cursor_overlay, render_cursor_overlay_ansi, tmux_send_keys_command,
     };
 
     #[test]
@@ -488,18 +458,6 @@ mod tests {
             render_cursor_overlay_ansi(line, plain, 6, true),
             "A\u{1b}[31mBC\u{1b}[0mD  |"
         );
-    }
-
-    #[test]
-    fn mouse_fragment_guard_blocks_suspicious_inputs() {
-        assert!(looks_like_mouse_fragment("[<35;192;47M"));
-        assert!(looks_like_mouse_fragment("\u{1b}[<65;10;5m"));
-        assert!(!looks_like_mouse_fragment("hello"));
-
-        assert!(!should_snap_back_for_input("Escape"));
-        assert!(!should_snap_back_for_input("[<35;192;47M"));
-        assert!(!should_snap_back_for_input("["));
-        assert!(should_snap_back_for_input("a"));
     }
 
     #[test]

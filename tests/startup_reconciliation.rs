@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use grove::agent_runtime::reconcile_with_sessions;
 use grove::domain::{AgentType, Workspace, WorkspaceStatus};
-use grove::hardening::{missing_workspace_paths, orphaned_sessions, should_prune_worktrees};
+use grove::hardening::{missing_workspace_paths, orphaned_sessions};
 
 fn workspace(name: &str, status: WorkspaceStatus, is_main: bool, path: PathBuf) -> Workspace {
     Workspace::try_new(
@@ -80,7 +80,7 @@ fn startup_reconciliation_flags_missing_worktrees_for_prune() {
 
     let missing = missing_workspace_paths(&workspaces);
     assert_eq!(missing, vec![PathBuf::from("/definitely/missing/path")]);
-    assert!(should_prune_worktrees(&missing));
+    assert!(!missing.is_empty());
 }
 
 #[test]

@@ -14,10 +14,6 @@ pub fn hello_message(app_name: &str) -> String {
     format!("Hello from {app_name}.")
 }
 
-pub fn run_tui() -> std::io::Result<()> {
-    run_tui_with_event_log(None)
-}
-
 pub fn run_tui_with_event_log(event_log_path: Option<std::path::PathBuf>) -> std::io::Result<()> {
     tui::run_with_event_log(event_log_path)
 }

@@ -29,6 +29,17 @@ pub enum WorkspaceStatus {
 }
 
 impl WorkspaceStatus {
+    pub const fn has_session(self) -> bool {
+        matches!(
+            self,
+            Self::Active | Self::Thinking | Self::Waiting | Self::Done | Self::Error
+        )
+    }
+
+    pub const fn is_running(self) -> bool {
+        matches!(self, Self::Active | Self::Thinking | Self::Waiting)
+    }
+
     pub const fn icon(self) -> &'static str {
         match self {
             Self::Main => "◉",

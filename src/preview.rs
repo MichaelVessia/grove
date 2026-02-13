@@ -8,7 +8,7 @@ const SCROLL_BURST_DEBOUNCE_MS: u64 = 120;
 const CAPTURE_RING_CAPACITY: usize = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CaptureRecord {
+pub(crate) struct CaptureRecord {
     pub ts: u64,
     pub raw_output: String,
     pub cleaned_output: String,
@@ -19,25 +19,25 @@ pub struct CaptureRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PreviewState {
-    pub lines: Vec<String>,
-    pub render_lines: Vec<String>,
-    pub offset: usize,
-    pub auto_scroll: bool,
-    pub scroll_burst_count: u32,
-    pub recent_captures: VecDeque<CaptureRecord>,
+pub(crate) struct PreviewState {
+    pub(crate) lines: Vec<String>,
+    pub(crate) render_lines: Vec<String>,
+    pub(crate) offset: usize,
+    pub(crate) auto_scroll: bool,
+    pub(crate) scroll_burst_count: u32,
+    pub(crate) recent_captures: VecDeque<CaptureRecord>,
     last_scroll_time: Option<Instant>,
     last_digest: Option<OutputDigest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CaptureUpdate {
+pub(crate) struct CaptureUpdate {
     pub changed_raw: bool,
     pub changed_cleaned: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FlashMessage {
+pub(crate) struct FlashMessage {
     pub text: String,
     pub is_error: bool,
     pub expires_at: Instant,
@@ -177,10 +177,6 @@ impl PreviewState {
         self.auto_scroll = true;
     }
 
-    pub fn reset_for_selection_change(&mut self) {
-        self.jump_to_bottom();
-    }
-
     pub fn visible_lines(&self, height: usize) -> Vec<String> {
         if height == 0 || self.lines.is_empty() {
             return Vec::new();
@@ -212,7 +208,7 @@ impl Default for PreviewState {
     }
 }
 
-pub fn split_output_lines(output: &str) -> Vec<String> {
+pub(crate) fn split_output_lines(output: &str) -> Vec<String> {
     let trimmed = output.trim_end_matches('\n');
     if trimmed.is_empty() {
         return Vec::new();
@@ -221,7 +217,7 @@ pub fn split_output_lines(output: &str) -> Vec<String> {
     trimmed.lines().map(ToOwned::to_owned).collect()
 }
 
-pub fn new_flash_message(text: impl Into<String>, is_error: bool, now: Instant) -> FlashMessage {
+pub(crate) fn new_flash_message(text: impl Into<String>, is_error: bool, now: Instant) -> FlashMessage {
     FlashMessage {
         text: text.into(),
         is_error,
@@ -229,7 +225,7 @@ pub fn new_flash_message(text: impl Into<String>, is_error: bool, now: Instant) 
     }
 }
 
-pub fn clear_expired_flash_message(flash: &mut Option<FlashMessage>, now: Instant) -> bool {
+pub(crate) fn clear_expired_flash_message(flash: &mut Option<FlashMessage>, now: Instant) -> bool {
     if flash
         .as_ref()
         .is_some_and(|message| message.expires_at <= now)

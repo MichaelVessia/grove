@@ -628,12 +628,6 @@ fn ansi_line_to_styled_line(line: &str) -> FtLine {
     FtLine::from_spans(spans)
 }
 
-fn should_render_ansi_preview(agent: AgentType) -> bool {
-    match agent {
-        AgentType::Claude | AgentType::Codex => true,
-    }
-}
-
 fn default_sidebar_ratio_path() -> PathBuf {
     match std::env::current_dir() {
         Ok(cwd) => cwd.join(SIDEBAR_RATIO_FILENAME),
@@ -647,14 +641,6 @@ fn load_sidebar_ratio(path: &Path) -> u16 {
     };
 
     parse_sidebar_ratio(&raw).unwrap_or(DEFAULT_SIDEBAR_WIDTH_PCT)
-}
-
-fn persist_sidebar_ratio(path: &Path, ratio_pct: u16) -> std::io::Result<()> {
-    fs::write(path, serialize_sidebar_ratio(ratio_pct))
-}
-
-fn write_launcher_script(path: &Path, contents: &str) -> std::io::Result<()> {
-    fs::write(path, contents)
 }
 
 fn read_workspace_launch_prompt(workspace_path: &Path) -> Option<String> {
@@ -710,53 +696,15 @@ impl GroveApp {
             &CommandTmuxAdapter,
             &CommandSystemAdapter,
         );
-        Self::from_bootstrap_with_event_logger(bootstrap, event_log)
-    }
-
-    #[cfg(test)]
-    fn from_bootstrap(bootstrap: BootstrapData) -> Self {
-        Self::from_bootstrap_with_event_logger(bootstrap, Box::new(NullEventLogger))
-    }
-
-    fn from_bootstrap_with_event_logger(
-        bootstrap: BootstrapData,
-        event_log: Box<dyn EventLogger>,
-    ) -> Self {
-        Self::from_bootstrap_with_tmux_and_event_logger(
+        Self::from_parts(
             bootstrap,
             Box::new(CommandTmuxInput),
-            event_log,
-        )
-    }
-
-    fn from_bootstrap_with_tmux_and_event_logger(
-        bootstrap: BootstrapData,
-        tmux_input: Box<dyn TmuxInput>,
-        event_log: Box<dyn EventLogger>,
-    ) -> Self {
-        Self::from_bootstrap_with_tmux_and_sidebar_path_and_event_logger(
-            bootstrap,
-            tmux_input,
             default_sidebar_ratio_path(),
             event_log,
         )
     }
 
-    #[cfg(test)]
-    fn from_bootstrap_with_tmux_and_sidebar_path(
-        bootstrap: BootstrapData,
-        tmux_input: Box<dyn TmuxInput>,
-        sidebar_ratio_path: PathBuf,
-    ) -> Self {
-        Self::from_bootstrap_with_tmux_and_sidebar_path_and_event_logger(
-            bootstrap,
-            tmux_input,
-            sidebar_ratio_path,
-            Box::new(NullEventLogger),
-        )
-    }
-
-    fn from_bootstrap_with_tmux_and_sidebar_path_and_event_logger(
+    fn from_parts(
         bootstrap: BootstrapData,
         tmux_input: Box<dyn TmuxInput>,
         sidebar_ratio_path: PathBuf,
@@ -1050,6 +998,10 @@ impl GroveApp {
         }
     }
 
+    fn unsafe_label(&self) -> &'static str {
+        if self.launch_skip_permissions { "on" } else { "off" }
+    }
+
     fn status_bar_line(&self) -> String {
         if let Some(flash) = &self.flash {
             if flash.is_error {
@@ -1091,20 +1043,12 @@ impl GroveApp {
                     if let Some(message) = &self.last_tmux_error {
                         return format!(
                             "Status: -- INSERT -- [Esc Esc]/[Ctrl+\\]exit | unsafe={} | tmux error: {message}",
-                            if self.launch_skip_permissions {
-                                "on"
-                            } else {
-                                "off"
-                            }
+                            self.unsafe_label()
                         );
                     }
                     return format!(
                         "Status: -- INSERT -- [Esc Esc]/[Ctrl+\\]exit | unsafe={}",
-                        if self.launch_skip_permissions {
-                            "on"
-                        } else {
-                            "off"
-                        }
+                        self.unsafe_label()
                     );
                 }
 
@@ -1112,26 +1056,14 @@ impl GroveApp {
                     UiMode::List => format!(
                         "Status: [j/k]move [Tab]focus [Enter]preview-or-interactive [n]new [s]start [x]stop [!]unsafe [q]quit | [mouse]click/drag/scroll | selected={} unsafe={}",
                         self.selected_status_hint(),
-                        if self.launch_skip_permissions {
-                            "on"
-                        } else {
-                            "off"
-                        }
+                        self.unsafe_label()
                     ),
                     UiMode::Preview => format!(
                         "Status: [j/k]scroll [PgUp/PgDn]scroll [G]bottom [Esc]list [Tab]focus [n]new [s]start [x]stop [!]unsafe [q]quit | [mouse]scroll/drag divider | autoscroll={} offset={} split={}%% unsafe={}",
-                        if self.preview.auto_scroll {
-                            "on"
-                        } else {
-                            "off"
-                        },
+                        if self.preview.auto_scroll { "on" } else { "off" },
                         self.preview.offset,
                         self.sidebar_width_pct,
-                        if self.launch_skip_permissions {
-                            "on"
-                        } else {
-                            "off"
-                        },
+                        self.unsafe_label(),
                     ),
                 }
             }
@@ -1185,19 +1117,12 @@ impl GroveApp {
             return None;
         }
 
-        if matches!(
-            workspace.status,
-            WorkspaceStatus::Active
-                | WorkspaceStatus::Thinking
-                | WorkspaceStatus::Waiting
-                | WorkspaceStatus::Done
-                | WorkspaceStatus::Error
-        ) {
+        if workspace.status.has_session() {
             let codex_interactive_plain =
                 self.interactive.is_some() && workspace.agent == AgentType::Codex;
             return Some((
                 session_name_for_workspace(&workspace.name),
-                should_render_ansi_preview(workspace.agent) && !codex_interactive_plain,
+                !codex_interactive_plain,
             ));
         }
 
@@ -1370,7 +1295,8 @@ impl GroveApp {
     }
 
     fn persist_sidebar_ratio(&mut self) {
-        if let Err(error) = persist_sidebar_ratio(&self.sidebar_ratio_path, self.sidebar_width_pct)
+        if let Err(error) =
+            fs::write(&self.sidebar_ratio_path, serialize_sidebar_ratio(self.sidebar_width_pct))
         {
             self.last_tmux_error = Some(format!("sidebar ratio persist failed: {error}"));
         }
@@ -1380,7 +1306,7 @@ impl GroveApp {
         let before = self.state.selected_index;
         reduce(&mut self.state, action);
         if self.state.selected_index != before {
-            self.preview.reset_for_selection_change();
+            self.preview.jump_to_bottom();
             self.poll_preview();
         }
     }
@@ -1411,18 +1337,7 @@ impl GroveApp {
             return false;
         };
 
-        if workspace.is_main {
-            return false;
-        }
-
-        matches!(
-            workspace.status,
-            WorkspaceStatus::Active
-                | WorkspaceStatus::Thinking
-                | WorkspaceStatus::Waiting
-                | WorkspaceStatus::Done
-                | WorkspaceStatus::Error
-        )
+        !workspace.is_main && workspace.status.has_session()
     }
 
     fn enter_interactive(&mut self, now: Instant) -> bool {
@@ -1479,10 +1394,7 @@ impl GroveApp {
             self.show_flash("unsupported workspace agent marker", true);
             return;
         }
-        if matches!(
-            workspace.status,
-            WorkspaceStatus::Active | WorkspaceStatus::Thinking | WorkspaceStatus::Waiting
-        ) {
+        if workspace.status.is_running() {
             self.show_flash("agent already running", true);
             return;
         }
@@ -1588,11 +1500,7 @@ impl GroveApp {
             WorkspaceLifecycleError::EmptyExistingBranch => {
                 "existing branch is required".to_string()
             }
-            WorkspaceLifecycleError::EmptyBranchName => "branch name is required".to_string(),
             WorkspaceLifecycleError::RepoNameUnavailable => "repo name unavailable".to_string(),
-            WorkspaceLifecycleError::CannotDeleteMainWorkspace => {
-                "cannot delete main workspace".to_string()
-            }
             WorkspaceLifecycleError::GitCommandFailed(message) => {
                 format!("git command failed: {message}")
             }
@@ -1824,7 +1732,7 @@ impl GroveApp {
         let launch_plan = build_launch_plan(&request);
 
         if let Some(script) = &launch_plan.launcher_script
-            && let Err(error) = write_launcher_script(&script.path, &script.contents)
+            && let Err(error) = fs::write(&script.path, &script.contents)
         {
             self.last_tmux_error = Some(format!("launcher script write failed: {error}"));
             self.show_flash("launcher script write failed", true);
@@ -1924,18 +1832,7 @@ impl GroveApp {
         let Some(workspace) = self.state.selected_workspace() else {
             return false;
         };
-        if workspace.is_main {
-            return false;
-        }
-
-        matches!(
-            workspace.status,
-            WorkspaceStatus::Active
-                | WorkspaceStatus::Thinking
-                | WorkspaceStatus::Waiting
-                | WorkspaceStatus::Done
-                | WorkspaceStatus::Error
-        )
+        !workspace.is_main && workspace.status.has_session()
     }
 
     fn stop_selected_workspace_agent(&mut self) {
@@ -2202,15 +2099,10 @@ impl GroveApp {
         )
     }
 
-    fn divider_hit_area(layout: ViewLayout, viewport_width: u16) -> Rect {
-        let left = layout.divider.x.saturating_sub(1);
-        let right = layout.divider.right().saturating_add(1).min(viewport_width);
-        Rect::new(
-            left,
-            layout.divider.y,
-            right.saturating_sub(left),
-            layout.divider.height,
-        )
+    fn divider_hit_area(divider: Rect, viewport_width: u16) -> Rect {
+        let left = divider.x.saturating_sub(1);
+        let right = divider.right().saturating_add(1).min(viewport_width);
+        Rect::new(left, divider.y, right.saturating_sub(left), divider.height)
     }
 
     fn hit_region_for_point(&self, x: u16, y: u16) -> (HitRegion, Option<u64>) {
@@ -2249,7 +2141,7 @@ impl GroveApp {
             return (HitRegion::StatusLine, None);
         }
 
-        let divider_area = Self::divider_hit_area(layout, self.viewport_width);
+        let divider_area = Self::divider_hit_area(layout.divider, self.viewport_width);
         if x >= divider_area.x && x < divider_area.right() {
             return (HitRegion::Divider, None);
         }
@@ -2357,7 +2249,7 @@ impl GroveApp {
 
         if row != self.state.selected_index {
             self.state.selected_index = row;
-            self.preview.reset_for_selection_change();
+            self.preview.jump_to_bottom();
             self.poll_preview();
         }
     }
@@ -2371,7 +2263,7 @@ impl GroveApp {
         }
 
         self.state.selected_index = index;
-        self.preview.reset_for_selection_change();
+        self.preview.jump_to_bottom();
         self.poll_preview();
     }
 
@@ -2611,10 +2503,10 @@ impl GroveApp {
         Paragraph::new(divider)
             .style(Style::new().fg(PackedRgba::rgb(107, 114, 128)))
             .render(area, frame);
-        let left = area.x.saturating_sub(1);
-        let right = area.right().saturating_add(1).min(frame.width());
-        let divider_hit_area = Rect::new(left, area.y, right.saturating_sub(left), area.height);
-        let _ = frame.register_hit_region(divider_hit_area, HitId::new(HIT_ID_DIVIDER));
+        let _ = frame.register_hit_region(
+            Self::divider_hit_area(area, frame.width()),
+            HitId::new(HIT_ID_DIVIDER),
+        );
     }
 
     fn render_preview_pane(&self, frame: &mut Frame, area: Rect) {
@@ -2669,9 +2561,7 @@ impl GroveApp {
         ];
 
         let mut visible_plain_lines = self.preview.visible_lines(preview_height);
-        if !should_render_ansi_preview(selected_agent.unwrap_or(AgentType::Claude))
-            || codex_interactive_plain
-        {
+        if codex_interactive_plain {
             if allow_cursor_overlay {
                 self.apply_interactive_cursor_overlay(&mut visible_plain_lines, preview_height);
             }
@@ -3022,11 +2912,11 @@ mod tests {
         CreateBranchMode, CreateDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
         HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogState, Msg, SIDEBAR_RATIO_FILENAME,
         TmuxInput, WORKSPACE_ITEM_HEIGHT, ansi_16_color, ansi_line_to_styled_line,
-        parse_cursor_metadata, should_render_ansi_preview,
+        parse_cursor_metadata,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
-    use crate::event_log::{Event as LoggedEvent, EventLogger};
+    use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
     use ftui::core::event::{
         Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
         PasteEvent,
@@ -3182,7 +3072,7 @@ mod tests {
 
     fn fixture_app() -> GroveApp {
         let sidebar_ratio_path = unique_sidebar_ratio_path("fixture");
-        GroveApp::from_bootstrap_with_tmux_and_sidebar_path(
+        GroveApp::from_parts(
             fixture_bootstrap(WorkspaceStatus::Idle),
             Box::new(RecordingTmuxInput {
                 commands: Rc::new(RefCell::new(Vec::new())),
@@ -3191,6 +3081,7 @@ mod tests {
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
             sidebar_ratio_path,
+            Box::new(NullEventLogger),
         )
     }
 
@@ -3310,10 +3201,11 @@ mod tests {
             calls: Rc::new(RefCell::new(Vec::new())),
         };
         (
-            GroveApp::from_bootstrap_with_tmux_and_sidebar_path(
+            GroveApp::from_parts(
                 fixture_bootstrap(status),
                 Box::new(tmux),
                 sidebar_ratio_path,
+                Box::new(NullEventLogger),
             ),
             commands,
             captures,
@@ -3339,10 +3231,11 @@ mod tests {
         };
 
         (
-            GroveApp::from_bootstrap_with_tmux_and_sidebar_path(
+            GroveApp::from_parts(
                 fixture_bootstrap(status),
                 Box::new(tmux),
                 sidebar_ratio_path,
+                Box::new(NullEventLogger),
             ),
             commands,
             captures,
@@ -3372,7 +3265,7 @@ mod tests {
         };
 
         (
-            GroveApp::from_bootstrap_with_tmux_and_sidebar_path_and_event_logger(
+            GroveApp::from_parts(
                 fixture_bootstrap(status),
                 Box::new(tmux),
                 sidebar_ratio_path,
@@ -4800,12 +4693,6 @@ mod tests {
     }
 
     #[test]
-    fn codex_preview_uses_ansi_rendering_path() {
-        assert!(should_render_ansi_preview(AgentType::Codex));
-        assert!(should_render_ansi_preview(AgentType::Claude));
-    }
-
-    #[test]
     fn tick_polls_cursor_metadata_and_renders_overlay() {
         let sidebar_ratio_path = unique_sidebar_ratio_path("cursor-overlay");
         let (mut app, _commands, _captures, _cursor_captures) =
@@ -5113,12 +5000,25 @@ mod tests {
 
     #[test]
     fn shell_renders_discovery_error_state() {
-        let app = GroveApp::from_bootstrap(BootstrapData {
-            repo_name: "grove".to_string(),
-            workspaces: Vec::new(),
-            discovery_state: DiscoveryState::Error("fatal: not a git repository".to_string()),
-            orphaned_sessions: Vec::new(),
-        });
+        let sidebar_ratio_path = unique_sidebar_ratio_path("error-state");
+        let app = GroveApp::from_parts(
+            BootstrapData {
+                repo_name: "grove".to_string(),
+                workspaces: Vec::new(),
+                discovery_state: DiscoveryState::Error(
+                    "fatal: not a git repository".to_string(),
+                ),
+                orphaned_sessions: Vec::new(),
+            },
+            Box::new(RecordingTmuxInput {
+                commands: Rc::new(RefCell::new(Vec::new())),
+                captures: Rc::new(RefCell::new(Vec::new())),
+                cursor_captures: Rc::new(RefCell::new(Vec::new())),
+                calls: Rc::new(RefCell::new(Vec::new())),
+            }),
+            sidebar_ratio_path,
+            Box::new(NullEventLogger),
+        );
         let lines = app.shell_lines(8);
         let content = lines.join("\n");
 

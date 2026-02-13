@@ -3,11 +3,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::agent_runtime::reconcile_with_sessions;
+use crate::agent_runtime::{TMUX_SESSION_PREFIX, reconcile_with_sessions};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::workspace_lifecycle::{WorkspaceMarkerError, read_workspace_markers};
-
-const TMUX_SESSION_PREFIX: &str = "grove-ws-";
 
 pub trait GitAdapter {
     fn list_workspaces(&self) -> Result<Vec<Workspace>, GitAdapterError>;
@@ -39,21 +37,21 @@ impl GitAdapterError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DiscoveryState {
+pub(crate) enum DiscoveryState {
     Ready,
     Empty,
     Error(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BootstrapData {
+pub(crate) struct BootstrapData {
     pub repo_name: String,
     pub workspaces: Vec<Workspace>,
     pub discovery_state: DiscoveryState,
     pub orphaned_sessions: Vec<String>,
 }
 
-pub fn bootstrap_data(
+pub(crate) fn bootstrap_data(
     git: &impl GitAdapter,
     tmux: &impl TmuxAdapter,
     system: &impl SystemAdapter,
@@ -165,14 +163,6 @@ impl TmuxAdapter for CommandTmuxAdapter {
             }
             _ => HashSet::new(),
         }
-    }
-}
-
-pub struct PlaceholderTmuxAdapter;
-
-impl TmuxAdapter for PlaceholderTmuxAdapter {
-    fn running_sessions(&self) -> HashSet<String> {
-        HashSet::new()
     }
 }
 

@@ -27,9 +27,7 @@ pub enum WorkspaceLifecycleError {
     InvalidWorkspaceName,
     EmptyBaseBranch,
     EmptyExistingBranch,
-    EmptyBranchName,
     RepoNameUnavailable,
-    CannotDeleteMainWorkspace,
     GitCommandFailed(String),
     Io(String),
 }
@@ -101,14 +99,6 @@ pub struct CreateWorkspaceResult {
     pub workspace_path: PathBuf,
     pub branch: String,
     pub warnings: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeleteWorkspaceRequest {
-    pub workspace_path: PathBuf,
-    pub branch: String,
-    pub is_main: bool,
-    pub delete_local_branch: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -232,64 +222,7 @@ pub fn create_workspace(
     })
 }
 
-pub fn delete_workspace(
-    repo_root: &Path,
-    request: &DeleteWorkspaceRequest,
-    git_runner: &impl GitCommandRunner,
-) -> Result<(), WorkspaceLifecycleError> {
-    if request.is_main {
-        return Err(WorkspaceLifecycleError::CannotDeleteMainWorkspace);
-    }
-    if request.branch.trim().is_empty() {
-        return Err(WorkspaceLifecycleError::EmptyBranchName);
-    }
-
-    let workspace_path_arg = request.workspace_path.to_string_lossy().to_string();
-    let remove_args = vec![
-        "worktree".to_string(),
-        "remove".to_string(),
-        workspace_path_arg.clone(),
-    ];
-    let force_remove_args = vec![
-        "worktree".to_string(),
-        "remove".to_string(),
-        "--force".to_string(),
-        workspace_path_arg,
-    ];
-
-    if let Err(first_error) = git_runner.run(repo_root, &remove_args)
-        && let Err(force_error) = git_runner.run(repo_root, &force_remove_args)
-    {
-        return Err(WorkspaceLifecycleError::GitCommandFailed(format!(
-            "worktree remove failed: {first_error}; force retry failed: {force_error}"
-        )));
-    }
-
-    if request.delete_local_branch {
-        let delete_args = vec![
-            "branch".to_string(),
-            "-d".to_string(),
-            request.branch.clone(),
-        ];
-        let force_delete_args = vec![
-            "branch".to_string(),
-            "-D".to_string(),
-            request.branch.clone(),
-        ];
-
-        if let Err(first_error) = git_runner.run(repo_root, &delete_args)
-            && let Err(force_error) = git_runner.run(repo_root, &force_delete_args)
-        {
-            return Err(WorkspaceLifecycleError::GitCommandFailed(format!(
-                "branch delete failed: {first_error}; force retry failed: {force_error}"
-            )));
-        }
-    }
-
-    Ok(())
-}
-
-pub fn workspace_directory_path(
+pub(crate) fn workspace_directory_path(
     repo_root: &Path,
     workspace_name: &str,
 ) -> Result<PathBuf, WorkspaceLifecycleError> {
@@ -302,7 +235,7 @@ pub fn workspace_directory_path(
     Ok(parent.join(format!("{repo_name}-{workspace_name}")))
 }
 
-pub fn ensure_grove_gitignore_entries(repo_root: &Path) -> Result<(), WorkspaceLifecycleError> {
+pub(crate) fn ensure_grove_gitignore_entries(repo_root: &Path) -> Result<(), WorkspaceLifecycleError> {
     let gitignore_path = repo_root.join(".gitignore");
     let existing_content = match fs::read_to_string(&gitignore_path) {
         Ok(content) => content,
@@ -339,7 +272,7 @@ pub fn ensure_grove_gitignore_entries(repo_root: &Path) -> Result<(), WorkspaceL
     Ok(())
 }
 
-pub fn copy_env_files(
+pub(crate) fn copy_env_files(
     main_worktree: &Path,
     workspace_path: &Path,
 ) -> Result<(), WorkspaceLifecycleError> {
@@ -455,10 +388,10 @@ fn workspace_name_is_valid(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        BranchMode, CreateWorkspaceRequest, DeleteWorkspaceRequest, GitCommandRunner,
-        SetupScriptContext, SetupScriptRunner, WorkspaceLifecycleError, WorkspaceMarkerError,
-        copy_env_files, create_workspace, delete_workspace, ensure_grove_gitignore_entries,
-        read_workspace_markers, workspace_directory_path,
+        BranchMode, CreateWorkspaceRequest, GitCommandRunner, SetupScriptContext,
+        SetupScriptRunner, WorkspaceLifecycleError, WorkspaceMarkerError, copy_env_files,
+        create_workspace, ensure_grove_gitignore_entries, read_workspace_markers,
+        workspace_directory_path,
     };
     use crate::domain::AgentType;
     use std::cell::RefCell;
@@ -499,13 +432,6 @@ mod tests {
     }
 
     impl StubGitRunner {
-        fn with_outcomes(outcomes: Vec<Result<(), String>>) -> Self {
-            Self {
-                calls: RefCell::new(Vec::new()),
-                outcomes: RefCell::new(outcomes),
-            }
-        }
-
         fn calls(&self) -> Vec<Vec<String>> {
             self.calls.borrow().clone()
         }
@@ -720,68 +646,6 @@ mod tests {
             temp.path.join("grove-feature_b")
         );
         assert_eq!(setup_calls[0].worktree_branch, "feature_b");
-    }
-
-    #[test]
-    fn delete_workspace_retries_remove_and_branch_delete_with_force() {
-        let git = StubGitRunner::with_outcomes(vec![
-            Err("remove blocked".to_string()),
-            Ok(()),
-            Err("branch unmerged".to_string()),
-            Ok(()),
-        ]);
-        let request = DeleteWorkspaceRequest {
-            workspace_path: PathBuf::from("/repos/grove-feature-a"),
-            branch: "feature-a".to_string(),
-            is_main: false,
-            delete_local_branch: true,
-        };
-
-        delete_workspace(Path::new("/repos/grove"), &request, &git).expect("delete should succeed");
-
-        assert_eq!(
-            git.calls(),
-            vec![
-                vec![
-                    "worktree".to_string(),
-                    "remove".to_string(),
-                    "/repos/grove-feature-a".to_string(),
-                ],
-                vec![
-                    "worktree".to_string(),
-                    "remove".to_string(),
-                    "--force".to_string(),
-                    "/repos/grove-feature-a".to_string(),
-                ],
-                vec![
-                    "branch".to_string(),
-                    "-d".to_string(),
-                    "feature-a".to_string(),
-                ],
-                vec![
-                    "branch".to_string(),
-                    "-D".to_string(),
-                    "feature-a".to_string(),
-                ],
-            ]
-        );
-    }
-
-    #[test]
-    fn delete_workspace_rejects_main_workspace() {
-        let git = StubGitRunner::default();
-        let request = DeleteWorkspaceRequest {
-            workspace_path: PathBuf::from("/repos/grove"),
-            branch: "main".to_string(),
-            is_main: true,
-            delete_local_branch: false,
-        };
-
-        assert_eq!(
-            delete_workspace(Path::new("/repos/grove"), &request, &git),
-            Err(WorkspaceLifecycleError::CannotDeleteMainWorkspace)
-        );
-        assert!(git.calls().is_empty());
     }
 
     #[test]
