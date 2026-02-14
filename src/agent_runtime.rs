@@ -15,6 +15,8 @@ const WAITING_PATTERNS: [&str; 6] = [
     "approve",
     "confirm",
 ];
+const WAITING_TAIL_LINES: usize = 8;
+const STATUS_TAIL_LINES: usize = 60;
 const THINKING_PATTERNS: [&str; 2] = ["<thinking>", "thinking..."];
 const DONE_PATTERNS: [&str; 3] = ["task completed", "finished", "exited with code 0"];
 const ERROR_PATTERNS: [&str; 4] = ["error:", "failed", "panic:", "traceback"];
@@ -260,15 +262,29 @@ fn launch_command_with_pre_launch(agent_command: &str, pre_launch_command: Optio
 
 pub(crate) fn detect_waiting_prompt(output: &str) -> Option<String> {
     let lines: Vec<&str> = output.lines().collect();
-    let start = lines.len().saturating_sub(5);
+    let start = lines.len().saturating_sub(WAITING_TAIL_LINES);
+    let tail_lines = &lines[start..];
 
-    for line in &lines[start..] {
+    for line in tail_lines {
         let lower = line.to_ascii_lowercase();
         if WAITING_PATTERNS
             .iter()
             .any(|pattern| lower.contains(pattern))
         {
             return Some(line.trim().to_string());
+        }
+    }
+
+    for line in tail_lines.iter().rev() {
+        if line.to_ascii_lowercase().contains("for shortcuts") {
+            return Some(line.trim().to_string());
+        }
+    }
+
+    if let Some(last_non_empty) = tail_lines.iter().rev().find(|line| !line.trim().is_empty()) {
+        let trimmed = last_non_empty.trim_start();
+        if trimmed.starts_with("> ") {
+            return Some(trimmed.to_string());
         }
     }
 
@@ -294,31 +310,26 @@ pub(crate) fn detect_status(
         return WorkspaceStatus::Idle;
     }
 
-    let lower_output = output.to_ascii_lowercase();
-
-    if ERROR_PATTERNS
-        .iter()
-        .any(|pattern| lower_output.contains(pattern))
-    {
-        return WorkspaceStatus::Error;
-    }
-
-    if DONE_PATTERNS
-        .iter()
-        .any(|pattern| lower_output.contains(pattern))
-    {
-        return WorkspaceStatus::Done;
-    }
-
-    if THINKING_PATTERNS
-        .iter()
-        .any(|pattern| lower_output.contains(pattern))
-    {
-        return WorkspaceStatus::Thinking;
-    }
-
     if detect_waiting_prompt(output).is_some() {
         return WorkspaceStatus::Waiting;
+    }
+
+    let lines: Vec<&str> = output.lines().collect();
+    let start = lines.len().saturating_sub(STATUS_TAIL_LINES);
+    for line in lines[start..].iter().rev() {
+        let lower = line.to_ascii_lowercase();
+        if THINKING_PATTERNS
+            .iter()
+            .any(|pattern| lower.contains(pattern))
+        {
+            return WorkspaceStatus::Thinking;
+        }
+        if DONE_PATTERNS.iter().any(|pattern| lower.contains(pattern)) {
+            return WorkspaceStatus::Done;
+        }
+        if ERROR_PATTERNS.iter().any(|pattern| lower.contains(pattern)) {
+            return WorkspaceStatus::Error;
+        }
     }
 
     match session_activity {
@@ -821,7 +832,7 @@ mod tests {
 
     #[test]
     fn waiting_prompt_checks_tail_lines_only() {
-        let output = "approve earlier\nline\nline\nline\nline\nline\n";
+        let output = "approve earlier\nline\nline\nline\nline\nline\nline\nline\nline\n";
         assert_eq!(detect_waiting_prompt(output), None);
 
         let tail_output = "line\nline\nline\nline\nallow edit? [y/n]\n";
@@ -832,7 +843,16 @@ mod tests {
     }
 
     #[test]
-    fn status_resolution_prioritizes_error_done_thinking_before_session_activity() {
+    fn waiting_prompt_detects_codex_shortcuts_hint() {
+        let output = "result\nresult\n> Implement {feature}\n? for shortcuts\n";
+        assert_eq!(
+            detect_waiting_prompt(output),
+            Some("? for shortcuts".to_string())
+        );
+    }
+
+    #[test]
+    fn status_resolution_uses_recent_tail_and_waiting_prompt_before_error() {
         assert_eq!(
             detect_status("panic: bad", SessionActivity::Active, false, true, true),
             WorkspaceStatus::Error
@@ -872,6 +892,28 @@ mod tests {
         assert_eq!(
             detect_status("", SessionActivity::Active, false, true, false),
             WorkspaceStatus::Unsupported
+        );
+
+        assert_eq!(
+            detect_status(
+                "warning: failed to login mcp\nline\nline\n> Implement {feature}\n? for shortcuts\n",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
+            WorkspaceStatus::Waiting
+        );
+    }
+
+    #[test]
+    fn status_resolution_ignores_old_non_tail_errors() {
+        let mut lines = vec!["failed: transient startup warning".to_string()];
+        lines.extend((0..70).map(|index| format!("line {index}")));
+        let output = lines.join("\n");
+        assert_eq!(
+            detect_status(&output, SessionActivity::Active, false, true, true),
+            WorkspaceStatus::Active
         );
     }
 

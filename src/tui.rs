@@ -39,9 +39,10 @@ use crate::adapters::{
     bootstrap_data,
 };
 use crate::agent_runtime::{
-    LaunchRequest, build_launch_plan, poll_interval, session_name_for_workspace, stop_plan,
+    LaunchRequest, SessionActivity, build_launch_plan, detect_status, poll_interval,
+    session_name_for_workspace, stop_plan,
 };
-use crate::domain::{AgentType, WorkspaceStatus};
+use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::event_log::{Event as LogEvent, EventLogger, FileEventLogger, NullEventLogger};
 #[cfg(test)]
 use crate::interactive::render_cursor_overlay;
@@ -79,6 +80,7 @@ const HIT_ID_LAUNCH_DIALOG: u32 = 8;
 const MAX_PENDING_INPUT_TRACES: usize = 256;
 const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
+const ACTIVE_SPINNER_GRACE_MS: u64 = 3_000;
 const FAST_SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 #[derive(Debug, Clone, Copy)]
@@ -701,6 +703,7 @@ struct PreviewPollCompletion {
     generation: u64,
     live_capture: Option<LivePreviewCapture>,
     cursor_capture: Option<CursorCapture>,
+    workspace_status_captures: Vec<WorkspaceStatusCapture>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -715,6 +718,22 @@ struct LivePreviewCapture {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CursorCapture {
     session: String,
+    capture_ms: u64,
+    result: Result<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WorkspaceStatusPollTarget {
+    workspace_name: String,
+    session_name: String,
+    supported_agent: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WorkspaceStatusCapture {
+    workspace_name: String,
+    session_name: String,
+    supported_agent: bool,
     capture_ms: u64,
     result: Result<String, String>,
 }
@@ -1390,6 +1409,7 @@ struct GroveApp {
     last_tmux_error: Option<String>,
     output_changing: bool,
     agent_output_changing: bool,
+    last_agent_activity_at: Option<Instant>,
     viewport_width: u16,
     viewport_height: u16,
     sidebar_width_pct: u16,
@@ -1501,6 +1521,7 @@ impl GroveApp {
             last_tmux_error: None,
             output_changing: false,
             agent_output_changing: false,
+            last_agent_activity_at: None,
             viewport_width: 120,
             viewport_height: 40,
             sidebar_width_pct,
@@ -1560,11 +1581,17 @@ impl GroveApp {
             .map(|workspace| workspace.status)
         {
             Some(WorkspaceStatus::Main) => "main worktree",
-            Some(WorkspaceStatus::Idle) => "idle",
-            Some(WorkspaceStatus::Active) => "active",
+            Some(WorkspaceStatus::Idle) => "idle (no session)",
+            Some(WorkspaceStatus::Active) => {
+                if self.agent_output_changing {
+                    "working"
+                } else {
+                    "running"
+                }
+            }
             Some(WorkspaceStatus::Thinking) => "thinking",
-            Some(WorkspaceStatus::Waiting) => "waiting",
-            Some(WorkspaceStatus::Done) => "done",
+            Some(WorkspaceStatus::Waiting) => "awaiting input",
+            Some(WorkspaceStatus::Done) => "completed",
             Some(WorkspaceStatus::Error) => "error",
             Some(WorkspaceStatus::Unsupported) => "unsupported",
             Some(WorkspaceStatus::Unknown) => "unknown",
@@ -2246,6 +2273,66 @@ impl GroveApp {
             .map(|state| state.target_session.clone())
     }
 
+    fn workspace_status_poll_targets(
+        &self,
+        selected_live_session: Option<&str>,
+    ) -> Vec<WorkspaceStatusPollTarget> {
+        self.state
+            .workspaces
+            .iter()
+            .filter(|workspace| !workspace.is_main && workspace.supported_agent)
+            .map(|workspace| WorkspaceStatusPollTarget {
+                workspace_name: workspace.name.clone(),
+                session_name: session_name_for_workspace(&workspace.name),
+                supported_agent: workspace.supported_agent,
+            })
+            .filter(|target| selected_live_session != Some(target.session_name.as_str()))
+            .collect()
+    }
+
+    fn tmux_capture_error_indicates_missing_session(error: &str) -> bool {
+        let lower = error.to_ascii_lowercase();
+        lower.contains("can't find pane")
+            || lower.contains("can't find session")
+            || lower.contains("no server running")
+            || lower.contains("no sessions")
+            || lower.contains("failed to connect to server")
+    }
+
+    fn apply_workspace_status_capture(&mut self, capture: WorkspaceStatusCapture) {
+        let Some(workspace) = self
+            .state
+            .workspaces
+            .iter_mut()
+            .find(|workspace| workspace.name == capture.workspace_name)
+        else {
+            return;
+        };
+        if workspace.is_main {
+            return;
+        }
+
+        match capture.result {
+            Ok(output) => {
+                workspace.status = detect_status(
+                    output.as_str(),
+                    SessionActivity::Active,
+                    false,
+                    true,
+                    capture.supported_agent,
+                );
+                workspace.is_orphaned = false;
+            }
+            Err(error) => {
+                if Self::tmux_capture_error_indicates_missing_session(&error) {
+                    let previously_had_live_session = workspace.status.has_session();
+                    workspace.status = WorkspaceStatus::Idle;
+                    workspace.is_orphaned = previously_had_live_session || workspace.is_orphaned;
+                }
+            }
+        }
+    }
+
     fn poll_interactive_cursor_sync(&mut self, target_session: &str) {
         let started_at = Instant::now();
         let result = self
@@ -2327,6 +2414,29 @@ impl GroveApp {
                 };
                 self.output_changing = update.changed_cleaned;
                 self.agent_output_changing = update.changed_cleaned && consumed_inputs.is_empty();
+                let mut selected_status_after_capture: Option<WorkspaceStatus> = None;
+                if let Some(workspace) = self.state.selected_workspace_mut()
+                    && !workspace.is_main
+                    && session_name_for_workspace(&workspace.name) == session_name
+                {
+                    let resolved_status = detect_status(
+                        output.as_str(),
+                        SessionActivity::Active,
+                        false,
+                        true,
+                        workspace.supported_agent,
+                    );
+                    workspace.status = resolved_status;
+                    workspace.is_orphaned = false;
+                    selected_status_after_capture = Some(resolved_status);
+                }
+                if self.agent_output_changing {
+                    self.last_agent_activity_at = Some(Instant::now());
+                } else if selected_status_after_capture.is_some_and(|status| {
+                    !matches!(status, WorkspaceStatus::Active | WorkspaceStatus::Thinking)
+                }) {
+                    self.last_agent_activity_at = None;
+                }
                 self.last_tmux_error = None;
                 self.event_log.log(
                     LogEvent::new("preview_poll", "capture_completed")
@@ -2455,6 +2565,25 @@ impl GroveApp {
             Err(message) => {
                 self.output_changing = false;
                 self.agent_output_changing = false;
+                self.last_agent_activity_at = None;
+                let capture_error_indicates_missing_session =
+                    Self::tmux_capture_error_indicates_missing_session(&message);
+                if capture_error_indicates_missing_session {
+                    if let Some(workspace) = self.state.selected_workspace_mut()
+                        && !workspace.is_main
+                        && session_name_for_workspace(&workspace.name) == session_name
+                    {
+                        workspace.status = WorkspaceStatus::Idle;
+                        workspace.is_orphaned = true;
+                    }
+                    if self
+                        .interactive
+                        .as_ref()
+                        .is_some_and(|interactive| interactive.target_session == session_name)
+                    {
+                        self.interactive = None;
+                    }
+                }
                 self.last_tmux_error = Some(message.clone());
                 self.event_log.log(
                     LogEvent::new("preview_poll", "capture_failed")
@@ -2598,6 +2727,9 @@ impl GroveApp {
     fn poll_preview_sync(&mut self) {
         let live_preview = self.selected_session_for_live_preview();
         let cursor_session = self.interactive_target_session();
+        let status_poll_targets = self.workspace_status_poll_targets(
+            live_preview.as_ref().map(|(session, _)| session.as_str()),
+        );
 
         if let Some((session_name, include_escape_sequences)) = live_preview {
             let capture_started_at = Instant::now();
@@ -2617,6 +2749,27 @@ impl GroveApp {
         } else {
             self.output_changing = false;
             self.agent_output_changing = false;
+            self.last_agent_activity_at = None;
+            self.refresh_preview_summary();
+        }
+
+        for target in status_poll_targets {
+            let capture_started_at = Instant::now();
+            let result = self
+                .tmux_input
+                .capture_output(&target.session_name, 120, false)
+                .map_err(|error| error.to_string());
+            let capture_ms =
+                Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
+            self.apply_workspace_status_capture(WorkspaceStatusCapture {
+                workspace_name: target.workspace_name,
+                session_name: target.session_name,
+                supported_agent: target.supported_agent,
+                capture_ms,
+                result,
+            });
+        }
+        if self.selected_session_for_live_preview().is_none() {
             self.refresh_preview_summary();
         }
 
@@ -2630,6 +2783,7 @@ impl GroveApp {
         generation: u64,
         live_preview: Option<(String, bool)>,
         cursor_session: Option<String>,
+        status_poll_targets: Vec<WorkspaceStatusPollTarget>,
     ) -> Cmd<Msg> {
         Cmd::task(move || {
             let live_capture = live_preview.map(|(session, include_escape_sequences)| {
@@ -2665,10 +2819,31 @@ impl GroveApp {
                 }
             });
 
+            let workspace_status_captures = status_poll_targets
+                .into_iter()
+                .map(|target| {
+                    let capture_started_at = Instant::now();
+                    let result =
+                        CommandTmuxInput::capture_session_output(&target.session_name, 120, false)
+                            .map_err(|error| error.to_string());
+                    let capture_ms = GroveApp::duration_millis(
+                        Instant::now().saturating_duration_since(capture_started_at),
+                    );
+                    WorkspaceStatusCapture {
+                        workspace_name: target.workspace_name,
+                        session_name: target.session_name,
+                        supported_agent: target.supported_agent,
+                        capture_ms,
+                        result,
+                    }
+                })
+                .collect();
+
             Msg::PreviewPollCompleted(PreviewPollCompletion {
                 generation,
                 live_capture,
                 cursor_capture,
+                workspace_status_captures,
             })
         })
     }
@@ -2681,10 +2856,14 @@ impl GroveApp {
 
         let live_preview = self.selected_session_for_live_preview();
         let cursor_session = self.interactive_target_session();
+        let status_poll_targets = self.workspace_status_poll_targets(
+            live_preview.as_ref().map(|(session, _)| session.as_str()),
+        );
 
-        if live_preview.is_none() && cursor_session.is_none() {
+        if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
             self.output_changing = false;
             self.agent_output_changing = false;
+            self.last_agent_activity_at = None;
             self.refresh_preview_summary();
             return;
         }
@@ -2694,6 +2873,7 @@ impl GroveApp {
             self.poll_generation,
             live_preview,
             cursor_session,
+            status_poll_targets,
         ));
     }
 
@@ -2722,6 +2902,14 @@ impl GroveApp {
         } else {
             self.output_changing = false;
             self.agent_output_changing = false;
+            self.last_agent_activity_at = None;
+            self.refresh_preview_summary();
+        }
+
+        for status_capture in completion.workspace_status_captures {
+            self.apply_workspace_status_capture(status_capture);
+        }
+        if self.selected_session_for_live_preview().is_none() {
             self.refresh_preview_summary();
         }
 
@@ -3849,6 +4037,7 @@ impl GroveApp {
                     workspace.status = WorkspaceStatus::Idle;
                     workspace.is_orphaned = false;
                 }
+                self.last_agent_activity_at = None;
                 self.event_log.log(
                     LogEvent::new("agent_lifecycle", "agent_stopped")
                         .with_data("workspace", Value::from(completion.workspace_name))
@@ -5267,7 +5456,18 @@ impl GroveApp {
     fn status_is_visually_working(&self, status: WorkspaceStatus, is_selected: bool) -> bool {
         match status {
             WorkspaceStatus::Thinking => true,
-            WorkspaceStatus::Active => is_selected && self.agent_output_changing,
+            WorkspaceStatus::Active => {
+                if !is_selected {
+                    return false;
+                }
+                if self.agent_output_changing {
+                    return true;
+                }
+                self.last_agent_activity_at.is_some_and(|last| {
+                    Instant::now().saturating_duration_since(last)
+                        <= Duration::from_millis(ACTIVE_SPINNER_GRACE_MS)
+                })
+            }
             _ => false,
         }
     }
@@ -5400,12 +5600,39 @@ impl GroveApp {
         }
     }
 
-    fn status_icon(&self, status: WorkspaceStatus, is_selected: bool) -> &'static str {
+    fn workspace_agent_color(&self, agent: AgentType) -> PackedRgba {
+        let theme = ui_theme();
+        match agent {
+            AgentType::Claude => theme.mauve,
+            AgentType::Codex => theme.blue,
+        }
+    }
+
+    fn agent_marker(agent: AgentType) -> &'static str {
+        match agent {
+            AgentType::Claude => "◇",
+            AgentType::Codex => "□",
+        }
+    }
+
+    fn status_indicator(&self, status: WorkspaceStatus, is_selected: bool) -> &'static str {
         if self.status_is_visually_working(status, is_selected) {
             return FAST_SPINNER_FRAMES[self.fast_animation_frame % FAST_SPINNER_FRAMES.len()];
         }
 
         status.icon()
+    }
+
+    fn workspace_status_glyph(&self, workspace: &Workspace, is_selected: bool) -> String {
+        format!(
+            "{}{}",
+            Self::agent_marker(workspace.agent),
+            self.status_indicator(workspace.status, is_selected)
+        )
+    }
+
+    fn status_icon(&self, status: WorkspaceStatus, is_selected: bool) -> &'static str {
+        self.status_indicator(status, is_selected)
     }
 
     fn activity_spinner_slot(&self, status: WorkspaceStatus, is_selected: bool) -> &'static str {
@@ -5448,12 +5675,13 @@ impl GroveApp {
         let theme = ui_theme();
         let mode_chip = format!("[{}]", self.mode_label());
         let focus_chip = format!("[{}]", self.focus_label());
-        let selected_status = self.selected_workspace_status();
-        let activity_chip = format!(
-            "{} {}",
-            self.status_icon(selected_status, true),
-            self.selected_status_hint()
-        );
+        let selected_workspace = self.state.selected_workspace();
+        let selected_status =
+            selected_workspace.map_or(WorkspaceStatus::Unknown, |workspace| workspace.status);
+        let selected_icon = selected_workspace
+            .map(|workspace| self.workspace_status_glyph(workspace, true))
+            .unwrap_or_else(|| format!(".{}", self.status_indicator(selected_status, true)));
+        let activity_chip = format!("{} {}", selected_icon, self.selected_status_hint());
 
         let base_header = StatusLine::new()
             .separator("  ")
@@ -5532,7 +5760,8 @@ impl GroveApp {
                     } else {
                         " "
                     };
-                    let icon = self.status_icon(workspace.status, is_selected);
+                    let status_icon = self.status_icon(workspace.status, is_selected);
+                    let agent_icon = Self::agent_marker(workspace.agent);
                     let age = self.relative_age_label(workspace.last_activity_unix_secs);
 
                     let secondary = format!(
@@ -5571,7 +5800,13 @@ impl GroveApp {
                     let mut primary_spans = vec![
                         FtSpan::styled(format!("{selected} "), primary_style),
                         FtSpan::styled(
-                            format!("{icon} "),
+                            agent_icon.to_string(),
+                            primary_style
+                                .fg(self.workspace_agent_color(workspace.agent))
+                                .bold(),
+                        ),
+                        FtSpan::styled(
+                            format!("{status_icon} "),
                             primary_style
                                 .fg(self.workspace_status_color(workspace.status))
                                 .bold(),
@@ -5684,7 +5919,7 @@ impl GroveApp {
                 let detail = format!(
                     "{} | {} | {}",
                     workspace.agent.label(),
-                    workspace.status.icon(),
+                    self.workspace_status_glyph(workspace, false),
                     workspace.path.display()
                 );
                 (format!("{mode_label} | {name_label}"), detail)
@@ -6026,7 +6261,7 @@ impl GroveApp {
                     lines.push(format!(
                         "{} {} {} | {} | {}{}",
                         selected,
-                        workspace.status.icon(),
+                        self.workspace_status_glyph(workspace, idx == self.state.selected_index),
                         workspace.name,
                         workspace.branch,
                         workspace.path.display(),
@@ -6381,8 +6616,8 @@ mod tests {
         HIT_ID_WORKSPACE_ROW, LaunchDialogField, LaunchDialogState, LivePreviewCapture, Msg,
         PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
         StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
-        WORKSPACE_ITEM_HEIGHT, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
-        ui_theme,
+        WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line,
+        parse_cursor_metadata, ui_theme,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -6991,6 +7226,29 @@ mod tests {
     }
 
     #[test]
+    fn sidebar_icons_are_agent_distinct() {
+        let app = fixture_app();
+        let lines = app.shell_lines(12);
+        let Some(main_line) = lines.iter().find(|line| line.contains("grove | main")) else {
+            panic!("main workspace shell line should be present");
+        };
+        let Some(feature_line) = lines
+            .iter()
+            .find(|line| line.contains("feature-a | feature-a"))
+        else {
+            panic!("feature workspace shell line should be present");
+        };
+        assert!(
+            main_line.contains("◇"),
+            "claude workspace should show claude marker, got: {main_line}"
+        );
+        assert!(
+            feature_line.contains("□"),
+            "codex workspace should show codex marker, got: {feature_line}"
+        );
+    }
+
+    #[test]
     fn active_workspace_without_recent_activity_uses_static_indicators() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -7021,6 +7279,31 @@ mod tests {
             assert!(
                 !contains_spinner_frame(&status_text),
                 "status bar should not animate without recent output, got: {status_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn active_workspace_with_recent_activity_timestamp_animates_indicators() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        app.state.selected_index = 1;
+        app.output_changing = false;
+        app.agent_output_changing = false;
+        app.last_agent_activity_at = Some(Instant::now());
+
+        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(selected_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
+            assert!(
+                contains_spinner_frame(&sidebar_row_text),
+                "active workspace should animate for recent activity, got: {sidebar_row_text}"
             );
         });
     }
@@ -7514,6 +7797,23 @@ mod tests {
     }
 
     #[test]
+    fn tick_queues_async_poll_for_background_workspace_statuses_only() {
+        let sidebar_ratio_path = unique_sidebar_ratio_path("background-status-only");
+        let mut app = GroveApp::from_parts(
+            fixture_bootstrap(WorkspaceStatus::Idle),
+            Box::new(BackgroundOnlyTmuxInput),
+            sidebar_ratio_path,
+            Box::new(NullEventLogger),
+            None,
+        );
+        app.state.selected_index = 0;
+        force_tick_due(&mut app);
+
+        let cmd = ftui::Model::update(&mut app, Msg::Tick);
+        assert!(cmd_contains_task(&cmd));
+    }
+
+    #[test]
     fn async_preview_capture_failure_sets_flash_message() {
         let mut app = fixture_app();
         app.state.selected_index = 1;
@@ -7530,6 +7830,7 @@ mod tests {
                     result: Err("capture failed".to_string()),
                 }),
                 cursor_capture: None,
+                workspace_status_captures: Vec::new(),
             }),
         );
 
@@ -7557,6 +7858,7 @@ mod tests {
                     result: Ok("stale-output\n".to_string()),
                 }),
                 cursor_capture: None,
+                workspace_status_captures: Vec::new(),
             }),
         );
         assert_eq!(app.preview.lines, vec!["initial".to_string()]);
@@ -7578,6 +7880,7 @@ mod tests {
                     result: Ok("fresh-output\n".to_string()),
                 }),
                 cursor_capture: None,
+                workspace_status_captures: Vec::new(),
             }),
         );
         assert_eq!(app.preview.lines, vec!["fresh-output".to_string()]);
@@ -7600,6 +7903,7 @@ mod tests {
                     result: Ok("hello\u{1b}[?1000h\u{1b}[<35;192;47M".to_string()),
                 }),
                 cursor_capture: None,
+                workspace_status_captures: Vec::new(),
             }),
         );
         assert!(app.output_changing);
@@ -7616,6 +7920,7 @@ mod tests {
                     result: Ok("hello\u{1b}[?1000l".to_string()),
                 }),
                 cursor_capture: None,
+                workspace_status_captures: Vec::new(),
             }),
         );
 
@@ -7627,6 +7932,143 @@ mod tests {
             .expect("capture record should exist");
         assert!(capture.changed_raw);
         assert!(!capture.changed_cleaned);
+    }
+
+    #[test]
+    fn preview_poll_waiting_prompt_sets_waiting_status() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+        if let Some(workspace) = app.state.selected_workspace_mut() {
+            workspace.status = WorkspaceStatus::Active;
+        }
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation: 1,
+                live_capture: Some(LivePreviewCapture {
+                    session: "grove-ws-feature-a".to_string(),
+                    include_escape_sequences: true,
+                    capture_ms: 1,
+                    total_ms: 1,
+                    result: Ok("Approve command? [y/n]".to_string()),
+                }),
+                cursor_capture: None,
+                workspace_status_captures: Vec::new(),
+            }),
+        );
+
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.status),
+            Some(WorkspaceStatus::Waiting)
+        );
+    }
+
+    #[test]
+    fn preview_poll_updates_non_selected_workspace_status_from_background_capture() {
+        let mut app = fixture_app();
+        app.state.selected_index = 0;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation: 1,
+                live_capture: None,
+                cursor_capture: None,
+                workspace_status_captures: vec![WorkspaceStatusCapture {
+                    workspace_name: "feature-a".to_string(),
+                    session_name: "grove-ws-feature-a".to_string(),
+                    supported_agent: true,
+                    capture_ms: 1,
+                    result: Ok("> Implement {feature}\n? for shortcuts\n".to_string()),
+                }],
+            }),
+        );
+
+        assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Waiting);
+        assert!(!app.state.workspaces[1].is_orphaned);
+    }
+
+    #[test]
+    fn preview_poll_non_selected_missing_session_marks_orphaned_idle() {
+        let mut app = fixture_app();
+        app.state.selected_index = 0;
+        app.state.workspaces[1].status = WorkspaceStatus::Active;
+        app.state.workspaces[1].is_orphaned = false;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation: 1,
+                live_capture: None,
+                cursor_capture: None,
+                workspace_status_captures: vec![WorkspaceStatusCapture {
+                    workspace_name: "feature-a".to_string(),
+                    session_name: "grove-ws-feature-a".to_string(),
+                    supported_agent: true,
+                    capture_ms: 1,
+                    result: Err(
+                        "tmux capture-pane failed for 'grove-ws-feature-a': can't find pane"
+                            .to_string(),
+                    ),
+                }],
+            }),
+        );
+
+        assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Idle);
+        assert!(app.state.workspaces[1].is_orphaned);
+    }
+
+    #[test]
+    fn preview_poll_missing_session_marks_workspace_orphaned_idle() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+        app.interactive = Some(InteractiveState::new(
+            "%1".to_string(),
+            "grove-ws-feature-a".to_string(),
+            Instant::now(),
+            20,
+            80,
+        ));
+        if let Some(workspace) = app.state.selected_workspace_mut() {
+            workspace.status = WorkspaceStatus::Active;
+            workspace.is_orphaned = false;
+        }
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation: 1,
+                live_capture: Some(LivePreviewCapture {
+                    session: "grove-ws-feature-a".to_string(),
+                    include_escape_sequences: true,
+                    capture_ms: 1,
+                    total_ms: 1,
+                    result: Err(
+                        "tmux capture-pane failed for 'grove-ws-feature-a': can't find pane"
+                            .to_string(),
+                    ),
+                }),
+                cursor_capture: None,
+                workspace_status_captures: Vec::new(),
+            }),
+        );
+
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.status),
+            Some(WorkspaceStatus::Idle)
+        );
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.is_orphaned),
+            Some(true)
+        );
+        assert!(app.interactive.is_none());
     }
 
     #[test]
@@ -8805,6 +9247,7 @@ mod tests {
                     capture_ms: 1,
                     result: Ok("1 0 0 70 20".to_string()),
                 }),
+                workspace_status_captures: Vec::new(),
             }),
         );
 
