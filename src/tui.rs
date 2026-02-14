@@ -1889,47 +1889,112 @@ impl GroveApp {
             .unwrap_or(0);
         let oldest_pending_input_age_ms = self.oldest_pending_input_age_ms(Instant::now());
 
-        self.event_log.log(
-            LogEvent::new("frame", "rendered")
-                .with_data("seq", Value::from(seq_value))
-                .with_data("app_start_ts", Value::from(app_start_ts))
-                .with_data("width", Value::from(frame.buffer.width()))
-                .with_data("height", Value::from(frame.buffer.height()))
+        let mut frame_event = LogEvent::new("frame", "rendered")
+            .with_data("seq", Value::from(seq_value))
+            .with_data("app_start_ts", Value::from(app_start_ts))
+            .with_data("width", Value::from(frame.buffer.width()))
+            .with_data("height", Value::from(frame.buffer.height()))
+            .with_data(
+                "line_count",
+                Value::from(u64::try_from(lines.len()).unwrap_or(u64::MAX)),
+            )
+            .with_data(
+                "non_empty_line_count",
+                Value::from(u64::try_from(non_empty_line_count).unwrap_or(u64::MAX)),
+            )
+            .with_data("frame_hash", Value::from(frame_hash))
+            .with_data("degradation", Value::from(frame.degradation.as_str()))
+            .with_data("mode", Value::from(self.mode_label()))
+            .with_data("focus", Value::from(self.focus_label()))
+            .with_data("selected_workspace", Value::from(selected_workspace))
+            .with_data("interactive_session", Value::from(interactive_session))
+            .with_data("sidebar_width_pct", Value::from(self.sidebar_width_pct))
+            .with_data(
+                "preview_offset",
+                Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
+            )
+            .with_data("preview_auto_scroll", Value::from(self.preview.auto_scroll))
+            .with_data("output_changing", Value::from(self.output_changing))
+            .with_data("pending_input_depth", Value::from(pending_input_depth))
+            .with_data(
+                "oldest_pending_input_seq",
+                Value::from(oldest_pending_input_seq),
+            )
+            .with_data(
+                "oldest_pending_input_age_ms",
+                Value::from(oldest_pending_input_age_ms),
+            )
+            .with_data("frame_cursor_visible", Value::from(frame.cursor_visible))
+            .with_data(
+                "frame_cursor_has_position",
+                Value::from(frame.cursor_position.is_some()),
+            );
+        if let Some((cursor_col, cursor_row)) = frame.cursor_position {
+            frame_event = frame_event
+                .with_data("frame_cursor_col", Value::from(cursor_col))
+                .with_data("frame_cursor_row", Value::from(cursor_row));
+        }
+        if let Some(interactive) = self.interactive.as_ref() {
+            frame_event = frame_event
                 .with_data(
-                    "line_count",
-                    Value::from(u64::try_from(lines.len()).unwrap_or(u64::MAX)),
+                    "interactive_cursor_visible",
+                    Value::from(interactive.cursor_visible),
                 )
                 .with_data(
-                    "non_empty_line_count",
-                    Value::from(u64::try_from(non_empty_line_count).unwrap_or(u64::MAX)),
-                )
-                .with_data("frame_hash", Value::from(frame_hash))
-                .with_data("degradation", Value::from(frame.degradation.as_str()))
-                .with_data("mode", Value::from(self.mode_label()))
-                .with_data("focus", Value::from(self.focus_label()))
-                .with_data("selected_workspace", Value::from(selected_workspace))
-                .with_data("interactive_session", Value::from(interactive_session))
-                .with_data("sidebar_width_pct", Value::from(self.sidebar_width_pct))
-                .with_data(
-                    "preview_offset",
-                    Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
-                )
-                .with_data("preview_auto_scroll", Value::from(self.preview.auto_scroll))
-                .with_data("output_changing", Value::from(self.output_changing))
-                .with_data("pending_input_depth", Value::from(pending_input_depth))
-                .with_data(
-                    "oldest_pending_input_seq",
-                    Value::from(oldest_pending_input_seq),
+                    "interactive_cursor_row",
+                    Value::from(interactive.cursor_row),
                 )
                 .with_data(
-                    "oldest_pending_input_age_ms",
-                    Value::from(oldest_pending_input_age_ms),
+                    "interactive_cursor_col",
+                    Value::from(interactive.cursor_col),
                 )
                 .with_data(
-                    "frame_lines",
-                    Value::Array(lines.into_iter().map(Value::from).collect()),
-                ),
+                    "interactive_pane_width",
+                    Value::from(interactive.pane_width),
+                )
+                .with_data(
+                    "interactive_pane_height",
+                    Value::from(interactive.pane_height),
+                );
+
+            let layout = Self::view_layout_for_size(
+                frame.buffer.width(),
+                frame.buffer.height(),
+                self.sidebar_width_pct,
+            );
+            let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+            let preview_height = usize::from(
+                preview_inner
+                    .height
+                    .saturating_sub(PREVIEW_METADATA_ROWS)
+                    .max(1),
+            );
+            let cursor_target = self.interactive_cursor_target(preview_height);
+            frame_event = frame_event.with_data(
+                "interactive_cursor_in_viewport",
+                Value::from(cursor_target.is_some()),
+            );
+            if let Some((visible_index, target_col, target_visible)) = cursor_target {
+                frame_event = frame_event
+                    .with_data(
+                        "interactive_cursor_visible_index",
+                        Value::from(u64::try_from(visible_index).unwrap_or(u64::MAX)),
+                    )
+                    .with_data(
+                        "interactive_cursor_target_col",
+                        Value::from(u64::try_from(target_col).unwrap_or(u64::MAX)),
+                    )
+                    .with_data(
+                        "interactive_cursor_target_visible",
+                        Value::from(target_visible),
+                    );
+            }
+        }
+        frame_event = frame_event.with_data(
+            "frame_lines",
+            Value::Array(lines.into_iter().map(Value::from).collect()),
         );
+        self.event_log.log(frame_event);
     }
 
     #[cfg(test)]
@@ -2372,7 +2437,9 @@ impl GroveApp {
                 .with_data("changed", Value::from(changed))
                 .with_data("cursor_visible", Value::from(metadata.cursor_visible))
                 .with_data("cursor_row", Value::from(metadata.cursor_row))
-                .with_data("cursor_col", Value::from(metadata.cursor_col)),
+                .with_data("cursor_col", Value::from(metadata.cursor_col))
+                .with_data("pane_width", Value::from(metadata.pane_width))
+                .with_data("pane_height", Value::from(metadata.pane_height)),
         );
     }
 
@@ -5746,6 +5813,8 @@ impl Model for GroveApp {
 
     fn view(&self, frame: &mut Frame) {
         let view_started_at = Instant::now();
+        frame.set_cursor(None);
+        frame.set_cursor_visible(false);
         frame.enable_hit_testing();
         let area = Rect::from_size(frame.buffer.width(), frame.buffer.height());
         let layout = Self::view_layout_for_size(
@@ -6715,6 +6784,16 @@ mod tests {
             let status_text = row_text(frame, status_row, 0, frame.width());
             assert!(status_text.contains("Type prompt"));
             assert!(status_text.contains("Enter start"));
+        });
+    }
+
+    #[test]
+    fn view_hides_terminal_cursor_without_focused_input_widget() {
+        let app = fixture_app();
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            assert!(frame.cursor_position.is_none());
+            assert!(!frame.cursor_visible);
         });
     }
 
@@ -9862,6 +9941,99 @@ mod tests {
                 .get("non_empty_line_count")
                 .and_then(Value::as_u64)
                 .is_some_and(|count| count > 0)
+        );
+        assert_eq!(
+            frame_event
+                .data
+                .get("frame_cursor_visible")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            frame_event
+                .data
+                .get("frame_cursor_has_position")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn frame_debug_record_includes_interactive_cursor_snapshot() {
+        let sidebar_ratio_path = unique_sidebar_ratio_path("frame-cursor-snapshot");
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let event_log = RecordingEventLogger {
+            events: events.clone(),
+        };
+        let mut app = GroveApp::from_parts(
+            fixture_bootstrap(WorkspaceStatus::Idle),
+            Box::new(RecordingTmuxInput {
+                commands: Rc::new(RefCell::new(Vec::new())),
+                captures: Rc::new(RefCell::new(Vec::new())),
+                cursor_captures: Rc::new(RefCell::new(Vec::new())),
+                calls: Rc::new(RefCell::new(Vec::new())),
+            }),
+            sidebar_ratio_path,
+            Box::new(event_log),
+            Some(1_771_023_000_124),
+        );
+        app.interactive = Some(InteractiveState::new(
+            "%1".to_string(),
+            "grove-ws-feature-a".to_string(),
+            Instant::now(),
+            3,
+            80,
+        ));
+        if let Some(state) = app.interactive.as_mut() {
+            state.update_cursor(1, 2, true, 3, 80);
+        }
+        app.preview.lines = vec![
+            "line-0".to_string(),
+            "line-1".to_string(),
+            "line-2".to_string(),
+        ];
+        app.preview.render_lines = app.preview.lines.clone();
+
+        with_rendered_frame(&app, 80, 24, |_frame| {});
+
+        let frame_event = recorded_events(&events)
+            .into_iter()
+            .find(|event| event.event == "frame" && event.kind == "rendered")
+            .expect("frame event should be present");
+        assert_eq!(
+            frame_event
+                .data
+                .get("interactive_cursor_row")
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            frame_event
+                .data
+                .get("interactive_cursor_col")
+                .and_then(Value::as_u64),
+            Some(2)
+        );
+        assert_eq!(
+            frame_event
+                .data
+                .get("interactive_cursor_in_viewport")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            frame_event
+                .data
+                .get("interactive_cursor_visible_index")
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            frame_event
+                .data
+                .get("interactive_cursor_target_col")
+                .and_then(Value::as_u64),
+            Some(2)
         );
     }
 }
