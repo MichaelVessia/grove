@@ -77,6 +77,7 @@ const HIT_ID_STATUS: u32 = 5;
 const HIT_ID_WORKSPACE_ROW: u32 = 6;
 const HIT_ID_CREATE_DIALOG: u32 = 7;
 const HIT_ID_LAUNCH_DIALOG: u32 = 8;
+const HIT_ID_DELETE_DIALOG: u32 = 9;
 const MAX_PENDING_INPUT_TRACES: usize = 256;
 const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
@@ -366,6 +367,41 @@ struct LaunchDialogState {
     focused_field: LaunchDialogField,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DeleteDialogState {
+    workspace_name: String,
+    branch: String,
+    path: PathBuf,
+    is_missing: bool,
+    delete_local_branch: bool,
+    focused_field: DeleteDialogField,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeleteDialogField {
+    DeleteLocalBranch,
+    DeleteButton,
+    CancelButton,
+}
+
+impl DeleteDialogField {
+    fn next(self) -> Self {
+        match self {
+            Self::DeleteLocalBranch => Self::DeleteButton,
+            Self::DeleteButton => Self::CancelButton,
+            Self::CancelButton => Self::DeleteLocalBranch,
+        }
+    }
+
+    fn previous(self) -> Self {
+        match self {
+            Self::DeleteLocalBranch => Self::CancelButton,
+            Self::DeleteButton => Self::DeleteLocalBranch,
+            Self::CancelButton => Self::DeleteButton,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LaunchDialogField {
     Prompt,
@@ -462,6 +498,7 @@ struct OverlayModalContent<'a> {
     title: &'a str,
     body: FtText,
     theme: UiTheme,
+    border_color: PackedRgba,
 }
 
 impl Widget for OverlayModalContent<'_> {
@@ -479,7 +516,7 @@ impl Widget for OverlayModalContent<'_> {
             .title(self.title)
             .borders(Borders::ALL)
             .style(content_style)
-            .border_style(Style::new().fg(self.theme.mauve).bold());
+            .border_style(Style::new().fg(self.border_color).bold());
         let inner = block.inner(area);
         block.render(area, frame);
 
@@ -691,6 +728,7 @@ enum Msg {
     Resize { width: u16, height: u16 },
     PreviewPollCompleted(PreviewPollCompletion),
     RefreshWorkspacesCompleted(RefreshWorkspacesCompletion),
+    DeleteWorkspaceCompleted(DeleteWorkspaceCompletion),
     CreateWorkspaceCompleted(CreateWorkspaceCompletion),
     StartAgentCompleted(StartAgentCompletion),
     StopAgentCompleted(StopAgentCompletion),
@@ -742,6 +780,13 @@ struct WorkspaceStatusCapture {
 struct RefreshWorkspacesCompletion {
     preferred_workspace_name: Option<String>,
     bootstrap: BootstrapData,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DeleteWorkspaceCompletion {
+    workspace_name: String,
+    result: Result<(), String>,
+    warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1400,6 +1445,7 @@ struct GroveApp {
     interactive: Option<InteractiveState>,
     action_mapper: ActionMapper,
     launch_dialog: Option<LaunchDialogState>,
+    delete_dialog: Option<DeleteDialogState>,
     create_dialog: Option<CreateDialogState>,
     create_branch_all: Vec<String>,
     create_branch_filtered: Vec<String>,
@@ -1435,6 +1481,7 @@ struct GroveApp {
     interactive_send_in_flight: bool,
     pending_resize_verification: Option<PendingResizeVerification>,
     refresh_in_flight: bool,
+    delete_in_flight: bool,
     create_in_flight: bool,
     start_in_flight: bool,
     stop_in_flight: bool,
@@ -1512,6 +1559,7 @@ impl GroveApp {
             interactive: None,
             action_mapper: ActionMapper::new(mapper_config),
             launch_dialog: None,
+            delete_dialog: None,
             create_dialog: None,
             create_branch_all: Vec::new(),
             create_branch_filtered: Vec::new(),
@@ -1547,6 +1595,7 @@ impl GroveApp {
             interactive_send_in_flight: false,
             pending_resize_verification: None,
             refresh_in_flight: false,
+            delete_in_flight: false,
             create_in_flight: false,
             start_in_flight: false,
             stop_in_flight: false,
@@ -1768,6 +1817,7 @@ impl GroveApp {
             Msg::Resize { .. } => "resize",
             Msg::PreviewPollCompleted(_) => "preview_poll_completed",
             Msg::RefreshWorkspacesCompleted(_) => "refresh_workspaces_completed",
+            Msg::DeleteWorkspaceCompleted(_) => "delete_workspace_completed",
             Msg::CreateWorkspaceCompleted(_) => "create_workspace_completed",
             Msg::StartAgentCompleted(_) => "start_agent_completed",
             Msg::StopAgentCompleted(_) => "stop_agent_completed",
@@ -2203,6 +2253,9 @@ impl GroveApp {
         if self.launch_dialog.is_some() {
             return "Tab/S-Tab field, h/l buttons, Space toggle unsafe, Enter select/start, Esc cancel";
         }
+        if self.delete_dialog.is_some() {
+            return "Tab/S-Tab field, j/k move, Space toggle branch delete, Enter select/delete, D confirm, Esc cancel";
+        }
         if self.interactive.is_some() {
             return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
         }
@@ -2210,7 +2263,7 @@ impl GroveApp {
             return "j/k scroll, PgUp/PgDn, G bottom, Esc list, q quit";
         }
 
-        "j/k move, Enter open, n new, s start, x stop, q quit"
+        "j/k move, Enter open, n new, s start, x stop, D delete, q quit"
     }
 
     fn selected_workspace_summary(&self) -> String {
@@ -2231,7 +2284,7 @@ impl GroveApp {
     }
 
     fn modal_open(&self) -> bool {
-        self.launch_dialog.is_some() || self.create_dialog.is_some()
+        self.launch_dialog.is_some() || self.create_dialog.is_some() || self.delete_dialog.is_some()
     }
 
     fn refresh_preview_summary(&mut self) {
@@ -3008,6 +3061,7 @@ impl GroveApp {
 
     fn keybinding_task_running(&self) -> bool {
         self.refresh_in_flight
+            || self.delete_in_flight
             || self.create_in_flight
             || self.start_in_flight
             || self.stop_in_flight
@@ -3041,6 +3095,9 @@ impl GroveApp {
                 } else if self.launch_dialog.is_some() {
                     self.log_dialog_event("launch", "dialog_cancelled");
                     self.launch_dialog = None;
+                } else if self.delete_dialog.is_some() {
+                    self.log_dialog_event("delete", "dialog_cancelled");
+                    self.delete_dialog = None;
                 }
                 false
             }
@@ -3194,6 +3251,333 @@ impl GroveApp {
             ],
         );
         self.last_tmux_error = None;
+    }
+
+    fn open_delete_dialog(&mut self) {
+        if self.modal_open() {
+            return;
+        }
+        if self.delete_in_flight {
+            self.show_flash("workspace delete already in progress", true);
+            return;
+        }
+
+        let Some(workspace) = self.state.selected_workspace() else {
+            self.show_flash("no workspace selected", true);
+            return;
+        };
+        if workspace.is_main {
+            self.show_flash("cannot delete main workspace", true);
+            return;
+        }
+
+        let is_missing = !workspace.path.exists();
+        self.delete_dialog = Some(DeleteDialogState {
+            workspace_name: workspace.name.clone(),
+            branch: workspace.branch.clone(),
+            path: workspace.path.clone(),
+            is_missing,
+            delete_local_branch: is_missing,
+            focused_field: DeleteDialogField::DeleteLocalBranch,
+        });
+        self.log_dialog_event_with_fields(
+            "delete",
+            "dialog_opened",
+            [
+                ("workspace".to_string(), Value::from(workspace.name.clone())),
+                ("branch".to_string(), Value::from(workspace.branch.clone())),
+                (
+                    "path".to_string(),
+                    Value::from(workspace.path.display().to_string()),
+                ),
+                ("is_missing".to_string(), Value::from(is_missing)),
+            ],
+        );
+        self.state.mode = UiMode::List;
+        self.state.focus = PaneFocus::WorkspaceList;
+        self.last_tmux_error = None;
+    }
+
+    fn handle_delete_dialog_key(&mut self, key_event: KeyEvent) {
+        if self.delete_in_flight {
+            return;
+        }
+        let no_modifiers = key_event.modifiers.is_empty();
+        match key_event.code {
+            KeyCode::Escape => {
+                self.log_dialog_event("delete", "dialog_cancelled");
+                self.delete_dialog = None;
+                return;
+            }
+            KeyCode::Char('q') if no_modifiers => {
+                self.log_dialog_event("delete", "dialog_cancelled");
+                self.delete_dialog = None;
+                return;
+            }
+            KeyCode::Char('D') if no_modifiers => {
+                self.confirm_delete_dialog();
+                return;
+            }
+            _ => {}
+        }
+
+        let mut confirm_delete = false;
+        let mut cancel_dialog = false;
+        let Some(dialog) = self.delete_dialog.as_mut() else {
+            return;
+        };
+
+        match key_event.code {
+            KeyCode::Enter => match dialog.focused_field {
+                DeleteDialogField::DeleteLocalBranch => {
+                    dialog.delete_local_branch = !dialog.delete_local_branch;
+                }
+                DeleteDialogField::DeleteButton => {
+                    confirm_delete = true;
+                }
+                DeleteDialogField::CancelButton => {
+                    cancel_dialog = true;
+                }
+            },
+            KeyCode::Tab => {
+                dialog.focused_field = dialog.focused_field.next();
+            }
+            KeyCode::BackTab => {
+                dialog.focused_field = dialog.focused_field.previous();
+            }
+            KeyCode::Up | KeyCode::Char('k') if no_modifiers => {
+                dialog.focused_field = dialog.focused_field.previous();
+            }
+            KeyCode::Down | KeyCode::Char('j') if no_modifiers => {
+                dialog.focused_field = dialog.focused_field.next();
+            }
+            KeyCode::Char(' ') if no_modifiers => {
+                if dialog.focused_field == DeleteDialogField::DeleteLocalBranch {
+                    dialog.delete_local_branch = !dialog.delete_local_branch;
+                }
+            }
+            KeyCode::Char(character) if no_modifiers => {
+                if (dialog.focused_field == DeleteDialogField::DeleteButton
+                    || dialog.focused_field == DeleteDialogField::CancelButton)
+                    && (character == 'h' || character == 'l')
+                {
+                    dialog.focused_field =
+                        if dialog.focused_field == DeleteDialogField::DeleteButton {
+                            DeleteDialogField::CancelButton
+                        } else {
+                            DeleteDialogField::DeleteButton
+                        };
+                }
+            }
+            _ => {}
+        }
+
+        if cancel_dialog {
+            self.log_dialog_event("delete", "dialog_cancelled");
+            self.delete_dialog = None;
+            return;
+        }
+        if confirm_delete {
+            self.confirm_delete_dialog();
+        }
+    }
+
+    fn confirm_delete_dialog(&mut self) {
+        if self.delete_in_flight {
+            return;
+        }
+
+        let Some(dialog) = self.delete_dialog.take() else {
+            return;
+        };
+        self.log_dialog_event_with_fields(
+            "delete",
+            "dialog_confirmed",
+            [
+                (
+                    "workspace".to_string(),
+                    Value::from(dialog.workspace_name.clone()),
+                ),
+                ("branch".to_string(), Value::from(dialog.branch.clone())),
+                (
+                    "path".to_string(),
+                    Value::from(dialog.path.display().to_string()),
+                ),
+                (
+                    "delete_local_branch".to_string(),
+                    Value::from(dialog.delete_local_branch),
+                ),
+                ("is_missing".to_string(), Value::from(dialog.is_missing)),
+            ],
+        );
+
+        let workspace_name = dialog.workspace_name.clone();
+        if !self.tmux_input.supports_background_send() {
+            let (result, warnings) = Self::run_delete_workspace(dialog);
+            self.apply_delete_workspace_completion(DeleteWorkspaceCompletion {
+                workspace_name,
+                result,
+                warnings,
+            });
+            return;
+        }
+
+        self.delete_in_flight = true;
+        self.queue_cmd(Cmd::task(move || {
+            let (result, warnings) = Self::run_delete_workspace(dialog);
+            Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
+                workspace_name,
+                result,
+                warnings,
+            })
+        }));
+    }
+
+    fn apply_delete_workspace_completion(&mut self, completion: DeleteWorkspaceCompletion) {
+        self.delete_in_flight = false;
+        match completion.result {
+            Ok(()) => {
+                self.event_log.log(
+                    LogEvent::new("workspace_lifecycle", "workspace_deleted")
+                        .with_data("workspace", Value::from(completion.workspace_name.clone()))
+                        .with_data(
+                            "warning_count",
+                            Value::from(
+                                u64::try_from(completion.warnings.len()).unwrap_or(u64::MAX),
+                            ),
+                        ),
+                );
+                self.last_tmux_error = None;
+                self.refresh_workspaces(None);
+                if completion.warnings.is_empty() {
+                    self.show_flash(
+                        format!("workspace '{}' deleted", completion.workspace_name),
+                        false,
+                    );
+                } else if let Some(first_warning) = completion.warnings.first() {
+                    self.show_flash(
+                        format!(
+                            "workspace '{}' deleted, warning: {}",
+                            completion.workspace_name, first_warning
+                        ),
+                        true,
+                    );
+                }
+            }
+            Err(error) => {
+                self.event_log.log(
+                    LogEvent::new("workspace_lifecycle", "workspace_delete_failed")
+                        .with_data("workspace", Value::from(completion.workspace_name))
+                        .with_data("error", Value::from(error.clone())),
+                );
+                self.last_tmux_error = Some(error.clone());
+                self.show_flash(format!("workspace delete failed: {error}"), true);
+            }
+        }
+    }
+
+    fn run_delete_workspace(dialog: DeleteDialogState) -> (Result<(), String>, Vec<String>) {
+        let mut warnings = Vec::new();
+        let session_name = session_name_for_workspace(&dialog.workspace_name);
+        let _ = CommandTmuxInput::execute_command(&[
+            "tmux".to_string(),
+            "kill-session".to_string(),
+            "-t".to_string(),
+            session_name,
+        ]);
+
+        let repo_root = match std::env::current_dir() {
+            Ok(path) => path,
+            Err(error) => {
+                return (
+                    Err(format!("cannot resolve current directory: {error}")),
+                    warnings,
+                );
+            }
+        };
+
+        if let Err(error) =
+            Self::run_delete_worktree_git(&repo_root, &dialog.path, dialog.is_missing)
+        {
+            return (Err(error), warnings);
+        }
+
+        if dialog.delete_local_branch
+            && let Err(error) = Self::run_delete_local_branch_git(&repo_root, &dialog.branch)
+        {
+            warnings.push(format!("local branch: {error}"));
+        }
+
+        (Ok(()), warnings)
+    }
+
+    fn run_delete_worktree_git(
+        repo_root: &Path,
+        workspace_path: &Path,
+        is_missing: bool,
+    ) -> Result<(), String> {
+        if is_missing {
+            return Self::run_git_command(
+                repo_root,
+                &["worktree".to_string(), "prune".to_string()],
+            )
+            .map_err(|error| format!("git worktree prune failed: {error}"));
+        }
+
+        let workspace_path_arg = workspace_path.to_string_lossy().to_string();
+        let remove_args = vec![
+            "worktree".to_string(),
+            "remove".to_string(),
+            workspace_path_arg.clone(),
+        ];
+        if Self::run_git_command(repo_root, &remove_args).is_ok() {
+            return Ok(());
+        }
+
+        Self::run_git_command(
+            repo_root,
+            &[
+                "worktree".to_string(),
+                "remove".to_string(),
+                "--force".to_string(),
+                workspace_path_arg,
+            ],
+        )
+        .map_err(|error| format!("git worktree remove failed: {error}"))
+    }
+
+    fn run_delete_local_branch_git(repo_root: &Path, branch: &str) -> Result<(), String> {
+        let safe_args = vec!["branch".to_string(), "-d".to_string(), branch.to_string()];
+        if Self::run_git_command(repo_root, &safe_args).is_ok() {
+            return Ok(());
+        }
+
+        Self::run_git_command(
+            repo_root,
+            &["branch".to_string(), "-D".to_string(), branch.to_string()],
+        )
+        .map_err(|error| format!("git branch delete failed: {error}"))
+    }
+
+    fn run_git_command(repo_root: &Path, args: &[String]) -> Result<(), String> {
+        let output = Command::new("git")
+            .current_dir(repo_root)
+            .args(args)
+            .output()
+            .map_err(|error| format!("git {}: {error}", args.join(" ")))?;
+        if output.status.success() {
+            return Ok(());
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            return Err(format!(
+                "git {}: exit status {}",
+                args.join(" "),
+                output.status
+            ));
+        }
+        Err(format!("git {}: {stderr}", args.join(" ")))
     }
 
     fn selected_base_branch(&self) -> String {
@@ -4531,6 +4915,7 @@ impl GroveApp {
                 self.launch_skip_permissions = !self.launch_skip_permissions;
             }
             KeyCode::Char('n') | KeyCode::Char('N') => self.open_create_dialog(),
+            KeyCode::Char('D') => self.open_delete_dialog(),
             KeyCode::Char('s') => self.open_start_dialog(),
             KeyCode::Char('x') => self.stop_selected_workspace_agent(),
             KeyCode::PageUp => {
@@ -4630,7 +5015,9 @@ impl GroveApp {
                 HIT_ID_DIVIDER => HitRegion::Divider,
                 HIT_ID_PREVIEW => HitRegion::Preview,
                 HIT_ID_WORKSPACE_LIST | HIT_ID_WORKSPACE_ROW => HitRegion::WorkspaceList,
-                HIT_ID_CREATE_DIALOG | HIT_ID_LAUNCH_DIALOG => HitRegion::Outside,
+                HIT_ID_CREATE_DIALOG | HIT_ID_LAUNCH_DIALOG | HIT_ID_DELETE_DIALOG => {
+                    HitRegion::Outside
+                }
                 _ => HitRegion::Outside,
             };
             let row_data = if id.id() == HIT_ID_WORKSPACE_ROW {
@@ -5408,6 +5795,11 @@ impl GroveApp {
             return (false, Cmd::None);
         }
 
+        if self.delete_dialog.is_some() {
+            self.handle_delete_dialog_key(key_event);
+            return (false, Cmd::None);
+        }
+
         if Self::is_quit_key(&key_event) {
             return (true, Cmd::None);
         }
@@ -6073,6 +6465,7 @@ impl GroveApp {
             title: "Start Agent",
             body,
             theme,
+            border_color: theme.mauve,
         };
 
         Modal::new(content)
@@ -6085,6 +6478,124 @@ impl GroveApp {
             )
             .backdrop(BackdropConfig::new(theme.crust, 0.55))
             .hit_id(HitId::new(HIT_ID_LAUNCH_DIALOG))
+            .render(area, frame);
+    }
+
+    fn render_delete_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
+        let Some(dialog) = self.delete_dialog.as_ref() else {
+            return;
+        };
+        if area.width < 24 || area.height < 12 {
+            return;
+        }
+
+        let dialog_width = area.width.saturating_sub(8).min(96);
+        let dialog_height = 16u16;
+        let theme = ui_theme();
+        let focused = |field| dialog.focused_field == field;
+        let checkbox = if dialog.delete_local_branch {
+            "[x]"
+        } else {
+            "[ ]"
+        };
+        let checkbox_row = format!(
+            "{} {} Delete local branch",
+            if focused(DeleteDialogField::DeleteLocalBranch) {
+                ">"
+            } else {
+                " "
+            },
+            checkbox
+        );
+        let warning_lines = if dialog.is_missing {
+            (
+                "  • Directory already removed",
+                "  • Clean up git worktree metadata",
+            )
+        } else {
+            (
+                "  • Remove the working directory",
+                "  • Uncommitted changes will be lost",
+            )
+        };
+        let body = FtText::from_lines(vec![
+            FtLine::from_spans(vec![
+                FtSpan::styled("Name:   ", Style::new().fg(theme.subtext0)),
+                FtSpan::styled(
+                    dialog.workspace_name.as_str(),
+                    Style::new().fg(theme.text).bold(),
+                ),
+            ]),
+            FtLine::from_spans(vec![
+                FtSpan::styled("Branch: ", Style::new().fg(theme.subtext0)),
+                FtSpan::styled(dialog.branch.as_str(), Style::new().fg(theme.text)),
+            ]),
+            FtLine::from_spans(vec![
+                FtSpan::styled("Path:   ", Style::new().fg(theme.subtext0)),
+                FtSpan::styled(
+                    dialog.path.display().to_string(),
+                    Style::new().fg(theme.overlay0),
+                ),
+            ]),
+            FtLine::raw(""),
+            FtLine::from_spans(vec![FtSpan::styled(
+                "This will:",
+                Style::new().fg(theme.peach).bold(),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                warning_lines.0,
+                Style::new().fg(theme.subtext0),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                warning_lines.1,
+                Style::new().fg(theme.subtext0),
+            )]),
+            FtLine::raw(""),
+            FtLine::from_spans(vec![FtSpan::styled(
+                "Branch Cleanup (Optional)",
+                Style::new().fg(theme.text).bold(),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                checkbox_row,
+                Style::new().fg(theme.text),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                format!("  Removes '{}' locally", dialog.branch),
+                Style::new().fg(theme.overlay0),
+            )]),
+            FtLine::raw(""),
+            FtLine::raw(format!(
+                "{} Delete   {} Cancel",
+                if focused(DeleteDialogField::DeleteButton) {
+                    "[*]"
+                } else {
+                    "[ ]"
+                },
+                if focused(DeleteDialogField::CancelButton) {
+                    "[*]"
+                } else {
+                    "[ ]"
+                }
+            )),
+        ]);
+
+        let content = OverlayModalContent {
+            title: "Delete Worktree?",
+            body,
+            theme,
+            border_color: theme.red,
+        };
+
+        Modal::new(content)
+            .size(
+                ModalSizeConstraints::new()
+                    .min_width(dialog_width)
+                    .max_width(dialog_width)
+                    .min_height(dialog_height)
+                    .max_height(dialog_height),
+            )
+            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .hit_id(HitId::new(HIT_ID_DELETE_DIALOG))
             .render(area, frame);
     }
 
@@ -6216,6 +6727,7 @@ impl GroveApp {
             title: "New Workspace",
             body: FtText::from_lines(lines),
             theme,
+            border_color: theme.mauve,
         };
 
         Modal::new(content)
@@ -6298,6 +6810,20 @@ impl GroveApp {
             lines.push(format!(
                 "Unsafe launch: {}",
                 if dialog.skip_permissions { "on" } else { "off" }
+            ));
+        }
+        if let Some(dialog) = &self.delete_dialog {
+            lines.push(String::new());
+            lines.push("Delete Workspace Dialog".to_string());
+            lines.push(format!("Workspace: {}", dialog.workspace_name));
+            lines.push(format!("Branch: {}", dialog.branch));
+            lines.push(format!(
+                "Delete local branch: {}",
+                if dialog.delete_local_branch {
+                    "on"
+                } else {
+                    "off"
+                }
             ));
         }
 
@@ -6470,6 +6996,10 @@ impl Model for GroveApp {
                 self.apply_refresh_workspaces_completion(completion);
                 Cmd::None
             }
+            Msg::DeleteWorkspaceCompleted(completion) => {
+                self.apply_delete_workspace_completion(completion);
+                Cmd::None
+            }
             Msg::CreateWorkspaceCompleted(completion) => {
                 self.apply_create_workspace_completion(completion);
                 Cmd::None
@@ -6521,6 +7051,7 @@ impl Model for GroveApp {
         self.render_status_line(frame, layout.status);
         self.render_create_dialog_overlay(frame, area);
         self.render_launch_dialog_overlay(frame, area);
+        self.render_delete_dialog_overlay(frame, area);
         let draw_completed_at = Instant::now();
         self.last_hit_grid.replace(frame.hit_grid.clone());
         let frame_log_started_at = Instant::now();
@@ -6612,12 +7143,12 @@ mod tests {
     };
     use super::{
         ClipboardAccess, CreateDialogField, CreateWorkspaceCompletion, CursorCapture,
-        FAST_SPINNER_FRAMES, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS,
-        HIT_ID_WORKSPACE_ROW, LaunchDialogField, LaunchDialogState, LivePreviewCapture, Msg,
-        PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
-        StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
-        WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line,
-        parse_cursor_metadata, ui_theme,
+        DeleteDialogField, FAST_SPINNER_FRAMES, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
+        HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogField, LaunchDialogState,
+        LivePreviewCapture, Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification,
+        PreviewPollCompletion, StartAgentCompletion, StopAgentCompletion, TextSelectionPoint,
+        TmuxInput, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color,
+        ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -7141,7 +7672,7 @@ mod tests {
             let mut app = fixture_app();
             for msg in msgs {
                 let _ = ftui::Model::update(&mut app, msg);
-                let active_modals = [app.launch_dialog.is_some(), app.create_dialog.is_some(), app.interactive.is_some()]
+                let active_modals = [app.launch_dialog.is_some(), app.create_dialog.is_some(), app.delete_dialog.is_some(), app.interactive.is_some()]
                     .iter()
                     .filter(|is_active| **is_active)
                     .count();
@@ -7602,6 +8133,20 @@ mod tests {
             let status_text = row_text(frame, status_row, 0, frame.width());
             assert!(status_text.contains("Tab/S-Tab field"));
             assert!(status_text.contains("Enter select/start"));
+        });
+    }
+
+    #[test]
+    fn status_row_shows_delete_dialog_keybind_hints_when_modal_open() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+        app.open_delete_dialog();
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(status_text.contains("Tab/S-Tab field"));
+            assert!(status_text.contains("Space toggle"));
         });
     }
 
@@ -8312,6 +8857,29 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_c_dismisses_delete_modal_via_action_mapper() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+        );
+        assert!(app.delete_dialog.is_some());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('c'))
+                    .with_modifiers(Modifiers::CTRL)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+
+        assert!(app.delete_dialog.is_none());
+    }
+
+    #[test]
     fn ctrl_c_with_task_running_does_not_quit() {
         let mut app = fixture_app();
         app.start_in_flight = true;
@@ -8669,6 +9237,87 @@ mod tests {
                 .map(|dialog| dialog.base_branch.clone()),
             Some("main".to_string())
         );
+    }
+
+    #[test]
+    fn delete_key_opens_delete_dialog_for_selected_workspace() {
+        let mut app = fixture_app();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+        );
+
+        let Some(dialog) = app.delete_dialog.as_ref() else {
+            panic!("delete dialog should be open");
+        };
+        assert_eq!(dialog.workspace_name, "feature-a");
+        assert_eq!(dialog.branch, "feature-a");
+        assert_eq!(dialog.focused_field, DeleteDialogField::DeleteLocalBranch);
+    }
+
+    #[test]
+    fn delete_key_on_main_workspace_shows_guard_flash() {
+        let mut app = fixture_app();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(app.delete_dialog.is_none());
+        assert!(
+            app.status_bar_line()
+                .contains("cannot delete main workspace")
+        );
+    }
+
+    #[test]
+    fn delete_dialog_blocks_navigation_and_escape_cancels() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+        app.open_delete_dialog();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        assert_eq!(app.state.selected_index, 1);
+        assert_eq!(
+            app.delete_dialog
+                .as_ref()
+                .map(|dialog| dialog.focused_field),
+            Some(DeleteDialogField::DeleteButton)
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+        );
+        assert!(app.delete_dialog.is_none());
+    }
+
+    #[test]
+    fn delete_dialog_confirm_queues_background_task() {
+        let mut app = fixture_background_app(WorkspaceStatus::Idle);
+        app.state.selected_index = 1;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+        );
+        let cmd = ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(cmd_contains_task(&cmd));
+        assert!(app.delete_dialog.is_none());
+        assert!(app.delete_in_flight);
     }
 
     #[test]
