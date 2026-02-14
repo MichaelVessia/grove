@@ -1559,12 +1559,7 @@ impl GroveApp {
         }
 
         if workspace.status.has_session() {
-            let codex_interactive_plain =
-                self.interactive.is_some() && workspace.agent == AgentType::Codex;
-            return Some((
-                session_name_for_workspace(&workspace.name),
-                !codex_interactive_plain,
-            ));
+            return Some((session_name_for_workspace(&workspace.name), true));
         }
 
         None
@@ -3954,8 +3949,6 @@ impl GroveApp {
 
         let selected_workspace = self.state.selected_workspace();
         let selected_agent = selected_workspace.map(|workspace| workspace.agent);
-        let codex_interactive_plain =
-            self.interactive.is_some() && selected_agent == Some(AgentType::Codex);
         let allow_cursor_overlay = selected_agent != Some(AgentType::Codex);
         let selected_workspace_label = selected_workspace
             .map(|workspace| {
@@ -3979,19 +3972,6 @@ impl GroveApp {
         ];
 
         let mut visible_plain_lines = self.preview.visible_lines(preview_height);
-        if codex_interactive_plain {
-            if allow_cursor_overlay {
-                self.apply_interactive_cursor_overlay(&mut visible_plain_lines, preview_height);
-            }
-            if visible_plain_lines.is_empty() {
-                text_lines.push(FtLine::raw("(no preview output)"));
-            } else {
-                text_lines.extend(visible_plain_lines.iter().map(FtLine::raw));
-            }
-            Paragraph::new(FtText::from_lines(text_lines)).render(inner, frame);
-            return;
-        }
-
         let mut visible_render_lines = self.preview.visible_render_lines(preview_height);
         if visible_render_lines.is_empty() && !visible_plain_lines.is_empty() {
             if allow_cursor_overlay {
@@ -5079,6 +5059,36 @@ mod tests {
     #[test]
     fn preview_pane_renders_ansi_colors() {
         let mut app = fixture_app();
+        app.preview.lines = vec!["Success: all tests passed".to_string()];
+        app.preview.render_lines = vec!["\u{1b}[32mSuccess\u{1b}[0m: all tests passed".to_string()];
+
+        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+        let x_start = layout.preview.x.saturating_add(1);
+        let x_end = layout.preview.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(row) = find_row_containing(frame, "Success", x_start, x_end) else {
+                panic!("success row should be present in preview pane");
+            };
+            let Some(s_col) = find_cell_with_char(frame, row, x_start, x_end, 'S') else {
+                panic!("success row should include first character column");
+            };
+
+            assert_row_fg(frame, row, s_col, s_col.saturating_add(7), ansi_16_color(2));
+        });
+    }
+
+    #[test]
+    fn codex_interactive_preview_keeps_ansi_colors() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+        app.interactive = Some(InteractiveState::new(
+            "%1".to_string(),
+            "grove-ws-feature-a".to_string(),
+            Instant::now(),
+            34,
+            78,
+        ));
         app.preview.lines = vec!["Success: all tests passed".to_string()];
         app.preview.render_lines = vec!["\u{1b}[32mSuccess\u{1b}[0m: all tests passed".to_string()];
 
@@ -6295,7 +6305,7 @@ mod tests {
             calls
                 .borrow()
                 .iter()
-                .any(|call| call == "capture:grove-ws-feature-a:600:false")
+                .any(|call| call == "capture:grove-ws-feature-a:600:true")
         );
         assert!(
             calls
@@ -6338,7 +6348,7 @@ mod tests {
             calls
                 .borrow()
                 .iter()
-                .any(|call| call == "capture:grove-ws-feature-a:600:false")
+                .any(|call| call == "capture:grove-ws-feature-a:600:true")
         );
     }
 
@@ -6771,7 +6781,7 @@ mod tests {
         assert_eq!(
             calls.borrow().as_slice(),
             &[
-                "capture:grove-ws-feature-a:600:false".to_string(),
+                "capture:grove-ws-feature-a:600:true".to_string(),
                 "cursor:grove-ws-feature-a".to_string(),
                 "exec:tmux send-keys -l -t grove-ws-feature-a x".to_string(),
                 "capture:grove-ws-feature-a:200:true".to_string(),
