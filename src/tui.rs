@@ -347,23 +347,33 @@ trait ClipboardAccess {
 }
 
 #[derive(Default)]
-struct SystemClipboardAccess;
+struct SystemClipboardAccess {
+    clipboard: Option<Clipboard>,
+}
+
+impl SystemClipboardAccess {
+    fn clipboard(&mut self) -> Result<&mut Clipboard, String> {
+        if self.clipboard.is_none() {
+            self.clipboard = Some(Clipboard::new().map_err(|error| error.to_string())?);
+        }
+
+        self.clipboard
+            .as_mut()
+            .ok_or_else(|| "clipboard unavailable".to_string())
+    }
+}
 
 impl ClipboardAccess for SystemClipboardAccess {
     fn read_text(&mut self) -> Result<String, String> {
-        Clipboard::new()
+        self.clipboard()?
+            .get_text()
             .map_err(|error| error.to_string())
-            .and_then(|mut clipboard| clipboard.get_text().map_err(|error| error.to_string()))
     }
 
     fn write_text(&mut self, text: &str) -> Result<(), String> {
-        Clipboard::new()
+        self.clipboard()?
+            .set_text(text.to_string())
             .map_err(|error| error.to_string())
-            .and_then(|mut clipboard| {
-                clipboard
-                    .set_text(text.to_string())
-                    .map_err(|error| error.to_string())
-            })
     }
 }
 
@@ -911,7 +921,7 @@ fn apply_sgr_codes(raw_params: &str, state: &mut AnsiStyleState) {
     }
 }
 
-fn sgr_params_reset_background(raw_params: &str) -> bool {
+fn sgr_params_affect_background(raw_params: &str) -> bool {
     if raw_params.is_empty() {
         return true;
     }
@@ -920,7 +930,12 @@ fn sgr_params_reset_background(raw_params: &str) -> bool {
         if value.is_empty() {
             return true;
         }
-        matches!(value.parse::<i32>(), Ok(0 | 49))
+
+        let Ok(code) = value.parse::<i32>() else {
+            return false;
+        };
+
+        matches!(code, 0 | 49 | 40..=47 | 100..=107 | 48)
     })
 }
 
@@ -965,7 +980,7 @@ fn inject_selection_background_ansi(
 
                     if in_selection
                         && final_char == Some('m')
-                        && sgr_params_reset_background(&params)
+                        && sgr_params_affect_background(&params)
                     {
                         rendered.push_str(&selection_bg_ansi);
                     }
@@ -1222,7 +1237,7 @@ impl GroveApp {
         Self::from_parts_with_clipboard(
             bootstrap,
             tmux_input,
-            Box::new(SystemClipboardAccess),
+            Box::new(SystemClipboardAccess::default()),
             sidebar_ratio_path,
             event_log,
             debug_record_start_ts,
@@ -8633,6 +8648,82 @@ mod tests {
                 first_col,
                 first_col.saturating_add(5),
                 ansi_16_color(2),
+            );
+        });
+    }
+
+    #[test]
+    fn mouse_drag_selection_overrides_existing_ansi_background_sequences() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        app.preview.lines = vec!["abc".to_string()];
+        app.preview.render_lines = vec![
+            "\u{1b}[48;2;30;35;50ma\u{1b}[48;2;30;35;50mb\u{1b}[48;2;30;35;50mc\u{1b}[0m"
+                .to_string(),
+        ];
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Down(MouseButton::Left),
+                preview_inner.x,
+                select_y,
+            )),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Drag(MouseButton::Left),
+                preview_inner.x.saturating_add(2),
+                select_y,
+            )),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Up(MouseButton::Left),
+                preview_inner.x.saturating_add(2),
+                select_y,
+            )),
+        );
+
+        let x_start = layout.preview.x.saturating_add(1);
+        let x_end = layout.preview.right().saturating_sub(1);
+        with_rendered_frame(&app, 100, 40, |frame| {
+            let Some(output_row) = find_row_containing(frame, "abc", x_start, x_end) else {
+                panic!("output row should be rendered");
+            };
+            let Some(first_col) = find_cell_with_char(frame, output_row, x_start, x_end, 'a')
+            else {
+                panic!("selected output row should include first char");
+            };
+
+            assert_row_bg(
+                frame,
+                output_row,
+                first_col,
+                first_col.saturating_add(3),
+                ui_theme().surface1,
             );
         });
     }
