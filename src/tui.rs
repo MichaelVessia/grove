@@ -2276,6 +2276,9 @@ impl GroveApp {
         self.state
             .selected_workspace()
             .map(|workspace| {
+                if workspace.is_main {
+                    return self.main_worktree_splash();
+                }
                 format!(
                     "Workspace: {}\nBranch: {}\nPath: {}\nAgent: {}\nStatus: {}\nOrphaned session: {}",
                     workspace.name,
@@ -2287,6 +2290,41 @@ impl GroveApp {
                 )
             })
             .unwrap_or_else(|| "No workspace selected".to_string())
+    }
+
+    fn main_worktree_splash(&self) -> String {
+        [
+            "",
+            "           .@@@.",
+            "        .@@@@@@@@@.",
+            "      .@@@@@@@@@@@@@.",
+            "     @@@@@@@@@@@@@@@@@",
+            "    @@@@@@@@@@@@@@@@@@@",
+            "   @@@@@@@@@@@@@@@@@@@@@",
+            "   @@@@@@@@@@@@@@@@@@@@@",
+            "   @@@@@@@@@@@@@@@@@@@@@",
+            "    @@@@@@@@@@@@@@@@@@@",
+            "     '@@@@@@@@@@@@@@@'",
+            "       '@@@@@@@@@@@'",
+            "         '@@@@@@@'",
+            "            |||",
+            "            |||",
+            "            |||",
+            "           /|||\\",
+            "",
+            "Main Worktree",
+            "",
+            "This is your repo root.",
+            "Create focused workspaces from here when you start new work.",
+            "",
+            "--------------------------------------------------",
+            "",
+            "Press 'n' to create a workspace",
+            "",
+            "Each workspace has its own directory and branch.",
+            "Run agents in parallel without branch hopping.",
+        ]
+        .join("\n")
     }
 
     fn modal_open(&self) -> bool {
@@ -11709,7 +11747,7 @@ mod tests {
         assert!(content.contains("Preview Pane"));
         assert!(content.contains("Status:"));
         assert!(content.contains("feature-a | feature-a | /repos/grove-feature-a"));
-        assert!(content.contains("Workspace: grove"));
+        assert!(content.contains("Press 'n' to create a workspace"));
     }
 
     #[test]
