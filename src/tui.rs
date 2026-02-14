@@ -877,6 +877,7 @@ struct GroveApp {
     tmux_input: Box<dyn TmuxInput>,
     last_tmux_error: Option<String>,
     output_changing: bool,
+    agent_output_changing: bool,
     viewport_width: u16,
     viewport_height: u16,
     sidebar_width_pct: u16,
@@ -964,6 +965,7 @@ impl GroveApp {
             tmux_input,
             last_tmux_error: None,
             output_changing: false,
+            agent_output_changing: false,
             viewport_width: 120,
             viewport_height: 40,
             sidebar_width_pct,
@@ -1483,6 +1485,7 @@ impl GroveApp {
         );
     }
 
+    #[cfg(test)]
     fn unsafe_label(&self) -> &'static str {
         if self.launch_skip_permissions {
             "on"
@@ -1491,6 +1494,7 @@ impl GroveApp {
         }
     }
 
+    #[cfg(test)]
     fn status_bar_line(&self) -> String {
         if let Some(flash) = &self.flash {
             if flash.is_error {
@@ -1556,6 +1560,23 @@ impl GroveApp {
                 }
             }
         }
+    }
+
+    fn keybind_hints_line(&self) -> &'static str {
+        if self.create_dialog.is_some() {
+            return "Tab/Shift+Tab field, Left/Right toggle, Enter create, Esc cancel";
+        }
+        if self.launch_dialog.is_some() {
+            return "Type prompt, Tab unsafe, Enter start, Esc cancel";
+        }
+        if self.interactive.is_some() {
+            return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
+        }
+        if self.state.mode == UiMode::Preview {
+            return "j/k scroll, PgUp/PgDn, G bottom, Esc list, q quit";
+        }
+
+        "j/k move, Enter open, n new, s start, x stop, q quit"
     }
 
     fn selected_workspace_summary(&self) -> String {
@@ -1692,7 +1713,13 @@ impl GroveApp {
                 let apply_capture_ms = Self::duration_millis(
                     Instant::now().saturating_duration_since(apply_started_at),
                 );
+                let consumed_inputs = if update.changed_cleaned {
+                    self.drain_pending_inputs_for_session(session_name)
+                } else {
+                    Vec::new()
+                };
                 self.output_changing = update.changed_cleaned;
+                self.agent_output_changing = update.changed_cleaned && consumed_inputs.is_empty();
                 self.last_tmux_error = None;
                 self.event_log.log(
                     LogEvent::new("preview_poll", "capture_completed")
@@ -1719,7 +1746,6 @@ impl GroveApp {
                     let mut output_event = LogEvent::new("preview_update", "output_changed")
                         .with_data("line_count", Value::from(line_count))
                         .with_data("session", Value::from(session_name.to_string()));
-                    let consumed_inputs = self.drain_pending_inputs_for_session(session_name);
                     if let Some(first_input) = consumed_inputs.first() {
                         let last_index = consumed_inputs.len().saturating_sub(1);
                         let last_input = &consumed_inputs[last_index];
@@ -1821,6 +1847,7 @@ impl GroveApp {
             }
             Err(message) => {
                 self.output_changing = false;
+                self.agent_output_changing = false;
                 self.last_tmux_error = Some(message.clone());
                 self.event_log.log(
                     LogEvent::new("preview_poll", "capture_failed")
@@ -1980,6 +2007,7 @@ impl GroveApp {
             );
         } else {
             self.output_changing = false;
+            self.agent_output_changing = false;
             self.refresh_preview_summary();
         }
 
@@ -2047,6 +2075,7 @@ impl GroveApp {
 
         if live_preview.is_none() && cursor_session.is_none() {
             self.output_changing = false;
+            self.agent_output_changing = false;
             self.refresh_preview_summary();
             return;
         }
@@ -2083,6 +2112,7 @@ impl GroveApp {
             );
         } else {
             self.output_changing = false;
+            self.agent_output_changing = false;
             self.refresh_preview_summary();
         }
 
@@ -3810,13 +3840,7 @@ impl GroveApp {
     fn status_is_visually_working(&self, status: WorkspaceStatus, is_selected: bool) -> bool {
         match status {
             WorkspaceStatus::Thinking => true,
-            WorkspaceStatus::Active => {
-                is_selected
-                    && (self.output_changing
-                        || self.interactive_send_in_flight
-                        || !self.pending_interactive_sends.is_empty()
-                        || !self.pending_interactive_inputs.is_empty())
-            }
+            WorkspaceStatus::Active => is_selected && self.agent_output_changing,
             _ => false,
         }
     }
@@ -4274,30 +4298,12 @@ impl GroveApp {
         }
 
         let theme = ui_theme();
-        let summary = self.status_bar_line();
-        let selected_name = self
-            .state
-            .selected_workspace()
-            .map(|workspace| workspace.name.as_str())
-            .unwrap_or("none");
-        let center = format!("ws={selected_name}");
-        let hints = if self.interactive.is_some() {
-            "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste"
-        } else if self.state.mode == UiMode::Preview {
-            "j/k scroll, PgUp/PgDn, G bottom, Esc list, q quit"
-        } else {
-            "j/k move, Enter open, n new, s start, x stop, q quit"
-        };
+        let hints = self.keybind_hints_line();
 
         let status = StatusLine::new()
             .separator("  ")
             .style(Style::new().bg(theme.mantle).fg(theme.text))
-            .left(StatusItem::text(summary.as_str()))
-            .center(StatusItem::text(center.as_str()))
-            .right(StatusItem::text(hints))
-            .right(StatusItem::text(
-                self.activity_spinner_slot(self.selected_workspace_status(), true),
-            ));
+            .left(StatusItem::text(hints));
         status.render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_STATUS));
     }
@@ -4320,6 +4326,7 @@ impl GroveApp {
         let block = Block::new()
             .title("Start Agent")
             .borders(Borders::ALL)
+            .style(Style::new().bg(theme.base).fg(theme.text))
             .border_style(Style::new().fg(theme.mauve).bold());
         let inner = block.inner(dialog_area);
         block.render(dialog_area, frame);
@@ -4375,6 +4382,7 @@ impl GroveApp {
         let block = Block::new()
             .title("New Workspace")
             .borders(Borders::ALL)
+            .style(Style::new().bg(theme.base).fg(theme.text))
             .border_style(Style::new().fg(theme.mauve).bold());
         let inner = block.inner(dialog_area);
         block.render(dialog_area, frame);
@@ -4782,6 +4790,7 @@ mod tests {
         LaunchDialogState, LivePreviewCapture, Msg, PendingResizeVerification,
         PreviewPollCompletion, StartAgentCompletion, StopAgentCompletion, TmuxInput,
         WORKSPACE_ITEM_HEIGHT, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+        ui_theme,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -5353,6 +5362,7 @@ mod tests {
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         app.state.selected_index = 1;
         app.output_changing = false;
+        app.agent_output_changing = false;
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -5387,6 +5397,7 @@ mod tests {
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         app.state.selected_index = 1;
         app.output_changing = true;
+        app.agent_output_changing = true;
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -5401,13 +5412,6 @@ mod tests {
                 contains_spinner_frame(&sidebar_row_text),
                 "active workspace should animate when output is changing, got: {sidebar_row_text}"
             );
-
-            let status_row = frame.height().saturating_sub(1);
-            let status_text = row_text(frame, status_row, 0, frame.width());
-            assert!(
-                contains_spinner_frame(&status_text),
-                "status bar should animate when output is changing, got: {status_text}"
-            );
         });
     }
 
@@ -5417,11 +5421,13 @@ mod tests {
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         idle_app.state.selected_index = 1;
         idle_app.output_changing = false;
+        idle_app.agent_output_changing = false;
 
         let (mut active_app, _commands2, _captures2, _cursor_captures2) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         active_app.state.selected_index = 1;
         active_app.output_changing = true;
+        active_app.agent_output_changing = true;
 
         with_rendered_frame(&idle_app, 80, 24, |idle_frame| {
             with_rendered_frame(&active_app, 80, 24, |active_frame| {
@@ -5445,11 +5451,41 @@ mod tests {
                 let active_status =
                     row_text(active_frame, active_status_row, 0, active_frame.width());
                 assert_eq!(
-                    idle_status.find("ws=feature-a"),
-                    active_status.find("ws=feature-a"),
-                    "status center label should remain stable when spinner state changes"
+                    idle_status, active_status,
+                    "status keybind hints should remain stable when spinner state changes"
                 );
             });
+        });
+    }
+
+    #[test]
+    fn interactive_input_echo_does_not_trigger_activity_spinner() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        app.state.selected_index = 1;
+        app.output_changing = true;
+        app.agent_output_changing = false;
+
+        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(selected_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
+            assert!(
+                !contains_spinner_frame(&sidebar_row_text),
+                "spinner should not animate for user-driven echo output, got: {sidebar_row_text}"
+            );
+
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(
+                status_text.contains("j/k move, Enter open"),
+                "status row should show keybind hints, got: {status_text}"
+            );
         });
     }
 
@@ -5467,14 +5503,85 @@ mod tests {
     }
 
     #[test]
-    fn status_bar_shows_flash_message() {
+    fn launch_dialog_uses_opaque_background_fill() {
+        let mut app = fixture_app();
+        app.launch_dialog = Some(LaunchDialogState {
+            prompt: String::new(),
+            skip_permissions: false,
+        });
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let dialog_width = frame.width().saturating_sub(8).min(100);
+            let dialog_height = 8u16;
+            let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+            let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+            let probe_x = dialog_x.saturating_add(dialog_width.saturating_sub(3));
+            let probe_y = dialog_y.saturating_add(4);
+            let Some(cell) = frame.buffer.get(probe_x, probe_y) else {
+                panic!("expected dialog probe cell at ({probe_x},{probe_y})");
+            };
+            assert_eq!(cell.bg, ui_theme().base);
+        });
+    }
+
+    #[test]
+    fn create_dialog_uses_opaque_background_fill() {
+        let mut app = fixture_app();
+        app.open_create_dialog();
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let dialog_width = frame.width().saturating_sub(8).min(90);
+            let dialog_height = 10u16;
+            let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+            let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+            let probe_x = dialog_x.saturating_add(dialog_width.saturating_sub(3));
+            let probe_y = dialog_y.saturating_add(4);
+            let Some(cell) = frame.buffer.get(probe_x, probe_y) else {
+                panic!("expected dialog probe cell at ({probe_x},{probe_y})");
+            };
+            assert_eq!(cell.bg, ui_theme().base);
+        });
+    }
+
+    #[test]
+    fn status_row_shows_keybind_hints_not_flash_state() {
         let mut app = fixture_app();
         app.show_flash("Agent started", false);
 
         with_rendered_frame(&app, 80, 24, |frame| {
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
-            assert!(status_text.contains("Agent started"));
+            assert!(!status_text.contains("Agent started"));
+            assert!(status_text.contains("j/k move, Enter open"));
+        });
+    }
+
+    #[test]
+    fn status_row_shows_create_dialog_keybind_hints_when_modal_open() {
+        let mut app = fixture_app();
+        app.open_create_dialog();
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(status_text.contains("Tab/Shift+Tab field"));
+            assert!(status_text.contains("Enter create"));
+        });
+    }
+
+    #[test]
+    fn status_row_shows_launch_dialog_keybind_hints_when_modal_open() {
+        let mut app = fixture_app();
+        app.launch_dialog = Some(LaunchDialogState {
+            prompt: String::new(),
+            skip_permissions: false,
+        });
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(status_text.contains("Type prompt"));
+            assert!(status_text.contains("Enter start"));
         });
     }
 
