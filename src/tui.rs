@@ -71,9 +71,7 @@ const HIT_ID_LAUNCH_DIALOG: u32 = 8;
 const MAX_PENDING_INPUT_TRACES: usize = 256;
 const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
-const SLOW_ANIMATION_INTERVAL_MS: u64 = 333;
 const FAST_SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const SLOW_PULSE_FRAMES: [&str; 4] = ["⧗", "⧖", "⧗", "⧖"];
 
 #[derive(Debug, Clone, Copy)]
 struct UiTheme {
@@ -894,7 +892,6 @@ struct GroveApp {
     next_visual_due_at: Option<Instant>,
     interactive_poll_due_at: Option<Instant>,
     fast_animation_frame: usize,
-    slow_animation_frame: usize,
     poll_generation: u64,
     debug_record_start_ts: Option<u64>,
     frame_render_seq: RefCell<u64>,
@@ -982,7 +979,6 @@ impl GroveApp {
             next_visual_due_at: None,
             interactive_poll_due_at: None,
             fast_animation_frame: 0,
-            slow_animation_frame: 0,
             poll_generation: 0,
             debug_record_start_ts,
             frame_render_seq: RefCell::new(0),
@@ -3801,23 +3797,28 @@ impl GroveApp {
     }
 
     fn visual_tick_interval(&self) -> Option<Duration> {
-        let selected_status = self.selected_workspace_status();
-        if matches!(
-            selected_status,
-            WorkspaceStatus::Active | WorkspaceStatus::Thinking
-        ) || self.interactive.is_some()
-        {
+        if self.status_is_visually_working(self.selected_workspace_status(), true) {
             return Some(Duration::from_millis(FAST_ANIMATION_INTERVAL_MS));
-        }
-        if selected_status == WorkspaceStatus::Waiting {
-            return Some(Duration::from_millis(SLOW_ANIMATION_INTERVAL_MS));
         }
         None
     }
 
     fn advance_visual_animation(&mut self) {
         self.fast_animation_frame = self.fast_animation_frame.wrapping_add(1);
-        self.slow_animation_frame = self.slow_animation_frame.wrapping_add(1);
+    }
+
+    fn status_is_visually_working(&self, status: WorkspaceStatus, is_selected: bool) -> bool {
+        match status {
+            WorkspaceStatus::Thinking => true,
+            WorkspaceStatus::Active => {
+                is_selected
+                    && (self.output_changing
+                        || self.interactive_send_in_flight
+                        || !self.pending_interactive_sends.is_empty()
+                        || !self.pending_interactive_inputs.is_empty())
+            }
+            _ => false,
+        }
     }
 
     fn is_due_with_tolerance(now: Instant, due_at: Instant) -> bool {
@@ -3948,16 +3949,12 @@ impl GroveApp {
         }
     }
 
-    fn animated_status_icon(&self, status: WorkspaceStatus) -> &'static str {
-        match status {
-            WorkspaceStatus::Active | WorkspaceStatus::Thinking => {
-                FAST_SPINNER_FRAMES[self.fast_animation_frame % FAST_SPINNER_FRAMES.len()]
-            }
-            WorkspaceStatus::Waiting => {
-                SLOW_PULSE_FRAMES[self.slow_animation_frame % SLOW_PULSE_FRAMES.len()]
-            }
-            _ => status.icon(),
+    fn status_icon(&self, status: WorkspaceStatus, is_selected: bool) -> &'static str {
+        if self.status_is_visually_working(status, is_selected) {
+            return FAST_SPINNER_FRAMES[self.fast_animation_frame % FAST_SPINNER_FRAMES.len()];
         }
+
+        status.icon()
     }
 
     fn relative_age_label(&self, unix_secs: Option<i64>) -> String {
@@ -3992,9 +3989,10 @@ impl GroveApp {
         let theme = ui_theme();
         let mode_chip = format!("[{}]", self.mode_label());
         let focus_chip = format!("[{}]", self.focus_label());
+        let selected_status = self.selected_workspace_status();
         let activity_chip = format!(
             "{} {}",
-            self.animated_status_icon(self.selected_workspace_status()),
+            self.status_icon(selected_status, true),
             self.selected_status_hint()
         );
 
@@ -4007,10 +4005,7 @@ impl GroveApp {
             .center(StatusItem::text(focus_chip.as_str()))
             .right(StatusItem::text(activity_chip.as_str()));
 
-        if matches!(
-            self.selected_workspace_status(),
-            WorkspaceStatus::Active | WorkspaceStatus::Thinking
-        ) {
+        if self.status_is_visually_working(selected_status, true) {
             header = header.right(StatusItem::Spinner(self.fast_animation_frame));
         }
 
@@ -4059,12 +4054,13 @@ impl GroveApp {
             DiscoveryState::Ready => {
                 let max_items = usize::from(inner.height / WORKSPACE_ITEM_HEIGHT);
                 for (idx, workspace) in self.state.workspaces.iter().take(max_items).enumerate() {
+                    let is_selected = idx == self.state.selected_index;
                     let selected = if idx == self.state.selected_index {
                         ">"
                     } else {
                         " "
                     };
-                    let icon = self.animated_status_icon(workspace.status);
+                    let icon = self.status_icon(workspace.status, is_selected);
                     let age = self.relative_age_label(workspace.last_activity_unix_secs);
 
                     let secondary = format!(
@@ -4294,10 +4290,7 @@ impl GroveApp {
             .left(StatusItem::text(summary.as_str()))
             .center(StatusItem::text(center.as_str()))
             .right(StatusItem::text(hints));
-        if matches!(
-            self.selected_workspace_status(),
-            WorkspaceStatus::Active | WorkspaceStatus::Thinking
-        ) {
+        if self.status_is_visually_working(self.selected_workspace_status(), true) {
             status = status.right(StatusItem::Spinner(self.fast_animation_frame));
         }
         status.render(area, frame);
@@ -4780,10 +4773,10 @@ mod tests {
     use self::render_support::{assert_row_fg, find_cell_with_char, find_row_containing, row_text};
     use super::{
         CreateBranchMode, CreateDialogField, CreateWorkspaceCompletion, CursorCapture, GroveApp,
-        HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogState,
-        LivePreviewCapture, Msg, PendingResizeVerification, PreviewPollCompletion,
-        StartAgentCompletion, StopAgentCompletion, TmuxInput, WORKSPACE_ITEM_HEIGHT, ansi_16_color,
-        ansi_line_to_styled_line, parse_cursor_metadata,
+        FAST_SPINNER_FRAMES, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW,
+        LaunchDialogState, LivePreviewCapture, Msg, PendingResizeVerification,
+        PreviewPollCompletion, StartAgentCompletion, StopAgentCompletion, TmuxInput,
+        WORKSPACE_ITEM_HEIGHT, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -5048,6 +5041,12 @@ mod tests {
             }
             _ => false,
         }
+    }
+
+    fn contains_spinner_frame(text: &str) -> bool {
+        FAST_SPINNER_FRAMES
+            .iter()
+            .any(|frame| text.contains(frame))
     }
 
     fn arb_key_event() -> impl Strategy<Value = KeyEvent> {
@@ -5339,6 +5338,70 @@ mod tests {
             assert!(
                 rendered_row.starts_with("> "),
                 "selected row should start with selection marker, got: {rendered_row}"
+            );
+        });
+    }
+
+    #[test]
+    fn active_workspace_without_recent_activity_uses_static_indicators() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        app.state.selected_index = 1;
+        app.output_changing = false;
+
+        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(selected_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
+            assert!(
+                sidebar_row_text.contains("●"),
+                "active workspace should show static active icon, got: {sidebar_row_text}"
+            );
+            assert!(
+                !contains_spinner_frame(&sidebar_row_text),
+                "active workspace should not animate without recent output, got: {sidebar_row_text}"
+            );
+
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(
+                !contains_spinner_frame(&status_text),
+                "status bar should not animate without recent output, got: {status_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn active_workspace_with_recent_activity_animates_indicators() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        app.state.selected_index = 1;
+        app.output_changing = true;
+
+        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(selected_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
+            assert!(
+                contains_spinner_frame(&sidebar_row_text),
+                "active workspace should animate when output is changing, got: {sidebar_row_text}"
+            );
+
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(
+                contains_spinner_frame(&status_text),
+                "status bar should animate when output is changing, got: {status_text}"
             );
         });
     }
