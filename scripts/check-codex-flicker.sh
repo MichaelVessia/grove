@@ -56,7 +56,7 @@ escaped_capture() {
 }
 
 selected_workspace_line() {
-  plain_capture | awk '/> / { print; exit }'
+  plain_capture | awk '/^[[:space:]]*[>▸] / { print; exit }'
 }
 
 sgr_count() {

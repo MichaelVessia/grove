@@ -50,7 +50,7 @@ plain_capture() {
 
 selected_workspace_line() {
   local session_name="$1"
-  plain_capture "${session_name}" | awk '/> / { print; exit }'
+  plain_capture "${session_name}" | awk '/^[[:space:]]*[>▸] / { print; exit }'
 }
 
 select_workspace() {

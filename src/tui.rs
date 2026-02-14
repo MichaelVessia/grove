@@ -412,10 +412,10 @@ impl CreateDialogField {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct OverlayModalContent<'a> {
     title: &'a str,
-    body: &'a str,
+    body: FtText,
     theme: UiTheme,
 }
 
@@ -442,7 +442,7 @@ impl Widget for OverlayModalContent<'_> {
             return;
         }
 
-        Paragraph::new(self.body)
+        Paragraph::new(self.body.clone())
             .style(content_style)
             .render(inner, frame);
     }
@@ -5393,7 +5393,7 @@ impl GroveApp {
                 for (idx, workspace) in self.state.workspaces.iter().take(max_items).enumerate() {
                     let is_selected = idx == self.state.selected_index;
                     let selected = if idx == self.state.selected_index {
-                        ">"
+                        "▸"
                     } else {
                         " "
                     };
@@ -5650,9 +5650,7 @@ impl GroveApp {
         let dialog_height = 8u16;
         let theme = ui_theme();
 
-        let body = [
-            "Edit prompt, [Tab] toggles unsafe, [Enter] starts, [Esc] cancels".to_string(),
-            String::new(),
+        let body_lines = [
             format!(
                 "Unsafe launch: {}",
                 if dialog.skip_permissions { "on" } else { "off" }
@@ -5665,11 +5663,11 @@ impl GroveApp {
                     dialog.prompt.clone()
                 }
             ),
-        ]
-        .join("\n");
+        ];
+        let body = FtText::from_lines(body_lines.into_iter().map(FtLine::raw));
         let content = OverlayModalContent {
             title: "Start Agent",
-            body: body.as_str(),
+            body,
             theme,
         };
 
@@ -5697,6 +5695,7 @@ impl GroveApp {
         let dialog_width = area.width.saturating_sub(8).min(90);
         let dialog_height = 14u16;
         let theme = ui_theme();
+        let content_width = usize::from(dialog_width.saturating_sub(2));
 
         let focused = |field| dialog.focused_field == field;
         let input_line = |value: &str, placeholder: &str, is_focused: bool| {
@@ -5707,62 +5706,96 @@ impl GroveApp {
                 format!("  [{content}]")
             }
         };
+        let pad_to_width = |text: String| {
+            let mut padded = text;
+            let width = text_display_width(padded.as_str());
+            if width < content_width {
+                padded.push_str(&" ".repeat(content_width - width));
+            }
+            padded
+        };
         let selected_agent = dialog.agent;
+        let selected_agent_style = Style::new()
+            .fg(theme.text)
+            .bg(if focused(CreateDialogField::Agent) {
+                theme.surface1
+            } else {
+                theme.surface0
+            })
+            .bold();
+        let unselected_agent_style = Style::new().fg(theme.subtext0);
+        let selected_dropdown_style = Style::new().fg(theme.text).bg(theme.surface1).bold();
+        let unselected_dropdown_style = Style::new().fg(theme.subtext0);
         let agent_row = |agent: AgentType| {
-            let prefix = if selected_agent == agent { "> " } else { "  " };
-            format!("{prefix}{}", agent.label())
+            let is_selected = selected_agent == agent;
+            let prefix = if is_selected { "▸ " } else { "  " };
+            let line = format!("{prefix}{}", agent.label());
+            if is_selected {
+                FtLine::from_spans(vec![FtSpan::styled(
+                    pad_to_width(line),
+                    selected_agent_style,
+                )])
+            } else {
+                FtLine::from_spans(vec![FtSpan::styled(line, unselected_agent_style)])
+            }
         };
 
         let mut lines = vec![
-            "Create workspace: [Tab/S-Tab] field, [j/k or C-n/C-p] list, [h/l] buttons, [Enter] select/create".to_string(),
-            String::new(),
-            "Name:".to_string(),
-            input_line(
+            FtLine::raw("Name:"),
+            FtLine::raw(input_line(
                 dialog.workspace_name.as_str(),
                 "feature-name",
                 focused(CreateDialogField::WorkspaceName),
-            ),
-            String::new(),
-            "Base Branch (default: current):".to_string(),
-            input_line(
+            )),
+            FtLine::raw(""),
+            FtLine::raw("Base Branch (default: current):"),
+            FtLine::raw(input_line(
                 dialog.base_branch.as_str(),
                 "main",
                 focused(CreateDialogField::BaseBranch),
-            ),
+            )),
         ];
         if focused(CreateDialogField::BaseBranch) {
             if self.create_branch_all.is_empty() {
-                lines.push("  Loading branches...".to_string());
+                lines.push(FtLine::raw("  Loading branches..."));
             } else if self.create_branch_filtered.is_empty() {
-                lines.push("  No matching branches".to_string());
+                lines.push(FtLine::raw("  No matching branches"));
             } else {
                 let max_dropdown = 5usize;
                 for (index, branch) in self.create_branch_filtered.iter().enumerate() {
                     if index >= max_dropdown {
                         break;
                     }
-                    let prefix = if index == self.create_branch_index {
-                        "> "
+                    let is_selected = index == self.create_branch_index;
+                    let prefix = if is_selected { "▸ " } else { "  " };
+                    let line = format!("{prefix}{branch}");
+                    if is_selected {
+                        lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                            pad_to_width(line),
+                            selected_dropdown_style,
+                        )]));
                     } else {
-                        "  "
-                    };
-                    lines.push(format!("{prefix}{branch}"));
+                        lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                            line,
+                            unselected_dropdown_style,
+                        )]));
+                    }
                 }
                 if self.create_branch_filtered.len() > max_dropdown {
-                    lines.push(format!(
+                    lines.push(FtLine::raw(format!(
                         "  ... and {} more",
                         self.create_branch_filtered.len() - max_dropdown
-                    ));
+                    )));
                 }
             }
         }
 
-        lines.push(String::new());
-        lines.push("Agent:".to_string());
+        lines.push(FtLine::raw(""));
+        lines.push(FtLine::raw("Agent:"));
         lines.push(agent_row(AgentType::Claude));
         lines.push(agent_row(AgentType::Codex));
-        lines.push(String::new());
-        lines.push(format!(
+        lines.push(FtLine::raw(""));
+        lines.push(FtLine::raw(format!(
             "{} Create   {} Cancel",
             if focused(CreateDialogField::CreateButton) {
                 "[*]"
@@ -5774,11 +5807,10 @@ impl GroveApp {
             } else {
                 "[ ]"
             }
-        ));
-        let body = lines.join("\n");
+        )));
         let content = OverlayModalContent {
             title: "New Workspace",
-            body: body.as_str(),
+            body: FtText::from_lines(lines),
             theme,
         };
 
@@ -5818,7 +5850,7 @@ impl GroveApp {
             DiscoveryState::Ready => {
                 for (idx, workspace) in self.state.workspaces.iter().enumerate() {
                     let selected = if idx == self.state.selected_index {
-                        ">"
+                        "▸"
                     } else {
                         " "
                     };
@@ -6773,7 +6805,7 @@ mod tests {
             };
             let rendered_row = row_text(frame, selected_row, x_start, x_end);
             assert!(
-                rendered_row.starts_with("> "),
+                rendered_row.starts_with("▸ "),
                 "selected row should start with selection marker, got: {rendered_row}"
             );
         });
@@ -6962,6 +6994,78 @@ mod tests {
                 panic!("expected dialog probe cell at ({probe_x},{probe_y})");
             };
             assert_eq!(cell.bg, ui_theme().base);
+        });
+    }
+
+    #[test]
+    fn create_dialog_selected_agent_row_uses_highlight_background() {
+        let mut app = fixture_app();
+        app.open_create_dialog();
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let dialog_width = frame.width().saturating_sub(8).min(90);
+            let dialog_height = 14u16;
+            let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+            let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+            let x_start = dialog_x.saturating_add(1);
+            let x_end = dialog_x.saturating_add(dialog_width.saturating_sub(1));
+            let y_start = dialog_y.saturating_add(1);
+            let y_end = dialog_y.saturating_add(dialog_height.saturating_sub(1));
+            let find_dialog_row = |needle: &str| {
+                (y_start..y_end).find(|&row| row_text(frame, row, x_start, x_end).contains(needle))
+            };
+
+            let Some(selected_row) = find_dialog_row("Claude") else {
+                panic!("selected agent row should be rendered");
+            };
+            assert_row_bg(frame, selected_row, x_start, x_end, ui_theme().surface1);
+
+            let Some(unselected_row) = find_dialog_row("Codex") else {
+                panic!("unselected agent row should be rendered");
+            };
+            assert_row_bg(frame, unselected_row, x_start, x_end, ui_theme().base);
+
+            let Some(cell) = frame.buffer.get(x_start, dialog_y.saturating_add(1)) else {
+                panic!(
+                    "expected dialog cell at ({x_start},{})",
+                    dialog_y.saturating_add(1)
+                );
+            };
+            assert_eq!(cell.bg, ui_theme().base);
+        });
+    }
+
+    #[test]
+    fn create_dialog_renders_action_buttons() {
+        let mut app = fixture_app();
+        app.open_create_dialog();
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let dialog_width = frame.width().saturating_sub(8).min(90);
+            let dialog_height = 14u16;
+            let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+            let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+            let x_start = dialog_x.saturating_add(1);
+            let x_end = dialog_x.saturating_add(dialog_width.saturating_sub(1));
+            let y_start = dialog_y.saturating_add(1);
+            let y_end = dialog_y.saturating_add(dialog_height.saturating_sub(1));
+
+            let has_buttons = (y_start..y_end).any(|row| {
+                let text = row_text(frame, row, x_start, x_end);
+                text.contains("Create") && text.contains("Cancel")
+            });
+            assert!(
+                has_buttons,
+                "create dialog action buttons should be visible"
+            );
         });
     }
 
