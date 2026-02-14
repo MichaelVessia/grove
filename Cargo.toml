@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+arboard = "3.6.1"
 ftui = { git = "https://github.com/Dicklesworthstone/frankentui.git", rev = "507542bea6d84bf1d83c438a2168a0194a7e5264", default-features = false, features = ["runtime", "crossterm"] }
 serde_json = "1.0.149"
 

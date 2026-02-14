@@ -803,7 +803,13 @@ mod tests {
             WorkspaceStatus::Thinking
         );
         assert_eq!(
-            detect_status("allow edit? [y/n]", SessionActivity::Active, false, true, true),
+            detect_status(
+                "allow edit? [y/n]",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
             WorkspaceStatus::Waiting
         );
         assert_eq!(

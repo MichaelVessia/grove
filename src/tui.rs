@@ -5,6 +5,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use arboard::Clipboard;
 use ftui::core::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
     PasteEvent,
@@ -333,9 +334,36 @@ trait TmuxInput {
         target_width: u16,
         target_height: u16,
     ) -> std::io::Result<()>;
+    fn paste_buffer(&self, target_session: &str, text: &str) -> std::io::Result<()>;
 
     fn supports_background_send(&self) -> bool {
         false
+    }
+}
+
+trait ClipboardAccess {
+    fn read_text(&mut self) -> Result<String, String>;
+    fn write_text(&mut self, text: &str) -> Result<(), String>;
+}
+
+#[derive(Default)]
+struct SystemClipboardAccess;
+
+impl ClipboardAccess for SystemClipboardAccess {
+    fn read_text(&mut self) -> Result<String, String> {
+        Clipboard::new()
+            .map_err(|error| error.to_string())
+            .and_then(|mut clipboard| clipboard.get_text().map_err(|error| error.to_string()))
+    }
+
+    fn write_text(&mut self, text: &str) -> Result<(), String> {
+        Clipboard::new()
+            .map_err(|error| error.to_string())
+            .and_then(|mut clipboard| {
+                clipboard
+                    .set_text(text.to_string())
+                    .map_err(|error| error.to_string())
+            })
     }
 }
 
@@ -478,6 +506,10 @@ impl TmuxInput for CommandTmuxInput {
         target_height: u16,
     ) -> std::io::Result<()> {
         Self::resize_target_session(target_session, target_width, target_height)
+    }
+
+    fn paste_buffer(&self, target_session: &str, text: &str) -> std::io::Result<()> {
+        Self::paste_target_session_buffer(target_session, text)
     }
 
     fn supports_background_send(&self) -> bool {
@@ -627,6 +659,35 @@ impl CommandTmuxInput {
             set_manual_error.map_or_else(String::new, |error| format!("; set-option={error}"));
         Err(std::io::Error::other(format!(
             "tmux resize failed for '{target_session}': resize-window={resize_window_error}; resize-pane={resize_pane_error}{set_manual_suffix}"
+        )))
+    }
+
+    fn paste_target_session_buffer(target_session: &str, text: &str) -> std::io::Result<()> {
+        let mut load_buffer = std::process::Command::new("tmux");
+        load_buffer.arg("load-buffer").arg("-");
+        load_buffer.stdin(std::process::Stdio::piped());
+        let mut load_child = load_buffer.spawn()?;
+        if let Some(stdin) = load_child.stdin.as_mut() {
+            use std::io::Write;
+            stdin.write_all(text.as_bytes())?;
+        }
+        let load_status = load_child.wait()?;
+        if !load_status.success() {
+            return Err(std::io::Error::other(format!(
+                "tmux load-buffer failed for '{target_session}': exit status {load_status}"
+            )));
+        }
+
+        let paste_output = std::process::Command::new("tmux")
+            .args(["paste-buffer", "-t", target_session])
+            .output()?;
+        if paste_output.status.success() {
+            return Ok(());
+        }
+
+        Err(std::io::Error::other(format!(
+            "tmux paste-buffer failed: {}",
+            Self::stderr_or_status(&paste_output),
         )))
     }
 }
@@ -1085,6 +1146,7 @@ struct GroveApp {
     launch_dialog: Option<LaunchDialogState>,
     create_dialog: Option<CreateDialogState>,
     tmux_input: Box<dyn TmuxInput>,
+    clipboard: Box<dyn ClipboardAccess>,
     last_tmux_error: Option<String>,
     output_changing: bool,
     agent_output_changing: bool,
@@ -1157,6 +1219,24 @@ impl GroveApp {
         event_log: Box<dyn EventLogger>,
         debug_record_start_ts: Option<u64>,
     ) -> Self {
+        Self::from_parts_with_clipboard(
+            bootstrap,
+            tmux_input,
+            Box::new(SystemClipboardAccess),
+            sidebar_ratio_path,
+            event_log,
+            debug_record_start_ts,
+        )
+    }
+
+    fn from_parts_with_clipboard(
+        bootstrap: BootstrapData,
+        tmux_input: Box<dyn TmuxInput>,
+        clipboard: Box<dyn ClipboardAccess>,
+        sidebar_ratio_path: PathBuf,
+        event_log: Box<dyn EventLogger>,
+        debug_record_start_ts: Option<u64>,
+    ) -> Self {
         let sidebar_width_pct = load_sidebar_ratio(&sidebar_ratio_path);
         let mapper_config = KeybindingConfig::from_env().with_sequence_config(
             KeySequenceConfig::from_env()
@@ -1174,6 +1254,7 @@ impl GroveApp {
             launch_dialog: None,
             create_dialog: None,
             tmux_input,
+            clipboard,
             last_tmux_error: None,
             output_changing: false,
             agent_output_changing: false,
@@ -3480,33 +3561,81 @@ impl GroveApp {
         self.copy_interactive_selection_or_visible();
     }
 
-    fn paste_cached_text(
+    fn read_clipboard_or_cached_text(&mut self) -> Result<String, String> {
+        let clipboard_text = self.clipboard.read_text();
+        if let Ok(text) = clipboard_text
+            && !text.is_empty()
+        {
+            return Ok(text);
+        }
+
+        if let Some(text) = self.copied_text.clone()
+            && !text.is_empty()
+        {
+            return Ok(text);
+        }
+
+        Err("clipboard empty".to_string())
+    }
+
+    fn paste_clipboard_text(
         &mut self,
         target_session: &str,
         bracketed_paste: bool,
         trace_context: Option<InputTraceContext>,
     ) -> Cmd<Msg> {
-        let Some(text) = self.copied_text.clone() else {
-            self.last_tmux_error = Some("no copied text in session".to_string());
-            if let Some(trace_context) = trace_context {
-                self.log_input_event_with_fields(
-                    "paste_cache_missing",
-                    trace_context.seq,
-                    vec![(
-                        "session".to_string(),
-                        Value::from(target_session.to_string()),
-                    )],
-                );
+        let text = match self.read_clipboard_or_cached_text() {
+            Ok(text) => text,
+            Err(error) => {
+                self.last_tmux_error = Some(error.clone());
+                if let Some(trace_context) = trace_context {
+                    self.log_input_event_with_fields(
+                        "paste_clipboard_missing",
+                        trace_context.seq,
+                        vec![(
+                            "session".to_string(),
+                            Value::from(target_session.to_string()),
+                        )],
+                    );
+                }
+                return Cmd::None;
             }
-            return Cmd::None;
         };
 
-        let payload = encode_paste_payload(&text, bracketed_paste);
-        self.send_interactive_action(
-            &InteractiveAction::SendLiteral(payload),
-            target_session,
-            trace_context,
-        )
+        if bracketed_paste {
+            let payload = format!("\u{1b}[200~{text}\u{1b}[201~");
+            return self.send_interactive_action(
+                &InteractiveAction::SendLiteral(payload),
+                target_session,
+                trace_context,
+            );
+        }
+
+        match self.tmux_input.paste_buffer(target_session, &text) {
+            Ok(()) => {
+                self.last_tmux_error = None;
+            }
+            Err(error) => {
+                let message = error.to_string();
+                self.last_tmux_error = Some(message.clone());
+                self.log_tmux_error(message.clone());
+                if let Some(trace_context) = trace_context {
+                    self.log_input_event_with_fields(
+                        "interactive_paste_buffer_failed",
+                        trace_context.seq,
+                        vec![
+                            (
+                                "session".to_string(),
+                                Value::from(target_session.to_string()),
+                            ),
+                            ("error".to_string(), Value::from(message)),
+                        ],
+                    );
+                }
+            }
+        }
+
+        Cmd::None
     }
 
     fn handle_interactive_key(&mut self, key_event: KeyEvent) -> Cmd<Msg> {
@@ -3592,8 +3721,14 @@ impl GroveApp {
                 Cmd::None
             }
             InteractiveAction::PasteClipboard => {
-                let send_cmd =
-                    self.paste_cached_text(&target_session, bracketed_paste, Some(trace_context));
+                if self.preview.offset > 0 {
+                    self.preview.jump_to_bottom();
+                }
+                let send_cmd = self.paste_clipboard_text(
+                    &target_session,
+                    bracketed_paste,
+                    Some(trace_context),
+                );
                 self.schedule_interactive_debounced_poll(now);
                 send_cmd
             }
@@ -3950,15 +4085,23 @@ impl GroveApp {
     }
 
     fn update_preview_selection_drag(&mut self, x: u16, y: u16) {
+        if self.preview_selection.anchor.is_none() {
+            return;
+        }
         let Some(point) = self.preview_text_point_at(x, y) else {
             return;
         };
         self.preview_selection.handle_drag(point);
     }
 
-    fn finish_preview_selection_drag(&mut self) {
+    fn finish_preview_selection_drag(&mut self, x: u16, y: u16) {
         if self.preview_selection.anchor.is_none() {
             return;
+        }
+        if !self.preview_selection.has_selection()
+            && let Some(point) = self.preview_text_point_at(x, y)
+        {
+            self.preview_selection.handle_drag(point);
         }
         self.preview_selection.finish_drag();
     }
@@ -4043,8 +4186,16 @@ impl GroveApp {
             self.last_tmux_error = Some("no output to copy".to_string());
             return;
         }
-        self.copied_text = Some(lines.join("\n"));
-        self.last_tmux_error = None;
+        let text = lines.join("\n");
+        self.copied_text = Some(text.clone());
+        match self.clipboard.write_text(&text) {
+            Ok(()) => {
+                self.last_tmux_error = None;
+            }
+            Err(error) => {
+                self.last_tmux_error = Some(format!("clipboard write failed: {error}"));
+            }
+        }
         self.clear_preview_selection();
     }
 
@@ -4137,9 +4288,14 @@ impl GroveApp {
                     self.update_preview_selection_drag(mouse_event.x, mouse_event.y);
                 }
             }
+            MouseEventKind::Moved => {
+                if self.interactive.is_some() && !self.divider_drag_active {
+                    self.update_preview_selection_drag(mouse_event.x, mouse_event.y);
+                }
+            }
             MouseEventKind::Up(MouseButton::Left) => {
                 self.divider_drag_active = false;
-                self.finish_preview_selection_drag();
+                self.finish_preview_selection_drag(mouse_event.x, mouse_event.y);
             }
             MouseEventKind::ScrollUp => {
                 if matches!(region, HitRegion::Preview) {
@@ -5187,8 +5343,8 @@ mod tests {
         assert_row_bg, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
     };
     use super::{
-        CreateBranchMode, CreateDialogField, CreateWorkspaceCompletion, CursorCapture,
-        FAST_SPINNER_FRAMES, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS,
+        ClipboardAccess, CreateBranchMode, CreateDialogField, CreateWorkspaceCompletion,
+        CursorCapture, FAST_SPINNER_FRAMES, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS,
         HIT_ID_WORKSPACE_ROW, LaunchDialogState, LivePreviewCapture, Msg, PREVIEW_METADATA_ROWS,
         PendingResizeVerification, PreviewPollCompletion, StartAgentCompletion,
         StopAgentCompletion, TmuxInput, WORKSPACE_ITEM_HEIGHT, ansi_16_color,
@@ -5262,6 +5418,26 @@ mod tests {
         calls: RecordedCalls,
     }
 
+    #[derive(Clone, Default)]
+    struct RecordingClipboard {
+        text: Rc<RefCell<String>>,
+    }
+
+    impl ClipboardAccess for RecordingClipboard {
+        fn read_text(&mut self) -> Result<String, String> {
+            Ok(self.text.borrow().clone())
+        }
+
+        fn write_text(&mut self, text: &str) -> Result<(), String> {
+            self.text.replace(text.to_string());
+            Ok(())
+        }
+    }
+
+    fn test_clipboard() -> Box<dyn ClipboardAccess> {
+        Box::new(RecordingClipboard::default())
+    }
+
     impl TmuxInput for RecordingTmuxInput {
         fn execute(&self, command: &[String]) -> std::io::Result<()> {
             self.commands.borrow_mut().push(command.to_vec());
@@ -5319,6 +5495,21 @@ mod tests {
             ));
             Ok(())
         }
+
+        fn paste_buffer(&self, target_session: &str, text: &str) -> std::io::Result<()> {
+            self.calls.borrow_mut().push(format!(
+                "paste-buffer:{target_session}:{}",
+                text.chars().count()
+            ));
+            self.commands.borrow_mut().push(vec![
+                "tmux".to_string(),
+                "paste-buffer".to_string(),
+                "-t".to_string(),
+                target_session.to_string(),
+                text.to_string(),
+            ]);
+            Ok(())
+        }
     }
 
     #[derive(Clone)]
@@ -5348,6 +5539,10 @@ mod tests {
             _target_width: u16,
             _target_height: u16,
         ) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn paste_buffer(&self, _target_session: &str, _text: &str) -> std::io::Result<()> {
             Ok(())
         }
 
@@ -5388,7 +5583,7 @@ mod tests {
 
     fn fixture_app() -> GroveApp {
         let sidebar_ratio_path = unique_sidebar_ratio_path("fixture");
-        GroveApp::from_parts(
+        GroveApp::from_parts_with_clipboard(
             fixture_bootstrap(WorkspaceStatus::Idle),
             Box::new(RecordingTmuxInput {
                 commands: Rc::new(RefCell::new(Vec::new())),
@@ -5396,6 +5591,7 @@ mod tests {
                 cursor_captures: Rc::new(RefCell::new(Vec::new())),
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
+            test_clipboard(),
             sidebar_ratio_path,
             Box::new(NullEventLogger),
             None,
@@ -5545,9 +5741,10 @@ mod tests {
             calls: Rc::new(RefCell::new(Vec::new())),
         };
         (
-            GroveApp::from_parts(
+            GroveApp::from_parts_with_clipboard(
                 fixture_bootstrap(status),
                 Box::new(tmux),
+                test_clipboard(),
                 sidebar_ratio_path,
                 Box::new(NullEventLogger),
                 None,
@@ -5576,9 +5773,10 @@ mod tests {
         };
 
         (
-            GroveApp::from_parts(
+            GroveApp::from_parts_with_clipboard(
                 fixture_bootstrap(status),
                 Box::new(tmux),
+                test_clipboard(),
                 sidebar_ratio_path,
                 Box::new(NullEventLogger),
                 None,
@@ -5611,9 +5809,10 @@ mod tests {
         };
 
         (
-            GroveApp::from_parts(
+            GroveApp::from_parts_with_clipboard(
                 fixture_bootstrap(status),
                 Box::new(tmux),
+                test_clipboard(),
                 sidebar_ratio_path,
                 Box::new(event_log),
                 None,
@@ -5626,9 +5825,10 @@ mod tests {
     }
 
     fn fixture_background_app(status: WorkspaceStatus) -> GroveApp {
-        GroveApp::from_parts(
+        GroveApp::from_parts_with_clipboard(
             fixture_bootstrap(status),
             Box::new(BackgroundOnlyTmuxInput),
+            test_clipboard(),
             unique_sidebar_ratio_path("background"),
             Box::new(NullEventLogger),
             None,
@@ -8358,6 +8558,86 @@ mod tests {
     }
 
     #[test]
+    fn mouse_move_then_release_highlights_selected_text_without_drag_event() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        app.preview.lines = vec!["alpha beta".to_string()];
+        app.preview.render_lines = vec!["\u{1b}[32malpha beta\u{1b}[0m".to_string()];
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Down(MouseButton::Left),
+                preview_inner.x,
+                select_y,
+            )),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Moved,
+                preview_inner.x.saturating_add(4),
+                select_y,
+            )),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Up(MouseButton::Left),
+                preview_inner.x.saturating_add(4),
+                select_y,
+            )),
+        );
+
+        let x_start = layout.preview.x.saturating_add(1);
+        let x_end = layout.preview.right().saturating_sub(1);
+        with_rendered_frame(&app, 100, 40, |frame| {
+            let Some(output_row) = find_row_containing(frame, "alpha beta", x_start, x_end) else {
+                panic!("output row should be rendered");
+            };
+            let Some(first_col) = find_cell_with_char(frame, output_row, x_start, x_end, 'a')
+            else {
+                panic!("selected output row should include first char");
+            };
+
+            assert_row_bg(
+                frame,
+                output_row,
+                first_col,
+                first_col.saturating_add(5),
+                ui_theme().surface1,
+            );
+            assert_row_fg(
+                frame,
+                output_row,
+                first_col,
+                first_col.saturating_add(5),
+                ansi_16_color(2),
+            );
+        });
+    }
+
+    #[test]
     fn alt_copy_then_alt_paste_uses_mouse_selected_preview_text() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, vec![Ok(String::new())]);
@@ -8431,8 +8711,7 @@ mod tests {
             commands.borrow().last(),
             Some(&vec![
                 "tmux".to_string(),
-                "send-keys".to_string(),
-                "-l".to_string(),
+                "paste-buffer".to_string(),
                 "-t".to_string(),
                 "grove-ws-feature-a".to_string(),
                 "alpha".to_string(),
@@ -8510,8 +8789,7 @@ mod tests {
             commands.borrow().last(),
             Some(&vec![
                 "tmux".to_string(),
-                "send-keys".to_string(),
-                "-l".to_string(),
+                "paste-buffer".to_string(),
                 "-t".to_string(),
                 "grove-ws-feature-a".to_string(),
                 "copy me".to_string(),
