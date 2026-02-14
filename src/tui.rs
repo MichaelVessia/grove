@@ -28,6 +28,7 @@ use ftui::text::{
 use ftui::widgets::Widget;
 use ftui::widgets::block::Block;
 use ftui::widgets::borders::Borders;
+use ftui::widgets::modal::{BackdropConfig, Modal, ModalSizeConstraints};
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::status_line::{StatusItem, StatusLine};
 use ftui::{App, Cmd, Model, PackedRgba, ScreenMode, Style};
@@ -427,6 +428,40 @@ impl CreateDialogField {
             Self::Agent => "agent",
             Self::BranchMode => "mode",
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OverlayModalContent<'a> {
+    title: &'a str,
+    body: &'a str,
+    theme: UiTheme,
+}
+
+impl Widget for OverlayModalContent<'_> {
+    fn render(&self, area: Rect, frame: &mut Frame) {
+        if area.is_empty() {
+            return;
+        }
+
+        let content_style = Style::new().bg(self.theme.base).fg(self.theme.text);
+
+        // set_style_area preserves glyphs, so clear with spaces first.
+        Paragraph::new("").style(content_style).render(area, frame);
+
+        let block = Block::new()
+            .title(self.title)
+            .borders(Borders::ALL)
+            .style(content_style)
+            .border_style(Style::new().fg(self.theme.mauve).bold());
+        let inner = block.inner(area);
+        block.render(area, frame);
+
+        if inner.is_empty() {
+            return;
+        }
+
+        Paragraph::new(self.body).style(content_style).render(inner, frame);
     }
 }
 
@@ -5449,28 +5484,7 @@ impl GroveApp {
 
         let dialog_width = area.width.saturating_sub(8).min(100);
         let dialog_height = 8u16;
-        let dialog_x = area.x + area.width.saturating_sub(dialog_width) / 2;
-        let dialog_y = area.y + area.height.saturating_sub(dialog_height) / 2;
-        let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
         let theme = ui_theme();
-
-        let block = Block::new()
-            .title("Start Agent")
-            .borders(Borders::ALL)
-            .style(Style::new().bg(theme.base).fg(theme.text))
-            .border_style(Style::new().fg(theme.mauve).bold());
-        let inner = block.inner(dialog_area);
-        block.render(dialog_area, frame);
-        let _ = frame.register_hit(
-            dialog_area,
-            HitId::new(HIT_ID_LAUNCH_DIALOG),
-            FrameHitRegion::Content,
-            0,
-        );
-
-        if inner.is_empty() {
-            return;
-        }
 
         let body = [
             "Edit prompt, [Tab] toggles unsafe, [Enter] starts, [Esc] cancels".to_string(),
@@ -5489,10 +5503,23 @@ impl GroveApp {
             ),
         ]
         .join("\n");
+        let content = OverlayModalContent {
+            title: "Start Agent",
+            body: body.as_str(),
+            theme,
+        };
 
-        Paragraph::new(body)
-            .style(Style::new().fg(theme.text).bg(theme.base))
-            .render(inner, frame);
+        Modal::new(content)
+            .size(
+                ModalSizeConstraints::new()
+                    .min_width(dialog_width)
+                    .max_width(dialog_width)
+                    .min_height(dialog_height)
+                    .max_height(dialog_height),
+            )
+            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .hit_id(HitId::new(HIT_ID_LAUNCH_DIALOG))
+            .render(area, frame);
     }
 
     fn render_create_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
@@ -5505,28 +5532,7 @@ impl GroveApp {
 
         let dialog_width = area.width.saturating_sub(8).min(90);
         let dialog_height = 10u16;
-        let dialog_x = area.x + area.width.saturating_sub(dialog_width) / 2;
-        let dialog_y = area.y + area.height.saturating_sub(dialog_height) / 2;
-        let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
         let theme = ui_theme();
-
-        let block = Block::new()
-            .title("New Workspace")
-            .borders(Borders::ALL)
-            .style(Style::new().bg(theme.base).fg(theme.text))
-            .border_style(Style::new().fg(theme.mauve).bold());
-        let inner = block.inner(dialog_area);
-        block.render(dialog_area, frame);
-        let _ = frame.register_hit(
-            dialog_area,
-            HitId::new(HIT_ID_CREATE_DIALOG),
-            FrameHitRegion::Content,
-            0,
-        );
-
-        if inner.is_empty() {
-            return;
-        }
 
         let active_branch_value = match dialog.branch_mode {
             CreateBranchMode::NewBranch => dialog.base_branch.as_str(),
@@ -5543,10 +5549,23 @@ impl GroveApp {
             format!("Agent: {}", dialog.agent.label()),
         ]
         .join("\n");
+        let content = OverlayModalContent {
+            title: "New Workspace",
+            body: body.as_str(),
+            theme,
+        };
 
-        Paragraph::new(body)
-            .style(Style::new().fg(theme.text).bg(theme.base))
-            .render(inner, frame);
+        Modal::new(content)
+            .size(
+                ModalSizeConstraints::new()
+                    .min_width(dialog_width)
+                    .max_width(dialog_width)
+                    .min_height(dialog_height)
+                    .max_height(dialog_height),
+            )
+            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .hit_id(HitId::new(HIT_ID_CREATE_DIALOG))
+            .render(area, frame);
     }
 
     #[cfg(test)]
