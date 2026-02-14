@@ -36,6 +36,7 @@ use crate::agent_runtime::{
 };
 use crate::domain::{AgentType, WorkspaceStatus};
 use crate::event_log::{Event as LogEvent, EventLogger, FileEventLogger, NullEventLogger};
+#[cfg(test)]
 use crate::interactive::render_cursor_overlay;
 use crate::interactive::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
@@ -140,6 +141,106 @@ struct CursorMetadata {
     cursor_row: u16,
     pane_width: u16,
     pane_height: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TextSelectionPoint {
+    line: usize,
+    col: usize,
+}
+
+impl TextSelectionPoint {
+    fn before(self, other: Self) -> bool {
+        self.line < other.line || (self.line == other.line && self.col < other.col)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct TextSelectionState {
+    active: bool,
+    start: Option<TextSelectionPoint>,
+    end: Option<TextSelectionPoint>,
+    anchor: Option<TextSelectionPoint>,
+}
+
+impl TextSelectionState {
+    fn clear(&mut self) {
+        self.active = false;
+        self.start = None;
+        self.end = None;
+        self.anchor = None;
+    }
+
+    fn has_selection(&self) -> bool {
+        self.start.is_some() && self.end.is_some()
+    }
+
+    fn prepare_drag(&mut self, point: TextSelectionPoint) {
+        self.active = false;
+        self.start = None;
+        self.end = None;
+        self.anchor = Some(point);
+    }
+
+    fn handle_drag(&mut self, point: TextSelectionPoint) {
+        let Some(anchor) = self.anchor else {
+            return;
+        };
+        if self.start.is_none() {
+            self.start = Some(anchor);
+            self.end = Some(anchor);
+        }
+
+        self.active = true;
+        if point.before(anchor) {
+            self.start = Some(point);
+            self.end = Some(anchor);
+        } else {
+            self.start = Some(anchor);
+            self.end = Some(point);
+        }
+    }
+
+    fn finish_drag(&mut self) {
+        if self.start.is_none() {
+            self.clear();
+            return;
+        }
+
+        self.active = false;
+        self.anchor = None;
+    }
+
+    fn bounds(&self) -> Option<(TextSelectionPoint, TextSelectionPoint)> {
+        Some((self.start?, self.end?))
+    }
+
+    fn line_selection_cols(&self, line_idx: usize) -> Option<(usize, Option<usize>)> {
+        let (start, end) = self.bounds()?;
+        if line_idx < start.line || line_idx > end.line {
+            return None;
+        }
+
+        if start.line == end.line {
+            return Some((start.col, Some(end.col)));
+        }
+        if line_idx == start.line {
+            return Some((start.col, None));
+        }
+        if line_idx == end.line {
+            return Some((0, Some(end.col)));
+        }
+
+        Some((0, None))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PreviewContentViewport {
+    output_x: u16,
+    output_y: u16,
+    visible_start: usize,
+    visible_end: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -749,6 +850,115 @@ fn apply_sgr_codes(raw_params: &str, state: &mut AnsiStyleState) {
     }
 }
 
+fn sgr_params_reset_background(raw_params: &str) -> bool {
+    if raw_params.is_empty() {
+        return true;
+    }
+
+    raw_params.split(';').any(|value| {
+        if value.is_empty() {
+            return true;
+        }
+        matches!(value.parse::<i32>(), Ok(0 | 49))
+    })
+}
+
+fn inject_selection_background_ansi(
+    line: &str,
+    start_col: usize,
+    end_col: Option<usize>,
+    selection_bg: PackedRgba,
+) -> String {
+    let selection_bg_ansi = format!(
+        "\u{1b}[48;2;{};{};{}m",
+        selection_bg.r(),
+        selection_bg.g(),
+        selection_bg.b()
+    );
+
+    let mut rendered = String::with_capacity(line.len().saturating_add(64));
+    let mut chars = line.chars().peekable();
+    let mut visible_index = 0usize;
+    let mut in_selection = false;
+
+    while let Some(character) = chars.next() {
+        if character == '\u{1b}' {
+            rendered.push(character);
+            let Some(next) = chars.next() else {
+                break;
+            };
+            rendered.push(next);
+
+            match next {
+                '[' => {
+                    let mut params = String::new();
+                    let mut final_char = None;
+                    while let Some(value) = chars.next() {
+                        rendered.push(value);
+                        if ('\u{40}'..='\u{7e}').contains(&value) {
+                            final_char = Some(value);
+                            break;
+                        }
+                        params.push(value);
+                    }
+
+                    if in_selection
+                        && final_char == Some('m')
+                        && sgr_params_reset_background(&params)
+                    {
+                        rendered.push_str(&selection_bg_ansi);
+                    }
+                }
+                ']' => {
+                    while let Some(value) = chars.next() {
+                        rendered.push(value);
+                        if value == '\u{7}' {
+                            break;
+                        }
+                        if value == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
+                            rendered.push('\\');
+                            break;
+                        }
+                    }
+                }
+                'P' | 'X' | '^' | '_' => {
+                    while let Some(value) = chars.next() {
+                        rendered.push(value);
+                        if value == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
+                            rendered.push('\\');
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            continue;
+        }
+
+        let in_range = match end_col {
+            Some(end_col) => visible_index >= start_col && visible_index <= end_col,
+            None => visible_index >= start_col,
+        };
+
+        if in_range && !in_selection {
+            rendered.push_str(&selection_bg_ansi);
+            in_selection = true;
+        } else if !in_range && in_selection {
+            rendered.push_str("\u{1b}[49m");
+            in_selection = false;
+        }
+
+        rendered.push(character);
+        visible_index = visible_index.saturating_add(1);
+    }
+
+    if in_selection {
+        rendered.push_str("\u{1b}[49m");
+    }
+
+    rendered
+}
+
 fn ansi_line_to_styled_line(line: &str) -> FtLine {
     let mut spans: Vec<FtSpan<'static>> = Vec::new();
     let mut buffer = String::new();
@@ -884,6 +1094,7 @@ struct GroveApp {
     launch_skip_permissions: bool,
     sidebar_ratio_path: PathBuf,
     divider_drag_active: bool,
+    preview_selection: TextSelectionState,
     copied_text: Option<String>,
     event_log: Box<dyn EventLogger>,
     last_hit_grid: RefCell<Option<HitGrid>>,
@@ -972,6 +1183,7 @@ impl GroveApp {
             launch_skip_permissions: false,
             sidebar_ratio_path,
             divider_drag_active: false,
+            preview_selection: TextSelectionState::default(),
             copied_text: None,
             event_log,
             last_hit_grid: RefCell::new(None),
@@ -2196,6 +2408,7 @@ impl GroveApp {
         reduce(&mut self.state, action);
         if self.state.selected_index != before {
             self.preview.jump_to_bottom();
+            self.clear_preview_selection();
             self.poll_preview();
         }
     }
@@ -2306,6 +2519,7 @@ impl GroveApp {
         self.last_tmux_error = None;
         self.state.mode = UiMode::Preview;
         self.state.focus = PaneFocus::Preview;
+        self.clear_preview_selection();
         self.sync_interactive_session_geometry();
         self.poll_preview();
         true
@@ -3262,18 +3476,8 @@ impl GroveApp {
         Cmd::None
     }
 
-    fn copy_interactive_capture(&mut self, target_session: &str) {
-        match self.tmux_input.capture_output(target_session, 200, true) {
-            Ok(output) => {
-                self.copied_text = Some(output);
-                self.last_tmux_error = None;
-            }
-            Err(error) => {
-                let message = error.to_string();
-                self.last_tmux_error = Some(message.clone());
-                self.log_tmux_error(message);
-            }
-        }
+    fn copy_interactive_capture(&mut self) {
+        self.copy_interactive_selection_or_visible();
     }
 
     fn paste_cached_text(
@@ -3380,10 +3584,11 @@ impl GroveApp {
                 self.interactive = None;
                 self.state.mode = UiMode::Preview;
                 self.state.focus = PaneFocus::Preview;
+                self.clear_preview_selection();
                 Cmd::None
             }
             InteractiveAction::CopySelection => {
-                self.copy_interactive_capture(&target_session);
+                self.copy_interactive_capture();
                 Cmd::None
             }
             InteractiveAction::PasteClipboard => {
@@ -3619,6 +3824,7 @@ impl GroveApp {
         ))
     }
 
+    #[cfg(test)]
     fn apply_interactive_cursor_overlay(
         &self,
         visible_lines: &mut [String],
@@ -3660,6 +3866,188 @@ impl GroveApp {
             render_cursor_overlay_ansi(render_line, plain_line, cursor_col, cursor_visible);
     }
 
+    fn clear_preview_selection(&mut self) {
+        self.preview_selection.clear();
+    }
+
+    fn preview_visible_range_for_height(&self, preview_height: usize) -> (usize, usize) {
+        if preview_height == 0 {
+            return (0, 0);
+        }
+
+        let max_offset = self.preview.max_scroll_offset(preview_height);
+        let clamped_offset = self.preview.offset.min(max_offset);
+        let end = self.preview.lines.len().saturating_sub(clamped_offset);
+        let start = end.saturating_sub(preview_height);
+        (start, end)
+    }
+
+    fn preview_content_viewport(&self) -> Option<PreviewContentViewport> {
+        let layout = self.view_layout();
+        if layout.preview.is_empty() {
+            return None;
+        }
+        let inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        if inner.is_empty() {
+            return None;
+        }
+
+        let preview_height = usize::from(inner.height)
+            .saturating_sub(usize::from(PREVIEW_METADATA_ROWS))
+            .max(1);
+        let (visible_start, visible_end) = self.preview_visible_range_for_height(preview_height);
+
+        Some(PreviewContentViewport {
+            output_x: inner.x,
+            output_y: inner.y.saturating_add(PREVIEW_METADATA_ROWS),
+            visible_start,
+            visible_end,
+        })
+    }
+
+    fn preview_text_point_at(&self, x: u16, y: u16) -> Option<TextSelectionPoint> {
+        let viewport = self.preview_content_viewport()?;
+        if y < viewport.output_y {
+            return None;
+        }
+
+        let visible_row = usize::from(y - viewport.output_y);
+        let visible_count = viewport.visible_end.saturating_sub(viewport.visible_start);
+        if visible_row >= visible_count {
+            return None;
+        }
+
+        let line_idx = viewport.visible_start.saturating_add(visible_row);
+        let line = self.preview.lines.get(line_idx)?;
+        let line_len = line.chars().count();
+        if x < viewport.output_x {
+            return Some(TextSelectionPoint {
+                line: line_idx,
+                col: 0,
+            });
+        }
+
+        let relative_x = usize::from(x - viewport.output_x);
+        let col = if line_len == 0 {
+            0
+        } else {
+            relative_x.min(line_len.saturating_sub(1))
+        };
+
+        Some(TextSelectionPoint {
+            line: line_idx,
+            col,
+        })
+    }
+
+    fn prepare_preview_selection_drag(&mut self, x: u16, y: u16) {
+        if let Some(point) = self.preview_text_point_at(x, y) {
+            self.preview_selection.prepare_drag(point);
+            return;
+        }
+
+        self.clear_preview_selection();
+    }
+
+    fn update_preview_selection_drag(&mut self, x: u16, y: u16) {
+        let Some(point) = self.preview_text_point_at(x, y) else {
+            return;
+        };
+        self.preview_selection.handle_drag(point);
+    }
+
+    fn finish_preview_selection_drag(&mut self) {
+        if self.preview_selection.anchor.is_none() {
+            return;
+        }
+        self.preview_selection.finish_drag();
+    }
+
+    fn apply_preview_selection_highlight(
+        &self,
+        render_visible_lines: &mut [String],
+        visible_start: usize,
+    ) {
+        if !self.preview_selection.has_selection() {
+            return;
+        }
+
+        let selection_bg = ui_theme().surface1;
+        for (offset, line) in render_visible_lines.iter_mut().enumerate() {
+            let line_idx = visible_start.saturating_add(offset);
+            let Some((start_col, end_col)) = self.preview_selection.line_selection_cols(line_idx)
+            else {
+                continue;
+            };
+            *line = inject_selection_background_ansi(line, start_col, end_col, selection_bg);
+        }
+    }
+
+    fn selected_preview_text_lines(&self) -> Option<Vec<String>> {
+        let (start, end) = self.preview_selection.bounds()?;
+        if self.preview.lines.is_empty() {
+            return None;
+        }
+
+        let start_line = start.line.min(self.preview.lines.len().saturating_sub(1));
+        let end_line = end.line.min(self.preview.lines.len().saturating_sub(1));
+        if end_line < start_line {
+            return None;
+        }
+
+        let mut lines = self.preview.lines[start_line..=end_line].to_vec();
+        if lines.is_empty() {
+            return None;
+        }
+
+        if lines.len() == 1 {
+            let end_exclusive = end.col.saturating_add(1);
+            lines[0] = lines[0]
+                .chars()
+                .skip(start.col)
+                .take(end_exclusive.saturating_sub(start.col))
+                .collect();
+            return Some(lines);
+        }
+
+        lines[0] = lines[0].chars().skip(start.col).collect();
+        let last_idx = lines.len().saturating_sub(1);
+        lines[last_idx] = lines[last_idx]
+            .chars()
+            .take(end.col.saturating_add(1))
+            .collect();
+
+        Some(lines)
+    }
+
+    fn visible_preview_output_lines(&self) -> Vec<String> {
+        let Some((_, output_height)) = self.preview_output_dimensions() else {
+            return Vec::new();
+        };
+        self.preview.visible_lines(usize::from(output_height))
+    }
+
+    fn copy_interactive_selection_or_visible(&mut self) {
+        let mut lines = self
+            .selected_preview_text_lines()
+            .unwrap_or_else(|| self.visible_preview_output_lines());
+        if lines.is_empty() {
+            self.last_tmux_error = Some("no output to copy".to_string());
+            return;
+        }
+
+        while lines.last().is_some_and(|line| line.is_empty()) {
+            lines.pop();
+        }
+        if lines.is_empty() {
+            self.last_tmux_error = Some("no output to copy".to_string());
+            return;
+        }
+        self.copied_text = Some(lines.join("\n"));
+        self.last_tmux_error = None;
+        self.clear_preview_selection();
+    }
+
     fn select_workspace_by_mouse(&mut self, y: u16) {
         if !matches!(self.discovery_state, DiscoveryState::Ready) {
             return;
@@ -3679,6 +4067,7 @@ impl GroveApp {
         if row != self.state.selected_index {
             self.state.selected_index = row;
             self.preview.jump_to_bottom();
+            self.clear_preview_selection();
             self.poll_preview();
         }
     }
@@ -3693,6 +4082,7 @@ impl GroveApp {
 
         self.state.selected_index = index;
         self.preview.jump_to_bottom();
+        self.clear_preview_selection();
         self.poll_preview();
     }
 
@@ -3726,6 +4116,11 @@ impl GroveApp {
                 HitRegion::Preview => {
                     self.state.focus = PaneFocus::Preview;
                     self.state.mode = UiMode::Preview;
+                    if self.interactive.is_some() {
+                        self.prepare_preview_selection_drag(mouse_event.x, mouse_event.y);
+                    } else {
+                        self.clear_preview_selection();
+                    }
                 }
                 HitRegion::StatusLine | HitRegion::Header | HitRegion::Outside => {}
             },
@@ -3738,10 +4133,13 @@ impl GroveApp {
                         self.persist_sidebar_ratio();
                         self.sync_interactive_session_geometry();
                     }
+                } else if self.interactive.is_some() {
+                    self.update_preview_selection_drag(mouse_event.x, mouse_event.y);
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
                 self.divider_drag_active = false;
+                self.finish_preview_selection_drag();
             }
             MouseEventKind::ScrollUp => {
                 if matches!(region, HitRegion::Preview) {
@@ -4036,7 +4434,9 @@ impl GroveApp {
             .center(StatusItem::text(mode_chip.as_str()))
             .center(StatusItem::text(focus_chip.as_str()))
             .right(StatusItem::text(activity_chip.as_str()))
-            .right(StatusItem::text(self.activity_spinner_slot(selected_status, true)));
+            .right(StatusItem::text(
+                self.activity_spinner_slot(selected_status, true),
+            ));
 
         header.render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
@@ -4264,14 +4664,14 @@ impl GroveApp {
             )]),
         ];
 
-        let mut visible_plain_lines = self.preview.visible_lines(preview_height);
+        let visible_plain_lines = self.preview.visible_lines(preview_height);
         let mut visible_render_lines = self.preview.visible_render_lines(preview_height);
+        let (visible_start, _visible_end) = self.preview_visible_range_for_height(preview_height);
         if visible_render_lines.is_empty() && !visible_plain_lines.is_empty() {
-            if allow_cursor_overlay {
-                self.apply_interactive_cursor_overlay(&mut visible_plain_lines, preview_height);
-            }
-            visible_render_lines = visible_plain_lines;
-        } else if allow_cursor_overlay {
+            visible_render_lines = visible_plain_lines.clone();
+        }
+        self.apply_preview_selection_highlight(&mut visible_render_lines, visible_start);
+        if allow_cursor_overlay {
             self.apply_interactive_cursor_overlay_render(
                 &visible_plain_lines,
                 &mut visible_render_lines,
@@ -4783,14 +5183,16 @@ mod tests {
         ));
     }
 
-    use self::render_support::{assert_row_fg, find_cell_with_char, find_row_containing, row_text};
+    use self::render_support::{
+        assert_row_bg, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
+    };
     use super::{
-        CreateBranchMode, CreateDialogField, CreateWorkspaceCompletion, CursorCapture, GroveApp,
-        FAST_SPINNER_FRAMES, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW,
-        LaunchDialogState, LivePreviewCapture, Msg, PendingResizeVerification,
-        PreviewPollCompletion, StartAgentCompletion, StopAgentCompletion, TmuxInput,
-        WORKSPACE_ITEM_HEIGHT, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
-        ui_theme,
+        CreateBranchMode, CreateDialogField, CreateWorkspaceCompletion, CursorCapture,
+        FAST_SPINNER_FRAMES, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS,
+        HIT_ID_WORKSPACE_ROW, LaunchDialogState, LivePreviewCapture, Msg, PREVIEW_METADATA_ROWS,
+        PendingResizeVerification, PreviewPollCompletion, StartAgentCompletion,
+        StopAgentCompletion, TmuxInput, WORKSPACE_ITEM_HEIGHT, ansi_16_color,
+        ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -5058,9 +5460,7 @@ mod tests {
     }
 
     fn contains_spinner_frame(text: &str) -> bool {
-        FAST_SPINNER_FRAMES
-            .iter()
-            .any(|frame| text.contains(frame))
+        FAST_SPINNER_FRAMES.iter().any(|frame| text.contains(frame))
     }
 
     fn arb_key_event() -> impl Strategy<Value = KeyEvent> {
@@ -5446,8 +5846,7 @@ mod tests {
 
                 let idle_status_row = idle_frame.height().saturating_sub(1);
                 let active_status_row = active_frame.height().saturating_sub(1);
-                let idle_status =
-                    row_text(idle_frame, idle_status_row, 0, idle_frame.width());
+                let idle_status = row_text(idle_frame, idle_status_row, 0, idle_frame.width());
                 let active_status =
                     row_text(active_frame, active_status_row, 0, active_frame.width());
                 assert_eq!(
@@ -7879,6 +8278,169 @@ mod tests {
     }
 
     #[test]
+    fn mouse_drag_in_interactive_preview_highlights_selected_text() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        app.preview.lines = vec!["alpha beta".to_string()];
+        app.preview.render_lines = vec!["\u{1b}[32malpha beta\u{1b}[0m".to_string()];
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Down(MouseButton::Left),
+                preview_inner.x,
+                select_y,
+            )),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Drag(MouseButton::Left),
+                preview_inner.x.saturating_add(4),
+                select_y,
+            )),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Up(MouseButton::Left),
+                preview_inner.x.saturating_add(4),
+                select_y,
+            )),
+        );
+
+        let x_start = layout.preview.x.saturating_add(1);
+        let x_end = layout.preview.right().saturating_sub(1);
+        with_rendered_frame(&app, 100, 40, |frame| {
+            let Some(output_row) = find_row_containing(frame, "alpha beta", x_start, x_end) else {
+                panic!("output row should be rendered");
+            };
+            let Some(first_col) = find_cell_with_char(frame, output_row, x_start, x_end, 'a')
+            else {
+                panic!("selected output row should include first char");
+            };
+
+            assert_row_bg(
+                frame,
+                output_row,
+                first_col,
+                first_col.saturating_add(5),
+                ui_theme().surface1,
+            );
+            assert_row_fg(
+                frame,
+                output_row,
+                first_col,
+                first_col.saturating_add(5),
+                ansi_16_color(2),
+            );
+        });
+    }
+
+    #[test]
+    fn alt_copy_then_alt_paste_uses_mouse_selected_preview_text() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, vec![Ok(String::new())]);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        app.preview.lines = vec!["alpha beta".to_string()];
+        app.preview.render_lines = app.preview.lines.clone();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Down(MouseButton::Left),
+                preview_inner.x,
+                select_y,
+            )),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Drag(MouseButton::Left),
+                preview_inner.x.saturating_add(4),
+                select_y,
+            )),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Up(MouseButton::Left),
+                preview_inner.x.saturating_add(4),
+                select_y,
+            )),
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('c'))
+                    .with_modifiers(Modifiers::ALT)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('v'))
+                    .with_modifiers(Modifiers::ALT)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+
+        assert!(!app.preview_selection.has_selection());
+        assert_eq!(
+            commands.borrow().last(),
+            Some(&vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-l".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "alpha".to_string(),
+            ])
+        );
+    }
+
+    #[test]
     fn bracketed_paste_event_forwards_wrapped_literal() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -7908,12 +8470,12 @@ mod tests {
     }
 
     #[test]
-    fn alt_copy_then_alt_paste_uses_captured_text() {
+    fn alt_copy_then_alt_paste_uses_visible_preview_text_when_no_selection() {
         let sidebar_ratio_path = unique_sidebar_ratio_path("alt-copy-paste");
         let (mut app, commands, captures, _cursor_captures) =
             fixture_app_with_tmux_and_sidebar_path(
                 WorkspaceStatus::Active,
-                vec![Ok(String::new()), Ok("copy me".to_string())],
+                vec![Ok(String::new())],
                 vec![Ok("1 0 0 78 34".to_string())],
                 sidebar_ratio_path,
             );
@@ -7923,6 +8485,8 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
         );
+        app.preview.lines = vec!["copy me".to_string()];
+        app.preview.render_lines = app.preview.lines.clone();
 
         ftui::Model::update(
             &mut app,

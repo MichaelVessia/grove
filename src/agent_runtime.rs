@@ -23,7 +23,6 @@ const ERROR_PATTERNS: [&str; 4] = ["error:", "failed", "panic:", "traceback"];
 pub(crate) enum SessionActivity {
     Idle,
     Active,
-    Waiting,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -296,16 +295,13 @@ pub(crate) fn detect_status(
         return WorkspaceStatus::Thinking;
     }
 
+    if detect_waiting_prompt(output).is_some() {
+        return WorkspaceStatus::Waiting;
+    }
+
     match session_activity {
-        SessionActivity::Waiting => WorkspaceStatus::Waiting,
         SessionActivity::Active => WorkspaceStatus::Active,
-        SessionActivity::Idle => {
-            if detect_waiting_prompt(output).is_some() {
-                WorkspaceStatus::Waiting
-            } else {
-                WorkspaceStatus::Idle
-            }
-        }
+        SessionActivity::Idle => WorkspaceStatus::Idle,
     }
 }
 
@@ -803,11 +799,11 @@ mod tests {
             WorkspaceStatus::Done
         );
         assert_eq!(
-            detect_status("thinking...", SessionActivity::Waiting, false, true, true),
+            detect_status("thinking...", SessionActivity::Active, false, true, true),
             WorkspaceStatus::Thinking
         );
         assert_eq!(
-            detect_status("", SessionActivity::Waiting, false, true, true),
+            detect_status("allow edit? [y/n]", SessionActivity::Active, false, true, true),
             WorkspaceStatus::Waiting
         );
         assert_eq!(

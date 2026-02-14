@@ -47,3 +47,18 @@ pub fn assert_row_fg(frame: &Frame, y: u16, x_start: u16, x_end: u16, expected_f
         }
     }
 }
+
+pub fn assert_row_bg(frame: &Frame, y: u16, x_start: u16, x_end: u16, expected_bg: PackedRgba) {
+    for x in x_start..x_end {
+        let Some(cell) = frame.buffer.get(x, y) else {
+            continue;
+        };
+        let is_visible = cell
+            .content
+            .as_char()
+            .is_some_and(|value| !value.is_whitespace());
+        if is_visible {
+            assert_eq!(cell.bg, expected_bg, "cell ({x},{y}) has unexpected bg");
+        }
+    }
+}
