@@ -237,3 +237,15 @@ runtime paths (`tmux_runtime_paths_avoid_status_calls_in_tui_module`).
 `preview_poll:stale_result_dropped`.
 4. Added regression test:
 `stale_preview_poll_result_is_dropped_by_generation`.
+
+### Workstream 5, Interactive Resize and Immediate Poll Parity (Completed)
+
+1. Interactive enter now always triggers an immediate poll after resize sync.
+2. `Msg::Resize` now triggers immediate poll when interactive mode is active.
+3. Added resize verification state (`PendingResizeVerification`) and cursor-based
+verify-and-retry-once flow:
+   `resize_verify_retry` then `resize_verify_failed` if mismatch persists after retry.
+4. Added tests:
+`enter_interactive_immediately_polls_preview_and_cursor`,
+`resize_in_interactive_mode_immediately_resizes_and_polls`,
+`resize_verify_retries_once_then_stops`.

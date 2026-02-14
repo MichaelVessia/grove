@@ -249,6 +249,14 @@ struct PendingInteractiveInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingResizeVerification {
+    session: String,
+    expected_width: u16,
+    expected_height: u16,
+    retried: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct QueuedInteractiveSend {
     command: Vec<String>,
     target_session: String,
@@ -810,6 +818,7 @@ struct GroveApp {
     pending_interactive_inputs: VecDeque<PendingInteractiveInput>,
     pending_interactive_sends: VecDeque<QueuedInteractiveSend>,
     interactive_send_in_flight: bool,
+    pending_resize_verification: Option<PendingResizeVerification>,
     deferred_cmds: Vec<Cmd<Msg>>,
 }
 
@@ -883,6 +892,7 @@ impl GroveApp {
             pending_interactive_inputs: VecDeque::new(),
             pending_interactive_sends: VecDeque::new(),
             interactive_send_in_flight: false,
+            pending_resize_verification: None,
             deferred_cmds: Vec::new(),
         };
         app.refresh_preview_summary();
@@ -996,6 +1006,7 @@ impl GroveApp {
                         .with_data("session", Value::from(session.clone())),
                 );
                 self.interactive_poll_due_at = None;
+                self.pending_resize_verification = None;
                 let pending_before = self.pending_interactive_inputs.len();
                 self.clear_pending_inputs_for_session(session);
                 let pending_after = self.pending_interactive_inputs.len();
@@ -1561,7 +1572,16 @@ impl GroveApp {
             let message = error.to_string();
             self.last_tmux_error = Some(message.clone());
             self.log_tmux_error(message);
+            self.pending_resize_verification = None;
+            return;
         }
+
+        self.pending_resize_verification = Some(PendingResizeVerification {
+            session: target_session,
+            expected_width: pane_width,
+            expected_height: pane_height,
+            retried: false,
+        });
     }
 
     fn apply_live_preview_capture(
@@ -1760,6 +1780,7 @@ impl GroveApp {
         let Some(state) = self.interactive.as_mut() else {
             return;
         };
+        let session = cursor_capture.session.clone();
 
         let changed = state.update_cursor(
             metadata.cursor_row,
@@ -1768,11 +1789,12 @@ impl GroveApp {
             metadata.pane_height,
             metadata.pane_width,
         );
+        self.verify_resize_after_cursor_capture(&session, metadata.pane_width, metadata.pane_height);
         let parse_duration_ms =
             Self::duration_millis(Instant::now().saturating_duration_since(parse_started_at));
         self.event_log.log(
             LogEvent::new("preview_poll", "cursor_capture_completed")
-                .with_data("session", Value::from(cursor_capture.session))
+                .with_data("session", Value::from(session))
                 .with_data("capture_ms", Value::from(cursor_capture.capture_ms))
                 .with_data("parse_ms", Value::from(parse_duration_ms))
                 .with_data("changed", Value::from(changed))
@@ -1780,6 +1802,63 @@ impl GroveApp {
                 .with_data("cursor_row", Value::from(metadata.cursor_row))
                 .with_data("cursor_col", Value::from(metadata.cursor_col)),
         );
+    }
+
+    fn verify_resize_after_cursor_capture(
+        &mut self,
+        session: &str,
+        pane_width: u16,
+        pane_height: u16,
+    ) {
+        let Some(pending) = self.pending_resize_verification.clone() else {
+            return;
+        };
+        if pending.session != session {
+            return;
+        }
+
+        if pending.expected_width == pane_width && pending.expected_height == pane_height {
+            self.pending_resize_verification = None;
+            return;
+        }
+
+        if pending.retried {
+            self.event_log.log(
+                LogEvent::new("preview_poll", "resize_verify_failed")
+                    .with_data("session", Value::from(session.to_string()))
+                    .with_data("expected_width", Value::from(pending.expected_width))
+                    .with_data("expected_height", Value::from(pending.expected_height))
+                    .with_data("actual_width", Value::from(pane_width))
+                    .with_data("actual_height", Value::from(pane_height)),
+            );
+            self.pending_resize_verification = None;
+            return;
+        }
+
+        self.event_log.log(
+            LogEvent::new("preview_poll", "resize_verify_retry")
+                .with_data("session", Value::from(session.to_string()))
+                .with_data("expected_width", Value::from(pending.expected_width))
+                .with_data("expected_height", Value::from(pending.expected_height))
+                .with_data("actual_width", Value::from(pane_width))
+                .with_data("actual_height", Value::from(pane_height)),
+        );
+        self.pending_resize_verification = Some(PendingResizeVerification {
+            retried: true,
+            ..pending.clone()
+        });
+        if let Err(error) =
+            self.tmux_input
+                .resize_session(session, pending.expected_width, pending.expected_height)
+        {
+            let message = error.to_string();
+            self.last_tmux_error = Some(message.clone());
+            self.log_tmux_error(message);
+            self.pending_resize_verification = None;
+            return;
+        }
+
+        self.poll_preview();
     }
 
     fn poll_preview_sync(&mut self) {
@@ -2037,6 +2116,7 @@ impl GroveApp {
         self.state.mode = UiMode::Preview;
         self.state.focus = PaneFocus::Preview;
         self.sync_interactive_session_geometry();
+        self.poll_preview();
         true
     }
 
@@ -3923,6 +4003,7 @@ impl Model for GroveApp {
             Msg::Resize { width, height } => {
                 self.viewport_width = width;
                 self.viewport_height = height;
+                let interactive_active = self.interactive.is_some();
                 if let Some(state) = self.interactive.as_mut() {
                     state.update_cursor(
                         state.cursor_row,
@@ -3933,6 +4014,9 @@ impl Model for GroveApp {
                     );
                 }
                 self.sync_interactive_session_geometry();
+                if interactive_active {
+                    self.poll_preview();
+                }
                 Cmd::None
             }
             Msg::PreviewPollCompleted(completion) => {
@@ -4066,11 +4150,12 @@ mod tests {
         assert_cell_style, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
     };
     use super::{
-        CreateBranchMode, CreateDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
-        HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogState, LivePreviewCapture, Msg,
-        PreviewPollCompletion, TmuxInput, WORKSPACE_ITEM_HEIGHT, ansi_16_color,
-        ansi_line_to_styled_line, parse_cursor_metadata,
+        CreateBranchMode, CreateDialogField, CursorCapture, GroveApp, HIT_ID_HEADER,
+        HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogState,
+        LivePreviewCapture, Msg, PendingResizeVerification, PreviewPollCompletion, TmuxInput,
+        WORKSPACE_ITEM_HEIGHT, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
     };
+    use crate::interactive::InteractiveState;
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
     use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
@@ -5602,6 +5687,115 @@ mod tests {
                 .iter()
                 .any(|call| call == "resize:grove-ws-feature-a:78:34")
         );
+    }
+
+    #[test]
+    fn enter_interactive_immediately_polls_preview_and_cursor() {
+        let (mut app, _commands, _captures, _cursor_captures, calls) = fixture_app_with_tmux_and_calls(
+            WorkspaceStatus::Active,
+            vec![Ok("entered\n".to_string())],
+            vec![Ok("1 0 0 78 34".to_string())],
+        );
+        app.state.selected_index = 1;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(
+            calls
+                .borrow()
+                .iter()
+                .any(|call| call == "capture:grove-ws-feature-a:600:false")
+        );
+        assert!(
+            calls
+                .borrow()
+                .iter()
+                .any(|call| call == "cursor:grove-ws-feature-a")
+        );
+    }
+
+    #[test]
+    fn resize_in_interactive_mode_immediately_resizes_and_polls() {
+        let (mut app, _commands, _captures, _cursor_captures, calls) = fixture_app_with_tmux_and_calls(
+            WorkspaceStatus::Active,
+            vec![Ok("entered\n".to_string()), Ok("resized\n".to_string())],
+            vec![Ok("1 0 0 78 34".to_string()), Ok("1 0 0 58 34".to_string())],
+        );
+        app.state.selected_index = 1;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        calls.borrow_mut().clear();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 80,
+                height: 40,
+            },
+        );
+
+        assert!(
+            calls
+                .borrow()
+                .iter()
+                .any(|call| call.starts_with("resize:grove-ws-feature-a:"))
+        );
+        assert!(
+            calls
+                .borrow()
+                .iter()
+                .any(|call| call == "capture:grove-ws-feature-a:600:false")
+        );
+    }
+
+    #[test]
+    fn resize_verify_retries_once_then_stops() {
+        let (mut app, _commands, _captures, _cursor_captures, calls) = fixture_app_with_tmux_and_calls(
+            WorkspaceStatus::Active,
+            vec![Ok("after-retry\n".to_string())],
+            vec![Ok("1 0 0 70 20".to_string())],
+        );
+        app.state.selected_index = 1;
+        app.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            "grove-ws-feature-a".to_string(),
+            Instant::now(),
+            34,
+            78,
+        ));
+        app.pending_resize_verification = Some(PendingResizeVerification {
+            session: "grove-ws-feature-a".to_string(),
+            expected_width: 78,
+            expected_height: 34,
+            retried: false,
+        });
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation: 1,
+                live_capture: None,
+                cursor_capture: Some(CursorCapture {
+                    session: "grove-ws-feature-a".to_string(),
+                    capture_ms: 1,
+                    result: Ok("1 0 0 70 20".to_string()),
+                }),
+            }),
+        );
+
+        let resize_retries = calls
+            .borrow()
+            .iter()
+            .filter(|call| *call == "resize:grove-ws-feature-a:78:34")
+            .count();
+        assert_eq!(resize_retries, 1);
+        assert!(app.pending_resize_verification.is_none());
     }
 
     #[test]
