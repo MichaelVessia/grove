@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::application::agent_runtime::{TMUX_SESSION_PREFIX, reconcile_with_sessions};
-use crate::config::MultiplexerKind;
-use crate::domain::{AgentType, Workspace, WorkspaceStatus};
-use crate::workspace_lifecycle::{
+use crate::application::workspace_lifecycle::{
     WorkspaceMarkerError, read_workspace_agent_marker, read_workspace_markers,
 };
+use crate::config::MultiplexerKind;
+use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
 pub trait GitAdapter {
     fn list_workspaces(&self) -> Result<Vec<Workspace>, GitAdapterError>;

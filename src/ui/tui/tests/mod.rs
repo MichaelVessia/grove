@@ -21,12 +21,14 @@ use super::{
 };
 use crate::adapters::{BootstrapData, DiscoveryState};
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
+use crate::application::workspace_lifecycle::{
+    BranchMode, CreateWorkspaceRequest, CreateWorkspaceResult,
+};
 use crate::config::{MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
 use crate::interactive::InteractiveState;
 use crate::state::{PaneFocus, UiMode};
-use crate::workspace_lifecycle::{BranchMode, CreateWorkspaceRequest, CreateWorkspaceResult};
 use ftui::core::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
     PasteEvent,
