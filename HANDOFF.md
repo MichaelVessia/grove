@@ -924,7 +924,7 @@
   - `cargo test --lib` (pass, 301)
 
 ### Phase 6ac, move sync command/launch sequencing into `agent_runtime`
-- Commit: `(pending, uncommitted)`
+- Commit: `2d637bc` (consolidated with phases 6ad/6ae)
 - Changes:
   - added runtime helpers in `src/agent_runtime.rs`:
     - `execute_commands_with(&[Vec<String>], impl FnMut(&[String]) -> std::io::Result<()>)`
@@ -946,7 +946,7 @@
   - `cargo test --lib` (pass, 303)
 
 ### Phase 6ad, move single-command sync execution through runtime boundary
-- Commit: `(pending, uncommitted)`
+- Commit: `2d637bc` (consolidated with phases 6ac/6ae)
 - Changes:
   - added runtime helper in `src/agent_runtime.rs`:
     - `execute_command_with(&[String], impl FnOnce(&[String]) -> std::io::Result<()>)`
@@ -965,7 +965,7 @@
   - `cargo test --lib` (pass, 305)
 
 ### Phase 6ae, dedupe runtime launch executors behind shared internal helper
-- Commit: `(pending, uncommitted)`
+- Commit: `2d637bc` (consolidated with phases 6ac/6ad)
 - Changes:
   - added internal runtime helper in `src/agent_runtime.rs`:
     - `execute_launch_plan_internal(&LaunchPlan, write_launcher_script, execute)`
@@ -981,8 +981,10 @@
   - `cargo test --lib` (pass, 306)
 
 ## Current State
-- Worktree has uncommitted changes for phases 6ac, 6ad, and 6ae.
+- Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `b6d262b` docs(handoff): record phases 6ac-6ae
+  - `2d637bc` refactor(runtime): route sync execution through runtime command helpers
   - `1325e8f` phase 6ab
   - `5044871` phase 6aa
   - `34e7784` phase 6z
