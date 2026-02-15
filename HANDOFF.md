@@ -1373,9 +1373,36 @@
 - Gates:
   - `cargo test --lib` (pass, 314)
 
+### Phase 7l, move `domain` module to directory layout
+- Commit: `1d93a36`
+- Changes:
+  - moved module file:
+    - `src/domain.rs` -> `src/domain/mod.rs`
+  - no behavior changes, crate-tree shape alignment only
+- Gates:
+  - `cargo test --lib` (pass, 314)
+  - `cargo test --bin grove` (pass, 4)
+
+### Phase 8a, remove transitional `tui` shim and stale root import usage
+- Commit: `3e0ea40`
+- Changes:
+  - removed transitional shim:
+    - deleted `src/tui.rs`
+    - removed `pub mod tui;` from `src/lib.rs`
+  - updated run helper wrappers in `src/lib.rs` to call `ui::tui::...` directly
+  - updated `src/main.rs` event-log reference to `grove::infrastructure::event_log::FileEventLogger`
+  - cleaned `src/ui/tui/mod.rs` bootstrap imports to avoid non-test unused import warnings
+  - no behavior changes, cleanup-only
+- Gates:
+  - `cargo test --lib` (pass, 314)
+  - `cargo test --bin grove` (pass, 4)
+
 ## Current State
-- Worktree is clean after phase 7k commit.
+- Worktree is clean after phase 8a and 7l commits.
 - Recent refactor commits on local `master`:
+  - `1d93a36` refactor(domain): move domain module to directory layout
+  - `3e0ea40` refactor(cleanup): remove tui shim module
+  - `bd0876c` docs(handoff): record phase 7k
   - `67bb3a9` refactor(application): move hardening module under application
   - `824a05a` docs(handoff): record phase 7j
   - `c120bc9` refactor(infrastructure): move event_log module under infrastructure
@@ -1504,8 +1531,8 @@ Status:
 
 Next sub-targets:
 - phase 6 runtime-boundary extraction is functionally complete for lifecycle start/stop flow
-- continue phase 7 crate-tree alignment in small compile-safe moves
-- next candidate: begin phase 8 cleanup (remove transitional re-exports/shims, refresh module-map docs, final gates)
+- phase 7 crate-tree alignment is complete
+- phase 8 cleanup is complete (shim removal + final full gates)
 
 Rules:
 - keep behavior unchanged
