@@ -669,7 +669,9 @@ impl GroveApp {
             capture_rows: Some(capture_rows),
         };
         let launch_plan = build_shell_launch_plan(&launch_request, self.multiplexer);
-        if let Err(error) = self.execute_launch_plan_sync(&launch_plan) {
+        if let Err(error) =
+            execute_launch_plan_with(&launch_plan, |command| self.execute_tmux_command(command))
+        {
             self.last_tmux_error = Some(error.to_string());
             self.show_toast("lazygit launch failed", true);
             self.lazygit_failed_sessions.insert(session_name);
@@ -1671,7 +1673,9 @@ impl GroveApp {
         let session_name = launch_plan.session_name.clone();
 
         if !self.tmux_input.supports_background_send() {
-            if let Err(error) = self.execute_launch_plan_sync(&launch_plan) {
+            if let Err(error) =
+                execute_launch_plan_with(&launch_plan, |command| self.execute_tmux_command(command))
+            {
                 self.last_tmux_error = Some(error.to_string());
                 self.show_toast("agent start failed", true);
                 return;
@@ -1792,7 +1796,9 @@ impl GroveApp {
         let stop_commands = stop_plan(&session_name, self.multiplexer);
 
         if !self.tmux_input.supports_background_send() {
-            if let Err(error) = self.execute_tmux_commands(&stop_commands) {
+            if let Err(error) =
+                execute_commands_with(&stop_commands, |command| self.execute_tmux_command(command))
+            {
                 self.last_tmux_error = Some(error.to_string());
                 self.show_toast("agent stop failed", true);
                 return;

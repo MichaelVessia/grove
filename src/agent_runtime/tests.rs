@@ -8,8 +8,9 @@ use super::{
     CaptureChange, LaunchPlan, LaunchRequest, LauncherScript, LivePreviewTarget, SessionActivity,
     build_launch_plan, default_agent_command, detect_agent_session_status_in_home, detect_status,
     detect_status_with_session_override_in_home, detect_waiting_prompt, evaluate_capture_change,
-    execute_commands, execute_launch_plan, git_preview_session_if_ready,
-    git_session_name_for_workspace, kill_workspace_session_command, live_preview_agent_session,
+    execute_command_with, execute_commands, execute_commands_with, execute_launch_plan,
+    execute_launch_plan_with, git_preview_session_if_ready, git_session_name_for_workspace,
+    kill_workspace_session_command, live_preview_agent_session,
     live_preview_capture_target_for_tab, live_preview_session_for_tab,
     normalized_agent_command_override, poll_interval, reconcile_with_sessions,
     sanitize_workspace_name, session_name_for_workspace, session_name_for_workspace_ref, stop_plan,
@@ -500,6 +501,92 @@ fn execute_launch_plan_writes_launcher_script_and_executes_commands() {
         fs::read_to_string(script_path).expect("launcher script should be written"),
         "#!/usr/bin/env bash\necho hi\n"
     );
+}
+
+#[test]
+fn execute_commands_with_uses_supplied_executor() {
+    let commands = vec![
+        vec!["echo".to_string(), "first".to_string()],
+        vec!["echo".to_string(), "second".to_string()],
+    ];
+    let mut observed = Vec::new();
+
+    let result = execute_commands_with(&commands, |command| {
+        observed.push(command.join(" "));
+        Ok(())
+    });
+
+    assert!(result.is_ok());
+    assert_eq!(observed, vec!["echo first", "echo second"]);
+}
+
+#[test]
+fn execute_command_with_skips_empty_commands() {
+    let mut executed = false;
+
+    let result = execute_command_with(&Vec::new(), |_command| {
+        executed = true;
+        Ok(())
+    });
+
+    assert!(result.is_ok());
+    assert!(!executed);
+}
+
+#[test]
+fn execute_command_with_invokes_executor_for_non_empty_commands() {
+    let command = vec!["echo".to_string(), "ok".to_string()];
+    let mut observed = String::new();
+
+    let result = execute_command_with(&command, |command| {
+        observed = command.join(" ");
+        Ok(())
+    });
+
+    assert!(result.is_ok());
+    assert_eq!(observed, "echo ok");
+}
+
+#[test]
+fn execute_launch_plan_with_prefixes_script_write_errors() {
+    let temp_dir = unique_test_dir("execute-launch-plan-sync");
+    let missing_dir = temp_dir.join("missing");
+    let launch_plan = LaunchPlan {
+        session_name: "grove-ws-test".to_string(),
+        pane_lookup_cmd: Vec::new(),
+        pre_launch_cmds: Vec::new(),
+        launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
+        launcher_script: Some(LauncherScript {
+            path: missing_dir.join(".grove-start.sh"),
+            contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
+        }),
+    };
+
+    let result = execute_launch_plan_with(&launch_plan, |_command| Ok(()));
+    let error_text = result.expect_err("script write should fail").to_string();
+
+    assert!(error_text.starts_with("launcher script write failed: "));
+}
+
+#[test]
+fn execute_launch_plan_keeps_unprefixed_script_write_errors() {
+    let temp_dir = unique_test_dir("execute-launch-plan");
+    let missing_dir = temp_dir.join("missing");
+    let launch_plan = LaunchPlan {
+        session_name: "grove-ws-test".to_string(),
+        pane_lookup_cmd: Vec::new(),
+        pre_launch_cmds: Vec::new(),
+        launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
+        launcher_script: Some(LauncherScript {
+            path: missing_dir.join(".grove-start.sh"),
+            contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
+        }),
+    };
+
+    let result = execute_launch_plan(launch_plan);
+    let error_text = result.expect_err("script write should fail").to_string();
+
+    assert!(!error_text.starts_with("launcher script write failed: "));
 }
 
 #[test]

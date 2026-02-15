@@ -175,7 +175,7 @@ impl GroveApp {
             LogEvent::new("tmux_cmd", "execute")
                 .with_data("command", Value::from(command.join(" "))),
         );
-        let result = self.tmux_input.execute(command);
+        let result = execute_command_with(command, |command| self.tmux_input.execute(command));
         let duration_ms =
             Self::duration_millis(Instant::now().saturating_duration_since(started_at));
         let mut completion_event = LogEvent::new("tmux_cmd", "completed")
@@ -188,29 +188,6 @@ impl GroveApp {
         }
         self.event_log.log(completion_event);
         result
-    }
-
-    pub(super) fn execute_tmux_commands(
-        &mut self,
-        commands: &[Vec<String>],
-    ) -> std::io::Result<()> {
-        for command in commands {
-            self.execute_tmux_command(command)?;
-        }
-        Ok(())
-    }
-
-    pub(super) fn execute_launch_plan_sync(
-        &mut self,
-        launch_plan: &crate::agent_runtime::LaunchPlan,
-    ) -> std::io::Result<()> {
-        if let Some(script) = &launch_plan.launcher_script {
-            fs::write(&script.path, &script.contents).map_err(|error| {
-                std::io::Error::other(format!("launcher script write failed: {error}"))
-            })?;
-        }
-        self.execute_tmux_commands(&launch_plan.pre_launch_cmds)?;
-        self.execute_tmux_command(&launch_plan.launch_cmd)
     }
 
     pub(super) fn show_toast(&mut self, text: impl Into<String>, is_error: bool) {

@@ -739,19 +739,64 @@ pub fn stop_plan(session_name: &str, multiplexer: MultiplexerKind) -> Vec<Vec<St
 }
 
 pub fn execute_launch_plan(launch_plan: LaunchPlan) -> std::io::Result<()> {
-    if let Some(script) = &launch_plan.launcher_script {
-        fs::write(&script.path, &script.contents)?;
-    }
-
-    execute_commands(&launch_plan.pre_launch_cmds)?;
-    execute_command(&launch_plan.launch_cmd)
+    execute_launch_plan_internal(
+        &launch_plan,
+        |script| fs::write(&script.path, &script.contents),
+        execute_command,
+    )
 }
 
 pub fn execute_commands(commands: &[Vec<String>]) -> std::io::Result<()> {
+    execute_commands_with(commands, execute_command)
+}
+
+pub fn execute_command_with(
+    command: &[String],
+    execute: impl FnOnce(&[String]) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    if command.is_empty() {
+        return Ok(());
+    }
+
+    execute(command)
+}
+
+pub fn execute_commands_with(
+    commands: &[Vec<String>],
+    mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
+) -> std::io::Result<()> {
     for command in commands {
-        execute_command(command)?;
+        execute_command_with(command, |command| execute(command))?;
     }
     Ok(())
+}
+
+pub fn execute_launch_plan_with(
+    launch_plan: &LaunchPlan,
+    mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    execute_launch_plan_internal(
+        launch_plan,
+        |script| {
+            fs::write(&script.path, &script.contents).map_err(|error| {
+                std::io::Error::other(format!("launcher script write failed: {error}"))
+            })
+        },
+        |command| execute(command),
+    )
+}
+
+fn execute_launch_plan_internal(
+    launch_plan: &LaunchPlan,
+    mut write_launcher_script: impl FnMut(&LauncherScript) -> std::io::Result<()>,
+    mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    if let Some(script) = &launch_plan.launcher_script {
+        write_launcher_script(script)?;
+    }
+
+    execute_commands_with(&launch_plan.pre_launch_cmds, |command| execute(command))?;
+    execute_command_with(&launch_plan.launch_cmd, |command| execute(command))
 }
 
 fn execute_command(command: &[String]) -> std::io::Result<()> {
