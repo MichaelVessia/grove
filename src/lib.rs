@@ -10,6 +10,7 @@ pub mod preview;
 pub mod state;
 pub mod tui;
 pub mod workspace_lifecycle;
+pub mod zellij_emulator;
 
 pub fn hello_message(app_name: &str) -> String {
     format!("Hello from {app_name}.")

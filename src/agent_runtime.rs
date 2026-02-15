@@ -128,6 +128,26 @@ pub fn session_name_for_workspace(workspace_name: &str) -> String {
     )
 }
 
+fn default_zellij_capture_directory() -> PathBuf {
+    if let Some(path) = dirs::cache_dir() {
+        return path.join("grove").join("zellij");
+    }
+
+    if let Some(path) = dirs::home_dir() {
+        return path.join(".cache").join("grove").join("zellij");
+    }
+
+    PathBuf::from(".grove").join("zellij")
+}
+
+fn zellij_capture_log_path_in(base_directory: &Path, session_name: &str) -> PathBuf {
+    base_directory.join(format!("{session_name}.ansi.log"))
+}
+
+pub fn zellij_capture_log_path(session_name: &str) -> PathBuf {
+    zellij_capture_log_path_in(&default_zellij_capture_directory(), session_name)
+}
+
 pub fn build_launch_plan(request: &LaunchRequest, multiplexer: MultiplexerKind) -> LaunchPlan {
     let session_name = session_name_for_workspace(&request.workspace_name);
     let agent_cmd = build_agent_command(request.agent, request.skip_permissions);
@@ -220,12 +240,27 @@ fn zellij_launch_plan(
     session_name: String,
     launch_agent_cmd: String,
 ) -> LaunchPlan {
+    let capture_log_path = zellij_capture_log_path(&session_name);
+    let capture_log_path_text = capture_log_path.to_string_lossy().to_string();
+    let capture_log_directory_text = capture_log_path.parent().map_or_else(
+        || ".".to_string(),
+        |path| path.to_string_lossy().to_string(),
+    );
     let pre_launch_cmds = vec![
         vec![
             "sh".to_string(),
             "-lc".to_string(),
             format!(
-                "if ! zellij list-sessions --short --no-formatting | grep -Fxq {session}; then zellij attach {session} --create --create-background; fi",
+                "mkdir -p {capture_dir} && : > {capture_file}",
+                capture_dir = shell_single_quote(&capture_log_directory_text),
+                capture_file = shell_single_quote(&capture_log_path_text),
+            ),
+        ],
+        vec![
+            "sh".to_string(),
+            "-lc".to_string(),
+            format!(
+                "zellij attach {session} --create --create-background >/dev/null 2>&1 || true",
                 session = shell_single_quote(&session_name),
             ),
         ],
@@ -255,7 +290,11 @@ fn zellij_launch_plan(
                 "--".to_string(),
                 "bash".to_string(),
                 "-lc".to_string(),
-                launch_agent_cmd,
+                format!(
+                    "script -qefc {} {}",
+                    shell_single_quote(&launch_agent_cmd),
+                    shell_single_quote(&capture_log_path_text)
+                ),
             ],
             launcher_script: None,
         },
@@ -282,7 +321,11 @@ fn zellij_launch_plan(
                     "--".to_string(),
                     "bash".to_string(),
                     "-lc".to_string(),
-                    launcher_exec,
+                    format!(
+                        "script -qefc {} {}",
+                        shell_single_quote(&launcher_exec),
+                        shell_single_quote(&capture_log_path_text)
+                    ),
                 ],
                 launcher_script: Some(LauncherScript {
                     path: launcher_path,
@@ -810,7 +853,7 @@ fn content_hash(content: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::Duration;
 
     use super::{
@@ -818,6 +861,7 @@ mod tests {
         detect_status, detect_waiting_prompt, evaluate_capture_change,
         normalized_agent_command_override, poll_interval, reconcile_with_sessions,
         sanitize_workspace_name, session_name_for_workspace, stop_plan, strip_mouse_fragments,
+        zellij_capture_log_path, zellij_capture_log_path_in,
     };
     use crate::config::MultiplexerKind;
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -963,6 +1007,13 @@ mod tests {
         };
 
         let plan = build_launch_plan(&request, MultiplexerKind::Zellij);
+        let capture_log_path = zellij_capture_log_path("grove-ws-auth-flow");
+        let capture_log_path_text = capture_log_path.to_string_lossy().to_string();
+        let capture_log_dir_text = capture_log_path
+            .parent()
+            .expect("capture path should have parent")
+            .to_string_lossy()
+            .to_string();
 
         assert_eq!(plan.session_name, "grove-ws-auth-flow");
         assert_eq!(
@@ -970,7 +1021,18 @@ mod tests {
             vec![
                 "sh",
                 "-lc",
-                "if ! zellij list-sessions --short --no-formatting | grep -Fxq 'grove-ws-auth-flow'; then zellij attach 'grove-ws-auth-flow' --create --create-background; fi",
+                &format!(
+                    "mkdir -p '{}' && : > '{}'",
+                    capture_log_dir_text, capture_log_path_text
+                ),
+            ]
+        );
+        assert_eq!(
+            plan.pre_launch_cmds[1],
+            vec![
+                "sh",
+                "-lc",
+                "zellij attach 'grove-ws-auth-flow' --create --create-background >/dev/null 2>&1 || true",
             ]
         );
         assert_eq!(
@@ -986,8 +1048,17 @@ mod tests {
                 "--",
                 "bash",
                 "-lc",
-                "codex",
+                &format!("script -qefc 'codex' '{}'", capture_log_path_text),
             ]
+        );
+    }
+
+    #[test]
+    fn zellij_capture_log_path_joins_session_file_name() {
+        let path = zellij_capture_log_path_in(Path::new("/tmp/grove-zellij-capture"), "grove-ws-x");
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/grove-zellij-capture/grove-ws-x.ansi.log")
         );
     }
 

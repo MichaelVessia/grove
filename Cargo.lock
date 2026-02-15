@@ -191,7 +191,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -226,7 +226,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -297,6 +297,16 @@ name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
+
+[[package]]
+name = "frankenterm-core"
+version = "0.1.0"
+source = "git+https://github.com/Dicklesworthstone/frankentui.git?rev=507542bea6d84bf1d83c438a2168a0194a7e5264#507542bea6d84bf1d83c438a2168a0194a7e5264"
+dependencies = [
+ "bitflags",
+ "smallvec",
+ "unicode-width",
+]
 
 [[package]]
 name = "ftui"
@@ -475,6 +485,7 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "dirs",
+ "frankenterm-core",
  "ftui",
  "proptest",
  "serde",
@@ -987,7 +998,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1152,7 +1163,7 @@ dependencies = [
  "getrandom 0.4.1",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

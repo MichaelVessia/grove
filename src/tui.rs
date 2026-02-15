@@ -41,7 +41,7 @@ use crate::adapters::{
 };
 use crate::agent_runtime::{
     LaunchRequest, SessionActivity, build_launch_plan, detect_status, poll_interval,
-    session_name_for_workspace, stop_plan,
+    session_name_for_workspace, stop_plan, zellij_capture_log_path,
 };
 use crate::config::{GroveConfig, MultiplexerKind};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -61,6 +61,7 @@ use crate::workspace_lifecycle::{
     BranchMode, CommandGitRunner, CommandSetupScriptRunner, CreateWorkspaceRequest,
     CreateWorkspaceResult, WorkspaceLifecycleError, create_workspace,
 };
+use crate::zellij_emulator::ZellijPreviewEmulator;
 
 const DEFAULT_SIDEBAR_WIDTH_PCT: u16 = 33;
 const SIDEBAR_RATIO_FILENAME: &str = ".grove-sidebar-width";
@@ -933,6 +934,7 @@ impl TmuxInput for CommandTmuxInput {
 #[derive(Default)]
 struct CommandZellijInput {
     pane_sizes: Mutex<HashMap<String, (u16, u16)>>,
+    emulator: Mutex<ZellijPreviewEmulator>,
 }
 
 impl TmuxInput for CommandZellijInput {
@@ -993,58 +995,21 @@ impl TmuxInput for CommandZellijInput {
 }
 
 impl CommandZellijInput {
-    fn capture_path(target_session: &str) -> PathBuf {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or(Duration::ZERO);
-        let millis = now.as_millis();
-        let pid = std::process::id();
-        std::env::temp_dir().join(format!(
-            "grove-zellij-capture-{target_session}-{pid}-{millis}.txt"
-        ))
-    }
-
     fn capture_session_output(
         &self,
         target_session: &str,
         scrollback_lines: usize,
     ) -> std::io::Result<String> {
-        let path = Self::capture_path(target_session);
-        let output = Command::new("zellij")
-            .args([
-                "--session",
-                target_session,
-                "action",
-                "dump-screen",
-                "--full",
-                path.to_string_lossy().as_ref(),
-            ])
-            .output()?;
-
-        if !output.status.success() {
-            let message = CommandTmuxInput::stderr_or_status(&output);
-            return Err(std::io::Error::other(format!(
-                "zellij dump-screen failed for '{target_session}': {message}"
-            )));
-        }
-
-        let raw = fs::read_to_string(&path).map_err(|error| {
-            std::io::Error::other(format!(
-                "zellij capture read failed for '{target_session}': {error}"
-            ))
-        })?;
-        let _ = fs::remove_file(path);
-
-        if scrollback_lines == 0 {
-            return Ok(String::new());
-        }
-
-        let mut lines: Vec<&str> = raw.lines().collect();
-        if lines.len() > scrollback_lines {
-            let keep_from = lines.len().saturating_sub(scrollback_lines);
-            lines = lines.split_off(keep_from);
-        }
-        Ok(lines.join("\n"))
+        let pane_size = self
+            .pane_sizes
+            .lock()
+            .ok()
+            .and_then(|sizes| sizes.get(target_session).copied());
+        let log_path = zellij_capture_log_path(target_session);
+        self.emulator
+            .lock()
+            .map_err(|_| std::io::Error::other("zellij emulator lock poisoned"))?
+            .capture_from_log(target_session, &log_path, pane_size, scrollback_lines)
     }
 }
 
@@ -7687,9 +7652,9 @@ mod tests {
         assert_row_bg, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
     };
     use super::{
-        ClipboardAccess, CreateDialogField, CreateWorkspaceCompletion, CursorCapture,
-        DeleteDialogField, FAST_SPINNER_FRAMES, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
-        HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogField, LaunchDialogState,
+        ClipboardAccess, CommandZellijInput, CreateDialogField, CreateWorkspaceCompletion,
+        CursorCapture, DeleteDialogField, FAST_SPINNER_FRAMES, GroveApp, HIT_ID_HEADER,
+        HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogField, LaunchDialogState,
         LivePreviewCapture, Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification,
         PreviewPollCompletion, StartAgentCompletion, StopAgentCompletion, TextSelectionPoint,
         TmuxInput, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color,
@@ -8746,6 +8711,67 @@ mod tests {
                 .as_ref()
                 .is_some_and(|flash| flash.text.contains("stop running workspaces"))
         );
+    }
+
+    #[test]
+    fn zellij_capture_session_output_emulates_ansi_from_session_log() {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be monotonic")
+            .as_nanos();
+        let session_name = format!(
+            "grove-ws-zellij-emulator-test-{}-{timestamp}",
+            std::process::id()
+        );
+        let log_path = crate::agent_runtime::zellij_capture_log_path(&session_name);
+        let log_dir = log_path
+            .parent()
+            .expect("capture log path should have parent")
+            .to_path_buf();
+        fs::create_dir_all(&log_dir).expect("capture log directory should exist");
+        fs::write(
+            &log_path,
+            concat!(
+                "Script started on 2026-02-14 21:24:17-05:00 [COMMAND=\"codex\"]\n",
+                "\0line one\n",
+                "\u{1b}[31mline two red\u{1b}[0m\n",
+                "\u{1b}[32mline three green\u{1b}[0m\n",
+                "Script done on 2026-02-14 21:25:06-05:00 [COMMAND_EXIT_CODE=\"0\"]\n"
+            ),
+        )
+        .expect("capture log should be written");
+        let input = CommandZellijInput::default();
+
+        let captured = input
+            .capture_session_output(&session_name, 3)
+            .expect("capture should load from log file");
+
+        assert!(captured.contains("line one"));
+        assert!(captured.contains("line two red"));
+        assert!(captured.contains("line three green"));
+        assert!(captured.contains("\u{1b}["));
+        assert!(!captured.contains("Script started on "));
+        assert!(!captured.contains("Script done on "));
+
+        let _ = fs::remove_file(log_path);
+    }
+
+    #[test]
+    fn zellij_capture_session_output_returns_empty_when_log_missing() {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be monotonic")
+            .as_nanos();
+        let session_name = format!(
+            "grove-ws-zellij-missing-log-{}-{timestamp}",
+            std::process::id()
+        );
+        let input = CommandZellijInput::default();
+
+        let captured = input
+            .capture_session_output(&session_name, 50)
+            .expect("missing log should return empty output");
+        assert!(captured.is_empty());
     }
 
     #[test]
