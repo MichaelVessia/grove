@@ -8268,13 +8268,9 @@ impl GroveApp {
         }
 
         let theme = ui_theme();
-        let mode_chip = format!("[{}]", self.mode_label());
-        let focus_chip = format!("[{}]", self.focus_label());
         let base_style = Style::new().bg(theme.crust).fg(theme.text);
         let left_style = Style::new().bg(theme.surface0).fg(theme.blue).bold();
         let repo_style = Style::new().bg(theme.mantle).fg(theme.subtext0);
-        let mode_style = Style::new().bg(theme.surface1).fg(theme.yellow).bold();
-        let focus_style = Style::new().bg(theme.surface1).fg(theme.teal).bold();
 
         let mut left: Vec<FtSpan> = vec![
             FtSpan::styled(" ".to_string(), base_style),
@@ -8288,12 +8284,6 @@ impl GroveApp {
                 Style::new().bg(theme.surface1).fg(theme.mauve).bold(),
             ));
         }
-
-        let center: Vec<FtSpan> = vec![
-            FtSpan::styled(mode_chip, mode_style),
-            FtSpan::styled(" ".to_string(), base_style),
-            FtSpan::styled(focus_chip, focus_style),
-        ];
 
         let right: Vec<FtSpan> = match &self.flash {
             Some(flash) => {
@@ -8312,7 +8302,7 @@ impl GroveApp {
             None => Vec::new(),
         };
 
-        let line = chrome_bar_line(usize::from(area.width), base_style, left, center, right);
+        let line = chrome_bar_line(usize::from(area.width), base_style, left, Vec::new(), right);
         Paragraph::new(FtText::from_line(line)).render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
     }
@@ -10994,14 +10984,8 @@ mod tests {
                 let idle_header = row_text(idle_frame, 0, 0, idle_frame.width());
                 let active_header = row_text(active_frame, 0, 0, active_frame.width());
                 assert_eq!(
-                    idle_header.find("[List]"),
-                    active_header.find("[List]"),
-                    "header mode chip column should remain stable when spinner state changes"
-                );
-                assert_eq!(
-                    idle_header.find("[WorkspaceList]"),
-                    active_header.find("[WorkspaceList]"),
-                    "header focus chip column should remain stable when spinner state changes"
+                    idle_header, active_header,
+                    "header layout should remain stable when spinner state changes"
                 );
 
                 let idle_status_row = idle_frame.height().saturating_sub(1);
