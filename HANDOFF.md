@@ -1172,9 +1172,26 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 67)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6ap, move lifecycle outcome conversion into `msg.rs`
+- Commit: `d80e32f`
+- Changes:
+  - added conversion impls in `src/ui/tui/msg.rs`:
+    - `impl From<SessionExecutionResult> for StartAgentCompletion`
+    - `impl From<SessionExecutionResult> for StopAgentCompletion`
+  - updated UI callsites in `src/ui/tui/update.rs`:
+    - start/stop sync + background flows now use `completion.into()` at message/completion boundaries
+    - removed local conversion helpers from `update.rs`
+  - cleaned runtime import list in `src/ui/tui/mod.rs`
+  - no behavior changes, UI conversion glue consolidation only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 67)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree is clean after phase 6ao commit.
+- Worktree is clean after phase 6ap commit.
 - Recent refactor commits on local `master`:
+  - `d80e32f` refactor(ui): move lifecycle outcome conversion into msg
+  - `3d3f680` docs(handoff): record phase 6ao
   - `ad254f6` refactor(runtime): unify session execution outcome type
   - `240452c` docs(handoff): record phase 6an
   - `286d266` refactor(runtime): add typed stop execution outcome
@@ -1275,7 +1292,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move `StartAgentCompletion`/`StopAgentCompletion` conversion from runtime outcome into `msg.rs` impls (`From<SessionExecutionResult>`) to simplify update flow glue
+- next candidate: extract shared runtime lifecycle helper that executes start/stop by `CommandExecutionMode` and returns `SessionExecutionResult` to shrink duplicated mode-branching in UI update flow
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
