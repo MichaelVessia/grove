@@ -430,9 +430,23 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5ab, move workspace helper methods into `update.rs`
+- Commit: `e5686a0`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
+    - `selected_workspace_name`
+    - `selected_workspace_path`
+    - `workspace_session_name`
+  - methods exposed as `pub(super)` for sibling callers (`logging.rs`)
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `e5686a0` phase 5ab
   - `1cb3248` phase 5aa
   - `55612c8` phase 5z
   - `d598eb3` phase 5y
@@ -469,6 +483,7 @@ Status:
 - input trace logging helpers moved into `logging.rs`.
 - frame debug logging helpers moved into `logging.rs`.
 - deferred command/input-seq helpers moved into `update.rs`.
+- workspace helper methods moved into `update.rs`.
 - `mod.rs` is now mostly module root, shared types/constants/helpers, constructors, and logging utilities.
 
 Next sub-targets:
