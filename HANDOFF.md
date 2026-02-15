@@ -746,9 +746,19 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 46)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6q, inline live-preview session shim in UI prepare path
+- Commit: `ce477d5`
+- Changes:
+  - removed `selected_session_for_live_preview` wrapper from `src/ui/tui/update.rs`
+  - `prepare_live_preview_session` now directly calls runtime helper for non-git tab
+  - no behavior changes, UI shim cleanup only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `ce477d5` phase 6q
   - `16ead82` phase 6p
   - `a3a13bf` phase 6o
   - `843f3c2` phase 6n
@@ -815,7 +825,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: remove remaining UI wrapper shims now delegated to runtime (`selected_session_for_live_preview`, `workspace_status_poll_targets`) by inlining or moving direct runtime calls, while keeping lazygit launch orchestration local
+- next candidate: remove remaining `workspace_status_poll_targets` UI wrapper and call runtime helper directly at poll callsites, while keeping lazygit launch orchestration local
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
