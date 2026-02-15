@@ -83,7 +83,7 @@ fn main() -> std::io::Result<()> {
 
     if cli.print_hello {
         if let Some(event_log_path) = event_log_path.as_ref() {
-            let _ = grove::event_log::FileEventLogger::open(event_log_path)?;
+            let _ = grove::infrastructure::event_log::FileEventLogger::open(event_log_path)?;
         }
         println!("{}", grove::hello_message("grove"));
         return Ok(());

@@ -71,9 +71,11 @@ mod ansi;
 use ansi::ansi_16_color;
 use ansi::ansi_line_to_styled_line;
 mod bootstrap;
+#[cfg(test)]
+use bootstrap::{AppDependencies, AppPaths};
 use bootstrap::{
-    AppDependencies, AppPaths, bootstrap_data_for_projects, filter_branches, input_for_multiplexer,
-    load_local_branches, project_display_name, project_paths_equal, read_workspace_launch_prompt,
+    bootstrap_data_for_projects, filter_branches, input_for_multiplexer, load_local_branches,
+    project_display_name, project_paths_equal, read_workspace_launch_prompt,
 };
 mod terminal;
 use terminal::{
