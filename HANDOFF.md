@@ -152,34 +152,221 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5g, move pane render helpers into `view.rs`
+- Commit: `fa7042a`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/view.rs`:
+    - status/hint helpers (`unsafe_label`, `status_bar_line`, `keybind_hints_line`)
+    - pane/style/render helpers (`pane_border_style`, `workspace_agent_color`, `render_header`, `render_sidebar`, `render_divider`, `render_preview_pane`, `render_status_line`, `shell_lines`, related animation helpers)
+  - set cross-submodule test-facing methods to `pub(super)` where needed
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5h, move interactive input pipeline into `update.rs`
+- Commit: `8bd17d6`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
+    - `map_interactive_key`
+    - interactive send queue/dispatch/completion methods
+    - clipboard paste/read helpers
+    - `handle_interactive_key`
+  - made `copy_interactive_selection_or_visible` `pub(super)` in parent module for sibling access
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5i, move keybinding and interactive-entry helpers into `update.rs`
+- Commit: `d529cae`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
+    - keybinding helpers (`is_quit_key`, `is_ctrl_char_key`, `keybinding_*`, `apply_keybinding_action`)
+    - interactive entry helpers (`can_enter_interactive`, `enter_interactive`)
+    - focused-tab helpers (`preview_agent_tab_is_focused`, `preview_git_tab_is_focused`)
+    - start/help entry points (`can_start_selected_workspace`, `open_keybind_help`)
+  - exposed sibling-needed methods as `pub(super)`
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5j, move selection movement helpers into `update.rs`
+- Commit: `dae3113`
+- Changes:
+  - moved `persist_sidebar_ratio` and `move_selection` to `src/ui/tui/update.rs`
+  - set `move_selection` to `pub(super)` for command-palette use from parent module
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5k, move project dialog operations into `dialogs.rs`
+- Commit: `7ee7e06`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/dialogs.rs`:
+    - project filter/index helpers
+    - project dialog open/add/create persistence flow
+  - `open_project_dialog` set to `pub(super)` for update-module key handling
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5l, move settings dialog operations into `dialogs.rs`
+- Commit: `c2aa6fa`
+- Changes:
+  - moved settings open/save/session-check helpers into `src/ui/tui/dialogs.rs`
+  - `open_settings_dialog` set to `pub(super)` for sibling callers
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5m, move layout and selection helpers into `view.rs`
+- Commit: `5d3f76b`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/view.rs`:
+    - layout/hit-testing helpers (`view_layout_for_size`, `view_layout`, `hit_region_for_point`, etc.)
+    - cursor overlay helpers
+    - preview text-mapping/selection/logging/highlight helpers
+    - copy-selected-or-visible preview output helper
+  - added `pub(super)` visibility where parent/update/tests require cross-submodule access
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5n, move start/delete dialog orchestration into `dialogs.rs`
+- Commit: `5839585`
+- Changes:
+  - moved `open_start_dialog`, `open_delete_dialog`, `confirm_delete_dialog` to `src/ui/tui/dialogs.rs`
+  - `open_start_dialog` and `open_delete_dialog` set to `pub(super)` (update/module/tests call-sites)
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5o, move create/edit dialog state logic into `dialogs.rs`
+- Commit: `3970575`
+- Changes:
+  - moved create/edit dialog helpers from `src/ui/tui/mod.rs` to `src/ui/tui/dialogs.rs`:
+    - selected branch/project helpers
+    - open/create/edit dialog setup
+    - edit save flow
+    - create branch picker/filter helpers
+  - methods needed cross-submodule/tests exposed as `pub(super)`:
+    - `open_create_dialog`
+    - `open_edit_dialog`
+    - `clear_create_branch_picker`
+    - `refresh_create_branch_filtered`
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5p, move command palette and modal/summary helpers into `update.rs`
+- Commit: `b163c8a`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
+    - command palette action build/open/execute helpers
+    - modal-open helpers
+    - preview summary + output dimensions helpers
+    - preview tab cycle + workspace summary/splash helpers
+  - exposed cross-submodule/test methods as `pub(super)`:
+    - `build_command_palette_actions`
+    - `open_command_palette`
+    - `modal_open`
+    - `refresh_preview_summary`
+    - `preview_output_dimensions`
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5q, move preview polling and capture runtime into `update.rs`
+- Commit: `d444350`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
+    - git preview session helpers (`git_tab_session_name`, lazygit session prep)
+    - preview/status poll target and capture application pipeline
+    - cursor capture + resize verify flow
+    - sync/async preview polling orchestration
+    - preview scroll/jump handlers
+  - exposed cross-submodule methods as `pub(super)`:
+    - `git_tab_session_name`
+    - `prepare_live_preview_session`
+    - `interactive_target_session`
+    - `workspace_status_poll_targets`
+    - `poll_preview`
+    - `sync_interactive_session_geometry`
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5r, move lifecycle and workspace refresh flow into `update.rs`
+- Commit: `ec108ab`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
+    - delete/create/start/stop completion handlers and run helpers
+    - workspace refresh sync/background flow
+    - create/start dialog confirmation execution paths
+    - lifecycle git helper functions
+  - exposed cross-submodule methods as `pub(super)`:
+    - `apply_delete_workspace_completion`
+    - `run_delete_workspace`
+    - `workspace_lifecycle_error_message`
+    - `refresh_workspaces`
+    - `confirm_create_dialog`
+    - `confirm_start_dialog`
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5s, move adaptive tick scheduling and activity tracking into `update.rs`
+- Commit: `805390d`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
+    - adaptive poll interval + tick due/schedule helpers
+    - status digest/output changing tracking helpers
+    - activity frame tracking + visual-working predicate
+  - exposed cross-submodule/test methods as `pub(super)`:
+    - `status_is_visually_working`
+    - `push_agent_activity_frame`
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
+### Phase 5t, move dialog text-input modifier helper into `dialogs.rs`
+- Commit: `f634be8`
+- Changes:
+  - moved `allows_text_input_modifiers` from `src/ui/tui/mod.rs` to `src/ui/tui/dialogs.rs`
+  - no behavior changes
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
-- Worktree is clean after Phase 5f.
-- Local branch includes these refactor milestones:
-  - `e7dec48` phase 5f
-  - `38194da` phase 5e
-  - `6bd2566` phase 5d
-  - `1b78f7b` phase 5c
-  - `7c1bda9` phase 5b
-  - `a49d2c4` phase 5a
-  - `dc0b0c1` phase 3
-  - `092df8e` phase 2
-  - `eb9ab96` phase 1
+- Worktree has local changes only in `HANDOFF.md` (this update).
+- Recent refactor commits on local `master`:
+  - `f634be8` phase 5t
+  - `805390d` phase 5s
+  - `ec108ab` phase 5r
+  - `d444350` phase 5q
+  - `b163c8a` phase 5p
+  - `3970575` phase 5o
+  - `5839585` phase 5n
+  - `5d3f76b` phase 5m
+  - `c2aa6fa` phase 5l
+  - `7ee7e06` phase 5k
 
 ## Next Plan (execute in phases)
 
 ### Phase 5, split remaining `src/ui/tui/mod.rs`
 Status:
 - `msg`, `update`, `view`, `dialogs` created and wired.
-- dialog key handlers moved into `dialogs.rs`.
-- dialog and overlay render helpers moved into `view.rs`.
-- key and mouse dispatch moved into `update.rs`.
-- paste and non-interactive key flow moved into `update.rs`.
-- workspace selection helpers moved into `update.rs`.
-- Remaining work is further decomposition of large `GroveApp` impl blocks inside `mod.rs`.
+- dialog key handlers and most dialog orchestration moved into `dialogs.rs`.
+- view/layout/selection/render helpers moved into `view.rs`.
+- key/mouse/input/interactivity orchestration moved into `update.rs`.
+- lifecycle execution/completions moved into `update.rs`.
+- preview polling/capture/runtime integration moved into `update.rs`.
+- adaptive polling/activity tracking moved into `update.rs`.
+- `mod.rs` is now mostly module root, shared types/constants/helpers, constructors, and logging utilities.
 
 Next sub-targets:
-- move remaining render helpers and pane rendering into `view.rs`
-- move remaining input/event orchestration into `update.rs`
+- optional: split shared utility helpers from `mod.rs` into focused helper modules (selection/text, formatting, logging)
+- keep behavior unchanged while shrinking `mod.rs` further only if necessary for readability
 
 Rules:
 - keep behavior unchanged
