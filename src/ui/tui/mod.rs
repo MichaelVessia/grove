@@ -41,7 +41,7 @@ use crate::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity,
     detect_status_with_session_override, evaluate_capture_change, execute_command_with,
     execute_launch_request_for_mode, execute_shell_launch_request_for_mode,
-    execute_stop_session_for_mode, git_session_name_for_workspace, launch_request_for_workspace,
+    execute_stop_workspace_for_mode, git_session_name_for_workspace, launch_request_for_workspace,
     live_preview_capture_target_for_tab, poll_interval, session_name_for_workspace_ref,
     shell_launch_request_for_workspace, tmux_capture_error_indicates_missing_session,
     workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,

@@ -816,6 +816,16 @@ pub fn execute_stop_session_for_mode(
     execute_commands_for_mode(&commands, mode)
 }
 
+pub fn execute_stop_workspace_for_mode(
+    workspace: &Workspace,
+    multiplexer: MultiplexerKind,
+    mode: CommandExecutionMode<'_>,
+) -> (String, Result<(), String>) {
+    let session_name = session_name_for_workspace_ref(workspace);
+    let result = execute_stop_session_for_mode(&session_name, multiplexer, mode);
+    (session_name, result)
+}
+
 pub fn execute_launch_plan_for_mode(
     launch_plan: &LaunchPlan,
     mode: CommandExecutionMode<'_>,

@@ -1789,20 +1789,21 @@ impl GroveApp {
             return;
         }
 
-        let Some(workspace) = self.state.selected_workspace() else {
+        let Some(workspace) = self.state.selected_workspace().cloned() else {
             self.show_toast("no workspace selected", true);
             return;
         };
         let workspace_name = workspace.name.clone();
         let workspace_path = workspace.path.clone();
-        let session_name = session_name_for_workspace_ref(workspace);
+        let workspace_for_task = workspace.clone();
 
         if !self.tmux_input.supports_background_send() {
-            if let Err(error) = execute_stop_session_for_mode(
-                &session_name,
+            let (session_name, result) = execute_stop_workspace_for_mode(
+                &workspace,
                 self.multiplexer,
                 CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
-            ) {
+            );
+            if let Err(error) = result {
                 self.last_tmux_error = Some(error);
                 self.show_toast("agent stop failed", true);
                 return;
@@ -1820,8 +1821,8 @@ impl GroveApp {
         self.stop_in_flight = true;
         let multiplexer = self.multiplexer;
         self.queue_cmd(Cmd::task(move || {
-            let result = execute_stop_session_for_mode(
-                &session_name,
+            let (session_name, result) = execute_stop_workspace_for_mode(
+                &workspace_for_task,
                 multiplexer,
                 CommandExecutionMode::Process,
             );
