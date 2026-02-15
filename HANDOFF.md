@@ -1346,9 +1346,25 @@
 - Gates:
   - `cargo test --lib` (pass, 314)
 
+### Phase 7j, move `event_log` module under `src/infrastructure/`
+- Commit: `c120bc9`
+- Changes:
+  - moved module files:
+    - `src/event_log.rs` -> `src/infrastructure/event_log.rs`
+    - `src/event_log/tests.rs` -> `src/infrastructure/event_log/tests.rs`
+  - updated `src/infrastructure/mod.rs` with `pub mod event_log;`
+  - updated crate root in `src/lib.rs`:
+    - removed `pub mod event_log;`
+  - updated imports from `crate::event_log::...` to `crate::infrastructure::event_log::...` in TUI modules and tests
+  - no behavior changes, crate-tree alignment move only
+- Gates:
+  - `cargo test --lib` (pass, 314)
+
 ## Current State
-- Worktree is clean after phase 7i commit.
+- Worktree is clean after phase 7j commit.
 - Recent refactor commits on local `master`:
+  - `c120bc9` refactor(infrastructure): move event_log module under infrastructure
+  - `50a803f` docs(handoff): record phase 7i
   - `9d08f17` refactor(infrastructure): move config module under infrastructure
   - `bc50a64` docs(handoff): record phase 7h
   - `696ff76` refactor(infrastructure): move adapters module under infrastructure
@@ -1474,7 +1490,7 @@ Status:
 Next sub-targets:
 - phase 6 runtime-boundary extraction is functionally complete for lifecycle start/stop flow
 - continue phase 7 crate-tree alignment in small compile-safe moves
-- next candidate: move remaining root modules into DDD buckets (`event_log`, `hardening`) with compile-safe import rewrites
+- next candidate: move remaining root modules into DDD buckets (`hardening`) with compile-safe import rewrites
 
 Rules:
 - keep behavior unchanged
