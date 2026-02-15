@@ -114,6 +114,18 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5d, move key and mouse dispatch into `update.rs`
+- Commit: pending
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
+    - `handle_mouse_event`
+    - `handle_key`
+  - `handle_key` now `pub(super)` to preserve direct test access from sibling test module
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree includes Phase 5a module extraction changes + this handoff update.
 - Local branch includes prior refactor commits:
@@ -128,6 +140,7 @@ Status:
 - `msg`, `update`, `view`, `dialogs` created and wired.
 - dialog key handlers moved into `dialogs.rs`.
 - dialog and overlay render helpers moved into `view.rs`.
+- key and mouse dispatch moved into `update.rs`.
 - Remaining work is further decomposition of large `GroveApp` impl blocks inside `mod.rs`.
 
 Next sub-targets:
