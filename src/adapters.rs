@@ -6,7 +6,9 @@ use std::process::Command;
 use crate::agent_runtime::{TMUX_SESSION_PREFIX, reconcile_with_sessions};
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
-use crate::workspace_lifecycle::{WorkspaceMarkerError, read_workspace_markers};
+use crate::workspace_lifecycle::{
+    WorkspaceMarkerError, read_workspace_agent_marker, read_workspace_markers,
+};
 
 pub trait GitAdapter {
     fn list_workspaces(&self) -> Result<Vec<Workspace>, GitAdapterError>;
@@ -448,6 +450,32 @@ fn marker_metadata(path: &Path) -> Result<Option<MarkerMetadata>, GitAdapterErro
     }
 }
 
+fn main_workspace_metadata(path: &Path) -> Result<MarkerMetadata, GitAdapterError> {
+    match read_workspace_agent_marker(path) {
+        Ok(agent) => Ok(MarkerMetadata {
+            agent,
+            base_branch: None,
+            supported_agent: true,
+        }),
+        Err(WorkspaceMarkerError::MissingAgentMarker)
+        | Err(WorkspaceMarkerError::InvalidAgentMarker(_)) => Ok(MarkerMetadata {
+            agent: AgentType::Claude,
+            base_branch: None,
+            supported_agent: true,
+        }),
+        Err(WorkspaceMarkerError::MissingBaseMarker)
+        | Err(WorkspaceMarkerError::EmptyBaseBranch) => Ok(MarkerMetadata {
+            agent: AgentType::Claude,
+            base_branch: None,
+            supported_agent: true,
+        }),
+        Err(WorkspaceMarkerError::Io(error)) => Err(GitAdapterError::ParseError(format!(
+            "failed reading workspace agent marker in '{}': {error}",
+            path.display()
+        ))),
+    }
+}
+
 fn build_workspaces(
     parsed_worktrees: &[ParsedWorktree],
     repo_root: &Path,
@@ -468,11 +496,7 @@ fn build_workspaces(
             .and_then(|branch_name| activity_by_branch.get(branch_name).copied());
 
         let metadata = if is_main {
-            Some(MarkerMetadata {
-                agent: AgentType::Claude,
-                base_branch: None,
-                supported_agent: true,
-            })
+            Some(main_workspace_metadata(&entry.path)?)
         } else {
             marker_metadata(&entry.path)?
         };
@@ -695,10 +719,40 @@ mod tests {
         assert_eq!(workspaces.len(), 2);
         assert_eq!(workspaces[0].name, "grove");
         assert_eq!(workspaces[0].status, WorkspaceStatus::Main);
+        assert_eq!(workspaces[0].agent, AgentType::Claude);
 
         assert_eq!(workspaces[1].name, "feature-a");
         assert_eq!(workspaces[1].agent, AgentType::Codex);
         assert_eq!(workspaces[1].base_branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn build_workspaces_main_uses_agent_marker_when_present() {
+        let temp = TestDir::new("build-main-agent");
+        let main_root = temp.path.join("grove");
+        let managed = temp.path.join("grove-feature-a");
+
+        fs::create_dir_all(&main_root).expect("main should exist");
+        fs::create_dir_all(&managed).expect("managed should exist");
+        fs::write(main_root.join(".grove-agent"), "codex\n")
+            .expect("main agent marker should exist");
+        fs::write(managed.join(".grove-agent"), "claude\n").expect("agent marker should exist");
+        fs::write(managed.join(".grove-base"), "main\n").expect("base marker should exist");
+
+        let parsed = parse_worktree_porcelain(&format!(
+            "worktree {}\nHEAD 1\nbranch refs/heads/main\n\nworktree {}\nHEAD 2\nbranch refs/heads/feature-a\n",
+            main_root.display(),
+            managed.display(),
+        ))
+        .expect("porcelain should parse");
+
+        let workspaces = build_workspaces(&parsed, Path::new(&main_root), "grove", &HashMap::new())
+            .expect("workspace build should succeed");
+
+        assert_eq!(workspaces.len(), 2);
+        assert_eq!(workspaces[0].name, "grove");
+        assert_eq!(workspaces[0].agent, AgentType::Codex);
+        assert_eq!(workspaces[0].status, WorkspaceStatus::Main);
     }
 
     #[test]

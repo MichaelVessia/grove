@@ -64,7 +64,7 @@ use crate::preview::{FlashMessage, PreviewState, clear_expired_flash_message, ne
 use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
 use crate::workspace_lifecycle::{
     BranchMode, CommandGitRunner, CommandSetupScriptRunner, CreateWorkspaceRequest,
-    CreateWorkspaceResult, WorkspaceLifecycleError, create_workspace,
+    CreateWorkspaceResult, WorkspaceLifecycleError, create_workspace, write_workspace_agent_marker,
 };
 use crate::zellij_emulator::ZellijPreviewEmulator;
 
@@ -90,6 +90,7 @@ const HIT_ID_KEYBIND_HELP_DIALOG: u32 = 10;
 const HIT_ID_SETTINGS_DIALOG: u32 = 11;
 const HIT_ID_PROJECT_DIALOG: u32 = 12;
 const HIT_ID_PROJECT_ADD_DIALOG: u32 = 13;
+const HIT_ID_EDIT_DIALOG: u32 = 14;
 const PALETTE_CMD_TOGGLE_FOCUS: &str = "palette:toggle_focus";
 const PALETTE_CMD_OPEN_PREVIEW: &str = "palette:open_preview";
 const PALETTE_CMD_ENTER_INTERACTIVE: &str = "palette:enter_interactive";
@@ -102,6 +103,7 @@ const PALETTE_CMD_PAGE_UP: &str = "palette:page_up";
 const PALETTE_CMD_PAGE_DOWN: &str = "palette:page_down";
 const PALETTE_CMD_SCROLL_BOTTOM: &str = "palette:scroll_bottom";
 const PALETTE_CMD_NEW_WORKSPACE: &str = "palette:new_workspace";
+const PALETTE_CMD_EDIT_WORKSPACE: &str = "palette:edit_workspace";
 const PALETTE_CMD_START_AGENT: &str = "palette:start_agent";
 const PALETTE_CMD_STOP_AGENT: &str = "palette:stop_agent";
 const PALETTE_CMD_DELETE_WORKSPACE: &str = "palette:delete_workspace";
@@ -667,6 +669,16 @@ struct CreateDialogState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct EditDialogState {
+    workspace_name: String,
+    workspace_path: PathBuf,
+    branch: String,
+    agent: AgentType,
+    was_running: bool,
+    focused_field: EditDialogField,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ProjectDialogState {
     filter: String,
     filtered_project_indices: Vec<usize>,
@@ -748,6 +760,31 @@ enum CreateDialogField {
     Agent,
     CreateButton,
     CancelButton,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EditDialogField {
+    Agent,
+    SaveButton,
+    CancelButton,
+}
+
+impl EditDialogField {
+    fn next(self) -> Self {
+        match self {
+            Self::Agent => Self::SaveButton,
+            Self::SaveButton => Self::CancelButton,
+            Self::CancelButton => Self::Agent,
+        }
+    }
+
+    fn previous(self) -> Self {
+        match self {
+            Self::Agent => Self::CancelButton,
+            Self::SaveButton => Self::Agent,
+            Self::CancelButton => Self::SaveButton,
+        }
+    }
 }
 
 impl CreateDialogField {
@@ -2031,6 +2068,7 @@ struct GroveApp {
     launch_dialog: Option<LaunchDialogState>,
     delete_dialog: Option<DeleteDialogState>,
     create_dialog: Option<CreateDialogState>,
+    edit_dialog: Option<EditDialogState>,
     project_dialog: Option<ProjectDialogState>,
     settings_dialog: Option<SettingsDialogState>,
     keybind_help_open: bool,
@@ -2217,6 +2255,7 @@ impl GroveApp {
             launch_dialog: None,
             delete_dialog: None,
             create_dialog: None,
+            edit_dialog: None,
             project_dialog: None,
             settings_dialog: None,
             keybind_help_open: false,
@@ -2901,6 +2940,9 @@ impl GroveApp {
         if self.create_dialog.is_some() {
             return "Tab/S-Tab field, j/k or C-n/C-p move, h/l buttons, Enter select/create, Esc cancel";
         }
+        if self.edit_dialog.is_some() {
+            return "Tab/S-Tab field, h/l buttons, Space toggle agent, Enter save/select, Esc cancel";
+        }
         if self.launch_dialog.is_some() {
             return "Tab/S-Tab field, h/l buttons, Space toggle unsafe, Enter select/start, Esc cancel";
         }
@@ -2917,10 +2959,10 @@ impl GroveApp {
             return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
         }
         if self.state.mode == UiMode::Preview {
-            return "j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, n new, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
+            return "j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, n new, e edit, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
         }
 
-        "j/k move, h/l pane, Enter open, n new, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit"
+        "j/k move, h/l pane, Enter open, n new, e edit, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit"
     }
 
     fn selected_workspace_summary(&self) -> String {
@@ -2984,6 +3026,7 @@ impl GroveApp {
     fn has_non_palette_modal_open(&self) -> bool {
         self.launch_dialog.is_some()
             || self.create_dialog.is_some()
+            || self.edit_dialog.is_some()
             || self.delete_dialog.is_some()
             || self.settings_dialog.is_some()
             || self.project_dialog.is_some()
@@ -3021,6 +3064,13 @@ impl GroveApp {
                 "New Workspace",
                 "Open workspace creation dialog (n)",
                 &["new", "workspace", "create", "n"],
+                "Workspace",
+            ),
+            Self::palette_action(
+                PALETTE_CMD_EDIT_WORKSPACE,
+                "Edit Workspace",
+                "Open workspace edit dialog (e)",
+                &["edit", "workspace", "agent", "e"],
                 "Workspace",
             ),
             Self::palette_action(
@@ -3232,6 +3282,10 @@ impl GroveApp {
             }
             PALETTE_CMD_NEW_WORKSPACE => {
                 self.open_create_dialog();
+                false
+            }
+            PALETTE_CMD_EDIT_WORKSPACE => {
+                self.open_edit_dialog();
                 false
             }
             PALETTE_CMD_START_AGENT => {
@@ -4121,6 +4175,9 @@ impl GroveApp {
                     self.log_dialog_event("create", "dialog_cancelled");
                     self.create_dialog = None;
                     self.clear_create_branch_picker();
+                } else if self.edit_dialog.is_some() {
+                    self.log_dialog_event("edit", "dialog_cancelled");
+                    self.edit_dialog = None;
                 } else if self.launch_dialog.is_some() {
                     self.log_dialog_event("launch", "dialog_cancelled");
                     self.launch_dialog = None;
@@ -5223,11 +5280,102 @@ impl GroveApp {
         self.last_tmux_error = None;
     }
 
-    fn toggle_create_dialog_agent(dialog: &mut CreateDialogState) {
-        dialog.agent = match dialog.agent {
+    fn toggle_agent(agent: AgentType) -> AgentType {
+        match agent {
             AgentType::Claude => AgentType::Codex,
             AgentType::Codex => AgentType::Claude,
+        }
+    }
+
+    fn toggle_create_dialog_agent(dialog: &mut CreateDialogState) {
+        dialog.agent = Self::toggle_agent(dialog.agent);
+    }
+
+    fn open_edit_dialog(&mut self) {
+        if self.modal_open() {
+            return;
+        }
+
+        let Some(workspace) = self.state.selected_workspace() else {
+            self.show_flash("no workspace selected", true);
+            return;
         };
+
+        self.edit_dialog = Some(EditDialogState {
+            workspace_name: workspace.name.clone(),
+            workspace_path: workspace.path.clone(),
+            branch: workspace.branch.clone(),
+            agent: workspace.agent,
+            was_running: workspace.status.has_session(),
+            focused_field: EditDialogField::Agent,
+        });
+        self.log_dialog_event_with_fields(
+            "edit",
+            "dialog_opened",
+            [
+                ("workspace".to_string(), Value::from(workspace.name.clone())),
+                ("agent".to_string(), Value::from(workspace.agent.label())),
+                (
+                    "running".to_string(),
+                    Value::from(workspace.status.has_session()),
+                ),
+            ],
+        );
+        self.state.mode = UiMode::List;
+        self.state.focus = PaneFocus::WorkspaceList;
+        self.last_tmux_error = None;
+    }
+
+    fn toggle_edit_dialog_agent(dialog: &mut EditDialogState) {
+        dialog.agent = Self::toggle_agent(dialog.agent);
+    }
+
+    fn apply_edit_dialog_save(&mut self) {
+        let Some(dialog) = self.edit_dialog.as_ref().cloned() else {
+            return;
+        };
+
+        self.log_dialog_event_with_fields(
+            "edit",
+            "dialog_confirmed",
+            [
+                (
+                    "workspace".to_string(),
+                    Value::from(dialog.workspace_name.clone()),
+                ),
+                ("agent".to_string(), Value::from(dialog.agent.label())),
+                ("was_running".to_string(), Value::from(dialog.was_running)),
+            ],
+        );
+
+        if let Err(error) = write_workspace_agent_marker(&dialog.workspace_path, dialog.agent) {
+            self.show_flash(
+                format!(
+                    "workspace edit failed: {}",
+                    Self::workspace_lifecycle_error_message(&error)
+                ),
+                true,
+            );
+            return;
+        }
+
+        if let Some(workspace) = self
+            .state
+            .workspaces
+            .iter_mut()
+            .find(|workspace| workspace.path == dialog.workspace_path)
+        {
+            workspace.agent = dialog.agent;
+            workspace.supported_agent = true;
+        }
+
+        self.edit_dialog = None;
+        self.last_tmux_error = None;
+        if dialog.was_running {
+            self.show_flash("workspace updated, restart agent to apply change", false);
+        } else {
+            self.show_flash("workspace updated", false);
+        }
     }
 
     fn shift_create_dialog_project(&mut self, delta: isize) {
@@ -5725,6 +5873,65 @@ impl GroveApp {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn handle_edit_dialog_key(&mut self, key_event: KeyEvent) {
+        let Some(dialog) = self.edit_dialog.as_mut() else {
+            return;
+        };
+
+        enum PostAction {
+            None,
+            Save,
+            Cancel,
+        }
+
+        let mut post_action = PostAction::None;
+        match key_event.code {
+            KeyCode::Escape => {
+                post_action = PostAction::Cancel;
+            }
+            KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => {
+                dialog.focused_field = dialog.focused_field.next();
+            }
+            KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => {
+                dialog.focused_field = dialog.focused_field.previous();
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                if dialog.focused_field == EditDialogField::Agent {
+                    Self::toggle_edit_dialog_agent(dialog);
+                } else if dialog.focused_field == EditDialogField::CancelButton {
+                    dialog.focused_field = EditDialogField::SaveButton;
+                }
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                if dialog.focused_field == EditDialogField::Agent {
+                    Self::toggle_edit_dialog_agent(dialog);
+                } else if dialog.focused_field == EditDialogField::SaveButton {
+                    dialog.focused_field = EditDialogField::CancelButton;
+                }
+            }
+            KeyCode::Char(' ') => {
+                if dialog.focused_field == EditDialogField::Agent {
+                    Self::toggle_edit_dialog_agent(dialog);
+                }
+            }
+            KeyCode::Enter => match dialog.focused_field {
+                EditDialogField::Agent => Self::toggle_edit_dialog_agent(dialog),
+                EditDialogField::SaveButton => post_action = PostAction::Save,
+                EditDialogField::CancelButton => post_action = PostAction::Cancel,
+            },
+            _ => {}
+        }
+
+        match post_action {
+            PostAction::None => {}
+            PostAction::Save => self.apply_edit_dialog_save(),
+            PostAction::Cancel => {
+                self.log_dialog_event("edit", "dialog_cancelled");
+                self.edit_dialog = None;
+            }
         }
     }
 
@@ -6583,6 +6790,7 @@ impl GroveApp {
                 self.launch_skip_permissions = !self.launch_skip_permissions;
             }
             KeyCode::Char('n') | KeyCode::Char('N') => self.open_create_dialog(),
+            KeyCode::Char('e') | KeyCode::Char('E') => self.open_edit_dialog(),
             KeyCode::Char('p') | KeyCode::Char('P') => self.open_project_dialog(),
             KeyCode::Char('?') => self.open_keybind_help(),
             KeyCode::Char('D') => self.open_delete_dialog(),
@@ -7539,6 +7747,11 @@ impl GroveApp {
 
         if self.create_dialog.is_some() {
             self.handle_create_dialog_key(key_event);
+            return (false, Cmd::None);
+        }
+
+        if self.edit_dialog.is_some() {
+            self.handle_edit_dialog_key(key_event);
             return (false, Cmd::None);
         }
 
@@ -8837,7 +9050,7 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  n new, p projects, s start, x stop, D delete, S settings, ! unsafe toggle",
+                    "  n new, e edit, p projects, s start, x stop, D delete, S settings, ! unsafe toggle",
                     content_width,
                 ),
                 Style::new().fg(theme.text),
@@ -8887,6 +9100,13 @@ impl GroveApp {
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
                     "[Modals] Create: Tab/S-Tab fields, j/k or C-n/C-p move, h/l buttons, Enter/Esc",
+                    content_width,
+                ),
+                Style::new().fg(theme.subtext0),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "[Modals] Edit:   Tab/S-Tab fields, h/l or Space toggle agent, Enter/Esc",
                     content_width,
                 ),
                 Style::new().fg(theme.subtext0),
@@ -9117,6 +9337,111 @@ impl GroveApp {
             .render(area, frame);
     }
 
+    fn render_edit_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
+        let Some(dialog) = self.edit_dialog.as_ref() else {
+            return;
+        };
+        if area.width < 24 || area.height < 12 {
+            return;
+        }
+
+        let dialog_width = area.width.saturating_sub(10).min(80);
+        let dialog_height = 13u16;
+        let theme = ui_theme();
+        let content_width = usize::from(dialog_width.saturating_sub(2));
+        let focused = |field| dialog.focused_field == field;
+        let path = dialog.workspace_path.display().to_string();
+        let running_note = if dialog.was_running {
+            "Running now, restart agent to apply change"
+        } else {
+            "Agent change applies on next agent start"
+        };
+
+        let body = FtText::from_lines(vec![
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("Workspace settings", content_width),
+                Style::new().fg(theme.overlay0),
+            )]),
+            FtLine::raw(""),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Name",
+                dialog.workspace_name.as_str(),
+                theme.blue,
+                theme.text,
+            ),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Branch",
+                dialog.branch.as_str(),
+                theme.blue,
+                theme.text,
+            ),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Path",
+                path.as_str(),
+                theme.blue,
+                theme.overlay0,
+            ),
+            FtLine::raw(""),
+            modal_focus_badged_row(
+                content_width,
+                theme,
+                "Agent",
+                dialog.agent.label(),
+                focused(EditDialogField::Agent),
+                theme.peach,
+                theme.text,
+            ),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    format!("  [Note] {running_note}").as_str(),
+                    content_width,
+                ),
+                Style::new().fg(theme.overlay0),
+            )]),
+            FtLine::raw(""),
+            modal_actions_row(
+                content_width,
+                theme,
+                "Save",
+                "Cancel",
+                focused(EditDialogField::SaveButton),
+                focused(EditDialogField::CancelButton),
+            ),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "Tab move, h/l or Space toggle agent, Enter save, Esc cancel",
+                    content_width,
+                ),
+                Style::new().fg(theme.overlay0),
+            )]),
+        ]);
+
+        let content = OverlayModalContent {
+            title: "Edit Workspace",
+            body,
+            theme,
+            border_color: theme.teal,
+        };
+
+        Modal::new(content)
+            .size(
+                ModalSizeConstraints::new()
+                    .min_width(dialog_width)
+                    .max_width(dialog_width)
+                    .min_height(dialog_height)
+                    .max_height(dialog_height),
+            )
+            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .hit_id(HitId::new(HIT_ID_EDIT_DIALOG))
+            .render(area, frame);
+    }
+
     #[cfg(test)]
     fn shell_lines(&self, preview_height: usize) -> Vec<String> {
         let mut lines = vec![
@@ -9126,7 +9451,7 @@ impl GroveApp {
                 self.mode_label(),
                 self.focus_label()
             ),
-            "Workspaces (j/k, arrows, Tab/h/l focus, Enter preview, s/x start-stop, D delete, S settings, ? help, ! unsafe, Esc list, mouse)"
+            "Workspaces (j/k, arrows, Tab/h/l focus, Enter preview, n create, e edit, s/x start-stop, D delete, S settings, ? help, ! unsafe, Esc list, mouse)"
                 .to_string(),
         ];
 
@@ -9424,6 +9749,7 @@ impl Model for GroveApp {
         self.render_preview_pane(frame, layout.preview);
         self.render_status_line(frame, layout.status);
         self.render_create_dialog_overlay(frame, area);
+        self.render_edit_dialog_overlay(frame, area);
         self.render_launch_dialog_overlay(frame, area);
         self.render_delete_dialog_overlay(frame, area);
         self.render_settings_dialog_overlay(frame, area);
@@ -10967,6 +11293,19 @@ mod tests {
     }
 
     #[test]
+    fn status_row_shows_edit_dialog_keybind_hints_when_modal_open() {
+        let mut app = fixture_app();
+        app.open_edit_dialog();
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(status_text.contains("Space toggle agent"));
+            assert!(status_text.contains("Enter save/select"));
+        });
+    }
+
+    #[test]
     fn status_row_shows_launch_dialog_keybind_hints_when_modal_open() {
         let mut app = fixture_app();
         app.launch_dialog = Some(LaunchDialogState {
@@ -12293,6 +12632,62 @@ mod tests {
                 .as_ref()
                 .map(|dialog| dialog.base_branch.clone()),
             Some("main".to_string())
+        );
+    }
+
+    #[test]
+    fn edit_workspace_key_opens_edit_dialog() {
+        let mut app = fixture_app();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('e')).with_kind(KeyEventKind::Press)),
+        );
+
+        let Some(dialog) = app.edit_dialog.as_ref() else {
+            panic!("edit dialog should be open");
+        };
+        assert_eq!(dialog.workspace_name, "grove");
+        assert_eq!(dialog.branch, "main");
+        assert_eq!(dialog.agent, AgentType::Claude);
+    }
+
+    #[test]
+    fn edit_dialog_save_updates_workspace_agent_and_marker() {
+        let mut app = fixture_app();
+        let workspace_dir = unique_temp_workspace_dir("edit-save");
+        app.state.workspaces[0].path = workspace_dir.clone();
+        app.state.workspaces[0].agent = AgentType::Claude;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('e')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char(' ')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(app.edit_dialog.is_none());
+        assert_eq!(app.state.workspaces[0].agent, AgentType::Codex);
+        assert_eq!(
+            fs::read_to_string(workspace_dir.join(".grove-agent"))
+                .expect("agent marker should be readable")
+                .trim(),
+            "codex"
+        );
+        assert!(
+            app.flash
+                .as_ref()
+                .is_some_and(|flash| flash.text.contains("workspace updated"))
         );
     }
 

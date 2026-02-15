@@ -292,14 +292,7 @@ pub(crate) fn copy_env_files(
 pub fn read_workspace_markers(
     workspace_path: &Path,
 ) -> Result<WorkspaceMarkers, WorkspaceMarkerError> {
-    let agent_marker_path = workspace_path.join(GROVE_AGENT_MARKER_FILE);
-    let agent_marker_content = match fs::read_to_string(&agent_marker_path) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Err(WorkspaceMarkerError::MissingAgentMarker);
-        }
-        Err(error) => return Err(WorkspaceMarkerError::Io(error.to_string())),
-    };
+    let agent = read_workspace_agent_marker(workspace_path)?;
 
     let base_marker_path = workspace_path.join(GROVE_BASE_MARKER_FILE);
     let base_marker_content = match fs::read_to_string(&base_marker_path) {
@@ -310,13 +303,27 @@ pub fn read_workspace_markers(
         Err(error) => return Err(WorkspaceMarkerError::Io(error.to_string())),
     };
 
-    let agent = parse_agent_marker(agent_marker_content.trim())?;
     let base_branch = base_marker_content.trim().to_string();
     if base_branch.is_empty() {
         return Err(WorkspaceMarkerError::EmptyBaseBranch);
     }
 
     Ok(WorkspaceMarkers { agent, base_branch })
+}
+
+pub fn read_workspace_agent_marker(
+    workspace_path: &Path,
+) -> Result<AgentType, WorkspaceMarkerError> {
+    let agent_marker_path = workspace_path.join(GROVE_AGENT_MARKER_FILE);
+    let agent_marker_content = match fs::read_to_string(&agent_marker_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(WorkspaceMarkerError::MissingAgentMarker);
+        }
+        Err(error) => return Err(WorkspaceMarkerError::Io(error.to_string())),
+    };
+
+    parse_agent_marker(agent_marker_content.trim())
 }
 
 fn run_create_worktree_command(
@@ -353,16 +360,23 @@ fn write_workspace_markers(
     agent: AgentType,
     base_branch: &str,
 ) -> Result<(), WorkspaceLifecycleError> {
+    write_workspace_agent_marker(workspace_path, agent)?;
+
+    let base_marker_path = workspace_path.join(GROVE_BASE_MARKER_FILE);
+    fs::write(base_marker_path, format!("{base_branch}\n"))
+        .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))
+}
+
+pub fn write_workspace_agent_marker(
+    workspace_path: &Path,
+    agent: AgentType,
+) -> Result<(), WorkspaceLifecycleError> {
     let agent_marker_path = workspace_path.join(GROVE_AGENT_MARKER_FILE);
     fs::write(
         agent_marker_path,
         format!("{}\n", agent_marker_value(agent)),
     )
-    .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))?;
-
-    let base_marker_path = workspace_path.join(GROVE_BASE_MARKER_FILE);
-    fs::write(base_marker_path, format!("{base_branch}\n"))
-        .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))
+    .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))
 }
 
 fn parse_agent_marker(value: &str) -> Result<AgentType, WorkspaceMarkerError> {
@@ -392,8 +406,8 @@ mod tests {
     use super::{
         BranchMode, CreateWorkspaceRequest, GitCommandRunner, SetupScriptContext,
         SetupScriptRunner, WorkspaceLifecycleError, WorkspaceMarkerError, copy_env_files,
-        create_workspace, ensure_grove_gitignore_entries, read_workspace_markers,
-        workspace_directory_path,
+        create_workspace, ensure_grove_gitignore_entries, read_workspace_agent_marker,
+        read_workspace_markers, workspace_directory_path, write_workspace_agent_marker,
     };
     use crate::domain::AgentType;
     use std::cell::RefCell;
@@ -712,6 +726,40 @@ mod tests {
             Err(WorkspaceMarkerError::InvalidAgentMarker(
                 "unknown".to_string()
             ))
+        );
+    }
+
+    #[test]
+    fn read_workspace_agent_marker_reads_valid_marker() {
+        let temp = TestDir::new("agent-marker-read");
+        let workspace = temp.path.join("grove-feature-z");
+        fs::create_dir_all(&workspace).expect("workspace should exist");
+        fs::write(workspace.join(".grove-agent"), "codex\n").expect("marker should be writable");
+
+        let marker = read_workspace_agent_marker(&workspace).expect("marker should be readable");
+        assert_eq!(marker, AgentType::Codex);
+    }
+
+    #[test]
+    fn write_workspace_agent_marker_writes_expected_value() {
+        let temp = TestDir::new("agent-marker-write");
+        let workspace = temp.path.join("grove");
+        fs::create_dir_all(&workspace).expect("workspace should exist");
+
+        write_workspace_agent_marker(&workspace, AgentType::Claude).expect("write should succeed");
+        assert_eq!(
+            fs::read_to_string(workspace.join(".grove-agent"))
+                .expect("marker should be readable")
+                .trim(),
+            "claude"
+        );
+
+        write_workspace_agent_marker(&workspace, AgentType::Codex).expect("write should succeed");
+        assert_eq!(
+            fs::read_to_string(workspace.join(".grove-agent"))
+                .expect("marker should be readable")
+                .trim(),
+            "codex"
         );
     }
 
