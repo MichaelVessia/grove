@@ -48,6 +48,12 @@ use crate::application::agent_runtime::{
     workspace_can_start_agent, workspace_can_stop_agent, workspace_session_for_preview_tab,
     workspace_status_targets_for_polling_with_live_preview,
 };
+#[cfg(test)]
+use crate::application::interactive::render_cursor_overlay;
+use crate::application::interactive::{
+    InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
+    multiplexer_send_input_command, render_cursor_overlay_ansi,
+};
 use crate::application::preview::PreviewState;
 use crate::application::workspace_lifecycle::{
     BranchMode, CommandGitRunner, CommandSetupScriptRunner, CreateWorkspaceRequest,
@@ -57,12 +63,6 @@ use crate::application::workspace_lifecycle::{
 use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::event_log::{Event as LogEvent, EventLogger};
-#[cfg(test)]
-use crate::interactive::render_cursor_overlay;
-use crate::interactive::{
-    InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
-    multiplexer_send_input_command, render_cursor_overlay_ansi,
-};
 use crate::mouse::{clamp_sidebar_ratio, ratio_from_drag, serialize_sidebar_ratio};
 use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
 
