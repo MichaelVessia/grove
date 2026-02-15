@@ -455,9 +455,20 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5ad, move app path/dependency structs into `bootstrap.rs`
+- Commit: `0d9b21d`
+- Changes:
+  - moved `AppPaths` and `AppDependencies` from `src/ui/tui/mod.rs` to `src/ui/tui/bootstrap.rs`
+  - exported via `pub(super)` and kept test construction compatibility (`AppDependencies` fields remain accessible to tests)
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib --quiet` (pass, 276)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `0d9b21d` phase 5ad
   - `aa91ca5` phase 5ac
   - `e5686a0` phase 5ab
   - `1cb3248` phase 5aa
@@ -498,6 +509,7 @@ Status:
 - deferred command/input-seq helpers moved into `update.rs`.
 - workspace helper methods moved into `update.rs`.
 - app bootstrap constructors moved into `bootstrap.rs`.
+- app path/dependency structs moved into `bootstrap.rs`.
 - `mod.rs` is now mostly module root, shared types/constants/helpers, and run entrypoints.
 
 Next sub-targets:
