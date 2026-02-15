@@ -698,9 +698,25 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 44)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6n, centralize live-preview capture target policy in `agent_runtime`
+- Commit: `843f3c2`
+- Changes:
+  - added runtime helper in `src/agent_runtime.rs`:
+    - `live_preview_capture_target_for_tab(Option<&Workspace>, bool, &HashSet<String>) -> Option<(String, bool)>`
+  - updated UI caller in `src/ui/tui/update.rs`:
+    - `selected_session_for_live_preview` now delegates both session selection and capture-mode policy to runtime helper
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `live_preview_capture_target_for_tab_sets_capture_mode`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 45)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `843f3c2` phase 6n
   - `0da752e` phase 6m
   - `7e3f610` phase 6l
   - `28a1c3d` phase 6k
@@ -764,7 +780,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move live-preview capture payload shaping from `ui/tui/update.rs` into runtime/application layer (session + capture-mode policy), while keeping UI-owned lazygit launch orchestration local
+- next candidate: move live-preview poll-target type ownership from `ui/tui` to `agent_runtime` (parallel to `WorkspaceStatusTarget`) and remove tuple-based plumbing
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
