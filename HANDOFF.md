@@ -980,8 +980,33 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 306)
 
+### Phase 6af, introduce runtime command-executor abstraction
+- Commit: `(pending, uncommitted)`
+- Changes:
+  - added runtime abstraction in `src/agent_runtime.rs`:
+    - `CommandExecutor` trait with command + launcher-script execution hooks
+    - `ProcessCommandExecutor`
+    - `DelegatingCommandExecutor`
+    - shared execution entrypoints:
+      - `execute_commands_with_executor`
+      - `execute_launch_plan_with_executor`
+  - refactored runtime execution wrappers in `src/agent_runtime.rs`:
+    - `execute_commands` and `execute_launch_plan` now use `ProcessCommandExecutor`
+    - `execute_commands_with` and `execute_launch_plan_with` now use `DelegatingCommandExecutor`
+    - preserved script-write error behavior:
+      - background path stays unprefixed
+      - delegated path stays prefixed (`launcher script write failed: ...`)
+  - added focused runtime tests in `src/agent_runtime/tests.rs`:
+    - `execute_commands_with_executor_skips_empty_commands`
+    - `execute_launch_plan_with_executor_runs_prelaunch_then_launch`
+  - no behavior changes, boundary abstraction only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 58)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 308)
+
 ## Current State
-- Worktree is clean.
+- Worktree has uncommitted changes for phase 6af.
 - Recent refactor commits on local `master`:
   - `b6d262b` docs(handoff): record phases 6ac-6ae
   - `2d637bc` refactor(runtime): route sync execution through runtime command helpers
@@ -1063,7 +1088,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: introduce a runtime command-executor abstraction to unify sync/background launch + stop execution entrypoints while keeping UI responsible for event/toast policy
+- next candidate: add runtime helper for launch/stop execution result shaping (success/error mapping) so UI paths only decide toasts/events/state updates
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
