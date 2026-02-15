@@ -1106,9 +1106,26 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 64)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6al, move stop-workspace execution session resolution to `agent_runtime`
+- Commit: `6a0da9e`
+- Changes:
+  - added runtime lifecycle helper in `src/agent_runtime.rs`:
+    - `execute_stop_workspace_for_mode(&Workspace, MultiplexerKind, CommandExecutionMode) -> (String, Result<(), String>)`
+  - updated UI callsites in `src/ui/tui/update.rs`:
+    - `stop_selected_workspace_agent` now delegates session-name resolution + stop execution to runtime helper for both sync and background paths
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `execute_stop_workspace_for_mode_uses_project_scoped_session_name`
+  - no behavior changes, stop-lifecycle ownership move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 65)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree is clean after phase 6ak commit.
+- Worktree is clean after phase 6al commit.
 - Recent refactor commits on local `master`:
+  - `6a0da9e` refactor(runtime): stop sessions via workspace lifecycle helper
+  - `d857df9` docs(handoff): record phase 6ak
   - `d9ef81a` refactor(runtime): build launch requests from workspace
   - `e2d7be2` docs(handoff): record phase 6aj
   - `3eddb24` refactor(runtime): add lifecycle execution facade helpers
@@ -1201,7 +1218,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move start/stop completion payload construction into a runtime lifecycle helper so background and sync paths share one completion-shaping boundary
+- next candidate: move start-workspace execution context shaping into `agent_runtime` (workspace-name/path/session/result tuple), reducing duplicate completion payload construction in sync/background UI paths
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
