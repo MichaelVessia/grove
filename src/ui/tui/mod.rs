@@ -1531,10 +1531,6 @@ impl GroveApp {
         );
         self.event_log.log(frame_event);
     }
-
-    fn allows_text_input_modifiers(modifiers: Modifiers) -> bool {
-        modifiers.is_empty() || modifiers == Modifiers::SHIFT
-    }
 }
 
 impl Model for GroveApp {

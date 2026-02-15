@@ -436,6 +436,10 @@ impl Widget for OverlayModalContent<'_> {
 }
 
 impl GroveApp {
+    fn allows_text_input_modifiers(modifiers: Modifiers) -> bool {
+        modifiers.is_empty() || modifiers == Modifiers::SHIFT
+    }
+
     pub(super) fn handle_keybind_help_key(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Escape | KeyCode::Enter | KeyCode::Char('?') => {
