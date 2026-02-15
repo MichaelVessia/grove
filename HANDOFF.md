@@ -857,9 +857,27 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 297)
 
+### Phase 6y, move lifecycle error message mapping into `workspace_lifecycle`
+- Commit: `ee13b44`
+- Changes:
+  - added `workspace_lifecycle_error_message(&WorkspaceLifecycleError) -> String` in `src/workspace_lifecycle.rs`
+  - updated UI callsites to use lifecycle boundary helper:
+    - `src/ui/tui/update.rs` create-request validation and create-completion error toasts
+    - `src/ui/tui/dialogs.rs` edit-dialog save error toast
+  - removed `workspace_lifecycle_error_message` helper from `src/ui/tui/update.rs`
+  - updated module imports in `src/ui/tui/mod.rs`
+  - added focused lifecycle test in `src/workspace_lifecycle/tests.rs`:
+    - `workspace_lifecycle_error_messages_are_user_friendly`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib workspace_lifecycle::tests -- --nocapture` (pass, 13)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 298)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `ee13b44` phase 6y
   - `e6ffffc` phase 6x
   - `a5f5bff` phase 6w
   - `824ffce` phase 6v
@@ -934,7 +952,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move `workspace_lifecycle_error_message` out of `src/ui/tui/update.rs` to `workspace_lifecycle` (or equivalent non-UI boundary), then switch UI callsites
+- next candidate: move start/stop command execution helpers (`run_start_agent_plan`, `run_stop_commands`) out of `src/ui/tui/update.rs` into a non-UI runtime boundary
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
