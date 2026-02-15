@@ -220,6 +220,15 @@ pub fn workspace_can_start_agent(workspace: Option<&Workspace>) -> bool {
     )
 }
 
+pub fn workspace_can_stop_agent(workspace: Option<&Workspace>) -> bool {
+    let workspace = match workspace {
+        Some(workspace) => workspace,
+        None => return false,
+    };
+
+    workspace.status.has_session()
+}
+
 pub fn workspace_session_for_preview_tab(
     workspace: Option<&Workspace>,
     preview_tab_is_git: bool,

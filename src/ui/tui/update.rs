@@ -1939,10 +1939,7 @@ impl GroveApp {
             return false;
         }
 
-        let Some(workspace) = self.state.selected_workspace() else {
-            return false;
-        };
-        workspace.status.has_session()
+        workspace_can_stop_agent(self.state.selected_workspace())
     }
 
     fn stop_selected_workspace_agent(&mut self) {

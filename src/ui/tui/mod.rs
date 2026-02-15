@@ -43,7 +43,7 @@ use crate::agent_runtime::{
     evaluate_capture_change, git_session_name_for_workspace, kill_workspace_session_command,
     live_preview_capture_target_for_tab, poll_interval, session_name_for_workspace_ref, stop_plan,
     tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
-    workspace_can_start_agent, workspace_session_for_preview_tab,
+    workspace_can_start_agent, workspace_can_stop_agent, workspace_session_for_preview_tab,
     workspace_status_targets_for_polling_with_live_preview,
 };
 use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};

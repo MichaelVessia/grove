@@ -13,10 +13,11 @@ use super::{
     normalized_agent_command_override, poll_interval, reconcile_with_sessions,
     sanitize_workspace_name, session_name_for_workspace, session_name_for_workspace_ref, stop_plan,
     strip_mouse_fragments, tmux_capture_error_indicates_missing_session,
-    workspace_can_enter_interactive, workspace_can_start_agent, workspace_session_for_preview_tab,
-    workspace_should_poll_status, workspace_status_session_target,
-    workspace_status_targets_for_polling, workspace_status_targets_for_polling_with_live_preview,
-    zellij_capture_log_path, zellij_capture_log_path_in, zellij_config_path,
+    workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
+    workspace_session_for_preview_tab, workspace_should_poll_status,
+    workspace_status_session_target, workspace_status_targets_for_polling,
+    workspace_status_targets_for_polling_with_live_preview, zellij_capture_log_path,
+    zellij_capture_log_path_in, zellij_config_path,
 };
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -231,6 +232,17 @@ fn workspace_can_start_agent_depends_on_status_and_support() {
     let mut done_workspace = fixture_workspace("feature", false);
     done_workspace.status = WorkspaceStatus::Done;
     assert!(workspace_can_start_agent(Some(&done_workspace)));
+}
+
+#[test]
+fn workspace_can_stop_agent_depends_on_session_status() {
+    let idle_workspace = fixture_workspace("feature", false);
+    assert!(!workspace_can_stop_agent(Some(&idle_workspace)));
+    assert!(!workspace_can_stop_agent(None));
+
+    let mut active_workspace = fixture_workspace("feature", false);
+    active_workspace.status = WorkspaceStatus::Active;
+    assert!(workspace_can_stop_agent(Some(&active_workspace)));
 }
 
 #[test]
