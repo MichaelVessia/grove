@@ -586,6 +586,844 @@ impl GroveApp {
         Some((inner.width, output_height))
     }
 
+    pub(super) fn git_tab_session_name(workspace: &Workspace) -> String {
+        format!("{}-git", Self::workspace_session_name(workspace))
+    }
+
+    fn ensure_lazygit_session_for_selected_workspace(&mut self) -> Option<String> {
+        let (workspace_path, session_name) = self.state.selected_workspace().map(|workspace| {
+            (
+                workspace.path.clone(),
+                Self::git_tab_session_name(workspace),
+            )
+        })?;
+
+        if self.lazygit_ready_sessions.contains(&session_name) {
+            return Some(session_name);
+        }
+        if self.lazygit_failed_sessions.contains(&session_name) {
+            return None;
+        }
+
+        let capture_cols = self
+            .preview_output_dimensions()
+            .map_or(self.viewport_width.saturating_sub(4), |(width, _)| width)
+            .max(80);
+        let capture_rows = self.viewport_height.saturating_sub(4).max(1);
+        let launch_request = ShellLaunchRequest {
+            session_name: session_name.clone(),
+            workspace_path,
+            command: LAZYGIT_COMMAND.to_string(),
+            capture_cols: Some(capture_cols),
+            capture_rows: Some(capture_rows),
+        };
+        let launch_plan = build_shell_launch_plan(&launch_request, self.multiplexer);
+
+        if let Some(script) = &launch_plan.launcher_script
+            && let Err(error) = fs::write(&script.path, &script.contents)
+        {
+            self.last_tmux_error = Some(format!("launcher script write failed: {error}"));
+            self.show_toast("lazygit launch failed", true);
+            self.lazygit_failed_sessions.insert(session_name);
+            return None;
+        }
+
+        for command in &launch_plan.pre_launch_cmds {
+            if let Err(error) = self.execute_tmux_command(command) {
+                self.last_tmux_error = Some(error.to_string());
+                self.show_toast("lazygit launch failed", true);
+                self.lazygit_failed_sessions.insert(session_name);
+                return None;
+            }
+        }
+        if let Err(error) = self.execute_tmux_command(&launch_plan.launch_cmd) {
+            self.last_tmux_error = Some(error.to_string());
+            self.show_toast("lazygit launch failed", true);
+            self.lazygit_failed_sessions.insert(session_name);
+            return None;
+        }
+
+        self.lazygit_failed_sessions.remove(&session_name);
+        self.lazygit_ready_sessions.insert(session_name.clone());
+        Some(session_name)
+    }
+
+    fn selected_session_for_live_preview(&self) -> Option<(String, bool)> {
+        if self.preview_tab == PreviewTab::Git {
+            let workspace = self.state.selected_workspace()?;
+            let session_name = Self::git_tab_session_name(workspace);
+            if self.lazygit_ready_sessions.contains(&session_name) {
+                return Some((session_name, true));
+            }
+            return None;
+        }
+
+        let workspace = self.state.selected_workspace()?;
+        if workspace.status.has_session() {
+            return Some((Self::workspace_session_name(workspace), true));
+        }
+
+        None
+    }
+
+    pub(super) fn prepare_live_preview_session(&mut self) -> Option<(String, bool)> {
+        if self.preview_tab == PreviewTab::Git {
+            return self
+                .ensure_lazygit_session_for_selected_workspace()
+                .map(|session| (session, true));
+        }
+        self.selected_session_for_live_preview()
+    }
+
+    pub(super) fn interactive_target_session(&self) -> Option<String> {
+        self.interactive
+            .as_ref()
+            .map(|state| state.target_session.clone())
+    }
+
+    pub(super) fn workspace_status_poll_targets(
+        &self,
+        selected_live_session: Option<&str>,
+    ) -> Vec<WorkspaceStatusPollTarget> {
+        self.state
+            .workspaces
+            .iter()
+            .filter(|workspace| {
+                if !workspace.supported_agent {
+                    return false;
+                }
+
+                if self.multiplexer == MultiplexerKind::Zellij {
+                    if workspace.is_main {
+                        return workspace.status.has_session();
+                    }
+                    return true;
+                }
+
+                workspace.status.has_session()
+            })
+            .map(|workspace| WorkspaceStatusPollTarget {
+                workspace_name: workspace.name.clone(),
+                workspace_path: workspace.path.clone(),
+                session_name: Self::workspace_session_name(workspace),
+                supported_agent: workspace.supported_agent,
+            })
+            .filter(|target| selected_live_session != Some(target.session_name.as_str()))
+            .collect()
+    }
+
+    fn tmux_capture_error_indicates_missing_session(error: &str) -> bool {
+        let lower = error.to_ascii_lowercase();
+        lower.contains("can't find pane")
+            || lower.contains("can't find session")
+            || lower.contains("no server running")
+            || lower.contains("no sessions")
+            || lower.contains("failed to connect to server")
+            || lower.contains("no active session")
+            || lower.contains("session not found")
+    }
+
+    fn apply_workspace_status_capture(&mut self, capture: WorkspaceStatusCapture) {
+        let supported_agent = capture.supported_agent;
+        let Some(workspace_index) = self
+            .state
+            .workspaces
+            .iter()
+            .position(|workspace| workspace.path == capture.workspace_path)
+        else {
+            return;
+        };
+
+        match capture.result {
+            Ok(output) => {
+                self.capture_changed_cleaned_for_workspace(&capture.workspace_path, &output);
+                let workspace_path = self.state.workspaces[workspace_index].path.clone();
+                let workspace_agent = self.state.workspaces[workspace_index].agent;
+                let workspace_is_main = self.state.workspaces[workspace_index].is_main;
+                let workspace = &mut self.state.workspaces[workspace_index];
+                workspace.status = detect_status_with_session_override(
+                    output.as_str(),
+                    SessionActivity::Active,
+                    workspace_is_main,
+                    true,
+                    supported_agent,
+                    workspace_agent,
+                    &workspace_path,
+                );
+                workspace.is_orphaned = false;
+            }
+            Err(error) => {
+                if Self::tmux_capture_error_indicates_missing_session(&error) {
+                    let workspace = &mut self.state.workspaces[workspace_index];
+                    let previously_had_live_session = workspace.status.has_session();
+                    workspace.status = if workspace.is_main {
+                        WorkspaceStatus::Main
+                    } else {
+                        WorkspaceStatus::Idle
+                    };
+                    workspace.is_orphaned = if workspace.is_main {
+                        false
+                    } else {
+                        previously_had_live_session || workspace.is_orphaned
+                    };
+                    self.clear_status_tracking_for_workspace_path(&capture.workspace_path);
+                }
+            }
+        }
+    }
+
+    fn poll_interactive_cursor_sync(&mut self, target_session: &str) {
+        let started_at = Instant::now();
+        let result = self
+            .tmux_input
+            .capture_cursor_metadata(target_session)
+            .map_err(|error| error.to_string());
+        let capture_ms =
+            Self::duration_millis(Instant::now().saturating_duration_since(started_at));
+        self.apply_cursor_capture_result(CursorCapture {
+            session: target_session.to_string(),
+            capture_ms,
+            result,
+        });
+    }
+
+    pub(super) fn sync_interactive_session_geometry(&mut self) {
+        let Some(target_session) = self.interactive_target_session() else {
+            return;
+        };
+        let Some((pane_width, pane_height)) = self.preview_output_dimensions() else {
+            return;
+        };
+
+        let needs_resize = self.interactive.as_ref().is_some_and(|state| {
+            state.pane_width != pane_width || state.pane_height != pane_height
+        });
+        if !needs_resize {
+            return;
+        }
+
+        if let Some(state) = self.interactive.as_mut() {
+            state.update_cursor(
+                state.cursor_row,
+                state.cursor_col,
+                state.cursor_visible,
+                pane_height,
+                pane_width,
+            );
+        }
+
+        if let Err(error) = self
+            .tmux_input
+            .resize_session(&target_session, pane_width, pane_height)
+        {
+            let message = error.to_string();
+            self.last_tmux_error = Some(message.clone());
+            self.log_tmux_error(message);
+            self.pending_resize_verification = None;
+            return;
+        }
+
+        self.pending_resize_verification = Some(PendingResizeVerification {
+            session: target_session,
+            expected_width: pane_width,
+            expected_height: pane_height,
+            retried: false,
+        });
+    }
+
+    fn apply_live_preview_capture(
+        &mut self,
+        session_name: &str,
+        include_escape_sequences: bool,
+        capture_ms: u64,
+        base_total_ms: u64,
+        result: Result<String, String>,
+    ) {
+        match result {
+            Ok(output) => {
+                let apply_started_at = Instant::now();
+                let update = self.preview.apply_capture(&output);
+                let apply_capture_ms = Self::duration_millis(
+                    Instant::now().saturating_duration_since(apply_started_at),
+                );
+                let consumed_inputs = if update.changed_cleaned {
+                    self.drain_pending_inputs_for_session(session_name)
+                } else {
+                    Vec::new()
+                };
+                self.output_changing = update.changed_cleaned;
+                self.agent_output_changing = update.changed_cleaned && consumed_inputs.is_empty();
+                self.push_agent_activity_frame(self.agent_output_changing);
+                let selected_workspace_index =
+                    self.state.selected_workspace().and_then(|workspace| {
+                        if Self::workspace_session_name(workspace) != session_name {
+                            return None;
+                        }
+                        Some(self.state.selected_index)
+                    });
+                if let Some(index) = selected_workspace_index {
+                    let supported_agent = self.state.workspaces[index].supported_agent;
+                    let workspace_path = self.state.workspaces[index].path.clone();
+                    let workspace_agent = self.state.workspaces[index].agent;
+                    let workspace_is_main = self.state.workspaces[index].is_main;
+                    self.capture_changed_cleaned_for_workspace(&workspace_path, output.as_str());
+                    let resolved_status = detect_status_with_session_override(
+                        output.as_str(),
+                        SessionActivity::Active,
+                        workspace_is_main,
+                        true,
+                        supported_agent,
+                        workspace_agent,
+                        &workspace_path,
+                    );
+                    let workspace = &mut self.state.workspaces[index];
+                    workspace.status = resolved_status;
+                    workspace.is_orphaned = false;
+                }
+                self.last_tmux_error = None;
+                self.event_log.log(
+                    LogEvent::new("preview_poll", "capture_completed")
+                        .with_data("session", Value::from(session_name.to_string()))
+                        .with_data("capture_ms", Value::from(capture_ms))
+                        .with_data("apply_capture_ms", Value::from(apply_capture_ms))
+                        .with_data(
+                            "total_ms",
+                            Value::from(base_total_ms.saturating_add(apply_capture_ms)),
+                        )
+                        .with_data(
+                            "output_bytes",
+                            Value::from(u64::try_from(output.len()).unwrap_or(u64::MAX)),
+                        )
+                        .with_data("changed", Value::from(update.changed_cleaned))
+                        .with_data(
+                            "include_escape_sequences",
+                            Value::from(include_escape_sequences),
+                        ),
+                );
+                if update.changed_cleaned {
+                    let line_count = u64::try_from(self.preview.lines.len()).unwrap_or(u64::MAX);
+                    let now = Instant::now();
+                    let mut output_event = LogEvent::new("preview_update", "output_changed")
+                        .with_data("line_count", Value::from(line_count))
+                        .with_data("session", Value::from(session_name.to_string()));
+                    if let Some(first_input) = consumed_inputs.first() {
+                        let last_index = consumed_inputs.len().saturating_sub(1);
+                        let last_input = &consumed_inputs[last_index];
+                        let oldest_input_to_preview_ms = Self::duration_millis(
+                            now.saturating_duration_since(first_input.received_at),
+                        );
+                        let newest_input_to_preview_ms = Self::duration_millis(
+                            now.saturating_duration_since(last_input.received_at),
+                        );
+                        let oldest_tmux_to_preview_ms = Self::duration_millis(
+                            now.saturating_duration_since(first_input.forwarded_at),
+                        );
+                        let newest_tmux_to_preview_ms = Self::duration_millis(
+                            now.saturating_duration_since(last_input.forwarded_at),
+                        );
+                        let consumed_count =
+                            u64::try_from(consumed_inputs.len()).unwrap_or(u64::MAX);
+                        let consumed_seq_first = first_input.seq;
+                        let consumed_seq_last = last_input.seq;
+
+                        output_event = output_event
+                            .with_data("input_seq", Value::from(consumed_seq_first))
+                            .with_data(
+                                "input_to_preview_ms",
+                                Value::from(oldest_input_to_preview_ms),
+                            )
+                            .with_data("tmux_to_preview_ms", Value::from(oldest_tmux_to_preview_ms))
+                            .with_data("consumed_input_count", Value::from(consumed_count))
+                            .with_data("consumed_input_seq_first", Value::from(consumed_seq_first))
+                            .with_data("consumed_input_seq_last", Value::from(consumed_seq_last))
+                            .with_data(
+                                "newest_input_to_preview_ms",
+                                Value::from(newest_input_to_preview_ms),
+                            )
+                            .with_data(
+                                "newest_tmux_to_preview_ms",
+                                Value::from(newest_tmux_to_preview_ms),
+                            );
+
+                        self.log_input_event_with_fields(
+                            "interactive_input_to_preview",
+                            consumed_seq_first,
+                            vec![
+                                ("session".to_string(), Value::from(session_name.to_string())),
+                                (
+                                    "input_to_preview_ms".to_string(),
+                                    Value::from(oldest_input_to_preview_ms),
+                                ),
+                                (
+                                    "tmux_to_preview_ms".to_string(),
+                                    Value::from(oldest_tmux_to_preview_ms),
+                                ),
+                                (
+                                    "newest_input_to_preview_ms".to_string(),
+                                    Value::from(newest_input_to_preview_ms),
+                                ),
+                                (
+                                    "newest_tmux_to_preview_ms".to_string(),
+                                    Value::from(newest_tmux_to_preview_ms),
+                                ),
+                                (
+                                    "consumed_input_count".to_string(),
+                                    Value::from(consumed_count),
+                                ),
+                                (
+                                    "consumed_input_seq_first".to_string(),
+                                    Value::from(consumed_seq_first),
+                                ),
+                                (
+                                    "consumed_input_seq_last".to_string(),
+                                    Value::from(consumed_seq_last),
+                                ),
+                                (
+                                    "queue_depth".to_string(),
+                                    Value::from(self.pending_input_depth()),
+                                ),
+                            ],
+                        );
+                        if consumed_inputs.len() > 1 {
+                            self.log_input_event_with_fields(
+                                "interactive_inputs_coalesced",
+                                consumed_seq_first,
+                                vec![
+                                    ("session".to_string(), Value::from(session_name.to_string())),
+                                    (
+                                        "consumed_input_count".to_string(),
+                                        Value::from(consumed_count),
+                                    ),
+                                    (
+                                        "consumed_input_seq_last".to_string(),
+                                        Value::from(consumed_seq_last),
+                                    ),
+                                ],
+                            );
+                        }
+                    }
+                    self.event_log.log(output_event);
+                }
+            }
+            Err(message) => {
+                self.clear_agent_activity_tracking();
+                let capture_error_indicates_missing_session =
+                    Self::tmux_capture_error_indicates_missing_session(&message);
+                if capture_error_indicates_missing_session {
+                    self.lazygit_ready_sessions.remove(session_name);
+                    if let Some(workspace) = self.state.selected_workspace_mut()
+                        && Self::workspace_session_name(workspace) == session_name
+                    {
+                        let workspace_path = workspace.path.clone();
+                        workspace.status = if workspace.is_main {
+                            WorkspaceStatus::Main
+                        } else {
+                            WorkspaceStatus::Idle
+                        };
+                        workspace.is_orphaned = !workspace.is_main;
+                        self.clear_status_tracking_for_workspace_path(&workspace_path);
+                    }
+                    if self
+                        .interactive
+                        .as_ref()
+                        .is_some_and(|interactive| interactive.target_session == session_name)
+                    {
+                        self.interactive = None;
+                    }
+                }
+                self.last_tmux_error = Some(message.clone());
+                self.event_log.log(
+                    LogEvent::new("preview_poll", "capture_failed")
+                        .with_data("session", Value::from(session_name.to_string()))
+                        .with_data("capture_ms", Value::from(capture_ms))
+                        .with_data(
+                            "include_escape_sequences",
+                            Value::from(include_escape_sequences),
+                        )
+                        .with_data("error", Value::from(message.clone())),
+                );
+                self.log_tmux_error(message.clone());
+                self.show_toast("preview capture failed", true);
+                self.refresh_preview_summary();
+            }
+        }
+    }
+
+    fn apply_cursor_capture_result(&mut self, cursor_capture: CursorCapture) {
+        let parse_started_at = Instant::now();
+        let raw_metadata = match cursor_capture.result {
+            Ok(raw_metadata) => raw_metadata,
+            Err(error) => {
+                self.event_log.log(
+                    LogEvent::new("preview_poll", "cursor_capture_failed")
+                        .with_data("session", Value::from(cursor_capture.session))
+                        .with_data("duration_ms", Value::from(cursor_capture.capture_ms))
+                        .with_data("error", Value::from(error)),
+                );
+                return;
+            }
+        };
+        let metadata = match parse_cursor_metadata(&raw_metadata) {
+            Some(metadata) => metadata,
+            None => {
+                self.event_log.log(
+                    LogEvent::new("preview_poll", "cursor_parse_failed")
+                        .with_data("session", Value::from(cursor_capture.session))
+                        .with_data("capture_ms", Value::from(cursor_capture.capture_ms))
+                        .with_data(
+                            "parse_ms",
+                            Value::from(Self::duration_millis(
+                                Instant::now().saturating_duration_since(parse_started_at),
+                            )),
+                        )
+                        .with_data("raw_metadata", Value::from(raw_metadata)),
+                );
+                return;
+            }
+        };
+        let Some(state) = self.interactive.as_mut() else {
+            return;
+        };
+        let session = cursor_capture.session.clone();
+
+        let changed = state.update_cursor(
+            metadata.cursor_row,
+            metadata.cursor_col,
+            metadata.cursor_visible,
+            metadata.pane_height,
+            metadata.pane_width,
+        );
+        self.verify_resize_after_cursor_capture(
+            &session,
+            metadata.pane_width,
+            metadata.pane_height,
+        );
+        let parse_duration_ms =
+            Self::duration_millis(Instant::now().saturating_duration_since(parse_started_at));
+        self.event_log.log(
+            LogEvent::new("preview_poll", "cursor_capture_completed")
+                .with_data("session", Value::from(session))
+                .with_data("capture_ms", Value::from(cursor_capture.capture_ms))
+                .with_data("parse_ms", Value::from(parse_duration_ms))
+                .with_data("changed", Value::from(changed))
+                .with_data("cursor_visible", Value::from(metadata.cursor_visible))
+                .with_data("cursor_row", Value::from(metadata.cursor_row))
+                .with_data("cursor_col", Value::from(metadata.cursor_col))
+                .with_data("pane_width", Value::from(metadata.pane_width))
+                .with_data("pane_height", Value::from(metadata.pane_height)),
+        );
+    }
+
+    fn verify_resize_after_cursor_capture(
+        &mut self,
+        session: &str,
+        pane_width: u16,
+        pane_height: u16,
+    ) {
+        let Some(pending) = self.pending_resize_verification.clone() else {
+            return;
+        };
+        if pending.session != session {
+            return;
+        }
+
+        if pending.expected_width == pane_width && pending.expected_height == pane_height {
+            self.pending_resize_verification = None;
+            return;
+        }
+
+        if pending.retried {
+            self.event_log.log(
+                LogEvent::new("preview_poll", "resize_verify_failed")
+                    .with_data("session", Value::from(session.to_string()))
+                    .with_data("expected_width", Value::from(pending.expected_width))
+                    .with_data("expected_height", Value::from(pending.expected_height))
+                    .with_data("actual_width", Value::from(pane_width))
+                    .with_data("actual_height", Value::from(pane_height)),
+            );
+            self.pending_resize_verification = None;
+            return;
+        }
+
+        self.event_log.log(
+            LogEvent::new("preview_poll", "resize_verify_retry")
+                .with_data("session", Value::from(session.to_string()))
+                .with_data("expected_width", Value::from(pending.expected_width))
+                .with_data("expected_height", Value::from(pending.expected_height))
+                .with_data("actual_width", Value::from(pane_width))
+                .with_data("actual_height", Value::from(pane_height)),
+        );
+        self.pending_resize_verification = Some(PendingResizeVerification {
+            retried: true,
+            ..pending.clone()
+        });
+        if let Err(error) =
+            self.tmux_input
+                .resize_session(session, pending.expected_width, pending.expected_height)
+        {
+            let message = error.to_string();
+            self.last_tmux_error = Some(message.clone());
+            self.log_tmux_error(message);
+            self.pending_resize_verification = None;
+            return;
+        }
+
+        self.poll_preview();
+    }
+
+    fn poll_preview_sync(&mut self) {
+        let live_preview = self.prepare_live_preview_session();
+        let has_live_preview = live_preview.is_some();
+        let cursor_session = self.interactive_target_session();
+        let status_poll_targets = self.workspace_status_poll_targets(
+            live_preview.as_ref().map(|(session, _)| session.as_str()),
+        );
+
+        if let Some((session_name, include_escape_sequences)) = live_preview {
+            let capture_started_at = Instant::now();
+            let result = self
+                .tmux_input
+                .capture_output(&session_name, 600, include_escape_sequences)
+                .map_err(|error| error.to_string());
+            let capture_ms =
+                Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
+            self.apply_live_preview_capture(
+                &session_name,
+                include_escape_sequences,
+                capture_ms,
+                capture_ms,
+                result,
+            );
+        } else {
+            self.clear_agent_activity_tracking();
+            self.refresh_preview_summary();
+        }
+
+        for target in status_poll_targets {
+            let capture_started_at = Instant::now();
+            let result = self
+                .tmux_input
+                .capture_output(&target.session_name, 120, false)
+                .map_err(|error| error.to_string());
+            let capture_ms =
+                Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
+            self.apply_workspace_status_capture(WorkspaceStatusCapture {
+                workspace_name: target.workspace_name,
+                workspace_path: target.workspace_path,
+                session_name: target.session_name,
+                supported_agent: target.supported_agent,
+                capture_ms,
+                result,
+            });
+        }
+        if !has_live_preview {
+            self.refresh_preview_summary();
+        }
+
+        if let Some(target_session) = cursor_session {
+            self.poll_interactive_cursor_sync(&target_session);
+        }
+    }
+
+    fn schedule_async_preview_poll(
+        &self,
+        generation: u64,
+        live_preview: Option<(String, bool)>,
+        cursor_session: Option<String>,
+        status_poll_targets: Vec<WorkspaceStatusPollTarget>,
+    ) -> Cmd<Msg> {
+        Cmd::task(move || {
+            let live_capture = live_preview.map(|(session, include_escape_sequences)| {
+                let capture_started_at = Instant::now();
+                let result = CommandTmuxInput::capture_session_output(
+                    &session,
+                    600,
+                    include_escape_sequences,
+                )
+                .map_err(|error| error.to_string());
+                let capture_ms = GroveApp::duration_millis(
+                    Instant::now().saturating_duration_since(capture_started_at),
+                );
+                LivePreviewCapture {
+                    session,
+                    include_escape_sequences,
+                    capture_ms,
+                    total_ms: capture_ms,
+                    result,
+                }
+            });
+
+            let cursor_capture = cursor_session.map(|session| {
+                let started_at = Instant::now();
+                let result = CommandTmuxInput::capture_session_cursor_metadata(&session)
+                    .map_err(|error| error.to_string());
+                let capture_ms =
+                    GroveApp::duration_millis(Instant::now().saturating_duration_since(started_at));
+                CursorCapture {
+                    session,
+                    capture_ms,
+                    result,
+                }
+            });
+
+            let workspace_status_captures = status_poll_targets
+                .into_iter()
+                .map(|target| {
+                    let capture_started_at = Instant::now();
+                    let result =
+                        CommandTmuxInput::capture_session_output(&target.session_name, 120, false)
+                            .map_err(|error| error.to_string());
+                    let capture_ms = GroveApp::duration_millis(
+                        Instant::now().saturating_duration_since(capture_started_at),
+                    );
+                    WorkspaceStatusCapture {
+                        workspace_name: target.workspace_name,
+                        workspace_path: target.workspace_path,
+                        session_name: target.session_name,
+                        supported_agent: target.supported_agent,
+                        capture_ms,
+                        result,
+                    }
+                })
+                .collect();
+
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation,
+                live_capture,
+                cursor_capture,
+                workspace_status_captures,
+            })
+        })
+    }
+
+    pub(super) fn poll_preview(&mut self) {
+        if !self.tmux_input.supports_background_send() {
+            self.poll_preview_sync();
+            return;
+        }
+
+        let live_preview = self.prepare_live_preview_session();
+        let cursor_session = self.interactive_target_session();
+        let status_poll_targets = self.workspace_status_poll_targets(
+            live_preview.as_ref().map(|(session, _)| session.as_str()),
+        );
+
+        if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
+            self.clear_agent_activity_tracking();
+            self.refresh_preview_summary();
+            return;
+        }
+
+        self.poll_generation = self.poll_generation.saturating_add(1);
+        self.queue_cmd(self.schedule_async_preview_poll(
+            self.poll_generation,
+            live_preview,
+            cursor_session,
+            status_poll_targets,
+        ));
+    }
+
+    fn handle_preview_poll_completed(&mut self, completion: PreviewPollCompletion) {
+        if completion.generation < self.poll_generation {
+            self.event_log.log(
+                LogEvent::new("preview_poll", "stale_result_dropped")
+                    .with_data("generation", Value::from(completion.generation))
+                    .with_data("latest_generation", Value::from(self.poll_generation)),
+            );
+            return;
+        }
+
+        if completion.generation > self.poll_generation {
+            self.poll_generation = completion.generation;
+        }
+
+        let had_live_capture = completion.live_capture.is_some();
+        if let Some(live_capture) = completion.live_capture {
+            self.apply_live_preview_capture(
+                &live_capture.session,
+                live_capture.include_escape_sequences,
+                live_capture.capture_ms,
+                live_capture.total_ms,
+                live_capture.result,
+            );
+        } else {
+            self.clear_agent_activity_tracking();
+            self.refresh_preview_summary();
+        }
+
+        for status_capture in completion.workspace_status_captures {
+            self.apply_workspace_status_capture(status_capture);
+        }
+        if !had_live_capture {
+            self.refresh_preview_summary();
+        }
+
+        if let Some(cursor_capture) = completion.cursor_capture {
+            self.apply_cursor_capture_result(cursor_capture);
+        }
+    }
+
+    fn scroll_preview(&mut self, delta: i32) {
+        let viewport_height = self
+            .preview_output_dimensions()
+            .map_or(1, |(_, height)| usize::from(height));
+        let old_offset = self.preview.offset;
+        let old_auto_scroll = self.preview.auto_scroll;
+        let changed = self.preview.scroll(delta, Instant::now(), viewport_height);
+        if changed {
+            let offset = u64::try_from(self.preview.offset).unwrap_or(u64::MAX);
+            self.event_log.log(
+                LogEvent::new("preview_update", "scrolled")
+                    .with_data("delta", Value::from(i64::from(delta)))
+                    .with_data("offset", Value::from(offset)),
+            );
+        }
+        if old_auto_scroll != self.preview.auto_scroll {
+            self.event_log.log(
+                LogEvent::new("preview_update", "autoscroll_toggled")
+                    .with_data("enabled", Value::from(self.preview.auto_scroll))
+                    .with_data(
+                        "offset",
+                        Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
+                    )
+                    .with_data(
+                        "previous_offset",
+                        Value::from(u64::try_from(old_offset).unwrap_or(u64::MAX)),
+                    ),
+            );
+        }
+    }
+
+    fn jump_preview_to_bottom(&mut self) {
+        let old_offset = self.preview.offset;
+        let old_auto_scroll = self.preview.auto_scroll;
+        self.preview.jump_to_bottom();
+        if old_offset != self.preview.offset {
+            self.event_log.log(
+                LogEvent::new("preview_update", "scrolled")
+                    .with_data("delta", Value::from("jump_bottom"))
+                    .with_data(
+                        "offset",
+                        Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
+                    )
+                    .with_data(
+                        "previous_offset",
+                        Value::from(u64::try_from(old_offset).unwrap_or(u64::MAX)),
+                    ),
+            );
+        }
+        if old_auto_scroll != self.preview.auto_scroll {
+            self.event_log.log(
+                LogEvent::new("preview_update", "autoscroll_toggled")
+                    .with_data("enabled", Value::from(self.preview.auto_scroll))
+                    .with_data(
+                        "offset",
+                        Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
+                    ),
+            );
+        }
+    }
+
     fn handle_paste_event(&mut self, paste_event: PasteEvent) -> Cmd<Msg> {
         let input_seq = self.next_input_seq();
         let received_at = Instant::now();
