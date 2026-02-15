@@ -80,6 +80,7 @@ mod dialogs;
 use dialogs::*;
 mod msg;
 use msg::*;
+mod logging;
 mod selection;
 use selection::{TextSelectionPoint, TextSelectionState};
 mod text;
@@ -583,49 +584,6 @@ impl GroveApp {
         app
     }
 
-    fn mode_label(&self) -> &'static str {
-        if self.interactive.is_some() {
-            return "Interactive";
-        }
-
-        match self.state.mode {
-            UiMode::List => "List",
-            UiMode::Preview => "Preview",
-        }
-    }
-
-    fn focus_label(&self) -> &'static str {
-        match self.state.focus {
-            PaneFocus::WorkspaceList => "WorkspaceList",
-            PaneFocus::Preview => "Preview",
-        }
-    }
-
-    fn focus_name(focus: PaneFocus) -> &'static str {
-        match focus {
-            PaneFocus::WorkspaceList => "workspace_list",
-            PaneFocus::Preview => "preview",
-        }
-    }
-
-    fn mode_name(mode: UiMode) -> &'static str {
-        match mode {
-            UiMode::List => "list",
-            UiMode::Preview => "preview",
-        }
-    }
-
-    fn hit_region_name(region: HitRegion) -> &'static str {
-        match region {
-            HitRegion::WorkspaceList => "workspace_list",
-            HitRegion::Preview => "preview",
-            HitRegion::Divider => "divider",
-            HitRegion::StatusLine => "status_line",
-            HitRegion::Header => "header",
-            HitRegion::Outside => "outside",
-        }
-    }
-
     fn selected_workspace_name(&self) -> Option<String> {
         self.state
             .selected_workspace()
@@ -784,28 +742,6 @@ impl GroveApp {
         };
         let _ = self.notifications.push(toast, priority);
         let _ = self.notifications.tick(Duration::ZERO);
-    }
-
-    fn duration_millis(duration: Duration) -> u64 {
-        u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
-    }
-
-    fn msg_kind(msg: &Msg) -> &'static str {
-        match msg {
-            Msg::Tick => "tick",
-            Msg::Key(_) => "key",
-            Msg::Mouse(_) => "mouse",
-            Msg::Paste(_) => "paste",
-            Msg::Resize { .. } => "resize",
-            Msg::PreviewPollCompleted(_) => "preview_poll_completed",
-            Msg::RefreshWorkspacesCompleted(_) => "refresh_workspaces_completed",
-            Msg::DeleteWorkspaceCompleted(_) => "delete_workspace_completed",
-            Msg::CreateWorkspaceCompleted(_) => "create_workspace_completed",
-            Msg::StartAgentCompleted(_) => "start_agent_completed",
-            Msg::StopAgentCompleted(_) => "stop_agent_completed",
-            Msg::InteractiveSendCompleted(_) => "interactive_send_completed",
-            Msg::Noop => "noop",
-        }
     }
 
     fn queue_cmd(&mut self, cmd: Cmd<Msg>) {
