@@ -1677,9 +1677,7 @@ impl GroveApp {
                 return;
             }
 
-            self.apply_start_agent_completion(Self::start_agent_completion_from_runtime(
-                completion,
-            ));
+            self.apply_start_agent_completion(completion.into());
             return;
         }
 
@@ -1691,17 +1689,8 @@ impl GroveApp {
                 multiplexer,
                 CommandExecutionMode::Process,
             );
-            Msg::StartAgentCompleted(GroveApp::start_agent_completion_from_runtime(completion))
+            Msg::StartAgentCompleted(completion.into())
         }));
-    }
-
-    fn start_agent_completion_from_runtime(result: SessionExecutionResult) -> StartAgentCompletion {
-        StartAgentCompletion {
-            workspace_name: result.workspace_name,
-            workspace_path: result.workspace_path,
-            session_name: result.session_name,
-            result: result.result,
-        }
     }
 
     fn apply_start_agent_completion(&mut self, completion: StartAgentCompletion) {
@@ -1806,7 +1795,7 @@ impl GroveApp {
                 return;
             }
 
-            self.apply_stop_agent_completion(Self::stop_agent_completion_from_runtime(completion));
+            self.apply_stop_agent_completion(completion.into());
             return;
         }
 
@@ -1818,17 +1807,8 @@ impl GroveApp {
                 multiplexer,
                 CommandExecutionMode::Process,
             );
-            Msg::StopAgentCompleted(GroveApp::stop_agent_completion_from_runtime(completion))
+            Msg::StopAgentCompleted(completion.into())
         }));
-    }
-
-    fn stop_agent_completion_from_runtime(result: SessionExecutionResult) -> StopAgentCompletion {
-        StopAgentCompletion {
-            workspace_name: result.workspace_name,
-            workspace_path: result.workspace_path,
-            session_name: result.session_name,
-            result: result.result,
-        }
     }
 
     fn apply_stop_agent_completion(&mut self, completion: StopAgentCompletion) {

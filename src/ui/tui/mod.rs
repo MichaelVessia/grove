@@ -38,7 +38,7 @@ use serde_json::Value;
 
 use crate::adapters::{BootstrapData, DiscoveryState};
 use crate::agent_runtime::{
-    CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, SessionExecutionResult,
+    CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity,
     detect_status_with_session_override, evaluate_capture_change, execute_command_with,
     execute_launch_request_with_result_for_mode, execute_shell_launch_request_for_mode,
     execute_stop_workspace_with_result_for_mode, git_session_name_for_workspace,

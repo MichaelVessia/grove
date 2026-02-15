@@ -1,5 +1,5 @@
 use super::*;
-use crate::agent_runtime::WorkspaceStatusTarget;
+use crate::agent_runtime::{SessionExecutionResult, WorkspaceStatusTarget};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Msg {
@@ -88,6 +88,28 @@ pub(super) struct StopAgentCompletion {
     pub(super) workspace_path: PathBuf,
     pub(super) session_name: String,
     pub(super) result: Result<(), String>,
+}
+
+impl From<SessionExecutionResult> for StartAgentCompletion {
+    fn from(result: SessionExecutionResult) -> Self {
+        Self {
+            workspace_name: result.workspace_name,
+            workspace_path: result.workspace_path,
+            session_name: result.session_name,
+            result: result.result,
+        }
+    }
+}
+
+impl From<SessionExecutionResult> for StopAgentCompletion {
+    fn from(result: SessionExecutionResult) -> Self {
+        Self {
+            workspace_name: result.workspace_name,
+            workspace_path: result.workspace_path,
+            session_name: result.session_name,
+            result: result.result,
+        }
+    }
 }
 
 impl From<Event> for Msg {
