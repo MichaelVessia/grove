@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque, hash_map::DefaultHasher};
+use std::collections::{HashMap, HashSet, VecDeque, hash_map::DefaultHasher};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
@@ -41,15 +41,15 @@ use serde_json::Value;
 
 use crate::adapters::{
     BootstrapData, CommandGitAdapter, CommandMultiplexerAdapter, CommandSystemAdapter,
-    DiscoveryState, bootstrap_data,
+    DiscoveryState, MultiplexerAdapter, bootstrap_data,
 };
 use crate::agent_runtime::{
     LaunchRequest, OutputDigest, SessionActivity, build_launch_plan,
     detect_status_with_session_override, evaluate_capture_change, poll_interval,
-    session_name_for_workspace, stop_plan, zellij_capture_log_path, zellij_config_path,
+    session_name_for_workspace_in_project, stop_plan, zellij_capture_log_path, zellij_config_path,
 };
-use crate::config::{GroveConfig, MultiplexerKind};
-use crate::domain::{AgentType, WorkspaceStatus};
+use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
+use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::event_log::{Event as LogEvent, EventLogger, FileEventLogger, NullEventLogger};
 #[cfg(test)]
 use crate::interactive::render_cursor_overlay;
@@ -88,6 +88,8 @@ const HIT_ID_LAUNCH_DIALOG: u32 = 8;
 const HIT_ID_DELETE_DIALOG: u32 = 9;
 const HIT_ID_KEYBIND_HELP_DIALOG: u32 = 10;
 const HIT_ID_SETTINGS_DIALOG: u32 = 11;
+const HIT_ID_PROJECT_DIALOG: u32 = 12;
+const HIT_ID_PROJECT_ADD_DIALOG: u32 = 13;
 const PALETTE_CMD_TOGGLE_FOCUS: &str = "palette:toggle_focus";
 const PALETTE_CMD_OPEN_PREVIEW: &str = "palette:open_preview";
 const PALETTE_CMD_ENTER_INTERACTIVE: &str = "palette:enter_interactive";
@@ -578,6 +580,8 @@ struct LaunchDialogState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DeleteDialogState {
+    project_name: Option<String>,
+    project_path: Option<PathBuf>,
     workspace_name: String,
     branch: String,
     path: PathBuf,
@@ -656,9 +660,53 @@ impl LaunchDialogField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CreateDialogState {
     workspace_name: String,
+    project_index: usize,
     agent: AgentType,
     base_branch: String,
     focused_field: CreateDialogField,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProjectDialogState {
+    filter: String,
+    filtered_project_indices: Vec<usize>,
+    selected_filtered_index: usize,
+    add_dialog: Option<ProjectAddDialogState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProjectAddDialogState {
+    name: String,
+    path: String,
+    focused_field: ProjectAddDialogField,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProjectAddDialogField {
+    Name,
+    Path,
+    AddButton,
+    CancelButton,
+}
+
+impl ProjectAddDialogField {
+    fn next(self) -> Self {
+        match self {
+            Self::Name => Self::Path,
+            Self::Path => Self::AddButton,
+            Self::AddButton => Self::CancelButton,
+            Self::CancelButton => Self::Name,
+        }
+    }
+
+    fn previous(self) -> Self {
+        match self {
+            Self::Name => Self::CancelButton,
+            Self::Path => Self::Name,
+            Self::AddButton => Self::Path,
+            Self::CancelButton => Self::AddButton,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -695,6 +743,7 @@ impl SettingsDialogField {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CreateDialogField {
     WorkspaceName,
+    Project,
     BaseBranch,
     Agent,
     CreateButton,
@@ -704,7 +753,8 @@ enum CreateDialogField {
 impl CreateDialogField {
     fn next(self) -> Self {
         match self {
-            Self::WorkspaceName => Self::BaseBranch,
+            Self::WorkspaceName => Self::Project,
+            Self::Project => Self::BaseBranch,
             Self::BaseBranch => Self::Agent,
             Self::Agent => Self::CreateButton,
             Self::CreateButton => Self::CancelButton,
@@ -715,7 +765,8 @@ impl CreateDialogField {
     fn previous(self) -> Self {
         match self {
             Self::WorkspaceName => Self::CancelButton,
-            Self::BaseBranch => Self::WorkspaceName,
+            Self::Project => Self::WorkspaceName,
+            Self::BaseBranch => Self::Project,
             Self::Agent => Self::BaseBranch,
             Self::CreateButton => Self::Agent,
             Self::CancelButton => Self::CreateButton,
@@ -726,6 +777,7 @@ impl CreateDialogField {
     fn label(self) -> &'static str {
         match self {
             Self::WorkspaceName => "name",
+            Self::Project => "project",
             Self::BaseBranch => "base_branch",
             Self::Agent => "agent",
             Self::CreateButton => "create",
@@ -1005,6 +1057,7 @@ struct CursorCapture {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct WorkspaceStatusPollTarget {
     workspace_name: String,
+    workspace_path: PathBuf,
     session_name: String,
     supported_agent: bool,
 }
@@ -1012,6 +1065,7 @@ struct WorkspaceStatusPollTarget {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct WorkspaceStatusCapture {
     workspace_name: String,
+    workspace_path: PathBuf,
     session_name: String,
     supported_agent: bool,
     capture_ms: u64,
@@ -1020,13 +1074,14 @@ struct WorkspaceStatusCapture {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RefreshWorkspacesCompletion {
-    preferred_workspace_name: Option<String>,
+    preferred_workspace_path: Option<PathBuf>,
     bootstrap: BootstrapData,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DeleteWorkspaceCompletion {
     workspace_name: String,
+    workspace_path: PathBuf,
     result: Result<(), String>,
     warnings: Vec<String>,
 }
@@ -1040,6 +1095,7 @@ struct CreateWorkspaceCompletion {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StartAgentCompletion {
     workspace_name: String,
+    workspace_path: PathBuf,
     session_name: String,
     result: Result<(), String>,
 }
@@ -1047,6 +1103,7 @@ struct StartAgentCompletion {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StopAgentCompletion {
     workspace_name: String,
+    workspace_path: PathBuf,
     session_name: String,
     result: Result<(), String>,
 }
@@ -1739,10 +1796,140 @@ fn default_config_path() -> PathBuf {
     crate::config::config_path().unwrap_or_else(|| PathBuf::from(".config/grove/config.toml"))
 }
 
+fn current_repo_root() -> Option<PathBuf> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let root = String::from_utf8(output.stdout).ok()?;
+    let trimmed = root.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let path = PathBuf::from(trimmed);
+    path.canonicalize().ok().or(Some(path))
+}
+
+fn project_display_name(path: &Path) -> String {
+    path.file_name()
+        .and_then(|value| value.to_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| path.display().to_string())
+}
+
+fn project_paths_equal(left: &Path, right: &Path) -> bool {
+    let left_canonical = left.canonicalize().ok();
+    let right_canonical = right.canonicalize().ok();
+    match (left_canonical, right_canonical) {
+        (Some(left), Some(right)) => left == right,
+        _ => left == right,
+    }
+}
+
+fn ensure_current_repo_project(config: &mut GroveConfig, config_path: &Path) -> Option<String> {
+    let Some(repo_root) = current_repo_root() else {
+        return None;
+    };
+
+    let already_present = config
+        .projects
+        .iter()
+        .any(|project| project_paths_equal(&project.path, &repo_root));
+    if already_present {
+        return None;
+    }
+
+    config.projects.push(ProjectConfig {
+        name: project_display_name(&repo_root),
+        path: repo_root,
+    });
+    crate::config::save_to_path(config_path, config).err()
+}
+
 fn load_runtime_config() -> (GroveConfig, PathBuf, Option<String>) {
-    match crate::config::load() {
+    let (mut config, config_path, load_error) = match crate::config::load() {
         Ok(loaded) => (loaded.config, loaded.path, None),
         Err(error) => (GroveConfig::default(), default_config_path(), Some(error)),
+    };
+    let startup_error = ensure_current_repo_project(&mut config, &config_path);
+    let error = match (load_error, startup_error) {
+        (Some(load_error), Some(startup_error)) => Some(format!(
+            "{load_error}; startup project add failed: {startup_error}"
+        )),
+        (Some(load_error), None) => Some(load_error),
+        (None, Some(startup_error)) => Some(format!("startup project add failed: {startup_error}")),
+        (None, None) => None,
+    };
+
+    (config, config_path, error)
+}
+
+#[derive(Debug, Clone)]
+struct StaticMultiplexerAdapter {
+    running_sessions: HashSet<String>,
+}
+
+impl crate::adapters::MultiplexerAdapter for StaticMultiplexerAdapter {
+    fn running_sessions(&self) -> HashSet<String> {
+        self.running_sessions.clone()
+    }
+}
+
+fn bootstrap_data_for_projects(
+    projects: &[ProjectConfig],
+    multiplexer: MultiplexerKind,
+) -> BootstrapData {
+    if projects.is_empty() {
+        return BootstrapData {
+            repo_name: "grove".to_string(),
+            workspaces: Vec::new(),
+            discovery_state: DiscoveryState::Empty,
+            orphaned_sessions: Vec::new(),
+        };
+    }
+
+    let live_multiplexer = CommandMultiplexerAdapter { multiplexer };
+    let static_multiplexer = StaticMultiplexerAdapter {
+        running_sessions: live_multiplexer.running_sessions(),
+    };
+    let mut workspaces = Vec::new();
+    let mut orphaned_sessions = Vec::new();
+    let mut errors = Vec::new();
+    for project in projects {
+        let git = CommandGitAdapter::for_repo(project.path.clone());
+        let system = CommandSystemAdapter::for_repo(project.path.clone());
+        let bootstrap = bootstrap_data(&git, &static_multiplexer, &system);
+        if let DiscoveryState::Error(message) = &bootstrap.discovery_state {
+            errors.push(format!("{}: {message}", project.name));
+        }
+
+        workspaces.extend(bootstrap.workspaces);
+        orphaned_sessions.extend(bootstrap.orphaned_sessions);
+    }
+
+    let discovery_state = if !workspaces.is_empty() {
+        DiscoveryState::Ready
+    } else if !errors.is_empty() {
+        DiscoveryState::Error(errors.join("; "))
+    } else {
+        DiscoveryState::Empty
+    };
+    let repo_name = if projects.len() == 1 {
+        projects[0].name.clone()
+    } else {
+        format!("{} projects", projects.len())
+    };
+
+    BootstrapData {
+        repo_name,
+        workspaces,
+        discovery_state,
+        orphaned_sessions,
     }
 }
 
@@ -1763,8 +1950,9 @@ fn read_workspace_launch_prompt(workspace_path: &Path) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-fn load_local_branches() -> Result<Vec<String>, String> {
+fn load_local_branches(repo_root: &Path) -> Result<Vec<String>, String> {
     let output = Command::new("git")
+        .current_dir(repo_root)
         .args(["branch", "--format=%(refname:short)"])
         .output()
         .map_err(|error| format!("git branch failed: {error}"))?;
@@ -1826,6 +2014,7 @@ impl AppPaths {
 
 struct GroveApp {
     repo_name: String,
+    projects: Vec<ProjectConfig>,
     state: AppState,
     discovery_state: DiscoveryState,
     preview: PreviewState,
@@ -1835,6 +2024,7 @@ struct GroveApp {
     launch_dialog: Option<LaunchDialogState>,
     delete_dialog: Option<DeleteDialogState>,
     create_dialog: Option<CreateDialogState>,
+    project_dialog: Option<ProjectDialogState>,
     settings_dialog: Option<SettingsDialogState>,
     keybind_help_open: bool,
     command_palette: CommandPalette,
@@ -1887,13 +2077,10 @@ impl GroveApp {
     fn new_with_event_logger(event_log: Box<dyn EventLogger>) -> Self {
         let (config, config_path, _config_error) = load_runtime_config();
         let multiplexer = config.multiplexer;
-        let bootstrap = bootstrap_data(
-            &CommandGitAdapter,
-            &CommandMultiplexerAdapter { multiplexer },
-            &CommandSystemAdapter,
-        );
-        Self::from_parts(
+        let bootstrap = bootstrap_data_for_projects(&config.projects, multiplexer);
+        Self::from_parts_with_projects(
             bootstrap,
+            config.projects,
             input_for_multiplexer(multiplexer),
             AppPaths::new(default_sidebar_ratio_path(), config_path),
             multiplexer,
@@ -1905,13 +2092,10 @@ impl GroveApp {
     fn new_with_debug_recorder(event_log: Box<dyn EventLogger>, app_start_ts: u64) -> Self {
         let (config, config_path, _config_error) = load_runtime_config();
         let multiplexer = config.multiplexer;
-        let bootstrap = bootstrap_data(
-            &CommandGitAdapter,
-            &CommandMultiplexerAdapter { multiplexer },
-            &CommandSystemAdapter,
-        );
-        Self::from_parts(
+        let bootstrap = bootstrap_data_for_projects(&config.projects, multiplexer);
+        Self::from_parts_with_projects(
             bootstrap,
+            config.projects,
             input_for_multiplexer(multiplexer),
             AppPaths::new(default_sidebar_ratio_path(), config_path),
             multiplexer,
@@ -1920,6 +2104,34 @@ impl GroveApp {
         )
     }
 
+    #[cfg(test)]
+    fn projects_from_bootstrap(bootstrap: &BootstrapData) -> Vec<ProjectConfig> {
+        let mut projects = Vec::new();
+        for workspace in &bootstrap.workspaces {
+            let Some(project_path) = workspace.project_path.as_ref() else {
+                continue;
+            };
+            let project_name = workspace.project_name.clone().unwrap_or_else(|| {
+                project_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map_or_else(|| project_path.display().to_string(), ToString::to_string)
+            });
+
+            if projects.iter().any(|project: &ProjectConfig| {
+                project.name == project_name || project_paths_equal(&project.path, project_path)
+            }) {
+                continue;
+            }
+            projects.push(ProjectConfig {
+                name: project_name,
+                path: project_path.clone(),
+            });
+        }
+        projects
+    }
+
+    #[cfg(test)]
     fn from_parts(
         bootstrap: BootstrapData,
         tmux_input: Box<dyn TmuxInput>,
@@ -1928,8 +2140,30 @@ impl GroveApp {
         event_log: Box<dyn EventLogger>,
         debug_record_start_ts: Option<u64>,
     ) -> Self {
-        Self::from_parts_with_clipboard(
+        let projects = Self::projects_from_bootstrap(&bootstrap);
+        Self::from_parts_with_projects(
             bootstrap,
+            projects,
+            tmux_input,
+            paths,
+            multiplexer,
+            event_log,
+            debug_record_start_ts,
+        )
+    }
+
+    fn from_parts_with_projects(
+        bootstrap: BootstrapData,
+        projects: Vec<ProjectConfig>,
+        tmux_input: Box<dyn TmuxInput>,
+        paths: AppPaths,
+        multiplexer: MultiplexerKind,
+        event_log: Box<dyn EventLogger>,
+        debug_record_start_ts: Option<u64>,
+    ) -> Self {
+        Self::from_parts_with_clipboard_and_projects(
+            bootstrap,
+            projects,
             tmux_input,
             Box::new(SystemClipboardAccess::default()),
             paths,
@@ -1939,8 +2173,9 @@ impl GroveApp {
         )
     }
 
-    fn from_parts_with_clipboard(
+    fn from_parts_with_clipboard_and_projects(
         bootstrap: BootstrapData,
+        projects: Vec<ProjectConfig>,
         tmux_input: Box<dyn TmuxInput>,
         clipboard: Box<dyn ClipboardAccess>,
         paths: AppPaths,
@@ -1960,6 +2195,7 @@ impl GroveApp {
         );
         let mut app = Self {
             repo_name: bootstrap.repo_name,
+            projects,
             state: AppState::new(bootstrap.workspaces),
             discovery_state: bootstrap.discovery_state,
             preview: PreviewState::new(),
@@ -1969,6 +2205,7 @@ impl GroveApp {
             launch_dialog: None,
             delete_dialog: None,
             create_dialog: None,
+            project_dialog: None,
             settings_dialog: None,
             keybind_help_open: false,
             command_palette: CommandPalette::new().with_max_visible(12),
@@ -2067,6 +2304,16 @@ impl GroveApp {
         self.state
             .selected_workspace()
             .map(|workspace| workspace.name.clone())
+    }
+
+    fn selected_workspace_path(&self) -> Option<PathBuf> {
+        self.state
+            .selected_workspace()
+            .map(|workspace| workspace.path.clone())
+    }
+
+    fn workspace_session_name(workspace: &Workspace) -> String {
+        session_name_for_workspace_in_project(workspace.project_name.as_deref(), &workspace.name)
     }
 
     fn capture_transition_snapshot(&self) -> TransitionSnapshot {
@@ -2651,14 +2898,17 @@ impl GroveApp {
         if self.settings_dialog.is_some() {
             return "Tab/S-Tab field, j/k or h/l change, Enter save/select, Esc cancel";
         }
+        if self.project_dialog.is_some() {
+            return "Type filter, Up/Down or Tab/S-Tab navigate, Enter focus project, Ctrl+A add, Esc close";
+        }
         if self.interactive.is_some() {
             return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
         }
         if self.state.mode == UiMode::Preview {
-            return "j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
+            return "j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, n new, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
         }
 
-        "j/k move, h/l pane, Enter open, n new, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit"
+        "j/k move, h/l pane, Enter open, n new, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit"
     }
 
     fn selected_workspace_summary(&self) -> String {
@@ -2724,6 +2974,7 @@ impl GroveApp {
             || self.create_dialog.is_some()
             || self.delete_dialog.is_some()
             || self.settings_dialog.is_some()
+            || self.project_dialog.is_some()
             || self.keybind_help_open
     }
 
@@ -3031,7 +3282,7 @@ impl GroveApp {
         }
 
         if workspace.status.has_session() {
-            return Some((session_name_for_workspace(&workspace.name), true));
+            return Some((Self::workspace_session_name(workspace), true));
         }
 
         None
@@ -3063,7 +3314,8 @@ impl GroveApp {
             })
             .map(|workspace| WorkspaceStatusPollTarget {
                 workspace_name: workspace.name.clone(),
-                session_name: session_name_for_workspace(&workspace.name),
+                workspace_path: workspace.path.clone(),
+                session_name: Self::workspace_session_name(workspace),
                 supported_agent: workspace.supported_agent,
             })
             .filter(|target| selected_live_session != Some(target.session_name.as_str()))
@@ -3082,13 +3334,12 @@ impl GroveApp {
     }
 
     fn apply_workspace_status_capture(&mut self, capture: WorkspaceStatusCapture) {
-        let workspace_name = capture.workspace_name.clone();
         let supported_agent = capture.supported_agent;
         let Some(workspace_index) = self
             .state
             .workspaces
             .iter()
-            .position(|workspace| workspace.name == workspace_name)
+            .position(|workspace| workspace.path == capture.workspace_path)
         else {
             return;
         };
@@ -3098,7 +3349,7 @@ impl GroveApp {
 
         match capture.result {
             Ok(output) => {
-                self.capture_changed_cleaned_for_workspace(&workspace_name, &output);
+                self.capture_changed_cleaned_for_workspace(&capture.workspace_path, &output);
                 let workspace_path = self.state.workspaces[workspace_index].path.clone();
                 let workspace_agent = self.state.workspaces[workspace_index].agent;
                 let workspace = &mut self.state.workspaces[workspace_index];
@@ -3119,7 +3370,7 @@ impl GroveApp {
                     let previously_had_live_session = workspace.status.has_session();
                     workspace.status = WorkspaceStatus::Idle;
                     workspace.is_orphaned = previously_had_live_session || workspace.is_orphaned;
-                    self.clear_status_tracking_for_workspace(&workspace_name);
+                    self.clear_status_tracking_for_workspace_path(&capture.workspace_path);
                 }
             }
         }
@@ -3210,21 +3461,17 @@ impl GroveApp {
                 let selected_workspace_index =
                     self.state.selected_workspace().and_then(|workspace| {
                         if workspace.is_main
-                            || session_name_for_workspace(&workspace.name) != session_name
+                            || Self::workspace_session_name(workspace) != session_name
                         {
                             return None;
                         }
-                        self.state
-                            .workspaces
-                            .iter()
-                            .position(|candidate| candidate.name == workspace.name)
+                        Some(self.state.selected_index)
                     });
                 if let Some(index) = selected_workspace_index {
-                    let workspace_name = self.state.workspaces[index].name.clone();
                     let supported_agent = self.state.workspaces[index].supported_agent;
                     let workspace_path = self.state.workspaces[index].path.clone();
                     let workspace_agent = self.state.workspaces[index].agent;
-                    self.capture_changed_cleaned_for_workspace(&workspace_name, output.as_str());
+                    self.capture_changed_cleaned_for_workspace(&workspace_path, output.as_str());
                     let resolved_status = detect_status_with_session_override(
                         output.as_str(),
                         SessionActivity::Active,
@@ -3370,12 +3617,12 @@ impl GroveApp {
                 if capture_error_indicates_missing_session {
                     if let Some(workspace) = self.state.selected_workspace_mut()
                         && !workspace.is_main
-                        && session_name_for_workspace(&workspace.name) == session_name
+                        && Self::workspace_session_name(workspace) == session_name
                     {
-                        let workspace_name = workspace.name.clone();
+                        let workspace_path = workspace.path.clone();
                         workspace.status = WorkspaceStatus::Idle;
                         workspace.is_orphaned = true;
-                        self.clear_status_tracking_for_workspace(&workspace_name);
+                        self.clear_status_tracking_for_workspace_path(&workspace_path);
                     }
                     if self
                         .interactive
@@ -3562,6 +3809,7 @@ impl GroveApp {
                 Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
             self.apply_workspace_status_capture(WorkspaceStatusCapture {
                 workspace_name: target.workspace_name,
+                workspace_path: target.workspace_path,
                 session_name: target.session_name,
                 supported_agent: target.supported_agent,
                 capture_ms,
@@ -3630,6 +3878,7 @@ impl GroveApp {
                     );
                     WorkspaceStatusCapture {
                         workspace_name: target.workspace_name,
+                        workspace_path: target.workspace_path,
                         session_name: target.session_name,
                         supported_agent: target.supported_agent,
                         capture_ms,
@@ -3827,6 +4076,14 @@ impl GroveApp {
         if let Some(dialog) = self.create_dialog.as_ref() {
             return !dialog.workspace_name.is_empty() || !dialog.base_branch.is_empty();
         }
+        if let Some(project_dialog) = self.project_dialog.as_ref() {
+            if !project_dialog.filter.is_empty() {
+                return true;
+            }
+            if let Some(add_dialog) = project_dialog.add_dialog.as_ref() {
+                return !add_dialog.name.is_empty() || !add_dialog.path.is_empty();
+            }
+        }
 
         false
     }
@@ -3854,6 +4111,8 @@ impl GroveApp {
                 } else if self.settings_dialog.is_some() {
                     self.log_dialog_event("settings", "dialog_cancelled");
                     self.settings_dialog = None;
+                } else if self.project_dialog.is_some() {
+                    self.project_dialog = None;
                 } else if self.keybind_help_open {
                     self.keybind_help_open = false;
                 }
@@ -3878,7 +4137,8 @@ impl GroveApp {
                             dialog.base_branch.clear();
                             refresh_base_branch = true;
                         }
-                        CreateDialogField::Agent
+                        CreateDialogField::Project
+                        | CreateDialogField::Agent
                         | CreateDialogField::CreateButton
                         | CreateDialogField::CancelButton => {}
                     }
@@ -3918,7 +4178,7 @@ impl GroveApp {
             return false;
         };
 
-        let session_name = session_name_for_workspace(&workspace.name);
+        let session_name = Self::workspace_session_name(workspace);
         self.interactive = Some(InteractiveState::new(
             "%0".to_string(),
             session_name,
@@ -3973,6 +4233,381 @@ impl GroveApp {
         }
     }
 
+    fn filtered_project_indices(&self, query: &str) -> Vec<usize> {
+        if query.trim().is_empty() {
+            return (0..self.projects.len()).collect();
+        }
+
+        let query_lower = query.to_ascii_lowercase();
+        self.projects
+            .iter()
+            .enumerate()
+            .filter(|(_, project)| {
+                project.name.to_ascii_lowercase().contains(&query_lower)
+                    || project
+                        .path
+                        .to_string_lossy()
+                        .to_ascii_lowercase()
+                        .contains(&query_lower)
+            })
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    fn refresh_project_dialog_filtered(&mut self) {
+        let query = match self.project_dialog.as_ref() {
+            Some(dialog) => dialog.filter.clone(),
+            None => return,
+        };
+        let filtered = self.filtered_project_indices(&query);
+        let Some(dialog) = self.project_dialog.as_mut() else {
+            return;
+        };
+
+        dialog.filtered_project_indices = filtered;
+        if dialog.filtered_project_indices.is_empty() {
+            dialog.selected_filtered_index = 0;
+            return;
+        }
+        if dialog.selected_filtered_index >= dialog.filtered_project_indices.len() {
+            dialog.selected_filtered_index =
+                dialog.filtered_project_indices.len().saturating_sub(1);
+        }
+    }
+
+    fn selected_project_dialog_project_index(&self) -> Option<usize> {
+        let dialog = self.project_dialog.as_ref()?;
+        if dialog.filtered_project_indices.is_empty() {
+            return None;
+        }
+        dialog
+            .filtered_project_indices
+            .get(dialog.selected_filtered_index)
+            .copied()
+    }
+
+    fn focus_project_by_index(&mut self, project_index: usize) {
+        let Some(project) = self.projects.get(project_index) else {
+            return;
+        };
+
+        if let Some((workspace_index, _)) =
+            self.state
+                .workspaces
+                .iter()
+                .enumerate()
+                .find(|(_, workspace)| {
+                    workspace.is_main
+                        && workspace
+                            .project_path
+                            .as_ref()
+                            .is_some_and(|path| project_paths_equal(path, &project.path))
+                })
+        {
+            self.select_workspace_by_index(workspace_index);
+            return;
+        }
+
+        if let Some((workspace_index, _)) =
+            self.state
+                .workspaces
+                .iter()
+                .enumerate()
+                .find(|(_, workspace)| {
+                    workspace
+                        .project_path
+                        .as_ref()
+                        .is_some_and(|path| project_paths_equal(path, &project.path))
+                })
+        {
+            self.select_workspace_by_index(workspace_index);
+        }
+    }
+
+    fn open_project_dialog(&mut self) {
+        if self.modal_open() {
+            return;
+        }
+
+        let selected_project_index = self.selected_project_index();
+        let filtered_project_indices: Vec<usize> = (0..self.projects.len()).collect();
+        let selected_filtered_index = filtered_project_indices
+            .iter()
+            .position(|index| *index == selected_project_index)
+            .unwrap_or(0);
+        self.project_dialog = Some(ProjectDialogState {
+            filter: String::new(),
+            filtered_project_indices,
+            selected_filtered_index,
+            add_dialog: None,
+        });
+    }
+
+    fn open_project_add_dialog(&mut self) {
+        let Some(project_dialog) = self.project_dialog.as_mut() else {
+            return;
+        };
+        project_dialog.add_dialog = Some(ProjectAddDialogState {
+            name: String::new(),
+            path: String::new(),
+            focused_field: ProjectAddDialogField::Name,
+        });
+    }
+
+    fn normalized_project_path(raw: &str) -> PathBuf {
+        if let Some(stripped) = raw.strip_prefix("~/")
+            && let Some(home) = dirs::home_dir()
+        {
+            return home.join(stripped);
+        }
+        PathBuf::from(raw)
+    }
+
+    fn save_projects_config(&self) -> Result<(), String> {
+        let config = GroveConfig {
+            multiplexer: self.multiplexer,
+            projects: self.projects.clone(),
+        };
+        crate::config::save_to_path(&self.config_path, &config)
+    }
+
+    fn add_project_from_dialog(&mut self) {
+        let Some(project_dialog) = self.project_dialog.as_ref() else {
+            return;
+        };
+        let Some(add_dialog) = project_dialog.add_dialog.as_ref() else {
+            return;
+        };
+
+        let path_input = add_dialog.path.trim();
+        if path_input.is_empty() {
+            self.show_flash("project path is required", true);
+            return;
+        }
+        let normalized = Self::normalized_project_path(path_input);
+        let canonical = match normalized.canonicalize() {
+            Ok(path) => path,
+            Err(error) => {
+                self.show_flash(format!("invalid project path: {error}"), true);
+                return;
+            }
+        };
+
+        let repo_root_output = Command::new("git")
+            .current_dir(&canonical)
+            .args(["rev-parse", "--show-toplevel"])
+            .output();
+        let repo_root = match repo_root_output {
+            Ok(output) if output.status.success() => {
+                let raw = String::from_utf8(output.stdout).unwrap_or_default();
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    canonical.clone()
+                } else {
+                    PathBuf::from(trimmed)
+                }
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                self.show_flash(format!("not a git repository: {stderr}"), true);
+                return;
+            }
+            Err(error) => {
+                self.show_flash(format!("git check failed: {error}"), true);
+                return;
+            }
+        };
+        let repo_root = repo_root.canonicalize().unwrap_or(repo_root);
+
+        if self
+            .projects
+            .iter()
+            .any(|project| project_paths_equal(&project.path, &repo_root))
+        {
+            self.show_flash("project already exists", true);
+            return;
+        }
+
+        let project_name = if add_dialog.name.trim().is_empty() {
+            project_display_name(&repo_root)
+        } else {
+            add_dialog.name.trim().to_string()
+        };
+        self.projects.push(ProjectConfig {
+            name: project_name.clone(),
+            path: repo_root.clone(),
+        });
+        if let Err(error) = self.save_projects_config() {
+            self.show_flash(format!("project save failed: {error}"), true);
+            return;
+        }
+
+        if let Some(dialog) = self.project_dialog.as_mut() {
+            dialog.add_dialog = None;
+        }
+        self.refresh_project_dialog_filtered();
+        self.refresh_workspaces(None);
+        self.show_flash(format!("project '{}' added", project_name), false);
+    }
+
+    fn handle_project_add_dialog_key(&mut self, key_event: KeyEvent) {
+        let Some(project_dialog) = self.project_dialog.as_mut() else {
+            return;
+        };
+        let Some(add_dialog) = project_dialog.add_dialog.as_mut() else {
+            return;
+        };
+
+        match key_event.code {
+            KeyCode::Escape => {
+                project_dialog.add_dialog = None;
+            }
+            KeyCode::Tab => {
+                add_dialog.focused_field = add_dialog.focused_field.next();
+            }
+            KeyCode::BackTab => {
+                add_dialog.focused_field = add_dialog.focused_field.previous();
+            }
+            KeyCode::Enter => match add_dialog.focused_field {
+                ProjectAddDialogField::AddButton => self.add_project_from_dialog(),
+                ProjectAddDialogField::CancelButton => project_dialog.add_dialog = None,
+                ProjectAddDialogField::Name | ProjectAddDialogField::Path => {
+                    add_dialog.focused_field = add_dialog.focused_field.next();
+                }
+            },
+            KeyCode::Backspace => match add_dialog.focused_field {
+                ProjectAddDialogField::Name => {
+                    add_dialog.name.pop();
+                }
+                ProjectAddDialogField::Path => {
+                    add_dialog.path.pop();
+                }
+                ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton => {}
+            },
+            KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
+                match add_dialog.focused_field {
+                    ProjectAddDialogField::Name => add_dialog.name.push(character),
+                    ProjectAddDialogField::Path => add_dialog.path.push(character),
+                    ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_project_dialog_key(&mut self, key_event: KeyEvent) {
+        if self
+            .project_dialog
+            .as_ref()
+            .and_then(|dialog| dialog.add_dialog.as_ref())
+            .is_some()
+        {
+            self.handle_project_add_dialog_key(key_event);
+            return;
+        }
+
+        match key_event.code {
+            KeyCode::Escape => {
+                if let Some(dialog) = self.project_dialog.as_mut()
+                    && !dialog.filter.is_empty()
+                {
+                    dialog.filter.clear();
+                    self.refresh_project_dialog_filtered();
+                    return;
+                }
+                self.project_dialog = None;
+            }
+            KeyCode::Enter => {
+                if let Some(project_index) = self.selected_project_dialog_project_index() {
+                    self.focus_project_by_index(project_index);
+                    self.project_dialog = None;
+                }
+            }
+            KeyCode::Up => {
+                if let Some(dialog) = self.project_dialog.as_mut() {
+                    if dialog.selected_filtered_index > 0 {
+                        dialog.selected_filtered_index =
+                            dialog.selected_filtered_index.saturating_sub(1);
+                    }
+                }
+            }
+            KeyCode::Down => {
+                if let Some(dialog) = self.project_dialog.as_mut()
+                    && dialog.selected_filtered_index.saturating_add(1)
+                        < dialog.filtered_project_indices.len()
+                {
+                    dialog.selected_filtered_index =
+                        dialog.selected_filtered_index.saturating_add(1);
+                }
+            }
+            KeyCode::Tab => {
+                if let Some(dialog) = self.project_dialog.as_mut() {
+                    let len = dialog.filtered_project_indices.len();
+                    if len > 0 {
+                        dialog.selected_filtered_index =
+                            dialog.selected_filtered_index.saturating_add(1) % len;
+                    }
+                }
+            }
+            KeyCode::BackTab => {
+                if let Some(dialog) = self.project_dialog.as_mut() {
+                    let len = dialog.filtered_project_indices.len();
+                    if len > 0 {
+                        dialog.selected_filtered_index = if dialog.selected_filtered_index == 0 {
+                            len.saturating_sub(1)
+                        } else {
+                            dialog.selected_filtered_index.saturating_sub(1)
+                        };
+                    }
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(dialog) = self.project_dialog.as_mut() {
+                    dialog.filter.pop();
+                }
+                self.refresh_project_dialog_filtered();
+            }
+            KeyCode::Char(character)
+                if key_event.modifiers == Modifiers::CTRL
+                    && (character == 'a' || character == 'A') =>
+            {
+                self.open_project_add_dialog();
+            }
+            KeyCode::Char(character)
+                if key_event.modifiers == Modifiers::CTRL
+                    && (character == 'n' || character == 'N') =>
+            {
+                if let Some(dialog) = self.project_dialog.as_mut()
+                    && dialog.selected_filtered_index.saturating_add(1)
+                        < dialog.filtered_project_indices.len()
+                {
+                    dialog.selected_filtered_index =
+                        dialog.selected_filtered_index.saturating_add(1);
+                }
+            }
+            KeyCode::Char(character)
+                if key_event.modifiers == Modifiers::CTRL
+                    && (character == 'p' || character == 'P') =>
+            {
+                if let Some(dialog) = self.project_dialog.as_mut() {
+                    dialog.selected_filtered_index =
+                        dialog.selected_filtered_index.saturating_sub(1);
+                }
+            }
+            KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
+                if let Some(dialog) = self.project_dialog.as_mut() {
+                    dialog.filter.push(character);
+                }
+                self.refresh_project_dialog_filtered();
+            }
+            _ => {}
+        }
+    }
+
+    fn allows_text_input_modifiers(modifiers: Modifiers) -> bool {
+        modifiers.is_empty() || modifiers == Modifiers::SHIFT
+    }
+
     fn open_settings_dialog(&mut self) {
         if self.modal_open() {
             return;
@@ -4005,6 +4640,7 @@ impl GroveApp {
         self.tmux_input = input_for_multiplexer(selected);
         let config = GroveConfig {
             multiplexer: selected,
+            projects: self.projects.clone(),
         };
         if let Err(error) = crate::config::save_to_path(&self.config_path, &config) {
             self.show_flash(format!("settings save failed: {error}"), true);
@@ -4155,6 +4791,8 @@ impl GroveApp {
 
         let is_missing = !workspace.path.exists();
         self.delete_dialog = Some(DeleteDialogState {
+            project_name: workspace.project_name.clone(),
+            project_path: workspace.project_path.clone(),
             workspace_name: workspace.name.clone(),
             branch: workspace.branch.clone(),
             path: workspace.path.clone(),
@@ -4294,10 +4932,12 @@ impl GroveApp {
         );
 
         let workspace_name = dialog.workspace_name.clone();
+        let workspace_path = dialog.path.clone();
         if !self.tmux_input.supports_background_send() {
             let (result, warnings) = Self::run_delete_workspace(dialog, self.multiplexer);
             self.apply_delete_workspace_completion(DeleteWorkspaceCompletion {
                 workspace_name,
+                workspace_path,
                 result,
                 warnings,
             });
@@ -4310,6 +4950,7 @@ impl GroveApp {
             let (result, warnings) = Self::run_delete_workspace(dialog, multiplexer);
             Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
                 workspace_name,
+                workspace_path,
                 result,
                 warnings,
             })
@@ -4364,7 +5005,10 @@ impl GroveApp {
         multiplexer: MultiplexerKind,
     ) -> (Result<(), String>, Vec<String>) {
         let mut warnings = Vec::new();
-        let session_name = session_name_for_workspace(&dialog.workspace_name);
+        let session_name = session_name_for_workspace_in_project(
+            dialog.project_name.as_deref(),
+            &dialog.workspace_name,
+        );
         let stop_session_command = match multiplexer {
             MultiplexerKind::Tmux => vec![
                 "tmux".to_string(),
@@ -4382,14 +5026,15 @@ impl GroveApp {
         };
         let _ = CommandTmuxInput::execute_command(&stop_session_command);
 
-        let repo_root = match std::env::current_dir() {
-            Ok(path) => path,
-            Err(error) => {
-                return (
-                    Err(format!("cannot resolve current directory: {error}")),
-                    warnings,
-                );
-            }
+        let repo_root = if let Some(project_path) = dialog.project_path.clone() {
+            project_path
+        } else if let Ok(cwd) = std::env::current_dir() {
+            cwd
+        } else {
+            return (
+                Err("workspace project root unavailable".to_string()),
+                warnings,
+            );
         };
 
         if let Err(error) =
@@ -4495,23 +5140,30 @@ impl GroveApp {
         "main".to_string()
     }
 
-    fn open_create_dialog(&mut self) {
-        if self.modal_open() {
-            return;
-        }
+    fn selected_project_index(&self) -> usize {
+        let Some(workspace) = self.state.selected_workspace() else {
+            return 0;
+        };
+        let Some(workspace_project_path) = workspace.project_path.as_ref() else {
+            return 0;
+        };
+        self.projects
+            .iter()
+            .position(|project| project_paths_equal(&project.path, workspace_project_path))
+            .unwrap_or(0)
+    }
 
-        let selected_base_branch = self.selected_base_branch();
-        let default_agent = self
-            .state
-            .selected_workspace()
-            .map_or(AgentType::Claude, |workspace| workspace.agent);
-        self.create_dialog = Some(CreateDialogState {
-            workspace_name: String::new(),
-            agent: default_agent,
-            base_branch: selected_base_branch.clone(),
-            focused_field: CreateDialogField::WorkspaceName,
-        });
-        self.create_branch_all = load_local_branches().unwrap_or_default();
+    fn create_dialog_selected_project(&self) -> Option<&ProjectConfig> {
+        let dialog = self.create_dialog.as_ref()?;
+        self.projects.get(dialog.project_index)
+    }
+
+    fn refresh_create_dialog_branch_candidates(&mut self, selected_base_branch: String) {
+        let branches = self
+            .create_dialog_selected_project()
+            .map(|project| load_local_branches(&project.path).unwrap_or_default())
+            .unwrap_or_default();
+        self.create_branch_all = branches;
         if !self
             .create_branch_all
             .iter()
@@ -4520,6 +5172,31 @@ impl GroveApp {
             self.create_branch_all.insert(0, selected_base_branch);
         }
         self.refresh_create_branch_filtered();
+    }
+
+    fn open_create_dialog(&mut self) {
+        if self.modal_open() {
+            return;
+        }
+        if self.projects.is_empty() {
+            self.show_flash("no projects configured, press p to add one", true);
+            return;
+        }
+
+        let selected_base_branch = self.selected_base_branch();
+        let default_agent = self
+            .state
+            .selected_workspace()
+            .map_or(AgentType::Claude, |workspace| workspace.agent);
+        let project_index = self.selected_project_index();
+        self.create_dialog = Some(CreateDialogState {
+            workspace_name: String::new(),
+            project_index,
+            agent: default_agent,
+            base_branch: selected_base_branch.clone(),
+            focused_field: CreateDialogField::WorkspaceName,
+        });
+        self.refresh_create_dialog_branch_candidates(selected_base_branch);
         self.log_dialog_event_with_fields(
             "create",
             "dialog_opened",
@@ -4535,6 +5212,32 @@ impl GroveApp {
             AgentType::Claude => AgentType::Codex,
             AgentType::Codex => AgentType::Claude,
         };
+    }
+
+    fn shift_create_dialog_project(&mut self, delta: isize) {
+        let Some(dialog) = self.create_dialog.as_mut() else {
+            return;
+        };
+        if self.projects.is_empty() {
+            return;
+        }
+
+        let len = self.projects.len();
+        let current = dialog.project_index.min(len.saturating_sub(1));
+        let mut next = current;
+        if delta < 0 {
+            next = current.saturating_sub(1);
+        } else if delta > 0 {
+            next = (current.saturating_add(1)).min(len.saturating_sub(1));
+        }
+
+        if next == dialog.project_index {
+            return;
+        }
+
+        dialog.project_index = next;
+        let selected_base_branch = dialog.base_branch.clone();
+        self.refresh_create_dialog_branch_candidates(selected_base_branch);
     }
 
     fn clear_create_branch_picker(&mut self) {
@@ -4602,9 +5305,9 @@ impl GroveApp {
         }
     }
 
-    fn refresh_workspaces(&mut self, preferred_workspace_name: Option<String>) {
+    fn refresh_workspaces(&mut self, preferred_workspace_path: Option<PathBuf>) {
         if !self.tmux_input.supports_background_send() {
-            self.refresh_workspaces_sync(preferred_workspace_name);
+            self.refresh_workspaces_sync(preferred_workspace_path);
             return;
         }
 
@@ -4612,51 +5315,34 @@ impl GroveApp {
             return;
         }
 
-        let fallback_name = self
-            .state
-            .selected_workspace()
-            .map(|workspace| workspace.name.clone());
-        let target_name = preferred_workspace_name.or(fallback_name);
+        let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
         let multiplexer = self.multiplexer;
+        let projects = self.projects.clone();
         self.refresh_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let bootstrap = bootstrap_data(
-                &CommandGitAdapter,
-                &CommandMultiplexerAdapter { multiplexer },
-                &CommandSystemAdapter,
-            );
+            let bootstrap = bootstrap_data_for_projects(&projects, multiplexer);
             Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
-                preferred_workspace_name: target_name,
+                preferred_workspace_path: target_path,
                 bootstrap,
             })
         }));
     }
 
-    fn refresh_workspaces_sync(&mut self, preferred_workspace_name: Option<String>) {
-        let fallback_name = self
-            .state
-            .selected_workspace()
-            .map(|workspace| workspace.name.clone());
-        let target_name = preferred_workspace_name.or(fallback_name);
+    fn refresh_workspaces_sync(&mut self, preferred_workspace_path: Option<PathBuf>) {
+        let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
         let previous_mode = self.state.mode;
         let previous_focus = self.state.focus;
-        let bootstrap = bootstrap_data(
-            &CommandGitAdapter,
-            &CommandMultiplexerAdapter {
-                multiplexer: self.multiplexer,
-            },
-            &CommandSystemAdapter,
-        );
+        let bootstrap = bootstrap_data_for_projects(&self.projects, self.multiplexer);
 
         self.repo_name = bootstrap.repo_name;
         self.discovery_state = bootstrap.discovery_state;
         self.state = AppState::new(bootstrap.workspaces);
-        if let Some(name) = target_name
+        if let Some(path) = target_path
             && let Some(index) = self
                 .state
                 .workspaces
                 .iter()
-                .position(|workspace| workspace.name == name)
+                .position(|workspace| workspace.path == path)
         {
             self.state.selected_index = index;
         }
@@ -4674,12 +5360,12 @@ impl GroveApp {
         self.repo_name = completion.bootstrap.repo_name;
         self.discovery_state = completion.bootstrap.discovery_state;
         self.state = AppState::new(completion.bootstrap.workspaces);
-        if let Some(name) = completion.preferred_workspace_name
+        if let Some(path) = completion.preferred_workspace_path
             && let Some(index) = self
                 .state
                 .workspaces
                 .iter()
-                .position(|workspace| workspace.name == name)
+                .position(|workspace| workspace.path == path)
         {
             self.state.selected_index = index;
         }
@@ -4713,8 +5399,16 @@ impl GroveApp {
                     "branch_value".to_string(),
                     Value::from(dialog.base_branch.clone()),
                 ),
+                (
+                    "project_index".to_string(),
+                    Value::from(u64::try_from(dialog.project_index).unwrap_or(u64::MAX)),
+                ),
             ],
         );
+        let Some(project) = self.projects.get(dialog.project_index).cloned() else {
+            self.show_flash("project is required", true);
+            return;
+        };
 
         let workspace_name = dialog.workspace_name.trim().to_string();
         let branch_mode = BranchMode::NewBranch {
@@ -4731,33 +5425,20 @@ impl GroveApp {
             return;
         }
 
+        let repo_root = project.path;
         if !self.tmux_input.supports_background_send() {
-            let result = match std::env::current_dir() {
-                Ok(repo_root) => {
-                    let git = CommandGitRunner;
-                    let setup = CommandSetupScriptRunner;
-                    create_workspace(&repo_root, &request, &git, &setup)
-                }
-                Err(_) => Err(WorkspaceLifecycleError::Io(
-                    "cannot resolve current directory".to_string(),
-                )),
-            };
+            let git = CommandGitRunner;
+            let setup = CommandSetupScriptRunner;
+            let result = create_workspace(&repo_root, &request, &git, &setup);
             self.apply_create_workspace_completion(CreateWorkspaceCompletion { request, result });
             return;
         }
 
         self.create_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let result = match std::env::current_dir() {
-                Ok(repo_root) => {
-                    let git = CommandGitRunner;
-                    let setup = CommandSetupScriptRunner;
-                    create_workspace(&repo_root, &request, &git, &setup)
-                }
-                Err(_) => Err(WorkspaceLifecycleError::Io(
-                    "cannot resolve current directory".to_string(),
-                )),
-            };
+            let git = CommandGitRunner;
+            let setup = CommandSetupScriptRunner;
+            let result = create_workspace(&repo_root, &request, &git, &setup);
             Msg::CreateWorkspaceCompleted(CreateWorkspaceCompletion { request, result })
         }));
     }
@@ -4769,7 +5450,7 @@ impl GroveApp {
             Ok(result) => {
                 self.create_dialog = None;
                 self.clear_create_branch_picker();
-                self.refresh_workspaces(Some(workspace_name.clone()));
+                self.refresh_workspaces(Some(result.workspace_path));
                 self.state.mode = UiMode::List;
                 self.state.focus = PaneFocus::WorkspaceList;
                 if result.warnings.is_empty() {
@@ -4832,6 +5513,7 @@ impl GroveApp {
                         CreateDialogField::CreateButton => EnterAction::ConfirmCreate,
                         CreateDialogField::CancelButton => EnterAction::CancelDialog,
                         CreateDialogField::WorkspaceName
+                        | CreateDialogField::Project
                         | CreateDialogField::BaseBranch
                         | CreateDialogField::Agent => EnterAction::AdvanceField,
                     });
@@ -4867,6 +5549,14 @@ impl GroveApp {
                     self.create_branch_index = self.create_branch_index.saturating_sub(1);
                     return;
                 }
+                if self
+                    .create_dialog
+                    .as_ref()
+                    .is_some_and(|dialog| dialog.focused_field == CreateDialogField::Project)
+                {
+                    self.shift_create_dialog_project(-1);
+                    return;
+                }
                 if let Some(dialog) = self.create_dialog.as_mut()
                     && dialog.focused_field == CreateDialogField::Agent
                 {
@@ -4881,6 +5571,14 @@ impl GroveApp {
                     self.create_branch_index = self.create_branch_index.saturating_add(1);
                     return;
                 }
+                if self
+                    .create_dialog
+                    .as_ref()
+                    .is_some_and(|dialog| dialog.focused_field == CreateDialogField::Project)
+                {
+                    self.shift_create_dialog_project(1);
+                    return;
+                }
                 if let Some(dialog) = self.create_dialog.as_mut()
                     && dialog.focused_field == CreateDialogField::Agent
                 {
@@ -4888,22 +5586,33 @@ impl GroveApp {
                 }
             }
             KeyCode::Char(_) if ctrl_n || ctrl_p => {
-                if let Some(dialog) = self.create_dialog.as_mut() {
-                    if dialog.focused_field == CreateDialogField::BaseBranch
-                        && !self.create_branch_filtered.is_empty()
+                let focused_field = self
+                    .create_dialog
+                    .as_ref()
+                    .map(|dialog| dialog.focused_field);
+                if focused_field == Some(CreateDialogField::BaseBranch)
+                    && !self.create_branch_filtered.is_empty()
+                {
+                    if ctrl_n
+                        && self.create_branch_index.saturating_add(1)
+                            < self.create_branch_filtered.len()
                     {
-                        if ctrl_n
-                            && self.create_branch_index.saturating_add(1)
-                                < self.create_branch_filtered.len()
-                        {
-                            self.create_branch_index = self.create_branch_index.saturating_add(1);
-                        }
-                        if ctrl_p && self.create_branch_index > 0 {
-                            self.create_branch_index = self.create_branch_index.saturating_sub(1);
-                        }
-                    } else if dialog.focused_field == CreateDialogField::Agent {
-                        Self::toggle_create_dialog_agent(dialog);
+                        self.create_branch_index = self.create_branch_index.saturating_add(1);
                     }
+                    if ctrl_p && self.create_branch_index > 0 {
+                        self.create_branch_index = self.create_branch_index.saturating_sub(1);
+                    }
+                } else if focused_field == Some(CreateDialogField::Project) {
+                    if ctrl_n {
+                        self.shift_create_dialog_project(1);
+                    }
+                    if ctrl_p {
+                        self.shift_create_dialog_project(-1);
+                    }
+                } else if focused_field == Some(CreateDialogField::Agent)
+                    && let Some(dialog) = self.create_dialog.as_mut()
+                {
+                    Self::toggle_create_dialog_agent(dialog);
                 }
             }
             KeyCode::Backspace => {
@@ -4917,7 +5626,8 @@ impl GroveApp {
                             dialog.base_branch.pop();
                             refresh_base_branch = true;
                         }
-                        CreateDialogField::Agent
+                        CreateDialogField::Project
+                        | CreateDialogField::Agent
                         | CreateDialogField::CreateButton
                         | CreateDialogField::CancelButton => {}
                     }
@@ -4927,6 +5637,20 @@ impl GroveApp {
                 }
             }
             KeyCode::Char(character) if key_event.modifiers.is_empty() => {
+                if self
+                    .create_dialog
+                    .as_ref()
+                    .is_some_and(|dialog| dialog.focused_field == CreateDialogField::Project)
+                {
+                    if character == 'j' {
+                        self.shift_create_dialog_project(1);
+                        return;
+                    }
+                    if character == 'k' {
+                        self.shift_create_dialog_project(-1);
+                        return;
+                    }
+                }
                 let mut refresh_base_branch = false;
                 if let Some(dialog) = self.create_dialog.as_mut() {
                     if dialog.focused_field == CreateDialogField::Agent
@@ -4956,6 +5680,7 @@ impl GroveApp {
                                 dialog.workspace_name.push(character);
                             }
                         }
+                        CreateDialogField::Project => {}
                         CreateDialogField::BaseBranch => {
                             if character == 'j'
                                 && self.create_branch_index.saturating_add(1)
@@ -5012,6 +5737,7 @@ impl GroveApp {
         let capture_rows = self.viewport_height.saturating_sub(4).max(1);
 
         let request = LaunchRequest {
+            project_name: workspace.project_name.clone(),
             capture_cols: Some(capture_cols),
             capture_rows: Some(capture_rows),
             workspace_name: workspace.name.clone(),
@@ -5023,7 +5749,8 @@ impl GroveApp {
         };
         let launch_plan = build_launch_plan(&request, self.multiplexer);
         let workspace_name = request.workspace_name.clone();
-        let session_name = session_name_for_workspace(&request.workspace_name);
+        let workspace_path = request.workspace_path.clone();
+        let session_name = launch_plan.session_name.clone();
 
         if !self.tmux_input.supports_background_send() {
             if let Some(script) = &launch_plan.launcher_script
@@ -5050,6 +5777,7 @@ impl GroveApp {
 
             self.apply_start_agent_completion(StartAgentCompletion {
                 workspace_name,
+                workspace_path,
                 session_name,
                 result: Ok(()),
             });
@@ -5061,6 +5789,7 @@ impl GroveApp {
             let result = Self::run_start_agent_plan(launch_plan).map_err(|error| error.to_string());
             Msg::StartAgentCompleted(StartAgentCompletion {
                 workspace_name,
+                workspace_path,
                 session_name,
                 result,
             })
@@ -5083,12 +5812,12 @@ impl GroveApp {
         self.start_in_flight = false;
         match completion.result {
             Ok(()) => {
-                self.clear_status_tracking_for_workspace(&completion.workspace_name);
+                self.clear_status_tracking_for_workspace_path(&completion.workspace_path);
                 if let Some(workspace) = self
                     .state
                     .workspaces
                     .iter_mut()
-                    .find(|workspace| workspace.name == completion.workspace_name)
+                    .find(|workspace| workspace.path == completion.workspace_path)
                 {
                     workspace.status = WorkspaceStatus::Active;
                     workspace.is_orphaned = false;
@@ -5273,7 +6002,8 @@ impl GroveApp {
             return;
         };
         let workspace_name = workspace.name.clone();
-        let session_name = session_name_for_workspace(&workspace_name);
+        let workspace_path = workspace.path.clone();
+        let session_name = Self::workspace_session_name(workspace);
         let stop_commands = stop_plan(&session_name, self.multiplexer);
 
         if !self.tmux_input.supports_background_send() {
@@ -5287,6 +6017,7 @@ impl GroveApp {
 
             self.apply_stop_agent_completion(StopAgentCompletion {
                 workspace_name,
+                workspace_path,
                 session_name,
                 result: Ok(()),
             });
@@ -5298,6 +6029,7 @@ impl GroveApp {
             let result = Self::run_stop_commands(&stop_commands).map_err(|error| error.to_string());
             Msg::StopAgentCompleted(StopAgentCompletion {
                 workspace_name,
+                workspace_path,
                 session_name,
                 result,
             })
@@ -5327,12 +6059,12 @@ impl GroveApp {
                     .state
                     .workspaces
                     .iter_mut()
-                    .find(|workspace| workspace.name == completion.workspace_name)
+                    .find(|workspace| workspace.path == completion.workspace_path)
                 {
                     workspace.status = WorkspaceStatus::Idle;
                     workspace.is_orphaned = false;
                 }
-                self.clear_status_tracking_for_workspace(&completion.workspace_name);
+                self.clear_status_tracking_for_workspace_path(&completion.workspace_path);
                 self.clear_agent_activity_tracking();
                 self.event_log.log(
                     LogEvent::new("agent_lifecycle", "agent_stopped")
@@ -5831,6 +6563,7 @@ impl GroveApp {
                 self.launch_skip_permissions = !self.launch_skip_permissions;
             }
             KeyCode::Char('n') | KeyCode::Char('N') => self.open_create_dialog(),
+            KeyCode::Char('p') | KeyCode::Char('P') => self.open_project_dialog(),
             KeyCode::Char('?') => self.open_keybind_help(),
             KeyCode::Char('D') => self.open_delete_dialog(),
             KeyCode::Char('S') => self.open_settings_dialog(),
@@ -6538,21 +7271,74 @@ impl GroveApp {
         self.clear_preview_selection();
     }
 
-    fn select_workspace_by_mouse(&mut self, y: u16) {
-        if !matches!(self.discovery_state, DiscoveryState::Ready) {
-            return;
+    fn sidebar_workspace_index_at_y(&self, y: u16) -> Option<usize> {
+        if self.projects.is_empty() {
+            return None;
+        }
+
+        if matches!(self.discovery_state, DiscoveryState::Error(_))
+            && self.state.workspaces.is_empty()
+        {
+            return None;
         }
 
         let layout = self.view_layout();
         let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
         if y < sidebar_inner.y || y >= sidebar_inner.bottom() {
-            return;
+            return None;
         }
 
-        let row = usize::from((y - sidebar_inner.y) / WORKSPACE_ITEM_HEIGHT);
-        if row >= self.state.workspaces.len() {
-            return;
+        let target_row = usize::from(y.saturating_sub(sidebar_inner.y));
+        let mut visual_row = 0usize;
+        for (project_index, project) in self.projects.iter().enumerate() {
+            if project_index > 0 {
+                if visual_row == target_row {
+                    return None;
+                }
+                visual_row = visual_row.saturating_add(1);
+            }
+
+            if visual_row == target_row {
+                return None;
+            }
+            visual_row = visual_row.saturating_add(1);
+
+            let workspace_indices: Vec<usize> = self
+                .state
+                .workspaces
+                .iter()
+                .enumerate()
+                .filter(|(_, workspace)| {
+                    workspace
+                        .project_path
+                        .as_ref()
+                        .is_some_and(|path| project_paths_equal(path, &project.path))
+                })
+                .map(|(index, _)| index)
+                .collect();
+            if workspace_indices.is_empty() {
+                if visual_row == target_row {
+                    return None;
+                }
+                visual_row = visual_row.saturating_add(1);
+                continue;
+            }
+
+            for workspace_index in workspace_indices {
+                if visual_row == target_row || visual_row.saturating_add(1) == target_row {
+                    return Some(workspace_index);
+                }
+                visual_row = visual_row.saturating_add(2);
+            }
         }
+
+        None
+    }
+
+    fn select_workspace_by_mouse(&mut self, y: u16) {
+        let Some(row) = self.sidebar_workspace_index_at_y(y) else {
+            return;
+        };
 
         if row != self.state.selected_index {
             self.state.selected_index = row;
@@ -6745,6 +7531,10 @@ impl GroveApp {
             self.handle_delete_dialog_key(key_event);
             return (false, Cmd::None);
         }
+        if self.project_dialog.is_some() {
+            self.handle_project_dialog_key(key_event);
+            return (false, Cmd::None);
+        }
         if self.settings_dialog.is_some() {
             self.handle_settings_dialog_key(key_event);
             return (false, Cmd::None);
@@ -6794,9 +7584,14 @@ impl GroveApp {
         self.agent_activity_frames.clear();
     }
 
-    fn clear_status_tracking_for_workspace(&mut self, workspace_name: &str) {
-        self.workspace_status_digests.remove(workspace_name);
-        self.workspace_output_changing.remove(workspace_name);
+    fn workspace_status_tracking_key(workspace_path: &Path) -> String {
+        workspace_path.to_string_lossy().to_string()
+    }
+
+    fn clear_status_tracking_for_workspace_path(&mut self, workspace_path: &Path) {
+        let key = Self::workspace_status_tracking_key(workspace_path);
+        self.workspace_status_digests.remove(&key);
+        self.workspace_output_changing.remove(&key);
     }
 
     fn clear_status_tracking(&mut self) {
@@ -6806,21 +7601,23 @@ impl GroveApp {
 
     fn capture_changed_cleaned_for_workspace(
         &mut self,
-        workspace_name: &str,
+        workspace_path: &Path,
         output: &str,
     ) -> bool {
-        let previous_digest = self.workspace_status_digests.get(workspace_name);
+        let key = Self::workspace_status_tracking_key(workspace_path);
+        let previous_digest = self.workspace_status_digests.get(&key);
         let change = evaluate_capture_change(previous_digest, output);
         self.workspace_status_digests
-            .insert(workspace_name.to_string(), change.digest);
+            .insert(key.clone(), change.digest);
         self.workspace_output_changing
-            .insert(workspace_name.to_string(), change.changed_cleaned);
+            .insert(key, change.changed_cleaned);
         change.changed_cleaned
     }
 
-    fn workspace_output_changing(&self, workspace_name: &str) -> bool {
+    fn workspace_output_changing(&self, workspace_path: &Path) -> bool {
+        let key = Self::workspace_status_tracking_key(workspace_path);
         self.workspace_output_changing
-            .get(workspace_name)
+            .get(&key)
             .copied()
             .unwrap_or(false)
     }
@@ -6840,12 +7637,12 @@ impl GroveApp {
     }
 
     fn visual_tick_interval(&self) -> Option<Duration> {
-        let selected_workspace_name = self
+        let selected_workspace_path = self
             .state
             .selected_workspace()
-            .map(|workspace| workspace.name.as_str());
+            .map(|workspace| workspace.path.as_path());
         if self.status_is_visually_working(
-            selected_workspace_name,
+            selected_workspace_path,
             self.selected_workspace_status(),
             true,
         ) {
@@ -6860,7 +7657,7 @@ impl GroveApp {
 
     fn status_is_visually_working(
         &self,
-        workspace_name: Option<&str>,
+        workspace_path: Option<&Path>,
         status: WorkspaceStatus,
         is_selected: bool,
     ) -> bool {
@@ -6875,7 +7672,7 @@ impl GroveApp {
         match status {
             WorkspaceStatus::Thinking => true,
             WorkspaceStatus::Active => {
-                if workspace_name.is_some_and(|name| self.workspace_output_changing(name)) {
+                if workspace_path.is_some_and(|path| self.workspace_output_changing(path)) {
                     return true;
                 }
                 if is_selected {
@@ -7130,8 +7927,21 @@ impl GroveApp {
         let theme = ui_theme();
         let mut lines: Vec<FtLine> = Vec::new();
         let mut animated_labels: Vec<(String, AgentType, u16, u16)> = Vec::new();
-        match &self.discovery_state {
-            DiscoveryState::Error(message) => {
+        let max_lines = usize::from(inner.height);
+        if self.projects.is_empty() {
+            lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                "No projects configured",
+                Style::new().fg(theme.subtext0),
+            )]));
+            lines.push(FtLine::raw(""));
+            lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                "Press 'p' to add a project",
+                Style::new().fg(theme.text).bold(),
+            )]));
+        } else if matches!(self.discovery_state, DiscoveryState::Error(_))
+            && self.state.workspaces.is_empty()
+        {
+            if let DiscoveryState::Error(message) = &self.discovery_state {
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(
                     "Discovery error",
                     Style::new().fg(theme.red).bold(),
@@ -7141,34 +7951,67 @@ impl GroveApp {
                     Style::new().fg(theme.peach),
                 )]));
             }
-            DiscoveryState::Empty => {
+        } else {
+            for (project_index, project) in self.projects.iter().enumerate() {
+                if lines.len() >= max_lines {
+                    break;
+                }
+                if project_index > 0 && lines.len() < max_lines {
+                    lines.push(FtLine::raw(""));
+                }
+                if lines.len() >= max_lines {
+                    break;
+                }
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                    "No workspaces",
-                    Style::new().fg(theme.subtext0),
+                    format!("▾ {}", project.name),
+                    Style::new().fg(theme.overlay0).bold(),
                 )]));
-            }
-            DiscoveryState::Ready => {
-                let max_items = usize::from(inner.height / WORKSPACE_ITEM_HEIGHT);
-                for (idx, workspace) in self.state.workspaces.iter().take(max_items).enumerate() {
+
+                let project_workspaces: Vec<(usize, &Workspace)> = self
+                    .state
+                    .workspaces
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, workspace)| {
+                        workspace
+                            .project_path
+                            .as_ref()
+                            .is_some_and(|path| project_paths_equal(path, &project.path))
+                    })
+                    .collect();
+
+                if project_workspaces.is_empty() {
+                    if lines.len() < max_lines {
+                        lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                            "  (no workspaces)",
+                            Style::new().fg(theme.subtext0),
+                        )]));
+                    }
+                    continue;
+                }
+
+                for (idx, workspace) in project_workspaces {
+                    if lines
+                        .len()
+                        .saturating_add(usize::from(WORKSPACE_ITEM_HEIGHT))
+                        > max_lines
+                    {
+                        break;
+                    }
+
+                    let row_y = inner
+                        .y
+                        .saturating_add(u16::try_from(lines.len()).unwrap_or(u16::MAX));
                     let is_selected = idx == self.state.selected_index;
                     let is_working = self.status_is_visually_working(
-                        Some(workspace.name.as_str()),
+                        Some(workspace.path.as_path()),
                         workspace.status,
                         is_selected,
                     );
-                    let selected = if idx == self.state.selected_index {
-                        "▸"
-                    } else {
-                        " "
-                    };
+                    let selected = if is_selected { "▸" } else { " " };
                     let age = self.relative_age_label(workspace.last_activity_unix_secs);
-                    let row_y = inner.y.saturating_add(
-                        u16::try_from(idx)
-                            .unwrap_or(u16::MAX)
-                            .saturating_mul(WORKSPACE_ITEM_HEIGHT),
-                    );
 
-                    let row_background = if idx == self.state.selected_index {
+                    let row_background = if is_selected {
                         if self.state.focus == PaneFocus::WorkspaceList && !self.modal_open() {
                             Some(theme.surface1)
                         } else {
@@ -7184,7 +8027,7 @@ impl GroveApp {
                         primary_style = primary_style.bg(bg);
                         secondary_style = secondary_style.bg(bg);
                     }
-                    if idx == self.state.selected_index {
+                    if is_selected {
                         primary_style = primary_style.bold();
                     }
 
@@ -7203,7 +8046,6 @@ impl GroveApp {
                         primary_spans.push(FtSpan::styled("  ", primary_style));
                         primary_spans.push(FtSpan::styled(age, primary_style.fg(theme.overlay0)));
                     }
-
                     lines.push(FtLine::from_spans(primary_spans));
 
                     let mut secondary_spans = vec![
@@ -7342,7 +8184,7 @@ impl GroveApp {
                 "PREVIEW"
             };
             let is_working = self.status_is_visually_working(
-                Some(workspace.name.as_str()),
+                Some(workspace.path.as_path()),
                 workspace.status,
                 true,
             );
@@ -7790,6 +8632,156 @@ impl GroveApp {
             .render(area, frame);
     }
 
+    fn render_project_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
+        let Some(dialog) = self.project_dialog.as_ref() else {
+            return;
+        };
+        if area.width < 44 || area.height < 14 {
+            return;
+        }
+
+        let theme = ui_theme();
+        let dialog_width = area.width.saturating_sub(8).min(96);
+        let content_width = usize::from(dialog_width.saturating_sub(2));
+
+        if let Some(add_dialog) = dialog.add_dialog.as_ref() {
+            let dialog_height = 12u16;
+            let focused = |field| add_dialog.focused_field == field;
+            let body = FtText::from_lines(vec![
+                modal_labeled_input_row(
+                    content_width,
+                    theme,
+                    "Name",
+                    add_dialog.name.as_str(),
+                    "Optional, defaults to directory name",
+                    focused(ProjectAddDialogField::Name),
+                ),
+                modal_labeled_input_row(
+                    content_width,
+                    theme,
+                    "Path",
+                    add_dialog.path.as_str(),
+                    "Absolute path or ~/path to repo root",
+                    focused(ProjectAddDialogField::Path),
+                ),
+                FtLine::raw(""),
+                modal_actions_row(
+                    content_width,
+                    theme,
+                    "Add",
+                    "Cancel",
+                    focused(ProjectAddDialogField::AddButton),
+                    focused(ProjectAddDialogField::CancelButton),
+                ),
+                FtLine::from_spans(vec![FtSpan::styled(
+                    pad_or_truncate_to_display_width(
+                        "Tab move, Enter confirm, Esc back",
+                        content_width,
+                    ),
+                    Style::new().fg(theme.overlay0),
+                )]),
+            ]);
+            let content = OverlayModalContent {
+                title: "Add Project",
+                body,
+                theme,
+                border_color: theme.mauve,
+            };
+
+            Modal::new(content)
+                .size(
+                    ModalSizeConstraints::new()
+                        .min_width(dialog_width)
+                        .max_width(dialog_width)
+                        .min_height(dialog_height)
+                        .max_height(dialog_height),
+                )
+                .backdrop(BackdropConfig::new(theme.crust, 0.55))
+                .hit_id(HitId::new(HIT_ID_PROJECT_ADD_DIALOG))
+                .render(area, frame);
+            return;
+        }
+
+        let mut lines = Vec::new();
+        lines.push(modal_labeled_input_row(
+            content_width,
+            theme,
+            "Filter",
+            dialog.filter.as_str(),
+            "Type project name or path",
+            true,
+        ));
+        lines.push(FtLine::from_spans(vec![FtSpan::styled(
+            pad_or_truncate_to_display_width(
+                format!("{} projects", self.projects.len()).as_str(),
+                content_width,
+            ),
+            Style::new().fg(theme.overlay0),
+        )]));
+        lines.push(FtLine::raw(""));
+
+        if dialog.filtered_project_indices.is_empty() {
+            lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                "No matches",
+                Style::new().fg(theme.subtext0),
+            )]));
+        } else {
+            for (visible_index, project_index) in
+                dialog.filtered_project_indices.iter().take(8).enumerate()
+            {
+                let Some(project) = self.projects.get(*project_index) else {
+                    continue;
+                };
+                let selected = visible_index == dialog.selected_filtered_index;
+                let marker = if selected { ">" } else { " " };
+                let name_style = if selected {
+                    Style::new().fg(theme.mauve).bold()
+                } else {
+                    Style::new().fg(theme.text)
+                };
+                lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                    format!("{marker} {}", project.name),
+                    name_style,
+                )]));
+                lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                    pad_or_truncate_to_display_width(
+                        format!("  {}", project.path.display()).as_str(),
+                        content_width,
+                    ),
+                    Style::new().fg(theme.overlay0),
+                )]));
+            }
+        }
+
+        lines.push(FtLine::raw(""));
+        lines.push(FtLine::from_spans(vec![FtSpan::styled(
+            pad_or_truncate_to_display_width(
+                "Enter focus, Up/Down or Tab/S-Tab navigate, Ctrl+A add, Esc close",
+                content_width,
+            ),
+            Style::new().fg(theme.overlay0),
+        )]));
+
+        let content = OverlayModalContent {
+            title: "Projects",
+            body: FtText::from_lines(lines),
+            theme,
+            border_color: theme.teal,
+        };
+
+        Modal::new(content)
+            .size(
+                ModalSizeConstraints::new()
+                    .min_width(dialog_width)
+                    .max_width(dialog_width)
+                    .min_height(16)
+                    .max_height(20),
+            )
+            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .hit_id(HitId::new(HIT_ID_PROJECT_DIALOG))
+            .render(area, frame);
+    }
+
     fn render_command_palette_overlay(&self, frame: &mut Frame, area: Rect) {
         if !self.command_palette.is_visible() {
             return;
@@ -7825,7 +8817,7 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  n new, s start, x stop, D delete, S settings, ! unsafe toggle",
+                    "  n new, p projects, s start, x stop, D delete, S settings, ! unsafe toggle",
                     content_width,
                 ),
                 Style::new().fg(theme.text),
@@ -7929,9 +8921,14 @@ impl GroveApp {
         }
 
         let dialog_width = area.width.saturating_sub(8).min(90);
-        let dialog_height = 14u16;
+        let dialog_height = 16u16;
         let theme = ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
+        let selected_project_label = self
+            .projects
+            .get(dialog.project_index)
+            .map(|project| project.name.clone())
+            .unwrap_or_else(|| "(missing project)".to_string());
 
         let focused = |field| dialog.focused_field == field;
         let selected_agent = dialog.agent;
@@ -7977,12 +8974,31 @@ impl GroveApp {
             modal_labeled_input_row(
                 content_width,
                 theme,
+                "Project",
+                selected_project_label.as_str(),
+                "j/k or C-n/C-p select",
+                focused(CreateDialogField::Project),
+            ),
+            modal_labeled_input_row(
+                content_width,
+                theme,
                 "BaseBranch",
                 dialog.base_branch.as_str(),
                 "main (default: current branch)",
                 focused(CreateDialogField::BaseBranch),
             ),
         ];
+        if focused(CreateDialogField::Project)
+            && let Some(project) = self.projects.get(dialog.project_index)
+        {
+            lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    format!("  [ProjectPath] {}", project.path.display()).as_str(),
+                    content_width,
+                ),
+                Style::new().fg(theme.overlay0),
+            )]));
+        }
         if focused(CreateDialogField::BaseBranch) {
             if self.create_branch_all.is_empty() {
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(
@@ -8056,7 +9072,7 @@ impl GroveApp {
         ));
         lines.push(FtLine::from_spans(vec![FtSpan::styled(
             pad_or_truncate_to_display_width(
-                "Tab move, j/k or C-n/C-p adjust fields, Enter create, Esc cancel",
+                "Tab move, j/k or C-n/C-p adjust project/branch, Enter create, Esc cancel",
                 content_width,
             ),
             Style::new().fg(theme.overlay0),
@@ -8391,6 +9407,7 @@ impl Model for GroveApp {
         self.render_launch_dialog_overlay(frame, area);
         self.render_delete_dialog_overlay(frame, area);
         self.render_settings_dialog_overlay(frame, area);
+        self.render_project_dialog_overlay(frame, area);
         self.render_keybind_help_overlay(frame, area);
         self.render_command_palette_overlay(frame, area);
         let draw_completed_at = Instant::now();
@@ -8485,16 +9502,16 @@ mod tests {
     use super::{
         AppPaths, ClipboardAccess, CommandZellijInput, CreateDialogField,
         CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, GroveApp, HIT_ID_HEADER,
-        HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogField, LaunchDialogState,
-        LivePreviewCapture, Msg, PALETTE_CMD_FOCUS_LIST, PALETTE_CMD_MOVE_SELECTION_DOWN,
-        PALETTE_CMD_OPEN_PREVIEW, PALETTE_CMD_SCROLL_DOWN, PREVIEW_METADATA_ROWS,
-        PendingResizeVerification, PreviewPollCompletion, StartAgentCompletion,
-        StopAgentCompletion, TextSelectionPoint, TmuxInput, WORKSPACE_ITEM_HEIGHT,
-        WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
-        ui_theme,
+        HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW,
+        LaunchDialogField, LaunchDialogState, LivePreviewCapture, Msg, PALETTE_CMD_FOCUS_LIST,
+        PALETTE_CMD_MOVE_SELECTION_DOWN, PALETTE_CMD_OPEN_PREVIEW, PALETTE_CMD_SCROLL_DOWN,
+        PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
+        StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
+        WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line,
+        parse_cursor_metadata, ui_theme,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
-    use crate::config::MultiplexerKind;
+    use crate::config::{MultiplexerKind, ProjectConfig};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
     use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
     use crate::interactive::InteractiveState;
@@ -8697,40 +9714,51 @@ mod tests {
     }
 
     fn fixture_bootstrap(status: WorkspaceStatus) -> BootstrapData {
+        let mut main_workspace = Workspace::try_new(
+            "grove".to_string(),
+            PathBuf::from("/repos/grove"),
+            "main".to_string(),
+            Some(1_700_000_200),
+            AgentType::Claude,
+            WorkspaceStatus::Main,
+            true,
+        )
+        .expect("workspace should be valid");
+        main_workspace.project_path = Some(PathBuf::from("/repos/grove"));
+
+        let mut feature_workspace = Workspace::try_new(
+            "feature-a".to_string(),
+            PathBuf::from("/repos/grove-feature-a"),
+            "feature-a".to_string(),
+            Some(1_700_000_100),
+            AgentType::Codex,
+            status,
+            false,
+        )
+        .expect("workspace should be valid");
+        feature_workspace.project_path = Some(PathBuf::from("/repos/grove"));
+
         BootstrapData {
             repo_name: "grove".to_string(),
-            workspaces: vec![
-                Workspace::try_new(
-                    "grove".to_string(),
-                    PathBuf::from("/repos/grove"),
-                    "main".to_string(),
-                    Some(1_700_000_200),
-                    AgentType::Claude,
-                    WorkspaceStatus::Main,
-                    true,
-                )
-                .expect("workspace should be valid"),
-                Workspace::try_new(
-                    "feature-a".to_string(),
-                    PathBuf::from("/repos/grove-feature-a"),
-                    "feature-a".to_string(),
-                    Some(1_700_000_100),
-                    AgentType::Codex,
-                    status,
-                    false,
-                )
-                .expect("workspace should be valid"),
-            ],
+            workspaces: vec![main_workspace, feature_workspace],
             discovery_state: DiscoveryState::Ready,
             orphaned_sessions: Vec::new(),
         }
     }
 
+    fn fixture_projects() -> Vec<ProjectConfig> {
+        vec![ProjectConfig {
+            name: "grove".to_string(),
+            path: PathBuf::from("/repos/grove"),
+        }]
+    }
+
     fn fixture_app() -> GroveApp {
         let sidebar_ratio_path = unique_sidebar_ratio_path("fixture");
         let config_path = unique_config_path("fixture");
-        GroveApp::from_parts_with_clipboard(
+        GroveApp::from_parts_with_clipboard_and_projects(
             fixture_bootstrap(WorkspaceStatus::Idle),
+            fixture_projects(),
             Box::new(RecordingTmuxInput {
                 commands: Rc::new(RefCell::new(Vec::new())),
                 captures: Rc::new(RefCell::new(Vec::new())),
@@ -8895,8 +9923,9 @@ mod tests {
             calls: Rc::new(RefCell::new(Vec::new())),
         };
         (
-            GroveApp::from_parts_with_clipboard(
+            GroveApp::from_parts_with_clipboard_and_projects(
                 fixture_bootstrap(status),
+                fixture_projects(),
                 Box::new(tmux),
                 test_clipboard(),
                 AppPaths::new(sidebar_ratio_path, unique_config_path("fixture-with-tmux")),
@@ -8928,8 +9957,9 @@ mod tests {
         };
 
         (
-            GroveApp::from_parts_with_clipboard(
+            GroveApp::from_parts_with_clipboard_and_projects(
                 fixture_bootstrap(status),
+                fixture_projects(),
                 Box::new(tmux),
                 test_clipboard(),
                 AppPaths::new(sidebar_ratio_path, unique_config_path("fixture-with-calls")),
@@ -8965,8 +9995,9 @@ mod tests {
         };
 
         (
-            GroveApp::from_parts_with_clipboard(
+            GroveApp::from_parts_with_clipboard_and_projects(
                 fixture_bootstrap(status),
+                fixture_projects(),
                 Box::new(tmux),
                 test_clipboard(),
                 AppPaths::new(
@@ -8985,8 +10016,9 @@ mod tests {
     }
 
     fn fixture_background_app(status: WorkspaceStatus) -> GroveApp {
-        GroveApp::from_parts_with_clipboard(
+        GroveApp::from_parts_with_clipboard_and_projects(
             fixture_bootstrap(status),
+            fixture_projects(),
             Box::new(BackgroundOnlyTmuxInput),
             test_clipboard(),
             AppPaths::new(
@@ -9165,7 +10197,11 @@ mod tests {
         app.state.selected_index = 1;
         app.output_changing = false;
         app.agent_output_changing = false;
-        assert!(!app.status_is_visually_working(Some("feature-a"), WorkspaceStatus::Active, true));
+        assert!(!app.status_is_visually_working(
+            Some(app.state.workspaces[1].path.as_path()),
+            WorkspaceStatus::Active,
+            true
+        ));
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -9196,7 +10232,11 @@ mod tests {
         app.output_changing = false;
         app.agent_output_changing = false;
         app.push_agent_activity_frame(true);
-        assert!(app.status_is_visually_working(Some("feature-a"), WorkspaceStatus::Active, true));
+        assert!(app.status_is_visually_working(
+            Some(app.state.workspaces[1].path.as_path()),
+            WorkspaceStatus::Active,
+            true
+        ));
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -9218,7 +10258,11 @@ mod tests {
         app.state.selected_index = 1;
         app.output_changing = true;
         app.agent_output_changing = true;
-        assert!(app.status_is_visually_working(Some("feature-a"), WorkspaceStatus::Active, true));
+        assert!(app.status_is_visually_working(
+            Some(app.state.workspaces[1].path.as_path()),
+            WorkspaceStatus::Active,
+            true
+        ));
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -9244,7 +10288,11 @@ mod tests {
         for _ in 0..super::AGENT_ACTIVITY_WINDOW_FRAMES {
             app.push_agent_activity_frame(false);
         }
-        assert!(!app.status_is_visually_working(Some("feature-a"), WorkspaceStatus::Active, true));
+        assert!(!app.status_is_visually_working(
+            Some(app.state.workspaces[1].path.as_path()),
+            WorkspaceStatus::Active,
+            true
+        ));
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -9338,7 +10386,11 @@ mod tests {
         app.state.selected_index = 1;
         app.output_changing = true;
         app.agent_output_changing = false;
-        assert!(!app.status_is_visually_working(Some("feature-a"), WorkspaceStatus::Active, true));
+        assert!(!app.status_is_visually_working(
+            Some(app.state.workspaces[1].path.as_path()),
+            WorkspaceStatus::Active,
+            true
+        ));
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -9422,6 +10474,10 @@ mod tests {
     fn create_dialog_selected_agent_row_uses_highlight_background() {
         let mut app = fixture_app();
         app.open_create_dialog();
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -9997,11 +11053,17 @@ mod tests {
                 frame
                     .hit_test(sidebar_inner.x, sidebar_inner.y)
                     .map(|hit| hit.0),
+                Some(HitId::new(HIT_ID_WORKSPACE_LIST))
+            );
+            assert_eq!(
+                frame
+                    .hit_test(sidebar_inner.x, sidebar_inner.y.saturating_add(1))
+                    .map(|hit| hit.0),
                 Some(HitId::new(HIT_ID_WORKSPACE_ROW))
             );
             assert_eq!(
                 frame
-                    .hit_test(sidebar_inner.x, sidebar_inner.y)
+                    .hit_test(sidebar_inner.x, sidebar_inner.y.saturating_add(1))
                     .map(|hit| hit.2),
                 Some(0)
             );
@@ -10013,7 +11075,10 @@ mod tests {
         let mut app = fixture_app();
         let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
         let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
-        let second_row_y = sidebar_inner.y.saturating_add(WORKSPACE_ITEM_HEIGHT);
+        let second_row_y = sidebar_inner
+            .y
+            .saturating_add(1)
+            .saturating_add(WORKSPACE_ITEM_HEIGHT);
 
         with_rendered_frame(&app, 100, 40, |_frame| {});
 
@@ -10285,6 +11350,7 @@ mod tests {
                 cursor_capture: None,
                 workspace_status_captures: vec![WorkspaceStatusCapture {
                     workspace_name: "feature-a".to_string(),
+                    workspace_path: PathBuf::from("/repos/grove-feature-a"),
                     session_name: "grove-ws-feature-a".to_string(),
                     supported_agent: true,
                     capture_ms: 1,
@@ -10336,6 +11402,7 @@ mod tests {
                 cursor_capture: None,
                 workspace_status_captures: vec![WorkspaceStatusCapture {
                     workspace_name: "feature-a".to_string(),
+                    workspace_path: PathBuf::from("/repos/grove-feature-a"),
                     session_name: "grove-ws-feature-a".to_string(),
                     supported_agent: true,
                     capture_ms: 1,
@@ -10449,6 +11516,10 @@ mod tests {
         }
         ftui::Model::update(
             &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
         );
 
@@ -10469,6 +11540,149 @@ mod tests {
                 .get("workspace_name")
                 .and_then(Value::as_str),
             Some("foo")
+        );
+    }
+
+    #[test]
+    fn project_add_dialog_accepts_shift_modified_uppercase_path_characters() {
+        let mut app = fixture_app();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('A'))
+                    .with_modifiers(Modifiers::CTRL)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('U'))
+                    .with_modifiers(Modifiers::SHIFT)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('S'))
+                    .with_modifiers(Modifiers::SHIFT)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+
+        assert_eq!(
+            app.project_dialog
+                .as_ref()
+                .and_then(|dialog| dialog.add_dialog.as_ref())
+                .map(|dialog| dialog.path.clone()),
+            Some("/US".to_string())
+        );
+    }
+
+    #[test]
+    fn project_dialog_filter_accepts_shift_modified_characters() {
+        let mut app = fixture_app();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('G'))
+                    .with_modifiers(Modifiers::SHIFT)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+
+        assert_eq!(
+            app.project_dialog
+                .as_ref()
+                .map(|dialog| dialog.filter.clone()),
+            Some("G".to_string())
+        );
+    }
+
+    #[test]
+    fn project_dialog_j_and_k_are_treated_as_filter_input() {
+        let mut app = fixture_app();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            app.project_dialog
+                .as_ref()
+                .map(|dialog| dialog.filter.clone()),
+            Some("jk".to_string())
+        );
+    }
+
+    #[test]
+    fn project_dialog_tab_and_shift_tab_navigate_selection() {
+        let mut app = fixture_app();
+        app.projects.push(ProjectConfig {
+            name: "site".to_string(),
+            path: PathBuf::from("/repos/site"),
+        });
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            app.project_dialog
+                .as_ref()
+                .map(|dialog| dialog.selected_filtered_index),
+            Some(0)
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        assert_eq!(
+            app.project_dialog
+                .as_ref()
+                .map(|dialog| dialog.selected_filtered_index),
+            Some(1)
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::BackTab).with_kind(KeyEventKind::Press)),
+        );
+        assert_eq!(
+            app.project_dialog
+                .as_ref()
+                .map(|dialog| dialog.selected_filtered_index),
+            Some(0)
         );
     }
 
@@ -10807,6 +12021,7 @@ mod tests {
             &mut app,
             Msg::StartAgentCompleted(StartAgentCompletion {
                 workspace_name: "feature-a".to_string(),
+                workspace_path: PathBuf::from("/repos/grove-feature-a"),
                 session_name: "grove-ws-feature-a".to_string(),
                 result: Ok(()),
             }),
@@ -11142,7 +12357,7 @@ mod tests {
             app.create_dialog
                 .as_ref()
                 .map(|dialog| dialog.focused_field),
-            Some(CreateDialogField::BaseBranch)
+            Some(CreateDialogField::Project)
         );
     }
 
@@ -11152,6 +12367,10 @@ mod tests {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
         );
         ftui::Model::update(
             &mut app,
@@ -11191,6 +12410,10 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
         );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
 
         for _ in 0..4 {
             ftui::Model::update(
@@ -11220,7 +12443,7 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
         );
-        for _ in 0..2 {
+        for _ in 0..3 {
             ftui::Model::update(
                 &mut app,
                 Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -11269,7 +12492,7 @@ mod tests {
         }
         app.refresh_create_branch_filtered();
 
-        for _ in 0..1 {
+        for _ in 0..2 {
             ftui::Model::update(
                 &mut app,
                 Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -11310,6 +12533,10 @@ mod tests {
         ];
         app.refresh_create_branch_filtered();
 
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -11381,7 +12608,7 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
         );
-        for _ in 0..3 {
+        for _ in 0..4 {
             ftui::Model::update(
                 &mut app,
                 Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -11404,7 +12631,7 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
         );
-        for _ in 0..4 {
+        for _ in 0..5 {
             ftui::Model::update(
                 &mut app,
                 Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -11487,6 +12714,7 @@ mod tests {
             &mut app,
             Msg::StopAgentCompleted(StopAgentCompletion {
                 workspace_name: "feature-a".to_string(),
+                workspace_path: PathBuf::from("/repos/grove-feature-a"),
                 session_name: "grove-ws-feature-a".to_string(),
                 result: Ok(()),
             }),
@@ -12533,6 +13761,12 @@ mod tests {
     #[test]
     fn mouse_click_on_list_selects_workspace() {
         let mut app = fixture_app();
+        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+        let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
+        let second_row_y = sidebar_inner
+            .y
+            .saturating_add(1)
+            .saturating_add(WORKSPACE_ITEM_HEIGHT);
 
         ftui::Model::update(
             &mut app,
@@ -12545,8 +13779,8 @@ mod tests {
             &mut app,
             Msg::Mouse(MouseEvent::new(
                 MouseEventKind::Down(MouseButton::Left),
-                5,
-                4,
+                sidebar_inner.x.saturating_add(1),
+                second_row_y,
             )),
         );
 

@@ -87,11 +87,28 @@ pub(crate) fn bootstrap_data(
     }
 }
 
-pub struct CommandGitAdapter;
+#[derive(Debug, Clone)]
+pub struct CommandGitAdapter {
+    repo_root: Option<PathBuf>,
+}
 
 impl CommandGitAdapter {
+    pub fn for_repo(repo_root: PathBuf) -> Self {
+        Self {
+            repo_root: Some(repo_root),
+        }
+    }
+
+    fn repo_root(&self) -> Option<&Path> {
+        self.repo_root.as_deref()
+    }
+
     fn run_git(&self, args: &[&str]) -> Result<String, GitAdapterError> {
-        let output = Command::new("git")
+        let mut command = Command::new("git");
+        if let Some(repo_root) = self.repo_root() {
+            command.current_dir(repo_root);
+        }
+        let output = command
             .args(args)
             .output()
             .map_err(|error| GitAdapterError::CommandFailed(error.to_string()))?;
@@ -105,6 +122,12 @@ impl CommandGitAdapter {
 
         String::from_utf8(output.stdout)
             .map_err(|error| GitAdapterError::InvalidUtf8(format!("stdout decode failed: {error}")))
+    }
+}
+
+impl Default for CommandGitAdapter {
+    fn default() -> Self {
+        Self { repo_root: None }
     }
 }
 
@@ -199,10 +222,27 @@ fn parse_zellij_running_sessions(output: &str) -> HashSet<String> {
         .collect()
 }
 
-pub struct CommandSystemAdapter;
+#[derive(Debug, Clone)]
+pub struct CommandSystemAdapter {
+    repo_root: Option<PathBuf>,
+}
+
+impl CommandSystemAdapter {
+    pub fn for_repo(repo_root: PathBuf) -> Self {
+        Self {
+            repo_root: Some(repo_root),
+        }
+    }
+}
 
 impl SystemAdapter for CommandSystemAdapter {
     fn repo_name(&self) -> String {
+        if let Some(repo_root) = self.repo_root.as_ref()
+            && let Some(name) = repo_root.file_name().and_then(|value| value.to_str())
+        {
+            return name.to_string();
+        }
+
         let output = Command::new("git")
             .args(["rev-parse", "--show-toplevel"])
             .output();
@@ -224,6 +264,12 @@ impl SystemAdapter for CommandSystemAdapter {
                     .and_then(|value| value.to_str().map(str::to_string))
             })
             .unwrap_or_else(|| "unknown".to_string())
+    }
+}
+
+impl Default for CommandSystemAdapter {
+    fn default() -> Self {
+        Self { repo_root: None }
     }
 }
 
@@ -468,6 +514,7 @@ fn build_workspaces(
                 entry.path.display()
             ))
         })?
+        .with_project_context(repo_name.to_string(), repo_root.to_path_buf())
         .with_base_branch(metadata.base_branch)
         .with_supported_agent(metadata.supported_agent);
 

@@ -45,6 +45,8 @@ impl WorkspaceStatus {
 pub struct Workspace {
     pub name: String,
     pub path: PathBuf,
+    pub project_name: Option<String>,
+    pub project_path: Option<PathBuf>,
     pub branch: String,
     pub base_branch: Option<String>,
     pub last_activity_unix_secs: Option<i64>,
@@ -89,6 +91,8 @@ impl Workspace {
         Ok(Self {
             name,
             path,
+            project_name: None,
+            project_path: None,
             branch,
             base_branch: None,
             last_activity_unix_secs,
@@ -102,6 +106,12 @@ impl Workspace {
 
     pub fn with_base_branch(mut self, base_branch: Option<String>) -> Self {
         self.base_branch = base_branch;
+        self
+    }
+
+    pub fn with_project_context(mut self, project_name: String, project_path: PathBuf) -> Self {
+        self.project_name = Some(project_name);
+        self.project_path = Some(project_path);
         self
     }
 

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::agent_runtime::session_name_for_workspace;
+use crate::agent_runtime::session_name_for_workspace_in_project;
 use crate::domain::Workspace;
 
 pub fn recover_working_directory(current_dir: &Path, repo_root: &Path) -> PathBuf {
@@ -30,7 +30,12 @@ pub fn orphaned_sessions(
     let expected_sessions: HashSet<String> = workspaces
         .iter()
         .filter(|workspace| !workspace.is_main)
-        .map(|workspace| session_name_for_workspace(&workspace.name))
+        .map(|workspace| {
+            session_name_for_workspace_in_project(
+                workspace.project_name.as_deref(),
+                &workspace.name,
+            )
+        })
         .collect();
 
     let mut orphaned: Vec<String> = running_sessions

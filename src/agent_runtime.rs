@@ -52,6 +52,7 @@ pub(crate) enum SessionActivity {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchRequest {
+    pub project_name: Option<String>,
     pub workspace_name: String,
     pub workspace_path: PathBuf,
     pub agent: AgentType,
@@ -131,6 +132,21 @@ pub(crate) fn sanitize_workspace_name(name: &str) -> String {
 }
 
 pub fn session_name_for_workspace(workspace_name: &str) -> String {
+    session_name_for_workspace_in_project(None, workspace_name)
+}
+
+pub fn session_name_for_workspace_in_project(
+    project_name: Option<&str>,
+    workspace_name: &str,
+) -> String {
+    if let Some(project_name) = project_name {
+        let project = sanitize_workspace_name(project_name);
+        return format!(
+            "{TMUX_SESSION_PREFIX}{project}-{}",
+            sanitize_workspace_name(workspace_name)
+        );
+    }
+
     format!(
         "{TMUX_SESSION_PREFIX}{}",
         sanitize_workspace_name(workspace_name)
@@ -174,7 +190,10 @@ pub fn zellij_capture_log_path(session_name: &str) -> PathBuf {
 }
 
 pub fn build_launch_plan(request: &LaunchRequest, multiplexer: MultiplexerKind) -> LaunchPlan {
-    let session_name = session_name_for_workspace(&request.workspace_name);
+    let session_name = session_name_for_workspace_in_project(
+        request.project_name.as_deref(),
+        &request.workspace_name,
+    );
     let agent_cmd = build_agent_command(request.agent, request.skip_permissions);
     let pre_launch_command = normalized_pre_launch_command(request.pre_launch_command.as_deref());
     let launch_agent_cmd =
@@ -1043,7 +1062,10 @@ pub fn reconcile_with_sessions(
             continue;
         }
 
-        let session_name = session_name_for_workspace(&workspace.name);
+        let session_name = session_name_for_workspace_in_project(
+            workspace.project_name.as_deref(),
+            &workspace.name,
+        );
         let has_live_session = running_sessions.contains(&session_name);
         if has_live_session {
             matched_sessions.insert(session_name);
@@ -1442,6 +1464,7 @@ mod tests {
     #[test]
     fn launch_plan_without_prompt_sends_agent_directly() {
         let request = LaunchRequest {
+            project_name: None,
             workspace_name: "auth-flow".to_string(),
             workspace_path: PathBuf::from("/repos/grove-auth-flow"),
             agent: AgentType::Claude,
@@ -1472,6 +1495,7 @@ mod tests {
     #[test]
     fn launch_plan_with_prompt_writes_launcher_script() {
         let request = LaunchRequest {
+            project_name: None,
             workspace_name: "db_migration".to_string(),
             workspace_path: PathBuf::from("/repos/grove-db_migration"),
             agent: AgentType::Codex,
@@ -1518,6 +1542,7 @@ mod tests {
     #[test]
     fn zellij_launch_plan_creates_background_session_and_runs_agent() {
         let request = LaunchRequest {
+            project_name: None,
             workspace_name: "auth-flow".to_string(),
             workspace_path: PathBuf::from("/repos/grove-auth-flow"),
             agent: AgentType::Codex,
@@ -1670,6 +1695,7 @@ mod tests {
     #[test]
     fn launch_plan_with_pre_launch_command_runs_before_agent() {
         let request = LaunchRequest {
+            project_name: None,
             workspace_name: "auth-flow".to_string(),
             workspace_path: PathBuf::from("/repos/grove-auth-flow"),
             agent: AgentType::Claude,
