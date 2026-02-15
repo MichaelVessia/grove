@@ -1,8 +1,10 @@
 use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
+use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -24,6 +26,8 @@ const WAITING_PATTERNS: [&str; 9] = [
 ];
 const WAITING_TAIL_LINES: usize = 8;
 const STATUS_TAIL_LINES: usize = 60;
+const SESSION_STATUS_TAIL_BYTES: usize = 2 * 1024 * 1024;
+const SESSION_ACTIVITY_THRESHOLD: Duration = Duration::from_secs(30);
 const DONE_PATTERNS: [&str; 5] = [
     "task completed",
     "all done",
@@ -552,7 +556,10 @@ pub(crate) fn detect_waiting_prompt(output: &str) -> Option<String> {
 
     if let Some(last_non_empty) = tail_lines.iter().rev().find(|line| !line.trim().is_empty()) {
         let trimmed = last_non_empty.trim_start();
-        if trimmed.starts_with("> ") {
+        let Some(prefix) = trimmed.chars().next() else {
+            return None;
+        };
+        if matches!(prefix, '>' | '›' | '❯' | '»') {
             return Some(trimmed.to_string());
         }
     }
@@ -614,6 +621,393 @@ pub(crate) fn detect_status(
         SessionActivity::Active => WorkspaceStatus::Active,
         SessionActivity::Idle => WorkspaceStatus::Idle,
     }
+}
+
+pub(crate) fn detect_status_with_session_override(
+    output: &str,
+    session_activity: SessionActivity,
+    is_main: bool,
+    has_live_session: bool,
+    supported_agent: bool,
+    agent: AgentType,
+    workspace_path: &Path,
+) -> WorkspaceStatus {
+    let home_dir = dirs::home_dir();
+    detect_status_with_session_override_in_home(
+        output,
+        session_activity,
+        is_main,
+        has_live_session,
+        supported_agent,
+        agent,
+        workspace_path,
+        home_dir.as_deref(),
+        SESSION_ACTIVITY_THRESHOLD,
+    )
+}
+
+fn detect_status_with_session_override_in_home(
+    output: &str,
+    session_activity: SessionActivity,
+    is_main: bool,
+    has_live_session: bool,
+    supported_agent: bool,
+    agent: AgentType,
+    workspace_path: &Path,
+    home_dir: Option<&Path>,
+    activity_threshold: Duration,
+) -> WorkspaceStatus {
+    let detected = detect_status(
+        output,
+        session_activity,
+        is_main,
+        has_live_session,
+        supported_agent,
+    );
+    if !matches!(detected, WorkspaceStatus::Active | WorkspaceStatus::Waiting) {
+        return detected;
+    }
+
+    let Some(home_dir) = home_dir else {
+        return detected;
+    };
+    if !workspace_path.exists() {
+        return detected;
+    }
+
+    detect_agent_session_status_in_home(agent, workspace_path, home_dir, activity_threshold)
+        .unwrap_or(detected)
+}
+
+fn detect_agent_session_status_in_home(
+    agent: AgentType,
+    workspace_path: &Path,
+    home_dir: &Path,
+    activity_threshold: Duration,
+) -> Option<WorkspaceStatus> {
+    match agent {
+        AgentType::Claude => {
+            detect_claude_session_status_in_home(workspace_path, home_dir, activity_threshold)
+        }
+        AgentType::Codex => {
+            detect_codex_session_status_in_home(workspace_path, home_dir, activity_threshold)
+        }
+    }
+}
+
+fn detect_claude_session_status_in_home(
+    workspace_path: &Path,
+    home_dir: &Path,
+    activity_threshold: Duration,
+) -> Option<WorkspaceStatus> {
+    let workspace_path = absolute_path(workspace_path)?;
+    let project_dir_name = claude_project_dir_name(&workspace_path);
+    let project_dir = home_dir
+        .join(".claude")
+        .join("projects")
+        .join(project_dir_name);
+    let session_files = find_recent_jsonl_files(&project_dir, Some("agent-"))?;
+    for session_file in session_files {
+        if is_file_recently_modified(&session_file, activity_threshold) {
+            return Some(WorkspaceStatus::Active);
+        }
+
+        let session_stem = session_file.file_stem()?;
+        let subagents_dir = project_dir.join(session_stem).join("subagents");
+        if any_file_recently_modified(&subagents_dir, ".jsonl", activity_threshold) {
+            return Some(WorkspaceStatus::Active);
+        }
+
+        if let Some(status) =
+            get_last_message_status_jsonl(&session_file, "type", "user", "assistant")
+        {
+            return Some(status);
+        }
+    }
+
+    None
+}
+
+fn detect_codex_session_status_in_home(
+    workspace_path: &Path,
+    home_dir: &Path,
+    activity_threshold: Duration,
+) -> Option<WorkspaceStatus> {
+    let workspace_path = absolute_path(workspace_path)?;
+    let sessions_dir = home_dir.join(".codex").join("sessions");
+    let session_file = find_codex_session_for_path(&sessions_dir, &workspace_path)?;
+
+    if is_file_recently_modified(&session_file, activity_threshold) {
+        return Some(WorkspaceStatus::Active);
+    }
+
+    get_codex_last_message_status(&session_file)
+}
+
+fn absolute_path(path: &Path) -> Option<PathBuf> {
+    if path.is_absolute() {
+        return Some(path.to_path_buf());
+    }
+    let current = std::env::current_dir().ok()?;
+    Some(current.join(path))
+}
+
+fn claude_project_dir_name(abs_path: &Path) -> String {
+    abs_path
+        .to_string_lossy()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '-' {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn is_file_recently_modified(path: &Path, threshold: Duration) -> bool {
+    let modified_at = fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok();
+    let Some(modified_at) = modified_at else {
+        return false;
+    };
+    let Ok(age) = modified_at.elapsed() else {
+        return false;
+    };
+    age < threshold
+}
+
+fn any_file_recently_modified(dir: &Path, suffix: &str, threshold: Duration) -> bool {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return false,
+    };
+
+    for entry in entries.flatten() {
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
+        };
+        if !file_type.is_file() {
+            continue;
+        }
+        if !entry.file_name().to_string_lossy().ends_with(suffix) {
+            continue;
+        }
+        if is_file_recently_modified(&entry.path(), threshold) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn find_recent_jsonl_files(dir: &Path, exclude_prefix: Option<&str>) -> Option<Vec<PathBuf>> {
+    let entries = fs::read_dir(dir).ok()?;
+    let mut files: Vec<(PathBuf, SystemTime)> = Vec::new();
+    for entry in entries.flatten() {
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
+        };
+        if !file_type.is_file() {
+            continue;
+        }
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+        if !file_name.ends_with(".jsonl") {
+            continue;
+        }
+        if exclude_prefix.is_some_and(|prefix| file_name.starts_with(prefix)) {
+            continue;
+        }
+        let modified = match entry.metadata().and_then(|metadata| metadata.modified()) {
+            Ok(modified) => modified,
+            Err(_) => continue,
+        };
+        files.push((entry.path(), modified));
+    }
+
+    files.sort_by(|left, right| right.1.cmp(&left.1));
+    Some(files.into_iter().map(|(path, _)| path).collect())
+}
+
+fn read_tail_lines(path: &Path, max_bytes: usize) -> Option<Vec<String>> {
+    let mut file = File::open(path).ok()?;
+    let size = file.metadata().ok()?.len();
+    if size == 0 {
+        return Some(Vec::new());
+    }
+
+    let max_bytes_u64 = u64::try_from(max_bytes).ok()?;
+    let start = size.saturating_sub(max_bytes_u64);
+    if file.seek(SeekFrom::Start(start)).is_err() {
+        return None;
+    }
+
+    let mut bytes = Vec::new();
+    if file.read_to_end(&mut bytes).is_err() {
+        return None;
+    }
+
+    let mut lines: Vec<String> = String::from_utf8_lossy(&bytes)
+        .lines()
+        .map(|line| line.to_string())
+        .collect();
+    if start > 0 && !lines.is_empty() {
+        lines.remove(0);
+    }
+    Some(lines)
+}
+
+fn get_last_message_status_jsonl(
+    path: &Path,
+    type_field: &str,
+    user_value: &str,
+    assistant_value: &str,
+) -> Option<WorkspaceStatus> {
+    let lines = read_tail_lines(path, SESSION_STATUS_TAIL_BYTES)?;
+    for line in lines.iter().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let value: serde_json::Value = match serde_json::from_str(trimmed) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        let Some(message_type) = value.get(type_field).and_then(|value| value.as_str()) else {
+            continue;
+        };
+        if message_type == user_value {
+            return Some(WorkspaceStatus::Active);
+        }
+        if message_type == assistant_value {
+            return Some(WorkspaceStatus::Waiting);
+        }
+    }
+    None
+}
+
+fn find_codex_session_for_path(sessions_dir: &Path, workspace_path: &Path) -> Option<PathBuf> {
+    let mut pending = vec![sessions_dir.to_path_buf()];
+    let mut best_path: Option<PathBuf> = None;
+    let mut best_time: Option<SystemTime> = None;
+
+    while let Some(dir) = pending.pop() {
+        let entries = match fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let file_type = match entry.file_type() {
+                Ok(file_type) => file_type,
+                Err(_) => continue,
+            };
+            let path = entry.path();
+            if file_type.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            if !file_type.is_file()
+                || path
+                    .extension()
+                    .is_none_or(|extension| extension != "jsonl")
+            {
+                continue;
+            }
+
+            let metadata = match entry.metadata() {
+                Ok(metadata) => metadata,
+                Err(_) => continue,
+            };
+            let Some(cwd) = get_codex_session_cwd(&path) else {
+                continue;
+            };
+            if !cwd_matches(&cwd, workspace_path) {
+                continue;
+            }
+            let modified = match metadata.modified() {
+                Ok(modified) => modified,
+                Err(_) => continue,
+            };
+            let replace = match best_time {
+                Some(current_best) => modified > current_best,
+                None => true,
+            };
+            if replace {
+                best_time = Some(modified);
+                best_path = Some(path);
+            }
+        }
+    }
+
+    best_path
+}
+
+fn get_codex_session_cwd(path: &Path) -> Option<PathBuf> {
+    let file = File::open(path).ok()?;
+    let reader = BufReader::new(file);
+    for line in reader.lines().map_while(Result::ok) {
+        let value: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if value.get("type").and_then(|value| value.as_str()) != Some("session_meta") {
+            continue;
+        }
+        let cwd = value
+            .get("payload")
+            .and_then(|payload| payload.get("cwd"))
+            .and_then(|cwd| cwd.as_str())?;
+        return Some(PathBuf::from(cwd));
+    }
+    None
+}
+
+fn cwd_matches(cwd: &Path, workspace_path: &Path) -> bool {
+    let cwd = match absolute_path(cwd) {
+        Some(path) => path,
+        None => return false,
+    };
+    cwd == workspace_path || cwd.starts_with(workspace_path)
+}
+
+fn get_codex_last_message_status(path: &Path) -> Option<WorkspaceStatus> {
+    let lines = read_tail_lines(path, SESSION_STATUS_TAIL_BYTES)?;
+    for line in lines.iter().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let value: serde_json::Value = match serde_json::from_str(trimmed) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if value.get("type").and_then(|value| value.as_str()) != Some("response_item") {
+            continue;
+        }
+        if value
+            .get("payload")
+            .and_then(|payload| payload.get("type"))
+            .and_then(|value| value.as_str())
+            != Some("message")
+        {
+            continue;
+        }
+        match value
+            .get("payload")
+            .and_then(|payload| payload.get("role"))
+            .and_then(|value| value.as_str())
+        {
+            Some("assistant") => return Some(WorkspaceStatus::Waiting),
+            Some("user") => return Some(WorkspaceStatus::Active),
+            _ => continue,
+        }
+    }
+    None
 }
 
 fn has_unclosed_tag(text: &str, open_tag: &str, close_tag: &str) -> bool {
@@ -954,15 +1348,19 @@ fn content_hash(content: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
+    use std::fs;
     use std::path::{Path, PathBuf};
-    use std::time::Duration;
+    use std::process;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use super::{
         CaptureChange, LaunchRequest, SessionActivity, build_launch_plan, default_agent_command,
-        detect_status, detect_waiting_prompt, evaluate_capture_change,
-        normalized_agent_command_override, poll_interval, reconcile_with_sessions,
-        sanitize_workspace_name, session_name_for_workspace, stop_plan, strip_mouse_fragments,
-        zellij_capture_log_path, zellij_capture_log_path_in, zellij_config_path,
+        detect_agent_session_status_in_home, detect_status,
+        detect_status_with_session_override_in_home, detect_waiting_prompt,
+        evaluate_capture_change, normalized_agent_command_override, poll_interval,
+        reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace, stop_plan,
+        strip_mouse_fragments, zellij_capture_log_path, zellij_capture_log_path_in,
+        zellij_config_path,
     };
     use crate::config::MultiplexerKind;
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -986,6 +1384,16 @@ mod tests {
             is_main,
         )
         .expect("workspace should be valid")
+    }
+
+    fn unique_test_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("{prefix}-{}-{nanos}", process::id()));
+        fs::create_dir_all(&path).expect("test directory should be created");
+        path
     }
 
     #[test]
@@ -1298,6 +1706,111 @@ mod tests {
             detect_waiting_prompt(output),
             Some("? for shortcuts".to_string())
         );
+    }
+
+    #[test]
+    fn waiting_prompt_detects_unicode_prompt_prefix() {
+        let output = "Claude Code v2\n› Try \"how does adapters.rs work?\"\n";
+        assert_eq!(
+            detect_waiting_prompt(output),
+            Some("› Try \"how does adapters.rs work?\"".to_string())
+        );
+        assert_eq!(
+            detect_status(output, SessionActivity::Active, false, true, true),
+            WorkspaceStatus::Waiting
+        );
+    }
+
+    #[test]
+    fn claude_session_file_marks_waiting_when_last_message_is_assistant() {
+        let root = unique_test_dir("grove-claude-session");
+        let home = root.join("home");
+        let workspace_path = root.join("ws").join("feature-alpha");
+        fs::create_dir_all(&home).expect("home directory should exist");
+        fs::create_dir_all(&workspace_path).expect("workspace directory should exist");
+
+        let project_dir_name = super::claude_project_dir_name(&workspace_path);
+        let project_dir = home.join(".claude").join("projects").join(project_dir_name);
+        fs::create_dir_all(&project_dir).expect("project directory should exist");
+
+        let session_file = project_dir.join("session-1.jsonl");
+        fs::write(
+            &session_file,
+            "{\"type\":\"system\"}\n{\"type\":\"assistant\"}\n",
+        )
+        .expect("session file should be written");
+
+        let status = detect_agent_session_status_in_home(
+            AgentType::Claude,
+            &workspace_path,
+            &home,
+            Duration::from_secs(0),
+        );
+        assert_eq!(status, Some(WorkspaceStatus::Waiting));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn codex_session_file_marks_waiting_when_last_message_is_assistant() {
+        let root = unique_test_dir("grove-codex-session");
+        let home = root.join("home");
+        let workspace_path = root.join("ws").join("feature-beta");
+        fs::create_dir_all(&home).expect("home directory should exist");
+        fs::create_dir_all(&workspace_path).expect("workspace directory should exist");
+
+        let sessions_dir = home.join(".codex").join("sessions").join("2026").join("02");
+        fs::create_dir_all(&sessions_dir).expect("sessions directory should exist");
+        let session_file = sessions_dir.join("rollout-1.jsonl");
+        fs::write(
+            &session_file,
+            format!(
+                "{{\"type\":\"session_meta\",\"payload\":{{\"cwd\":\"{}\"}}}}\n{{\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"assistant\"}}}}\n",
+                workspace_path.display()
+            ),
+        )
+        .expect("session file should be written");
+
+        let status = detect_agent_session_status_in_home(
+            AgentType::Codex,
+            &workspace_path,
+            &home,
+            Duration::from_secs(0),
+        );
+        assert_eq!(status, Some(WorkspaceStatus::Waiting));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn status_override_uses_session_files_for_active_waiting() {
+        let root = unique_test_dir("grove-status-override");
+        let home = root.join("home");
+        let workspace_path = root.join("ws").join("feature-gamma");
+        fs::create_dir_all(&home).expect("home directory should exist");
+        fs::create_dir_all(&workspace_path).expect("workspace directory should exist");
+
+        let project_dir_name = super::claude_project_dir_name(&workspace_path);
+        let project_dir = home.join(".claude").join("projects").join(project_dir_name);
+        fs::create_dir_all(&project_dir).expect("project directory should exist");
+        let session_file = project_dir.join("session-2.jsonl");
+        fs::write(&session_file, "{\"type\":\"assistant\"}\n")
+            .expect("session file should be written");
+
+        let status = detect_status_with_session_override_in_home(
+            "plain output",
+            SessionActivity::Active,
+            false,
+            true,
+            true,
+            AgentType::Claude,
+            &workspace_path,
+            Some(&home),
+            Duration::from_secs(0),
+        );
+        assert_eq!(status, WorkspaceStatus::Waiting);
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

@@ -153,7 +153,7 @@ impl MultiplexerAdapter for CommandMultiplexerAdapter {
                 .args(["list-sessions", "-F", "#{session_name}"])
                 .output(),
             MultiplexerKind::Zellij => Command::new("zellij")
-                .args(["list-sessions", "--no-formatting"])
+                .args(["list-sessions", "--short"])
                 .output(),
         };
 
@@ -182,7 +182,7 @@ fn parse_zellij_running_sessions(output: &str) -> HashSet<String> {
         .lines()
         .filter_map(|line| {
             let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.contains("(EXITED") {
+            if trimmed.is_empty() || trimmed.to_ascii_uppercase().contains("EXITED") {
                 return None;
             }
 

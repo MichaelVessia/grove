@@ -43,7 +43,8 @@ use crate::adapters::{
     DiscoveryState, bootstrap_data,
 };
 use crate::agent_runtime::{
-    LaunchRequest, SessionActivity, build_launch_plan, detect_status, poll_interval,
+    LaunchRequest, OutputDigest, SessionActivity, build_launch_plan,
+    detect_status_with_session_override, evaluate_capture_change, poll_interval,
     session_name_for_workspace, stop_plan, zellij_capture_log_path, zellij_config_path,
 };
 use crate::config::{GroveConfig, MultiplexerKind};
@@ -108,7 +109,7 @@ const PALETTE_CMD_QUIT: &str = "palette:quit";
 const MAX_PENDING_INPUT_TRACES: usize = 256;
 const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
-const ACTIVE_SPINNER_GRACE_MS: u64 = 3_000;
+const AGENT_ACTIVITY_WINDOW_FRAMES: usize = 6;
 const STATUS_BADGE_WIDTH: usize = 7;
 const FAST_SPINNER_FRAMES: [&str; 4] = ["run.   ", "run..  ", "run... ", "run...."];
 
@@ -1215,11 +1216,38 @@ impl CommandZellijInput {
         target_session: &str,
         scrollback_lines: usize,
     ) -> std::io::Result<String> {
+        #[cfg(not(test))]
+        {
+            if !Self::session_exists(target_session)? {
+                return Err(std::io::Error::other(format!(
+                    "zellij session not found: {target_session}"
+                )));
+            }
+        }
+
         let log_path = zellij_capture_log_path(target_session);
         self.emulator
             .lock()
             .map_err(|_| std::io::Error::other("zellij emulator lock poisoned"))?
             .capture_from_log(target_session, &log_path, None, scrollback_lines)
+    }
+
+    #[cfg(not(test))]
+    fn session_exists(target_session: &str) -> std::io::Result<bool> {
+        let output = Command::new("zellij")
+            .args(["list-sessions", "--short"])
+            .output()?;
+        if !output.status.success() {
+            return Err(std::io::Error::other(format!(
+                "zellij list-sessions failed: {}",
+                CommandTmuxInput::stderr_or_status(&output),
+            )));
+        }
+        let stdout = String::from_utf8(output.stdout).map_err(|error| {
+            std::io::Error::other(format!("zellij list-sessions utf8 decode failed: {error}"))
+        })?;
+
+        Ok(stdout.lines().any(|line| line.trim() == target_session))
     }
 }
 
@@ -1822,7 +1850,9 @@ struct GroveApp {
     last_tmux_error: Option<String>,
     output_changing: bool,
     agent_output_changing: bool,
-    last_agent_activity_at: Option<Instant>,
+    agent_activity_frames: VecDeque<bool>,
+    workspace_status_digests: HashMap<String, OutputDigest>,
+    workspace_output_changing: HashMap<String, bool>,
     viewport_width: u16,
     viewport_height: u16,
     sidebar_width_pct: u16,
@@ -1954,7 +1984,9 @@ impl GroveApp {
             last_tmux_error: None,
             output_changing: false,
             agent_output_changing: false,
-            last_agent_activity_at: None,
+            agent_activity_frames: VecDeque::with_capacity(AGENT_ACTIVITY_WINDOW_FRAMES),
+            workspace_status_digests: HashMap::new(),
+            workspace_output_changing: HashMap::new(),
             viewport_width: 120,
             viewport_height: 40,
             sidebar_width_pct,
@@ -2017,10 +2049,18 @@ impl GroveApp {
             Some(WorkspaceStatus::Main) => "main worktree",
             Some(WorkspaceStatus::Idle) => "paused (no session)",
             Some(WorkspaceStatus::Active) => {
-                if self.agent_output_changing {
+                let selected_workspace_name = self
+                    .state
+                    .selected_workspace()
+                    .map(|workspace| workspace.name.as_str());
+                if self.status_is_visually_working(
+                    selected_workspace_name,
+                    WorkspaceStatus::Active,
+                    true,
+                ) {
                     "working"
                 } else {
-                    "running"
+                    "paused"
                 }
             }
             Some(WorkspaceStatus::Thinking) => "thinking",
@@ -3051,7 +3091,15 @@ impl GroveApp {
             .workspaces
             .iter()
             .filter(|workspace| {
-                !workspace.is_main && workspace.supported_agent && workspace.status.has_session()
+                if workspace.is_main || !workspace.supported_agent {
+                    return false;
+                }
+
+                if self.multiplexer == MultiplexerKind::Zellij {
+                    return true;
+                }
+
+                workspace.status.has_session()
             })
             .map(|workspace| WorkspaceStatusPollTarget {
                 workspace_name: workspace.name.clone(),
@@ -3074,34 +3122,44 @@ impl GroveApp {
     }
 
     fn apply_workspace_status_capture(&mut self, capture: WorkspaceStatusCapture) {
-        let Some(workspace) = self
+        let workspace_name = capture.workspace_name.clone();
+        let supported_agent = capture.supported_agent;
+        let Some(workspace_index) = self
             .state
             .workspaces
-            .iter_mut()
-            .find(|workspace| workspace.name == capture.workspace_name)
+            .iter()
+            .position(|workspace| workspace.name == workspace_name)
         else {
             return;
         };
-        if workspace.is_main {
+        if self.state.workspaces[workspace_index].is_main {
             return;
         }
 
         match capture.result {
             Ok(output) => {
-                workspace.status = detect_status(
+                self.capture_changed_cleaned_for_workspace(&workspace_name, &output);
+                let workspace_path = self.state.workspaces[workspace_index].path.clone();
+                let workspace_agent = self.state.workspaces[workspace_index].agent;
+                let workspace = &mut self.state.workspaces[workspace_index];
+                workspace.status = detect_status_with_session_override(
                     output.as_str(),
                     SessionActivity::Active,
                     false,
                     true,
-                    capture.supported_agent,
+                    supported_agent,
+                    workspace_agent,
+                    &workspace_path,
                 );
                 workspace.is_orphaned = false;
             }
             Err(error) => {
                 if Self::tmux_capture_error_indicates_missing_session(&error) {
+                    let workspace = &mut self.state.workspaces[workspace_index];
                     let previously_had_live_session = workspace.status.has_session();
                     workspace.status = WorkspaceStatus::Idle;
                     workspace.is_orphaned = previously_had_live_session || workspace.is_orphaned;
+                    self.clear_status_tracking_for_workspace(&workspace_name);
                 }
             }
         }
@@ -3188,28 +3246,37 @@ impl GroveApp {
                 };
                 self.output_changing = update.changed_cleaned;
                 self.agent_output_changing = update.changed_cleaned && consumed_inputs.is_empty();
-                let mut selected_status_after_capture: Option<WorkspaceStatus> = None;
-                if let Some(workspace) = self.state.selected_workspace_mut()
-                    && !workspace.is_main
-                    && session_name_for_workspace(&workspace.name) == session_name
-                {
-                    let resolved_status = detect_status(
+                self.push_agent_activity_frame(self.agent_output_changing);
+                let selected_workspace_index =
+                    self.state.selected_workspace().and_then(|workspace| {
+                        if workspace.is_main
+                            || session_name_for_workspace(&workspace.name) != session_name
+                        {
+                            return None;
+                        }
+                        self.state
+                            .workspaces
+                            .iter()
+                            .position(|candidate| candidate.name == workspace.name)
+                    });
+                if let Some(index) = selected_workspace_index {
+                    let workspace_name = self.state.workspaces[index].name.clone();
+                    let supported_agent = self.state.workspaces[index].supported_agent;
+                    let workspace_path = self.state.workspaces[index].path.clone();
+                    let workspace_agent = self.state.workspaces[index].agent;
+                    self.capture_changed_cleaned_for_workspace(&workspace_name, output.as_str());
+                    let resolved_status = detect_status_with_session_override(
                         output.as_str(),
                         SessionActivity::Active,
                         false,
                         true,
-                        workspace.supported_agent,
+                        supported_agent,
+                        workspace_agent,
+                        &workspace_path,
                     );
+                    let workspace = &mut self.state.workspaces[index];
                     workspace.status = resolved_status;
                     workspace.is_orphaned = false;
-                    selected_status_after_capture = Some(resolved_status);
-                }
-                if self.agent_output_changing {
-                    self.last_agent_activity_at = Some(Instant::now());
-                } else if selected_status_after_capture.is_some_and(|status| {
-                    !matches!(status, WorkspaceStatus::Active | WorkspaceStatus::Thinking)
-                }) {
-                    self.last_agent_activity_at = None;
                 }
                 self.last_tmux_error = None;
                 self.event_log.log(
@@ -3337,9 +3404,7 @@ impl GroveApp {
                 }
             }
             Err(message) => {
-                self.output_changing = false;
-                self.agent_output_changing = false;
-                self.last_agent_activity_at = None;
+                self.clear_agent_activity_tracking();
                 let capture_error_indicates_missing_session =
                     Self::tmux_capture_error_indicates_missing_session(&message);
                 if capture_error_indicates_missing_session {
@@ -3347,8 +3412,10 @@ impl GroveApp {
                         && !workspace.is_main
                         && session_name_for_workspace(&workspace.name) == session_name
                     {
+                        let workspace_name = workspace.name.clone();
                         workspace.status = WorkspaceStatus::Idle;
                         workspace.is_orphaned = true;
+                        self.clear_status_tracking_for_workspace(&workspace_name);
                     }
                     if self
                         .interactive
@@ -3521,9 +3588,7 @@ impl GroveApp {
                 result,
             );
         } else {
-            self.output_changing = false;
-            self.agent_output_changing = false;
-            self.last_agent_activity_at = None;
+            self.clear_agent_activity_tracking();
             self.refresh_preview_summary();
         }
 
@@ -3635,9 +3700,7 @@ impl GroveApp {
         );
 
         if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
-            self.output_changing = false;
-            self.agent_output_changing = false;
-            self.last_agent_activity_at = None;
+            self.clear_agent_activity_tracking();
             self.refresh_preview_summary();
             return;
         }
@@ -3674,9 +3737,7 @@ impl GroveApp {
                 live_capture.result,
             );
         } else {
-            self.output_changing = false;
-            self.agent_output_changing = false;
-            self.last_agent_activity_at = None;
+            self.clear_agent_activity_tracking();
             self.refresh_preview_summary();
         }
 
@@ -3767,6 +3828,7 @@ impl GroveApp {
         reduce(&mut self.state, action);
         if self.state.selected_index != before {
             self.preview.jump_to_bottom();
+            self.clear_agent_activity_tracking();
             self.clear_preview_selection();
             self.poll_preview();
         }
@@ -4640,6 +4702,8 @@ impl GroveApp {
         }
         self.state.mode = previous_mode;
         self.state.focus = previous_focus;
+        self.clear_agent_activity_tracking();
+        self.clear_status_tracking();
         self.poll_preview();
     }
 
@@ -4662,6 +4726,8 @@ impl GroveApp {
         self.state.mode = previous_mode;
         self.state.focus = previous_focus;
         self.refresh_in_flight = false;
+        self.clear_agent_activity_tracking();
+        self.clear_status_tracking();
         self.poll_preview();
     }
 
@@ -5057,6 +5123,7 @@ impl GroveApp {
         self.start_in_flight = false;
         match completion.result {
             Ok(()) => {
+                self.clear_status_tracking_for_workspace(&completion.workspace_name);
                 if let Some(workspace) = self
                     .state
                     .workspaces
@@ -5305,7 +5372,8 @@ impl GroveApp {
                     workspace.status = WorkspaceStatus::Idle;
                     workspace.is_orphaned = false;
                 }
-                self.last_agent_activity_at = None;
+                self.clear_status_tracking_for_workspace(&completion.workspace_name);
+                self.clear_agent_activity_tracking();
                 self.event_log.log(
                     LogEvent::new("agent_lifecycle", "agent_stopped")
                         .with_data("workspace", Value::from(completion.workspace_name))
@@ -6529,6 +6597,7 @@ impl GroveApp {
         if row != self.state.selected_index {
             self.state.selected_index = row;
             self.preview.jump_to_bottom();
+            self.clear_agent_activity_tracking();
             self.clear_preview_selection();
             self.poll_preview();
         }
@@ -6544,6 +6613,7 @@ impl GroveApp {
 
         self.state.selected_index = index;
         self.preview.jump_to_bottom();
+        self.clear_agent_activity_tracking();
         self.clear_preview_selection();
         self.poll_preview();
     }
@@ -6758,8 +6828,67 @@ impl GroveApp {
             .map_or(WorkspaceStatus::Unknown, |workspace| workspace.status)
     }
 
+    fn clear_agent_activity_tracking(&mut self) {
+        self.output_changing = false;
+        self.agent_output_changing = false;
+        self.agent_activity_frames.clear();
+    }
+
+    fn clear_status_tracking_for_workspace(&mut self, workspace_name: &str) {
+        self.workspace_status_digests.remove(workspace_name);
+        self.workspace_output_changing.remove(workspace_name);
+    }
+
+    fn clear_status_tracking(&mut self) {
+        self.workspace_status_digests.clear();
+        self.workspace_output_changing.clear();
+    }
+
+    fn capture_changed_cleaned_for_workspace(
+        &mut self,
+        workspace_name: &str,
+        output: &str,
+    ) -> bool {
+        let previous_digest = self.workspace_status_digests.get(workspace_name);
+        let change = evaluate_capture_change(previous_digest, output);
+        self.workspace_status_digests
+            .insert(workspace_name.to_string(), change.digest);
+        self.workspace_output_changing
+            .insert(workspace_name.to_string(), change.changed_cleaned);
+        change.changed_cleaned
+    }
+
+    fn workspace_output_changing(&self, workspace_name: &str) -> bool {
+        self.workspace_output_changing
+            .get(workspace_name)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    fn push_agent_activity_frame(&mut self, changed: bool) {
+        if self.agent_activity_frames.len() >= AGENT_ACTIVITY_WINDOW_FRAMES {
+            self.agent_activity_frames.pop_front();
+        }
+        self.agent_activity_frames.push_back(changed);
+    }
+
+    fn has_recent_agent_activity(&self) -> bool {
+        self.agent_activity_frames
+            .iter()
+            .copied()
+            .any(|changed| changed)
+    }
+
     fn visual_tick_interval(&self) -> Option<Duration> {
-        if self.status_is_visually_working(self.selected_workspace_status(), true) {
+        let selected_workspace_name = self
+            .state
+            .selected_workspace()
+            .map(|workspace| workspace.name.as_str());
+        if self.status_is_visually_working(
+            selected_workspace_name,
+            self.selected_workspace_status(),
+            true,
+        ) {
             return Some(Duration::from_millis(FAST_ANIMATION_INTERVAL_MS));
         }
         None
@@ -6769,20 +6898,22 @@ impl GroveApp {
         self.fast_animation_frame = self.fast_animation_frame.wrapping_add(1);
     }
 
-    fn status_is_visually_working(&self, status: WorkspaceStatus, is_selected: bool) -> bool {
+    fn status_is_visually_working(
+        &self,
+        workspace_name: Option<&str>,
+        status: WorkspaceStatus,
+        is_selected: bool,
+    ) -> bool {
         match status {
             WorkspaceStatus::Thinking => true,
             WorkspaceStatus::Active => {
-                if !is_selected {
-                    return false;
-                }
-                if self.agent_output_changing {
+                if workspace_name.is_some_and(|name| self.workspace_output_changing(name)) {
                     return true;
                 }
-                self.last_agent_activity_at.is_some_and(|last| {
-                    Instant::now().saturating_duration_since(last)
-                        <= Duration::from_millis(ACTIVE_SPINNER_GRACE_MS)
-                })
+                if is_selected {
+                    return self.agent_output_changing || self.has_recent_agent_activity();
+                }
+                false
             }
             _ => false,
         }
@@ -6924,15 +7055,20 @@ impl GroveApp {
         }
     }
 
-    fn status_badge_label(&self, status: WorkspaceStatus, is_selected: bool) -> &'static str {
-        if self.status_is_visually_working(status, is_selected) {
+    fn status_badge_label(
+        &self,
+        workspace_name: Option<&str>,
+        status: WorkspaceStatus,
+        is_selected: bool,
+    ) -> &'static str {
+        if self.status_is_visually_working(workspace_name, status, is_selected) {
             return FAST_SPINNER_FRAMES[self.fast_animation_frame % FAST_SPINNER_FRAMES.len()];
         }
 
         match status {
             WorkspaceStatus::Main => "main",
             WorkspaceStatus::Idle => "paused",
-            WorkspaceStatus::Active => "running",
+            WorkspaceStatus::Active => "paused",
             WorkspaceStatus::Thinking => "thinking",
             WorkspaceStatus::Waiting => "ACTION!",
             WorkspaceStatus::Done => "done",
@@ -6942,11 +7078,16 @@ impl GroveApp {
         }
     }
 
-    fn status_badge(&self, status: WorkspaceStatus, is_selected: bool) -> String {
+    fn status_badge(
+        &self,
+        workspace_name: Option<&str>,
+        status: WorkspaceStatus,
+        is_selected: bool,
+    ) -> String {
         format!(
             "[{}]",
             pad_or_truncate_to_display_width(
-                self.status_badge_label(status, is_selected),
+                self.status_badge_label(workspace_name, status, is_selected),
                 STATUS_BADGE_WIDTH,
             )
         )
@@ -6987,7 +7128,9 @@ impl GroveApp {
         let selected_workspace = self.state.selected_workspace();
         let selected_status =
             selected_workspace.map_or(WorkspaceStatus::Unknown, |workspace| workspace.status);
-        let selected_status_badge = self.status_badge(selected_status, true);
+        let selected_workspace_name = selected_workspace.map(|workspace| workspace.name.as_str());
+        let selected_status_badge =
+            self.status_badge(selected_workspace_name, selected_status, true);
         let activity_chip = format!("{} {}", selected_status_badge, self.selected_status_hint());
 
         let base_header = StatusLine::new()
@@ -7062,7 +7205,11 @@ impl GroveApp {
                     } else {
                         " "
                     };
-                    let status_badge = self.status_badge(workspace.status, is_selected);
+                    let status_badge = self.status_badge(
+                        Some(workspace.name.as_str()),
+                        workspace.status,
+                        is_selected,
+                    );
                     let age = self.relative_age_label(workspace.last_activity_unix_secs);
 
                     let row_background = if idx == self.state.selected_index {
@@ -7223,7 +7370,7 @@ impl GroveApp {
                 let detail = format!(
                     "{} | {} | {}",
                     workspace.agent.label(),
-                    self.status_badge(workspace.status, false),
+                    self.status_badge(Some(workspace.name.as_str()), workspace.status, false),
                     workspace.path.display()
                 );
                 (format!("{mode_label} | {name_label}"), detail)
@@ -7929,7 +8076,11 @@ impl GroveApp {
                     lines.push(format!(
                         "{} {} {} | {} | {} | {}{}",
                         selected,
-                        self.status_badge(workspace.status, idx == self.state.selected_index),
+                        self.status_badge(
+                            Some(workspace.name.as_str()),
+                            workspace.status,
+                            idx == self.state.selected_index,
+                        ),
                         workspace.name,
                         workspace.branch,
                         workspace.agent.label(),
@@ -8999,8 +9150,8 @@ mod tests {
             };
             let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(
-                sidebar_row_text.contains("[running"),
-                "active workspace should show static running badge, got: {sidebar_row_text}"
+                sidebar_row_text.contains("[paused"),
+                "active workspace should show static paused badge when not changing, got: {sidebar_row_text}"
             );
             assert!(
                 !contains_spinner_frame(&sidebar_row_text),
@@ -9017,13 +9168,13 @@ mod tests {
     }
 
     #[test]
-    fn active_workspace_with_recent_activity_timestamp_animates_indicators() {
+    fn active_workspace_with_recent_activity_window_animates_indicators() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         app.state.selected_index = 1;
         app.output_changing = false;
         app.agent_output_changing = false;
-        app.last_agent_activity_at = Some(Instant::now());
+        app.push_agent_activity_frame(true);
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -9036,7 +9187,7 @@ mod tests {
             let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(
                 contains_spinner_frame(&sidebar_row_text),
-                "active workspace should animate for recent activity, got: {sidebar_row_text}"
+                "active workspace should animate for recent window activity, got: {sidebar_row_text}"
             );
         });
     }
@@ -9061,6 +9212,34 @@ mod tests {
             assert!(
                 contains_spinner_frame(&sidebar_row_text),
                 "active workspace should animate when output is changing, got: {sidebar_row_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn active_workspace_activity_window_expires_after_inactive_frames() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        app.state.selected_index = 1;
+        app.output_changing = false;
+        app.agent_output_changing = false;
+        app.push_agent_activity_frame(true);
+        for _ in 0..super::AGENT_ACTIVITY_WINDOW_FRAMES {
+            app.push_agent_activity_frame(false);
+        }
+
+        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(selected_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
+            assert!(
+                !contains_spinner_frame(&sidebar_row_text),
+                "active workspace should stop animating after inactive window, got: {sidebar_row_text}"
             );
         });
     }
@@ -9586,12 +9765,13 @@ mod tests {
         let input = CommandZellijInput::default();
 
         let captured = input
-            .capture_session_output(&session_name, 3)
+            .capture_session_output(&session_name, 4)
             .expect("capture should load from log file");
 
         assert!(captured.contains("line one"));
         assert!(captured.contains("line two red"));
         assert!(captured.contains("line three green"));
+        assert!(captured.contains("exited with code 0"));
         assert!(captured.contains("\u{1b}["));
         assert!(!captured.contains("Script started on "));
         assert!(!captured.contains("Script done on "));
@@ -10102,6 +10282,30 @@ mod tests {
 
         assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Waiting);
         assert!(!app.state.workspaces[1].is_orphaned);
+    }
+
+    #[test]
+    fn zellij_workspace_status_poll_targets_include_idle_workspaces() {
+        let mut app = fixture_app();
+        app.multiplexer = MultiplexerKind::Zellij;
+        app.state.selected_index = 0;
+        app.state.workspaces[1].status = WorkspaceStatus::Idle;
+
+        let targets = app.workspace_status_poll_targets(None);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].workspace_name, "feature-a");
+        assert_eq!(targets[0].session_name, "grove-ws-feature-a");
+    }
+
+    #[test]
+    fn tmux_workspace_status_poll_targets_skip_idle_workspaces() {
+        let mut app = fixture_app();
+        app.multiplexer = MultiplexerKind::Tmux;
+        app.state.selected_index = 0;
+        app.state.workspaces[1].status = WorkspaceStatus::Idle;
+
+        let targets = app.workspace_status_poll_targets(None);
+        assert!(targets.is_empty());
     }
 
     #[test]

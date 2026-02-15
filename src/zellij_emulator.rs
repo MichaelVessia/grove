@@ -178,21 +178,45 @@ fn sanitize_log_chunk(chunk: &[u8], is_first_chunk: bool) -> Vec<u8> {
 
     let mut end = chunk.len();
     let script_done_marker = b"\nScript done on ";
+    let mut exit_code: Option<String> = None;
     if let Some(relative_index) = find_subslice(&chunk[start..], script_done_marker) {
+        let done_line_start = start.saturating_add(relative_index).saturating_add(1);
+        exit_code = parse_script_done_exit_code(&chunk[done_line_start..]);
         end = start.saturating_add(relative_index);
     } else if chunk[start..].starts_with(b"Script done on ") {
+        exit_code = parse_script_done_exit_code(&chunk[start..]);
         end = start;
     }
 
     if start >= end {
+        if let Some(code) = exit_code {
+            return format!("exited with code {code}\n").into_bytes();
+        }
         return Vec::new();
     }
 
-    chunk[start..end]
+    let mut sanitized: Vec<u8> = chunk[start..end]
         .iter()
         .copied()
         .filter(|byte| *byte != 0)
-        .collect()
+        .collect();
+    if let Some(code) = exit_code {
+        if sanitized.last().is_some_and(|byte| *byte != b'\n') {
+            sanitized.push(b'\n');
+        }
+        sanitized.extend_from_slice(format!("exited with code {code}\n").as_bytes());
+    }
+    sanitized
+}
+
+fn parse_script_done_exit_code(source: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(source).ok()?;
+    let line = text.lines().next()?;
+    let key = "COMMAND_EXIT_CODE=\"";
+    let start = line.find(key)?.saturating_add(key.len());
+    let rest = &line[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
 }
 
 fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -380,6 +404,15 @@ mod tests {
             true,
         );
         assert_eq!(sanitized, b"\x1b[31mred\x1b[0m");
+    }
+
+    #[test]
+    fn sanitize_log_chunk_includes_exit_sentinel_from_script_footer() {
+        let sanitized = sanitize_log_chunk(
+            b"Script started on now\nline one\nScript done on now [COMMAND_EXIT_CODE=\"0\"]\n",
+            true,
+        );
+        assert_eq!(sanitized, b"line one\nexited with code 0\n");
     }
 
     #[test]
