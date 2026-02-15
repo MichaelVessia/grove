@@ -1247,9 +1247,26 @@
 - Gates:
   - `cargo test --lib` (pass, 314)
 
+### Phase 7c, move `zellij_emulator` module under `src/infrastructure/`
+- Commit: `ff8b08e`
+- Changes:
+  - moved module files:
+    - `src/zellij_emulator.rs` -> `src/infrastructure/zellij_emulator.rs`
+    - `src/zellij_emulator/tests.rs` -> `src/infrastructure/zellij_emulator/tests.rs`
+  - added `src/infrastructure/mod.rs` with `pub mod zellij_emulator;`
+  - updated crate root in `src/lib.rs`:
+    - removed `pub mod zellij_emulator;`
+    - added `pub mod infrastructure;`
+  - updated imports from `crate::zellij_emulator::...` to `crate::infrastructure::zellij_emulator::...`
+  - no behavior changes, crate-tree alignment move only
+- Gates:
+  - `cargo test --lib` (pass, 314)
+
 ## Current State
-- Worktree is clean after phase 7b commit.
+- Worktree is clean after phase 7c commit.
 - Recent refactor commits on local `master`:
+  - `ff8b08e` refactor(infrastructure): move zellij emulator under infrastructure
+  - `35d04a8` docs(handoff): record phase 7b
   - `e5e4e9a` refactor(application): move workspace lifecycle under application
   - `c6fcfe2` docs(handoff): record phase 7a
   - `aa8e75d` refactor(application): move agent runtime under application
@@ -1361,7 +1378,7 @@ Status:
 Next sub-targets:
 - phase 6 runtime-boundary extraction is functionally complete for lifecycle start/stop flow
 - continue phase 7 crate-tree alignment in small compile-safe moves
-- next candidate: move remaining non-UI runtime modules into DDD buckets (`preview`, `interactive`, `mouse`, `zellij_emulator`) with compile-safe import rewrites per module
+- next candidate: move remaining non-UI runtime modules into DDD buckets (`preview`, `interactive`, `mouse`) with compile-safe import rewrites per module
 
 Rules:
 - keep behavior unchanged
