@@ -1695,7 +1695,7 @@ impl GroveApp {
         }));
     }
 
-    fn start_agent_completion_from_runtime(result: LaunchExecutionResult) -> StartAgentCompletion {
+    fn start_agent_completion_from_runtime(result: SessionExecutionResult) -> StartAgentCompletion {
         StartAgentCompletion {
             workspace_name: result.workspace_name,
             workspace_path: result.workspace_path,
@@ -1822,7 +1822,7 @@ impl GroveApp {
         }));
     }
 
-    fn stop_agent_completion_from_runtime(result: StopExecutionResult) -> StopAgentCompletion {
+    fn stop_agent_completion_from_runtime(result: SessionExecutionResult) -> StopAgentCompletion {
         StopAgentCompletion {
             workspace_name: result.workspace_name,
             workspace_path: result.workspace_path,
