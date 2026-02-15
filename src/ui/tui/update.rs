@@ -1493,25 +1493,11 @@ impl GroveApp {
         multiplexer: MultiplexerKind,
     ) -> (Result<(), String>, Vec<String>) {
         let mut warnings = Vec::new();
-        let session_name = session_name_for_workspace_in_project(
+        let stop_session_command = kill_workspace_session_command(
             dialog.project_name.as_deref(),
             &dialog.workspace_name,
+            multiplexer,
         );
-        let stop_session_command = match multiplexer {
-            MultiplexerKind::Tmux => vec![
-                "tmux".to_string(),
-                "kill-session".to_string(),
-                "-t".to_string(),
-                session_name,
-            ],
-            MultiplexerKind::Zellij => vec![
-                "zellij".to_string(),
-                "--config".to_string(),
-                zellij_config_path().to_string_lossy().to_string(),
-                "kill-session".to_string(),
-                session_name,
-            ],
-        };
         let _ = CommandTmuxInput::execute_command(&stop_session_command);
 
         let repo_root = if let Some(project_path) = dialog.project_path.clone() {

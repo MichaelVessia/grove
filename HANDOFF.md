@@ -590,7 +590,7 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
 ### Phase 6g, centralize interactive-entry eligibility policy in `agent_runtime`
-- Commit: uncommitted (worktree changes)
+- Commit: `5bfd1a4`
 - Changes:
   - added `workspace_can_enter_interactive(Option<&Workspace>, bool) -> bool` in `src/agent_runtime.rs`
     - runtime now owns git-tab vs agent-session eligibility policy for interactive entry
@@ -605,13 +605,30 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 37)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6h, move delete-session command construction to `agent_runtime`
+- Commit: uncommitted (worktree changes)
+- Changes:
+  - added `kill_workspace_session_command(Option<&str>, &str, MultiplexerKind) -> Vec<String>` in `src/agent_runtime.rs`
+    - centralizes workspace session-name construction + multiplexer-specific kill command shape
+  - updated `src/ui/tui/update.rs`:
+    - `run_delete_workspace` now delegates kill command construction to runtime helper
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime tests in `src/agent_runtime/tests.rs`:
+    - `kill_workspace_session_command_uses_project_scoped_tmux_session_name`
+    - `kill_workspace_session_command_uses_zellij_config_for_zellij`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 39)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree has uncommitted phase 6g changes:
+- Worktree has uncommitted phase 6h changes:
   - `src/agent_runtime.rs`
   - `src/agent_runtime/tests.rs`
   - `src/ui/tui/mod.rs`
   - `src/ui/tui/update.rs`
 - Recent refactor commits on local `master`:
+  - `5bfd1a4` phase 6g
   - `a9c50a6` phase 6f
   - `19b5ecd` phase 6e
   - `87bb133` phase 6d

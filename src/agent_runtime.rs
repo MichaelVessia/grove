@@ -610,6 +610,29 @@ pub fn stop_plan(session_name: &str, multiplexer: MultiplexerKind) -> Vec<Vec<St
     }
 }
 
+pub fn kill_workspace_session_command(
+    project_name: Option<&str>,
+    workspace_name: &str,
+    multiplexer: MultiplexerKind,
+) -> Vec<String> {
+    let session_name = session_name_for_workspace_in_project(project_name, workspace_name);
+    match multiplexer {
+        MultiplexerKind::Tmux => vec![
+            "tmux".to_string(),
+            "kill-session".to_string(),
+            "-t".to_string(),
+            session_name,
+        ],
+        MultiplexerKind::Zellij => vec![
+            "zellij".to_string(),
+            "--config".to_string(),
+            zellij_config_path().to_string_lossy().to_string(),
+            "kill-session".to_string(),
+            session_name,
+        ],
+    }
+}
+
 pub(crate) fn build_agent_command(agent: AgentType, skip_permissions: bool) -> String {
     if let Some(command_override) = env_agent_command_override(agent) {
         return command_override;

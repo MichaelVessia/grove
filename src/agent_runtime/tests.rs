@@ -8,12 +8,12 @@ use super::{
     CaptureChange, LaunchRequest, SessionActivity, build_launch_plan, default_agent_command,
     detect_agent_session_status_in_home, detect_status,
     detect_status_with_session_override_in_home, detect_waiting_prompt, evaluate_capture_change,
-    git_session_name_for_workspace, live_preview_agent_session, normalized_agent_command_override,
-    poll_interval, reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace,
-    session_name_for_workspace_ref, stop_plan, strip_mouse_fragments,
-    tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
-    workspace_should_poll_status, workspace_status_session_target, zellij_capture_log_path,
-    zellij_capture_log_path_in, zellij_config_path,
+    git_session_name_for_workspace, kill_workspace_session_command, live_preview_agent_session,
+    normalized_agent_command_override, poll_interval, reconcile_with_sessions,
+    sanitize_workspace_name, session_name_for_workspace, session_name_for_workspace_ref, stop_plan,
+    strip_mouse_fragments, tmux_capture_error_indicates_missing_session,
+    workspace_can_enter_interactive, workspace_should_poll_status, workspace_status_session_target,
+    zellij_capture_log_path, zellij_capture_log_path_in, zellij_config_path,
 };
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -273,6 +273,37 @@ fn stop_plan_uses_ctrl_c_then_kill_session() {
     assert_eq!(
         plan[1],
         vec!["tmux", "kill-session", "-t", "grove-ws-auth-flow"]
+    );
+}
+
+#[test]
+fn kill_workspace_session_command_uses_project_scoped_tmux_session_name() {
+    assert_eq!(
+        kill_workspace_session_command(
+            Some("project.one"),
+            "feature/auth.v2",
+            MultiplexerKind::Tmux
+        ),
+        vec![
+            "tmux".to_string(),
+            "kill-session".to_string(),
+            "-t".to_string(),
+            "grove-ws-project-one-feature-auth-v2".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn kill_workspace_session_command_uses_zellij_config_for_zellij() {
+    assert_eq!(
+        kill_workspace_session_command(None, "feature", MultiplexerKind::Zellij),
+        vec![
+            "zellij".to_string(),
+            "--config".to_string(),
+            zellij_config_path().to_string_lossy().to_string(),
+            "kill-session".to_string(),
+            "grove-ws-feature".to_string(),
+        ]
     );
 }
 
