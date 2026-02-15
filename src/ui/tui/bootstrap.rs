@@ -3,11 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::adapters::{
+use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
+use crate::infrastructure::adapters::{
     BootstrapData, CommandGitAdapter, CommandMultiplexerAdapter, CommandSystemAdapter,
     DiscoveryState, MultiplexerAdapter, bootstrap_data,
 };
-use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
 use crate::ui::mouse::parse_sidebar_ratio;
 
 use super::*;

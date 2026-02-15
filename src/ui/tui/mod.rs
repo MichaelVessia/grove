@@ -36,7 +36,6 @@ use ftui::{Cmd, Model, PackedRgba, Style};
 use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
 use serde_json::Value;
 
-use crate::adapters::{BootstrapData, DiscoveryState};
 use crate::application::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity,
     detect_status_with_session_override, evaluate_capture_change, execute_command_with,
@@ -63,6 +62,7 @@ use crate::application::workspace_lifecycle::{
 use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::event_log::{Event as LogEvent, EventLogger};
+use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag, serialize_sidebar_ratio};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
 
