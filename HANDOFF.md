@@ -639,7 +639,7 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
 ### Phase 6j, dedupe poll-target type by aliasing UI to runtime target
-- Commit: uncommitted (worktree changes)
+- Commit: `4d6b323`
 - Changes:
   - updated `src/ui/tui/msg.rs`:
     - replaced local `WorkspaceStatusPollTarget` struct with type alias to runtime `WorkspaceStatusTarget`
@@ -652,10 +652,9 @@
   - `cargo test --lib` (pass, 288)
 
 ## Current State
-- Worktree has uncommitted phase 6j changes:
-  - `src/ui/tui/msg.rs`
-  - `src/ui/tui/update.rs`
+- Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `4d6b323` phase 6j
   - `6136c11` phase 6i
   - `af85ec7` phase 6h
   - `5bfd1a4` phase 6g
