@@ -9,6 +9,7 @@ pub mod mouse;
 pub mod preview;
 pub mod state;
 pub mod tui;
+pub mod ui;
 pub mod workspace_lifecycle;
 pub mod zellij_emulator;
 
