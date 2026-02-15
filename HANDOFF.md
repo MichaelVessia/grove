@@ -1360,9 +1360,24 @@
 - Gates:
   - `cargo test --lib` (pass, 314)
 
+### Phase 7k, move `hardening` module under `src/application/`
+- Commit: `67bb3a9`
+- Changes:
+  - moved module files:
+    - `src/hardening.rs` -> `src/application/hardening.rs`
+    - `src/hardening/tests.rs` -> `src/application/hardening/tests.rs`
+  - updated `src/application/mod.rs` with `pub mod hardening;`
+  - updated crate root in `src/lib.rs`:
+    - removed `pub mod hardening;`
+  - no behavior changes, crate-tree alignment move only
+- Gates:
+  - `cargo test --lib` (pass, 314)
+
 ## Current State
-- Worktree is clean after phase 7j commit.
+- Worktree is clean after phase 7k commit.
 - Recent refactor commits on local `master`:
+  - `67bb3a9` refactor(application): move hardening module under application
+  - `824a05a` docs(handoff): record phase 7j
   - `c120bc9` refactor(infrastructure): move event_log module under infrastructure
   - `50a803f` docs(handoff): record phase 7i
   - `9d08f17` refactor(infrastructure): move config module under infrastructure
@@ -1490,7 +1505,7 @@ Status:
 Next sub-targets:
 - phase 6 runtime-boundary extraction is functionally complete for lifecycle start/stop flow
 - continue phase 7 crate-tree alignment in small compile-safe moves
-- next candidate: move remaining root modules into DDD buckets (`hardening`) with compile-safe import rewrites
+- next candidate: begin phase 8 cleanup (remove transitional re-exports/shims, refresh module-map docs, final gates)
 
 Rules:
 - keep behavior unchanged
