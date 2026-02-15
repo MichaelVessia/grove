@@ -7,7 +7,6 @@ pub mod hardening;
 pub mod infrastructure;
 pub mod interactive;
 pub mod mouse;
-pub mod preview;
 pub mod state;
 pub mod tui;
 pub mod ui;
