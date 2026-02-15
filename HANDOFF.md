@@ -562,7 +562,7 @@
   - `cargo test --lib` (pass, 281)
 
 ### Phase 6e, move live-preview session/target selection helpers to `agent_runtime`
-- Commit: uncommitted (worktree changes)
+- Commit: `19b5ecd`
 - Changes:
   - added runtime helpers in `src/agent_runtime.rs`:
     - `live_preview_agent_session(Option<&Workspace>) -> Option<String>`
@@ -580,13 +580,21 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 283)
 
+### Phase 6f, remove UI wrapper for workspace session naming
+- Commit: uncommitted (worktree changes)
+- Changes:
+  - removed `workspace_session_name` wrapper from `src/ui/tui/update.rs`
+  - replaced call sites with direct runtime boundary call `session_name_for_workspace_ref(workspace)`
+  - no behavior changes, ownership cleanup only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree has uncommitted phase 6e changes:
-  - `src/agent_runtime.rs`
-  - `src/agent_runtime/tests.rs`
-  - `src/ui/tui/mod.rs`
+- Worktree has uncommitted phase 6f changes:
+  - `HANDOFF.md`
   - `src/ui/tui/update.rs`
 - Recent refactor commits on local `master`:
+  - `19b5ecd` phase 6e
   - `87bb133` phase 6d
   - `3b365f0` phase 6c
   - `e4859a5` phase 6b
@@ -641,7 +649,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move remaining non-UI session-target helpers from `ui/tui/update.rs` (for example interactive target/session resolution wrappers) into runtime/application layer
+- next candidate: move remaining non-UI session-target helpers from `ui/tui/update.rs` (for example interactive-entry session resolution helpers) into runtime/application layer
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:

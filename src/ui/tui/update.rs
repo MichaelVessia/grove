@@ -13,10 +13,6 @@ impl GroveApp {
             .map(|workspace| workspace.path.clone())
     }
 
-    pub(super) fn workspace_session_name(workspace: &Workspace) -> String {
-        session_name_for_workspace_ref(workspace)
-    }
-
     pub(super) fn queue_cmd(&mut self, cmd: Cmd<Msg>) {
         if matches!(cmd, Cmd::None) {
             return;
@@ -878,7 +874,7 @@ impl GroveApp {
                 self.push_agent_activity_frame(self.agent_output_changing);
                 let selected_workspace_index =
                     self.state.selected_workspace().and_then(|workspace| {
-                        if Self::workspace_session_name(workspace) != session_name {
+                        if session_name_for_workspace_ref(workspace) != session_name {
                             return None;
                         }
                         Some(self.state.selected_index)
@@ -1034,7 +1030,7 @@ impl GroveApp {
                 if capture_error_indicates_missing_session {
                     self.lazygit_ready_sessions.remove(session_name);
                     if let Some(workspace) = self.state.selected_workspace_mut()
-                        && Self::workspace_session_name(workspace) == session_name
+                        && session_name_for_workspace_ref(workspace) == session_name
                     {
                         let workspace_path = workspace.path.clone();
                         workspace.status = if workspace.is_main {
@@ -2000,7 +1996,7 @@ impl GroveApp {
         };
         let workspace_name = workspace.name.clone();
         let workspace_path = workspace.path.clone();
-        let session_name = Self::workspace_session_name(workspace);
+        let session_name = session_name_for_workspace_ref(workspace);
         let stop_commands = stop_plan(&session_name, self.multiplexer);
 
         if !self.tmux_input.supports_background_send() {
@@ -3331,7 +3327,7 @@ impl GroveApp {
             let Some(workspace) = self.state.selected_workspace() else {
                 return false;
             };
-            Self::workspace_session_name(workspace)
+            session_name_for_workspace_ref(workspace)
         };
 
         self.interactive = Some(InteractiveState::new(
