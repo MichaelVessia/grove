@@ -36,13 +36,6 @@ pub(crate) struct CaptureUpdate {
     pub changed_cleaned: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FlashMessage {
-    pub text: String,
-    pub is_error: bool,
-    pub expires_at: Instant,
-}
-
 impl PreviewState {
     pub fn new() -> Self {
         Self {
@@ -206,35 +199,11 @@ pub(crate) fn split_output_lines(output: &str) -> Vec<String> {
     trimmed.lines().map(ToOwned::to_owned).collect()
 }
 
-pub(crate) fn new_flash_message(
-    text: impl Into<String>,
-    is_error: bool,
-    now: Instant,
-) -> FlashMessage {
-    FlashMessage {
-        text: text.into(),
-        is_error,
-        expires_at: now + Duration::from_secs(3),
-    }
-}
-
-pub(crate) fn clear_expired_flash_message(flash: &mut Option<FlashMessage>, now: Instant) -> bool {
-    if flash
-        .as_ref()
-        .is_some_and(|message| message.expires_at <= now)
-    {
-        *flash = None;
-        return true;
-    }
-
-    false
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::{Duration, Instant};
 
-    use super::{PreviewState, clear_expired_flash_message, new_flash_message, split_output_lines};
+    use super::{PreviewState, split_output_lines};
 
     #[test]
     fn split_output_lines_trims_final_newline() {
@@ -351,24 +320,6 @@ mod tests {
 
         let visible = state.visible_lines(2);
         assert_eq!(visible, vec!["3".to_string(), "4".to_string()]);
-    }
-
-    #[test]
-    fn flash_message_auto_expires_after_three_seconds() {
-        let base = Instant::now();
-        let mut flash = Some(new_flash_message("ok", false, base));
-
-        assert!(!clear_expired_flash_message(
-            &mut flash,
-            base + Duration::from_secs(2)
-        ));
-        assert!(flash.is_some());
-
-        assert!(clear_expired_flash_message(
-            &mut flash,
-            base + Duration::from_secs(3)
-        ));
-        assert!(flash.is_none());
     }
 
     #[test]

@@ -33,7 +33,11 @@ use ftui::widgets::command_palette::{
     ActionItem as PaletteActionItem, CommandPalette, PaletteAction,
 };
 use ftui::widgets::modal::{BackdropConfig, Modal, ModalSizeConstraints};
+use ftui::widgets::notification_queue::{
+    NotificationPriority, NotificationQueue, NotificationStack, QueueConfig,
+};
 use ftui::widgets::paragraph::Paragraph;
+use ftui::widgets::toast::{Toast, ToastIcon, ToastPosition, ToastStyle};
 use ftui::{App, Cmd, Model, PackedRgba, ScreenMode, Style};
 use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
 use serde_json::Value;
@@ -59,7 +63,7 @@ use crate::interactive::{
 use crate::mouse::{
     clamp_sidebar_ratio, parse_sidebar_ratio, ratio_from_drag, serialize_sidebar_ratio,
 };
-use crate::preview::{FlashMessage, PreviewState, clear_expired_flash_message, new_flash_message};
+use crate::preview::PreviewState;
 use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
 use crate::workspace_lifecycle::{
     BranchMode, CommandGitRunner, CommandSetupScriptRunner, CreateWorkspaceRequest,
@@ -113,6 +117,7 @@ const PALETTE_CMD_QUIT: &str = "palette:quit";
 const MAX_PENDING_INPUT_TRACES: usize = 256;
 const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
+const TOAST_TICK_INTERVAL_MS: u64 = 100;
 const AGENT_ACTIVITY_WINDOW_FRAMES: usize = 6;
 const LOCAL_TYPING_SUPPRESS_MS: u64 = 400;
 
@@ -2242,7 +2247,7 @@ struct GroveApp {
     discovery_state: DiscoveryState,
     preview_tab: PreviewTab,
     preview: PreviewState,
-    flash: Option<FlashMessage>,
+    notifications: NotificationQueue,
     interactive: Option<InteractiveState>,
     action_mapper: ActionMapper,
     launch_dialog: Option<LaunchDialogState>,
@@ -2430,7 +2435,14 @@ impl GroveApp {
             discovery_state: bootstrap.discovery_state,
             preview_tab: PreviewTab::Agent,
             preview: PreviewState::new(),
-            flash: None,
+            notifications: NotificationQueue::new(
+                QueueConfig::new()
+                    .max_visible(3)
+                    .max_queued(24)
+                    .position(ToastPosition::TopRight)
+                    .default_duration(Duration::from_secs(3))
+                    .dedup_window_ms(0),
+            ),
             interactive: None,
             action_mapper: ActionMapper::new(mapper_config),
             launch_dialog: None,
@@ -2663,14 +2675,33 @@ impl GroveApp {
         result
     }
 
-    fn show_flash(&mut self, text: impl Into<String>, is_error: bool) {
+    fn show_toast(&mut self, text: impl Into<String>, is_error: bool) {
         let message = text.into();
         self.event_log.log(
-            LogEvent::new("flash", "flash_shown")
+            LogEvent::new("toast", "toast_shown")
                 .with_data("text", Value::from(message.clone()))
                 .with_data("is_error", Value::from(is_error)),
         );
-        self.flash = Some(new_flash_message(message, is_error, Instant::now()));
+
+        let toast = if is_error {
+            Toast::new(message)
+                .title("Error")
+                .icon(ToastIcon::Error)
+                .style_variant(ToastStyle::Error)
+                .duration(Duration::from_secs(3))
+        } else {
+            Toast::new(message)
+                .icon(ToastIcon::Success)
+                .style_variant(ToastStyle::Success)
+                .duration(Duration::from_secs(3))
+        };
+        let priority = if is_error {
+            NotificationPriority::High
+        } else {
+            NotificationPriority::Normal
+        };
+        let _ = self.notifications.push(toast, priority);
+        let _ = self.notifications.tick(Duration::ZERO);
     }
 
     fn duration_millis(duration: Duration) -> u64 {
@@ -3054,11 +3085,11 @@ impl GroveApp {
 
     #[cfg(test)]
     fn status_bar_line(&self) -> String {
-        if let Some(flash) = &self.flash {
-            if flash.is_error {
-                return format!("Status: error: {}", flash.text);
+        if let Some(toast) = self.notifications.visible().last() {
+            if matches!(toast.config.style_variant, ToastStyle::Error) {
+                return format!("Status: error: {}", toast.content.message);
             }
-            return format!("Status: {}", flash.text);
+            return format!("Status: {}", toast.content.message);
         }
 
         match &self.discovery_state {
@@ -3929,7 +3960,7 @@ impl GroveApp {
                         .with_data("error", Value::from(message.clone())),
                 );
                 self.log_tmux_error(message.clone());
-                self.show_flash("preview capture failed", true);
+                self.show_toast("preview capture failed", true);
                 self.refresh_preview_summary();
             }
         }
@@ -4437,7 +4468,7 @@ impl GroveApp {
                 false
             }
             KeybindingAction::CancelTask => {
-                self.show_flash("cannot cancel running lifecycle task", true);
+                self.show_toast("cannot cancel running lifecycle task", true);
                 false
             }
             KeybindingAction::Quit | KeybindingAction::HardQuit => true,
@@ -4670,14 +4701,14 @@ impl GroveApp {
 
         let path_input = add_dialog.path.trim();
         if path_input.is_empty() {
-            self.show_flash("project path is required", true);
+            self.show_toast("project path is required", true);
             return;
         }
         let normalized = Self::normalized_project_path(path_input);
         let canonical = match normalized.canonicalize() {
             Ok(path) => path,
             Err(error) => {
-                self.show_flash(format!("invalid project path: {error}"), true);
+                self.show_toast(format!("invalid project path: {error}"), true);
                 return;
             }
         };
@@ -4698,11 +4729,11 @@ impl GroveApp {
             }
             Ok(output) => {
                 let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-                self.show_flash(format!("not a git repository: {stderr}"), true);
+                self.show_toast(format!("not a git repository: {stderr}"), true);
                 return;
             }
             Err(error) => {
-                self.show_flash(format!("git check failed: {error}"), true);
+                self.show_toast(format!("git check failed: {error}"), true);
                 return;
             }
         };
@@ -4713,7 +4744,7 @@ impl GroveApp {
             .iter()
             .any(|project| project_paths_equal(&project.path, &repo_root))
         {
-            self.show_flash("project already exists", true);
+            self.show_toast("project already exists", true);
             return;
         }
 
@@ -4727,7 +4758,7 @@ impl GroveApp {
             path: repo_root.clone(),
         });
         if let Err(error) = self.save_projects_config() {
-            self.show_flash(format!("project save failed: {error}"), true);
+            self.show_toast(format!("project save failed: {error}"), true);
             return;
         }
 
@@ -4736,7 +4767,7 @@ impl GroveApp {
         }
         self.refresh_project_dialog_filtered();
         self.refresh_workspaces(None);
-        self.show_flash(format!("project '{}' added", project_name), false);
+        self.show_toast(format!("project '{}' added", project_name), false);
     }
 
     fn handle_project_add_dialog_key(&mut self, key_event: KeyEvent) {
@@ -4920,7 +4951,7 @@ impl GroveApp {
         };
 
         if dialog.multiplexer != self.multiplexer && self.has_running_workspace_sessions() {
-            self.show_flash("stop running workspaces before switching multiplexer", true);
+            self.show_toast("stop running workspaces before switching multiplexer", true);
             return;
         }
 
@@ -4932,7 +4963,7 @@ impl GroveApp {
             projects: self.projects.clone(),
         };
         if let Err(error) = crate::config::save_to_path(&self.config_path, &config) {
-            self.show_flash(format!("settings save failed: {error}"), true);
+            self.show_toast(format!("settings save failed: {error}"), true);
             return;
         }
 
@@ -4940,7 +4971,7 @@ impl GroveApp {
         self.interactive = None;
         self.refresh_workspaces(None);
         self.poll_preview();
-        self.show_flash(format!("multiplexer set to {}", selected.label()), false);
+        self.show_toast(format!("multiplexer set to {}", selected.label()), false);
     }
 
     fn handle_settings_dialog_key(&mut self, key_event: KeyEvent) {
@@ -5008,24 +5039,24 @@ impl GroveApp {
 
     fn open_start_dialog(&mut self) {
         if self.start_in_flight {
-            self.show_flash("agent start already in progress", true);
+            self.show_toast("agent start already in progress", true);
             return;
         }
 
         let Some(workspace) = self.state.selected_workspace() else {
-            self.show_flash("no workspace selected", true);
+            self.show_toast("no workspace selected", true);
             return;
         };
         if !workspace.supported_agent {
-            self.show_flash("unsupported workspace agent marker", true);
+            self.show_toast("unsupported workspace agent marker", true);
             return;
         }
         if workspace.status.is_running() {
-            self.show_flash("agent already running", true);
+            self.show_toast("agent already running", true);
             return;
         }
         if !self.can_start_selected_workspace() {
-            self.show_flash("workspace cannot be started", true);
+            self.show_toast("workspace cannot be started", true);
             return;
         }
 
@@ -5061,16 +5092,16 @@ impl GroveApp {
             return;
         }
         if self.delete_in_flight {
-            self.show_flash("workspace delete already in progress", true);
+            self.show_toast("workspace delete already in progress", true);
             return;
         }
 
         let Some(workspace) = self.state.selected_workspace() else {
-            self.show_flash("no workspace selected", true);
+            self.show_toast("no workspace selected", true);
             return;
         };
         if workspace.is_main {
-            self.show_flash("cannot delete base workspace", true);
+            self.show_toast("cannot delete base workspace", true);
             return;
         }
 
@@ -5259,12 +5290,12 @@ impl GroveApp {
                 self.last_tmux_error = None;
                 self.refresh_workspaces(None);
                 if completion.warnings.is_empty() {
-                    self.show_flash(
+                    self.show_toast(
                         format!("workspace '{}' deleted", completion.workspace_name),
                         false,
                     );
                 } else if let Some(first_warning) = completion.warnings.first() {
-                    self.show_flash(
+                    self.show_toast(
                         format!(
                             "workspace '{}' deleted, warning: {}",
                             completion.workspace_name, first_warning
@@ -5280,7 +5311,7 @@ impl GroveApp {
                         .with_data("error", Value::from(error.clone())),
                 );
                 self.last_tmux_error = Some(error.clone());
-                self.show_flash(format!("workspace delete failed: {error}"), true);
+                self.show_toast(format!("workspace delete failed: {error}"), true);
             }
         }
     }
@@ -5464,7 +5495,7 @@ impl GroveApp {
             return;
         }
         if self.projects.is_empty() {
-            self.show_flash("no projects configured, press p to add one", true);
+            self.show_toast("no projects configured, press p to add one", true);
             return;
         }
 
@@ -5509,7 +5540,7 @@ impl GroveApp {
         }
 
         let Some(workspace) = self.state.selected_workspace() else {
-            self.show_flash("no workspace selected", true);
+            self.show_toast("no workspace selected", true);
             return;
         };
 
@@ -5561,7 +5592,7 @@ impl GroveApp {
         );
 
         if let Err(error) = write_workspace_agent_marker(&dialog.workspace_path, dialog.agent) {
-            self.show_flash(
+            self.show_toast(
                 format!(
                     "workspace edit failed: {}",
                     Self::workspace_lifecycle_error_message(&error)
@@ -5584,9 +5615,9 @@ impl GroveApp {
         self.edit_dialog = None;
         self.last_tmux_error = None;
         if dialog.was_running {
-            self.show_flash("workspace updated, restart agent to apply change", false);
+            self.show_toast("workspace updated, restart agent to apply change", false);
         } else {
-            self.show_flash("workspace updated", false);
+            self.show_toast("workspace updated", false);
         }
     }
 
@@ -5782,7 +5813,7 @@ impl GroveApp {
             ],
         );
         let Some(project) = self.projects.get(dialog.project_index).cloned() else {
-            self.show_flash("project is required", true);
+            self.show_toast("project is required", true);
             return;
         };
 
@@ -5797,7 +5828,7 @@ impl GroveApp {
         };
 
         if let Err(error) = request.validate() {
-            self.show_flash(Self::workspace_lifecycle_error_message(&error), true);
+            self.show_toast(Self::workspace_lifecycle_error_message(&error), true);
             return;
         }
 
@@ -5830,9 +5861,9 @@ impl GroveApp {
                 self.state.mode = UiMode::List;
                 self.state.focus = PaneFocus::WorkspaceList;
                 if result.warnings.is_empty() {
-                    self.show_flash(format!("workspace '{}' created", workspace_name), false);
+                    self.show_toast(format!("workspace '{}' created", workspace_name), false);
                 } else if let Some(first_warning) = result.warnings.first() {
-                    self.show_flash(
+                    self.show_toast(
                         format!(
                             "workspace '{}' created, warning: {}",
                             workspace_name, first_warning
@@ -5842,7 +5873,7 @@ impl GroveApp {
                 }
             }
             Err(error) => {
-                self.show_flash(
+                self.show_toast(
                     format!(
                         "workspace create failed: {}",
                         Self::workspace_lifecycle_error_message(&error)
@@ -6158,11 +6189,11 @@ impl GroveApp {
         }
 
         if !self.can_start_selected_workspace() {
-            self.show_flash("workspace cannot be started", true);
+            self.show_toast("workspace cannot be started", true);
             return;
         }
         let Some(workspace) = self.state.selected_workspace() else {
-            self.show_flash("no workspace selected", true);
+            self.show_toast("no workspace selected", true);
             return;
         };
         let capture_cols = self
@@ -6192,21 +6223,21 @@ impl GroveApp {
                 && let Err(error) = fs::write(&script.path, &script.contents)
             {
                 self.last_tmux_error = Some(format!("launcher script write failed: {error}"));
-                self.show_flash("launcher script write failed", true);
+                self.show_toast("launcher script write failed", true);
                 return;
             }
 
             for command in &launch_plan.pre_launch_cmds {
                 if let Err(error) = self.execute_tmux_command(command) {
                     self.last_tmux_error = Some(error.to_string());
-                    self.show_flash("agent start failed", true);
+                    self.show_toast("agent start failed", true);
                     return;
                 }
             }
 
             if let Err(error) = self.execute_tmux_command(&launch_plan.launch_cmd) {
                 self.last_tmux_error = Some(error.to_string());
-                self.show_flash("agent start failed", true);
+                self.show_toast("agent start failed", true);
                 return;
             }
 
@@ -6263,13 +6294,13 @@ impl GroveApp {
                         .with_data("session", Value::from(completion.session_name)),
                 );
                 self.last_tmux_error = None;
-                self.show_flash("agent started", false);
+                self.show_toast("agent started", false);
                 self.poll_preview();
             }
             Err(error) => {
                 self.last_tmux_error = Some(error.clone());
                 self.log_tmux_error(error);
-                self.show_flash("agent start failed", true);
+                self.show_toast("agent start failed", true);
             }
         }
     }
@@ -6428,12 +6459,12 @@ impl GroveApp {
         }
 
         if !self.can_stop_selected_workspace() {
-            self.show_flash("no agent running", true);
+            self.show_toast("no agent running", true);
             return;
         }
 
         let Some(workspace) = self.state.selected_workspace() else {
-            self.show_flash("no workspace selected", true);
+            self.show_toast("no workspace selected", true);
             return;
         };
         let workspace_name = workspace.name.clone();
@@ -6445,7 +6476,7 @@ impl GroveApp {
             for command in &stop_commands {
                 if let Err(error) = self.execute_tmux_command(command) {
                     self.last_tmux_error = Some(error.to_string());
-                    self.show_flash("agent stop failed", true);
+                    self.show_toast("agent stop failed", true);
                     return;
                 }
             }
@@ -6511,13 +6542,13 @@ impl GroveApp {
                         .with_data("session", Value::from(completion.session_name)),
                 );
                 self.last_tmux_error = None;
-                self.show_flash("agent stopped", false);
+                self.show_toast("agent stopped", false);
                 self.poll_preview();
             }
             Err(error) => {
                 self.last_tmux_error = Some(error.clone());
                 self.log_tmux_error(error);
-                self.show_flash("agent stop failed", true);
+                self.show_toast("agent stop failed", true);
             }
         }
     }
@@ -7698,7 +7729,7 @@ impl GroveApp {
         let mut lines = selected_lines.unwrap_or_else(|| self.visible_preview_output_lines());
         if lines.is_empty() {
             self.last_tmux_error = Some("no output to copy".to_string());
-            self.show_flash("No output to copy", true);
+            self.show_toast("No output to copy", true);
             return;
         }
 
@@ -7707,7 +7738,7 @@ impl GroveApp {
         }
         if lines.is_empty() {
             self.last_tmux_error = Some("no output to copy".to_string());
-            self.show_flash("No output to copy", true);
+            self.show_toast("No output to copy", true);
             return;
         }
         let text = lines.join("\n");
@@ -7728,11 +7759,11 @@ impl GroveApp {
         match self.clipboard.write_text(&text) {
             Ok(()) => {
                 self.last_tmux_error = None;
-                self.show_flash(format!("Copied {} line(s)", lines.len()), false);
+                self.show_toast(format!("Copied {} line(s)", lines.len()), false);
             }
             Err(error) => {
                 self.last_tmux_error = Some(format!("clipboard write failed: {error}"));
-                self.show_flash(format!("Copy failed: {error}"), true);
+                self.show_toast(format!("Copy failed: {error}"), true);
             }
         }
         self.clear_preview_selection();
@@ -8379,24 +8410,13 @@ impl GroveApp {
             ));
         }
 
-        let right: Vec<FtSpan> = match &self.flash {
-            Some(flash) => {
-                let flash_text = if flash.is_error {
-                    format!(" error: {} ", flash.text)
-                } else {
-                    format!(" {} ", flash.text)
-                };
-                let flash_style = if flash.is_error {
-                    Style::new().bg(theme.red).fg(theme.crust).bold()
-                } else {
-                    Style::new().bg(theme.blue).fg(theme.crust).bold()
-                };
-                vec![FtSpan::styled(flash_text, flash_style)]
-            }
-            None => Vec::new(),
-        };
-
-        let line = chrome_bar_line(usize::from(area.width), base_style, left, Vec::new(), right);
+        let line = chrome_bar_line(
+            usize::from(area.width),
+            base_style,
+            left,
+            Vec::new(),
+            Vec::new(),
+        );
         Paragraph::new(FtText::from_line(line)).render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
     }
@@ -8940,6 +8960,16 @@ impl GroveApp {
         );
         Paragraph::new(FtText::from_line(line)).render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_STATUS));
+    }
+
+    fn render_toasts(&self, frame: &mut Frame, area: Rect) {
+        if area.is_empty() {
+            return;
+        }
+
+        NotificationStack::new(&self.notifications)
+            .margin(1)
+            .render(area, frame);
     }
 
     fn render_launch_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
@@ -9956,7 +9986,9 @@ impl Model for GroveApp {
                     .next_tick_due_at
                     .map(|due_at| Self::duration_millis(due_at.saturating_duration_since(now)))
                     .unwrap_or(0);
-                let _ = clear_expired_flash_message(&mut self.flash, Instant::now());
+                let _ = self
+                    .notifications
+                    .tick(Duration::from_millis(TOAST_TICK_INTERVAL_MS));
                 if !self.tick_is_due(now) {
                     self.event_log.log(
                         LogEvent::new("tick", "skipped")
@@ -10130,6 +10162,7 @@ impl Model for GroveApp {
         self.render_project_dialog_overlay(frame, area);
         self.render_keybind_help_overlay(frame, area);
         self.render_command_palette_overlay(frame, area);
+        self.render_toasts(frame, area);
         let draw_completed_at = Instant::now();
         self.last_hit_grid.replace(frame.hit_grid.clone());
         let frame_log_started_at = Instant::now();
@@ -10244,6 +10277,7 @@ mod tests {
     use ftui::render::frame::HitId;
     use ftui::widgets::block::Block;
     use ftui::widgets::borders::Borders;
+    use ftui::widgets::toast::ToastStyle;
     use ftui::{Cmd, Frame, GraphemePool};
     use proptest::prelude::*;
     use serde_json::Value;
@@ -11371,9 +11405,9 @@ mod tests {
     }
 
     #[test]
-    fn status_row_shows_keybind_hints_not_flash_state() {
+    fn status_row_shows_keybind_hints_not_toast_state() {
         let mut app = fixture_app();
-        app.show_flash("Agent started", false);
+        app.show_toast("Agent started", false);
 
         with_rendered_frame(&app, 80, 24, |frame| {
             let status_row = frame.height().saturating_sub(1);
@@ -11591,11 +11625,7 @@ mod tests {
 
         assert!(app.settings_dialog.is_some());
         assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
-        assert!(
-            app.flash
-                .as_ref()
-                .is_some_and(|flash| flash.text.contains("stop running workspaces"))
-        );
+        assert!(app.status_bar_line().contains("stop running workspaces"));
     }
 
     #[test]
@@ -11686,29 +11716,30 @@ mod tests {
     }
 
     #[test]
-    fn header_row_renders_flash_message() {
+    fn toast_overlay_renders_message() {
         let mut app = fixture_app();
-        app.show_flash("Copied 2 line(s)", false);
+        app.show_toast("Copied 2 line(s)", false);
 
         with_rendered_frame(&app, 80, 24, |frame| {
-            let header_text = row_text(frame, 0, 0, frame.width());
-            assert!(header_text.contains("Copied 2 line(s)"));
+            let found = (0..frame.height())
+                .any(|row| row_text(frame, row, 0, frame.width()).contains("Copied 2 line(s)"));
+            assert!(found, "toast message should render in frame");
         });
     }
 
     #[test]
-    fn interactive_copy_sets_success_flash_message() {
+    fn interactive_copy_sets_success_toast_message() {
         let mut app = fixture_app();
         app.preview.lines = vec!["alpha".to_string()];
         app.preview.render_lines = app.preview.lines.clone();
 
         app.copy_interactive_selection_or_visible();
 
-        let Some(flash) = app.flash.as_ref() else {
-            panic!("copy should set flash message");
+        let Some(toast) = app.notifications.visible().last() else {
+            panic!("copy should set toast message");
         };
-        assert!(!flash.is_error);
-        assert_eq!(flash.text, "Copied 1 line(s)");
+        assert!(matches!(toast.config.style_variant, ToastStyle::Success));
+        assert_eq!(toast.content.message, "Copied 1 line(s)");
     }
 
     #[test]
@@ -11929,7 +11960,7 @@ mod tests {
                 "agent_started",
             ],
         );
-        assert!(kinds.iter().any(|kind| kind == "flash_shown"));
+        assert!(kinds.iter().any(|kind| kind == "toast_shown"));
     }
 
     #[test]
@@ -11992,7 +12023,7 @@ mod tests {
     }
 
     #[test]
-    fn async_preview_capture_failure_sets_flash_message() {
+    fn async_preview_capture_failure_sets_toast_message() {
         let mut app = fixture_app();
         app.state.selected_index = 1;
 
@@ -13116,11 +13147,7 @@ mod tests {
                 .trim(),
             "codex"
         );
-        assert!(
-            app.flash
-                .as_ref()
-                .is_some_and(|flash| flash.text.contains("workspace updated"))
-        );
+        assert!(app.status_bar_line().contains("workspace updated"));
     }
 
     #[test]
@@ -13145,7 +13172,7 @@ mod tests {
     }
 
     #[test]
-    fn delete_key_on_main_workspace_shows_guard_flash() {
+    fn delete_key_on_main_workspace_shows_guard_toast() {
         let mut app = fixture_app();
 
         ftui::Model::update(
@@ -13464,7 +13491,7 @@ mod tests {
     }
 
     #[test]
-    fn create_dialog_enter_without_name_shows_validation_flash() {
+    fn create_dialog_enter_without_name_shows_validation_toast() {
         let mut app = fixture_app();
 
         ftui::Model::update(
@@ -13613,7 +13640,7 @@ mod tests {
     }
 
     #[test]
-    fn start_key_on_running_workspace_shows_flash_and_no_dialog() {
+    fn start_key_on_running_workspace_shows_toast_and_no_dialog() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
 
@@ -13632,7 +13659,7 @@ mod tests {
     }
 
     #[test]
-    fn stop_key_without_running_agent_shows_flash() {
+    fn stop_key_without_running_agent_shows_toast() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
 
