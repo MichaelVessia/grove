@@ -485,9 +485,28 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5af, move TUI run entrypoints into `runner.rs`
+- Commit: `ea873d9`
+- Changes:
+  - added `src/ui/tui/runner.rs`
+    - moved run entrypoint functions from `src/ui/tui/mod.rs`:
+      - `run`
+      - `run_with_event_log`
+      - `run_with_debug_record`
+      - internal `run_with_logger`
+  - updated `src/ui/tui/mod.rs`:
+    - wired `mod runner;`
+    - re-exported public entrypoints with `pub use runner::{run, run_with_debug_record, run_with_event_log};`
+    - removed now-unused imports related to runner internals
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `ea873d9` phase 5af
   - `9ce1826` phase 5ae
   - `0d9b21d` phase 5ad
   - `aa91ca5` phase 5ac
@@ -532,11 +551,12 @@ Status:
 - app bootstrap constructors moved into `bootstrap.rs`.
 - app path/dependency structs moved into `bootstrap.rs`.
 - shared constants/types/theme moved into `shared.rs`.
-- `mod.rs` is now mostly module root, app state struct, and run entrypoints.
+- run entrypoints moved into `runner.rs`.
+- `mod.rs` is now mostly module root + app state struct.
 
 Next sub-targets:
-- optional: extract remaining `run*` entrypoint glue from `mod.rs` if it improves readability
 - begin phase 6 boundary work for non-UI runtime logic
+- keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
 - keep behavior unchanged
