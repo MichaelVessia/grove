@@ -380,7 +380,10 @@ impl GroveApp {
             ),
         ];
 
-        if self.preview_agent_tab_is_focused() && self.can_start_selected_workspace() {
+        if self.preview_agent_tab_is_focused()
+            && !self.start_in_flight
+            && workspace_can_start_agent(self.state.selected_workspace())
+        {
             actions.push(Self::palette_action(
                 PALETTE_CMD_START_AGENT,
                 "Start Agent",
@@ -1777,7 +1780,7 @@ impl GroveApp {
             return;
         }
 
-        if !self.can_start_selected_workspace() {
+        if !workspace_can_start_agent(self.state.selected_workspace()) {
             self.show_toast("workspace cannot be started", true);
             return;
         }
@@ -3302,14 +3305,6 @@ impl GroveApp {
         self.sync_interactive_session_geometry();
         self.poll_preview();
         true
-    }
-
-    pub(super) fn can_start_selected_workspace(&self) -> bool {
-        if self.start_in_flight {
-            return false;
-        }
-
-        workspace_can_start_agent(self.state.selected_workspace())
     }
 
     pub(super) fn open_keybind_help(&mut self) {

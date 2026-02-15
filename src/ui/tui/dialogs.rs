@@ -1418,7 +1418,7 @@ impl GroveApp {
             self.show_toast("agent already running", true);
             return;
         }
-        if !self.can_start_selected_workspace() {
+        if !workspace_can_start_agent(Some(workspace)) {
             self.show_toast("workspace cannot be started", true);
             return;
         }
