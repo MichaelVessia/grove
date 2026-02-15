@@ -87,7 +87,7 @@ pub(crate) fn bootstrap_data(
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CommandGitAdapter {
     repo_root: Option<PathBuf>,
 }
@@ -122,12 +122,6 @@ impl CommandGitAdapter {
 
         String::from_utf8(output.stdout)
             .map_err(|error| GitAdapterError::InvalidUtf8(format!("stdout decode failed: {error}")))
-    }
-}
-
-impl Default for CommandGitAdapter {
-    fn default() -> Self {
-        Self { repo_root: None }
     }
 }
 
@@ -222,7 +216,7 @@ fn parse_zellij_running_sessions(output: &str) -> HashSet<String> {
         .collect()
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CommandSystemAdapter {
     repo_root: Option<PathBuf>,
 }
@@ -264,12 +258,6 @@ impl SystemAdapter for CommandSystemAdapter {
                     .and_then(|value| value.to_str().map(str::to_string))
             })
             .unwrap_or_else(|| "unknown".to_string())
-    }
-}
-
-impl Default for CommandSystemAdapter {
-    fn default() -> Self {
-        Self { repo_root: None }
     }
 }
 

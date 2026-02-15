@@ -1832,9 +1832,7 @@ fn project_paths_equal(left: &Path, right: &Path) -> bool {
 }
 
 fn ensure_current_repo_project(config: &mut GroveConfig, config_path: &Path) -> Option<String> {
-    let Some(repo_root) = current_repo_root() else {
-        return None;
-    };
+    let repo_root = current_repo_root()?;
 
     let already_present = config
         .projects
@@ -2012,6 +2010,15 @@ impl AppPaths {
     }
 }
 
+struct AppDependencies {
+    tmux_input: Box<dyn TmuxInput>,
+    clipboard: Box<dyn ClipboardAccess>,
+    paths: AppPaths,
+    multiplexer: MultiplexerKind,
+    event_log: Box<dyn EventLogger>,
+    debug_record_start_ts: Option<u64>,
+}
+
 struct GroveApp {
     repo_name: String,
     projects: Vec<ProjectConfig>,
@@ -2164,25 +2171,30 @@ impl GroveApp {
         Self::from_parts_with_clipboard_and_projects(
             bootstrap,
             projects,
-            tmux_input,
-            Box::new(SystemClipboardAccess::default()),
-            paths,
-            multiplexer,
-            event_log,
-            debug_record_start_ts,
+            AppDependencies {
+                tmux_input,
+                clipboard: Box::new(SystemClipboardAccess::default()),
+                paths,
+                multiplexer,
+                event_log,
+                debug_record_start_ts,
+            },
         )
     }
 
     fn from_parts_with_clipboard_and_projects(
         bootstrap: BootstrapData,
         projects: Vec<ProjectConfig>,
-        tmux_input: Box<dyn TmuxInput>,
-        clipboard: Box<dyn ClipboardAccess>,
-        paths: AppPaths,
-        multiplexer: MultiplexerKind,
-        event_log: Box<dyn EventLogger>,
-        debug_record_start_ts: Option<u64>,
+        dependencies: AppDependencies,
     ) -> Self {
+        let AppDependencies {
+            tmux_input,
+            clipboard,
+            paths,
+            multiplexer,
+            event_log,
+            debug_record_start_ts,
+        } = dependencies;
         let AppPaths {
             sidebar_ratio_path,
             config_path,
@@ -4524,11 +4536,11 @@ impl GroveApp {
                 }
             }
             KeyCode::Up => {
-                if let Some(dialog) = self.project_dialog.as_mut() {
-                    if dialog.selected_filtered_index > 0 {
-                        dialog.selected_filtered_index =
-                            dialog.selected_filtered_index.saturating_sub(1);
-                    }
+                if let Some(dialog) = self.project_dialog.as_mut()
+                    && dialog.selected_filtered_index > 0
+                {
+                    dialog.selected_filtered_index =
+                        dialog.selected_filtered_index.saturating_sub(1);
                 }
             }
             KeyCode::Down => {
@@ -9500,7 +9512,7 @@ mod tests {
         assert_row_bg, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
     };
     use super::{
-        AppPaths, ClipboardAccess, CommandZellijInput, CreateDialogField,
+        AppDependencies, AppPaths, ClipboardAccess, CommandZellijInput, CreateDialogField,
         CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, GroveApp, HIT_ID_HEADER,
         HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW,
         LaunchDialogField, LaunchDialogState, LivePreviewCapture, Msg, PALETTE_CMD_FOCUS_LIST,
@@ -9759,17 +9771,19 @@ mod tests {
         GroveApp::from_parts_with_clipboard_and_projects(
             fixture_bootstrap(WorkspaceStatus::Idle),
             fixture_projects(),
-            Box::new(RecordingTmuxInput {
-                commands: Rc::new(RefCell::new(Vec::new())),
-                captures: Rc::new(RefCell::new(Vec::new())),
-                cursor_captures: Rc::new(RefCell::new(Vec::new())),
-                calls: Rc::new(RefCell::new(Vec::new())),
-            }),
-            test_clipboard(),
-            AppPaths::new(sidebar_ratio_path, config_path),
-            MultiplexerKind::Tmux,
-            Box::new(NullEventLogger),
-            None,
+            AppDependencies {
+                tmux_input: Box::new(RecordingTmuxInput {
+                    commands: Rc::new(RefCell::new(Vec::new())),
+                    captures: Rc::new(RefCell::new(Vec::new())),
+                    cursor_captures: Rc::new(RefCell::new(Vec::new())),
+                    calls: Rc::new(RefCell::new(Vec::new())),
+                }),
+                clipboard: test_clipboard(),
+                paths: AppPaths::new(sidebar_ratio_path, config_path),
+                multiplexer: MultiplexerKind::Tmux,
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
         )
     }
 
@@ -9926,12 +9940,17 @@ mod tests {
             GroveApp::from_parts_with_clipboard_and_projects(
                 fixture_bootstrap(status),
                 fixture_projects(),
-                Box::new(tmux),
-                test_clipboard(),
-                AppPaths::new(sidebar_ratio_path, unique_config_path("fixture-with-tmux")),
-                MultiplexerKind::Tmux,
-                Box::new(NullEventLogger),
-                None,
+                AppDependencies {
+                    tmux_input: Box::new(tmux),
+                    clipboard: test_clipboard(),
+                    paths: AppPaths::new(
+                        sidebar_ratio_path,
+                        unique_config_path("fixture-with-tmux"),
+                    ),
+                    multiplexer: MultiplexerKind::Tmux,
+                    event_log: Box::new(NullEventLogger),
+                    debug_record_start_ts: None,
+                },
             ),
             commands,
             captures,
@@ -9960,12 +9979,17 @@ mod tests {
             GroveApp::from_parts_with_clipboard_and_projects(
                 fixture_bootstrap(status),
                 fixture_projects(),
-                Box::new(tmux),
-                test_clipboard(),
-                AppPaths::new(sidebar_ratio_path, unique_config_path("fixture-with-calls")),
-                MultiplexerKind::Tmux,
-                Box::new(NullEventLogger),
-                None,
+                AppDependencies {
+                    tmux_input: Box::new(tmux),
+                    clipboard: test_clipboard(),
+                    paths: AppPaths::new(
+                        sidebar_ratio_path,
+                        unique_config_path("fixture-with-calls"),
+                    ),
+                    multiplexer: MultiplexerKind::Tmux,
+                    event_log: Box::new(NullEventLogger),
+                    debug_record_start_ts: None,
+                },
             ),
             commands,
             captures,
@@ -9998,15 +10022,17 @@ mod tests {
             GroveApp::from_parts_with_clipboard_and_projects(
                 fixture_bootstrap(status),
                 fixture_projects(),
-                Box::new(tmux),
-                test_clipboard(),
-                AppPaths::new(
-                    sidebar_ratio_path,
-                    unique_config_path("fixture-with-events"),
-                ),
-                MultiplexerKind::Tmux,
-                Box::new(event_log),
-                None,
+                AppDependencies {
+                    tmux_input: Box::new(tmux),
+                    clipboard: test_clipboard(),
+                    paths: AppPaths::new(
+                        sidebar_ratio_path,
+                        unique_config_path("fixture-with-events"),
+                    ),
+                    multiplexer: MultiplexerKind::Tmux,
+                    event_log: Box::new(event_log),
+                    debug_record_start_ts: None,
+                },
             ),
             commands,
             captures,
@@ -10019,15 +10045,17 @@ mod tests {
         GroveApp::from_parts_with_clipboard_and_projects(
             fixture_bootstrap(status),
             fixture_projects(),
-            Box::new(BackgroundOnlyTmuxInput),
-            test_clipboard(),
-            AppPaths::new(
-                unique_sidebar_ratio_path("background"),
-                unique_config_path("background"),
-            ),
-            MultiplexerKind::Tmux,
-            Box::new(NullEventLogger),
-            None,
+            AppDependencies {
+                tmux_input: Box::new(BackgroundOnlyTmuxInput),
+                clipboard: test_clipboard(),
+                paths: AppPaths::new(
+                    unique_sidebar_ratio_path("background"),
+                    unique_config_path("background"),
+                ),
+                multiplexer: MultiplexerKind::Tmux,
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
         )
     }
 
