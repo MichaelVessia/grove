@@ -1,10 +1,13 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
     branches:
       - master
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,10 +18,13 @@ concurrency:
 
 jobs:
   release:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -45,4 +51,4 @@ jobs:
             dist/grove-linux-x86_64.tar.gz \
             dist/grove-linux-x86_64.tar.gz.sha256 \
             --title "Latest" \
-            --notes "Automated release from master at commit $GITHUB_SHA."
+            --notes "Automated release from master at commit ${{ github.event.workflow_run.head_sha }}."
