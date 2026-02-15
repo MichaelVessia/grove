@@ -1121,9 +1121,28 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 65)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6am, add typed launch execution outcome in `agent_runtime`
+- Commit: `1ca52aa`
+- Changes:
+  - added runtime outcome type and helper in `src/agent_runtime.rs`:
+    - `LaunchExecutionResult { workspace_name, workspace_path, session_name, result }`
+    - `execute_launch_request_with_result_for_mode(&LaunchRequest, MultiplexerKind, CommandExecutionMode) -> LaunchExecutionResult`
+  - updated UI callsites in `src/ui/tui/update.rs`:
+    - `start_selected_workspace_agent_with_options` now uses typed runtime launch outcome for both sync and background paths
+    - added local mapper `start_agent_completion_from_runtime` for `Msg::StartAgentCompleted` payload shaping
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `execute_launch_request_with_result_for_mode_includes_workspace_context`
+  - no behavior changes, launch lifecycle payload ownership move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 66)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree is clean after phase 6al commit.
+- Worktree is clean after phase 6am commit.
 - Recent refactor commits on local `master`:
+  - `1ca52aa` refactor(runtime): add typed launch execution outcome
+  - `a02eac1` docs(handoff): record phase 6al
   - `6a0da9e` refactor(runtime): stop sessions via workspace lifecycle helper
   - `d857df9` docs(handoff): record phase 6ak
   - `d9ef81a` refactor(runtime): build launch requests from workspace
@@ -1218,7 +1237,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move start-workspace execution context shaping into `agent_runtime` (workspace-name/path/session/result tuple), reducing duplicate completion payload construction in sync/background UI paths
+- next candidate: move stop-workspace completion payload shaping into a typed runtime helper (mirroring start path) so stop sync/background UI paths share one runtime-owned outcome model
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
