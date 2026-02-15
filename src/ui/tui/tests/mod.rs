@@ -25,9 +25,9 @@ use crate::application::workspace_lifecycle::{
     BranchMode, CreateWorkspaceRequest, CreateWorkspaceResult,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
-use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
 use crate::infrastructure::config::{MultiplexerKind, ProjectConfig};
+use crate::infrastructure::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
 use crate::ui::state::{PaneFocus, UiMode};
 use ftui::core::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,

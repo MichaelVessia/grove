@@ -6,7 +6,9 @@ use ftui::runtime::WidgetRefreshConfig;
 use ftui::{App, ScreenMode};
 use serde_json::Value;
 
-use crate::event_log::{Event as LogEvent, EventLogger, FileEventLogger, NullEventLogger};
+use crate::infrastructure::event_log::{
+    Event as LogEvent, EventLogger, FileEventLogger, NullEventLogger,
+};
 
 use super::GroveApp;
 

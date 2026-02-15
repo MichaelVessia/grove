@@ -60,9 +60,9 @@ use crate::application::workspace_lifecycle::{
     delete_workspace, workspace_lifecycle_error_message, write_workspace_agent_marker,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
-use crate::event_log::{Event as LogEvent, EventLogger};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
 use crate::infrastructure::config::{GroveConfig, MultiplexerKind, ProjectConfig};
+use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag, serialize_sidebar_ratio};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
 
