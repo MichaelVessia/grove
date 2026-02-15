@@ -79,6 +79,15 @@ pub struct LaunchPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShellLaunchRequest {
+    pub session_name: String,
+    pub workspace_path: PathBuf,
+    pub command: String,
+    pub capture_cols: Option<u16>,
+    pub capture_rows: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReconciliationResult {
     pub workspaces: Vec<Workspace>,
     pub orphaned_sessions: Vec<String>,
@@ -202,6 +211,36 @@ pub fn build_launch_plan(request: &LaunchRequest, multiplexer: MultiplexerKind) 
     match multiplexer {
         MultiplexerKind::Tmux => tmux_launch_plan(request, session_name, launch_agent_cmd),
         MultiplexerKind::Zellij => zellij_launch_plan(request, session_name, launch_agent_cmd),
+    }
+}
+
+pub fn build_shell_launch_plan(
+    request: &ShellLaunchRequest,
+    multiplexer: MultiplexerKind,
+) -> LaunchPlan {
+    let shared = LaunchRequest {
+        project_name: None,
+        workspace_name: request.session_name.clone(),
+        workspace_path: request.workspace_path.clone(),
+        agent: AgentType::Codex,
+        prompt: None,
+        pre_launch_command: None,
+        skip_permissions: false,
+        capture_cols: request.capture_cols,
+        capture_rows: request.capture_rows,
+    };
+
+    match multiplexer {
+        MultiplexerKind::Tmux => tmux_launch_plan(
+            &shared,
+            request.session_name.clone(),
+            request.command.clone(),
+        ),
+        MultiplexerKind::Zellij => zellij_launch_plan(
+            &shared,
+            request.session_name.clone(),
+            request.command.clone(),
+        ),
     }
 }
 

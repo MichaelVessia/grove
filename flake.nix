@@ -29,6 +29,7 @@
               gnused
               jq
               lefthook
+              lazygit
               openssl
               pkg-config
               ripgrep

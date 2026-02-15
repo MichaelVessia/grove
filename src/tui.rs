@@ -47,9 +47,10 @@ use crate::adapters::{
     DiscoveryState, MultiplexerAdapter, bootstrap_data,
 };
 use crate::agent_runtime::{
-    LaunchRequest, OutputDigest, SessionActivity, build_launch_plan,
-    detect_status_with_session_override, evaluate_capture_change, poll_interval,
-    session_name_for_workspace_in_project, stop_plan, zellij_capture_log_path, zellij_config_path,
+    LaunchRequest, OutputDigest, SessionActivity, ShellLaunchRequest, build_launch_plan,
+    build_shell_launch_plan, detect_status_with_session_override, evaluate_capture_change,
+    poll_interval, session_name_for_workspace_in_project, stop_plan, zellij_capture_log_path,
+    zellij_config_path,
 };
 use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -118,6 +119,7 @@ const MAX_PENDING_INPUT_TRACES: usize = 256;
 const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
 const TOAST_TICK_INTERVAL_MS: u64 = 100;
+const LAZYGIT_COMMAND: &str = "lazygit";
 const AGENT_ACTIVITY_WINDOW_FRAMES: usize = 6;
 const LOCAL_TYPING_SUPPRESS_MS: u64 = 400;
 
@@ -2271,6 +2273,8 @@ struct GroveApp {
     agent_activity_frames: VecDeque<bool>,
     workspace_status_digests: HashMap<String, OutputDigest>,
     workspace_output_changing: HashMap<String, bool>,
+    lazygit_ready_sessions: HashSet<String>,
+    lazygit_failed_sessions: HashSet<String>,
     viewport_width: u16,
     viewport_height: u16,
     sidebar_width_pct: u16,
@@ -2466,6 +2470,8 @@ impl GroveApp {
             agent_activity_frames: VecDeque::with_capacity(AGENT_ACTIVITY_WINDOW_FRAMES),
             workspace_status_digests: HashMap::new(),
             workspace_output_changing: HashMap::new(),
+            lazygit_ready_sessions: HashSet::new(),
+            lazygit_failed_sessions: HashSet::new(),
             viewport_width: 120,
             viewport_height: 40,
             sidebar_width_pct,
@@ -3189,23 +3195,13 @@ impl GroveApp {
 
         self.preview_tab = next_tab;
         self.clear_preview_selection();
-        if self.preview_tab == PreviewTab::Agent {
-            self.poll_preview();
+        if self.preview_tab == PreviewTab::Git
+            && let Some(workspace) = self.state.selected_workspace()
+        {
+            let session_name = Self::git_tab_session_name(workspace);
+            self.lazygit_failed_sessions.remove(&session_name);
         }
-    }
-
-    const fn workspace_status_label(status: WorkspaceStatus) -> &'static str {
-        match status {
-            WorkspaceStatus::Main => "main",
-            WorkspaceStatus::Idle => "idle",
-            WorkspaceStatus::Active => "active",
-            WorkspaceStatus::Thinking => "thinking",
-            WorkspaceStatus::Waiting => "waiting",
-            WorkspaceStatus::Done => "done",
-            WorkspaceStatus::Error => "error",
-            WorkspaceStatus::Unknown => "unknown",
-            WorkspaceStatus::Unsupported => "unsupported",
-        }
+        self.poll_preview();
     }
 
     fn selected_workspace_summary(&self) -> String {
@@ -3584,13 +3580,93 @@ impl GroveApp {
         Some((inner.width, output_height))
     }
 
+    fn git_tab_session_name(workspace: &Workspace) -> String {
+        format!("{}-git", Self::workspace_session_name(workspace))
+    }
+
+    fn ensure_lazygit_session_for_selected_workspace(&mut self) -> Option<String> {
+        let (workspace_path, session_name) = self.state.selected_workspace().map(|workspace| {
+            (
+                workspace.path.clone(),
+                Self::git_tab_session_name(workspace),
+            )
+        })?;
+
+        if self.lazygit_ready_sessions.contains(&session_name) {
+            return Some(session_name);
+        }
+        if self.lazygit_failed_sessions.contains(&session_name) {
+            return None;
+        }
+
+        let capture_cols = self
+            .preview_output_dimensions()
+            .map_or(self.viewport_width.saturating_sub(4), |(width, _)| width)
+            .max(80);
+        let capture_rows = self.viewport_height.saturating_sub(4).max(1);
+        let launch_request = ShellLaunchRequest {
+            session_name: session_name.clone(),
+            workspace_path,
+            command: LAZYGIT_COMMAND.to_string(),
+            capture_cols: Some(capture_cols),
+            capture_rows: Some(capture_rows),
+        };
+        let launch_plan = build_shell_launch_plan(&launch_request, self.multiplexer);
+
+        if let Some(script) = &launch_plan.launcher_script
+            && let Err(error) = fs::write(&script.path, &script.contents)
+        {
+            self.last_tmux_error = Some(format!("launcher script write failed: {error}"));
+            self.show_toast("lazygit launch failed", true);
+            self.lazygit_failed_sessions.insert(session_name);
+            return None;
+        }
+
+        for command in &launch_plan.pre_launch_cmds {
+            if let Err(error) = self.execute_tmux_command(command) {
+                self.last_tmux_error = Some(error.to_string());
+                self.show_toast("lazygit launch failed", true);
+                self.lazygit_failed_sessions.insert(session_name);
+                return None;
+            }
+        }
+        if let Err(error) = self.execute_tmux_command(&launch_plan.launch_cmd) {
+            self.last_tmux_error = Some(error.to_string());
+            self.show_toast("lazygit launch failed", true);
+            self.lazygit_failed_sessions.insert(session_name);
+            return None;
+        }
+
+        self.lazygit_failed_sessions.remove(&session_name);
+        self.lazygit_ready_sessions.insert(session_name.clone());
+        Some(session_name)
+    }
+
     fn selected_session_for_live_preview(&self) -> Option<(String, bool)> {
+        if self.preview_tab == PreviewTab::Git {
+            let workspace = self.state.selected_workspace()?;
+            let session_name = Self::git_tab_session_name(workspace);
+            if self.lazygit_ready_sessions.contains(&session_name) {
+                return Some((session_name, true));
+            }
+            return None;
+        }
+
         let workspace = self.state.selected_workspace()?;
         if workspace.status.has_session() {
             return Some((Self::workspace_session_name(workspace), true));
         }
 
         None
+    }
+
+    fn prepare_live_preview_session(&mut self) -> Option<(String, bool)> {
+        if self.preview_tab == PreviewTab::Git {
+            return self
+                .ensure_lazygit_session_for_selected_workspace()
+                .map(|session| (session, true));
+        }
+        self.selected_session_for_live_preview()
     }
 
     fn interactive_target_session(&self) -> Option<String> {
@@ -3928,6 +4004,7 @@ impl GroveApp {
                 let capture_error_indicates_missing_session =
                     Self::tmux_capture_error_indicates_missing_session(&message);
                 if capture_error_indicates_missing_session {
+                    self.lazygit_ready_sessions.remove(session_name);
                     if let Some(workspace) = self.state.selected_workspace_mut()
                         && Self::workspace_session_name(workspace) == session_name
                     {
@@ -4089,7 +4166,8 @@ impl GroveApp {
     }
 
     fn poll_preview_sync(&mut self) {
-        let live_preview = self.selected_session_for_live_preview();
+        let live_preview = self.prepare_live_preview_session();
+        let has_live_preview = live_preview.is_some();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = self.workspace_status_poll_targets(
             live_preview.as_ref().map(|(session, _)| session.as_str()),
@@ -4132,7 +4210,7 @@ impl GroveApp {
                 result,
             });
         }
-        if self.selected_session_for_live_preview().is_none() {
+        if !has_live_preview {
             self.refresh_preview_summary();
         }
 
@@ -4218,7 +4296,7 @@ impl GroveApp {
             return;
         }
 
-        let live_preview = self.selected_session_for_live_preview();
+        let live_preview = self.prepare_live_preview_session();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = self.workspace_status_poll_targets(
             live_preview.as_ref().map(|(session, _)| session.as_str()),
@@ -4253,6 +4331,7 @@ impl GroveApp {
             self.poll_generation = completion.generation;
         }
 
+        let had_live_capture = completion.live_capture.is_some();
         if let Some(live_capture) = completion.live_capture {
             self.apply_live_preview_capture(
                 &live_capture.session,
@@ -4269,7 +4348,7 @@ impl GroveApp {
         for status_capture in completion.workspace_status_captures {
             self.apply_workspace_status_capture(status_capture);
         }
-        if self.selected_session_for_live_preview().is_none() {
+        if !had_live_capture {
             self.refresh_preview_summary();
         }
 
@@ -4481,6 +4560,10 @@ impl GroveApp {
     }
 
     fn can_enter_interactive(&self) -> bool {
+        if self.preview_tab == PreviewTab::Git {
+            return self.state.selected_workspace().is_some();
+        }
+
         let Some(workspace) = self.state.selected_workspace() else {
             return false;
         };
@@ -4493,11 +4576,18 @@ impl GroveApp {
             return false;
         }
 
-        let Some(workspace) = self.state.selected_workspace() else {
-            return false;
+        let session_name = if self.preview_tab == PreviewTab::Git {
+            let Some((session_name, _)) = self.prepare_live_preview_session() else {
+                return false;
+            };
+            session_name
+        } else {
+            let Some(workspace) = self.state.selected_workspace() else {
+                return false;
+            };
+            Self::workspace_session_name(workspace)
         };
 
-        let session_name = Self::workspace_session_name(workspace);
         self.interactive = Some(InteractiveState::new(
             "%0".to_string(),
             session_name,
@@ -4969,6 +5059,8 @@ impl GroveApp {
 
         self.settings_dialog = None;
         self.interactive = None;
+        self.lazygit_ready_sessions.clear();
+        self.lazygit_failed_sessions.clear();
         self.refresh_workspaces(None);
         self.poll_preview();
         self.show_toast(format!("multiplexer set to {}", selected.label()), false);
@@ -8687,7 +8779,8 @@ impl GroveApp {
 
         let selected_workspace = self.state.selected_workspace();
         let selected_agent = selected_workspace.map(|workspace| workspace.agent);
-        let allow_cursor_overlay = selected_agent != Some(AgentType::Codex);
+        let allow_cursor_overlay =
+            self.preview_tab == PreviewTab::Git || selected_agent != Some(AgentType::Codex);
         let theme = ui_theme();
         let mut animated_labels: Vec<(String, AgentType, u16, u16)> = Vec::new();
         let selected_workspace_header = selected_workspace.map(|workspace| {
@@ -8818,14 +8911,12 @@ impl GroveApp {
             ));
         }
 
-        let mut visible_start = 0usize;
-        let mut visible_plain_lines = Vec::new();
+        let visible_range = self.preview_visible_range_for_height(preview_height);
+        let visible_start = visible_range.0;
+        let visible_end = visible_range.1;
+        let visible_plain_lines = self.preview_plain_lines_range(visible_start, visible_end);
         match self.preview_tab {
             PreviewTab::Agent => {
-                let visible_range = self.preview_visible_range_for_height(preview_height);
-                visible_start = visible_range.0;
-                let visible_end = visible_range.1;
-                visible_plain_lines = self.preview_plain_lines_range(visible_start, visible_end);
                 let mut visible_render_lines = if self.preview.render_lines.is_empty() {
                     Vec::new()
                 } else {
@@ -8866,48 +8957,55 @@ impl GroveApp {
                 }
             }
             PreviewTab::Git => {
-                if let Some(workspace) = selected_workspace {
-                    let base_branch = workspace.base_branch.as_deref().unwrap_or("-");
-                    let project_name = workspace.project_name.as_deref().unwrap_or("-");
-                    let project_path = workspace
-                        .project_path
-                        .as_ref()
-                        .map_or_else(|| "-".to_string(), |path| path.display().to_string());
-                    let age_label = self.relative_age_label(workspace.last_activity_unix_secs);
-                    let last_activity = if age_label.is_empty() {
-                        "unknown".to_string()
-                    } else {
-                        age_label
-                    };
-                    let session_state = if workspace.is_orphaned {
-                        "orphaned"
-                    } else if workspace.status.has_session() {
-                        "running"
-                    } else {
-                        "not running"
-                    };
-                    let lines = vec![
-                        format!("Branch: {}", workspace.branch),
-                        format!("Base branch: {base_branch}"),
-                        format!("Status: {}", Self::workspace_status_label(workspace.status)),
-                        format!("Session: {session_state}"),
-                        format!(
-                            "Main worktree: {}",
-                            if workspace.is_main { "yes" } else { "no" }
-                        ),
-                        format!("Project: {project_name}"),
-                        format!("Project path: {project_path}"),
-                        format!("Workspace path: {}", workspace.path.display()),
-                        format!("Last activity: {last_activity}"),
-                    ];
-                    text_lines.extend(lines.into_iter().take(preview_height).map(|line| {
-                        FtLine::from_spans(vec![FtSpan::styled(line, Style::new().fg(theme.text))])
-                    }));
+                let mut visible_render_lines = if self.preview.render_lines.is_empty() {
+                    Vec::new()
                 } else {
-                    text_lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                        "No workspace selected",
-                        Style::new().fg(theme.subtext0),
-                    )]));
+                    let render_start = visible_start.min(self.preview.render_lines.len());
+                    let render_end = visible_end.min(self.preview.render_lines.len());
+                    if render_start < render_end {
+                        self.preview.render_lines[render_start..render_end].to_vec()
+                    } else {
+                        Vec::new()
+                    }
+                };
+                if visible_render_lines.len() < visible_plain_lines.len() {
+                    visible_render_lines.extend(
+                        visible_plain_lines[visible_render_lines.len()..]
+                            .iter()
+                            .cloned(),
+                    );
+                }
+                if visible_render_lines.is_empty() && !visible_plain_lines.is_empty() {
+                    visible_render_lines = visible_plain_lines.clone();
+                }
+                if allow_cursor_overlay {
+                    self.apply_interactive_cursor_overlay_render(
+                        &visible_plain_lines,
+                        &mut visible_render_lines,
+                        preview_height,
+                    );
+                }
+
+                if visible_render_lines.is_empty() {
+                    let fallback = if let Some(workspace) = selected_workspace {
+                        let session_name = Self::git_tab_session_name(workspace);
+                        if self.lazygit_failed_sessions.contains(&session_name) {
+                            "(lazygit launch failed)"
+                        } else if self.lazygit_ready_sessions.contains(&session_name) {
+                            "(no lazygit output yet)"
+                        } else {
+                            "(launching lazygit...)"
+                        }
+                    } else {
+                        "(no workspace selected)"
+                    };
+                    text_lines.push(FtLine::raw(fallback.to_string()));
+                } else {
+                    text_lines.extend(
+                        visible_render_lines
+                            .iter()
+                            .map(|line| ansi_line_to_styled_line(line)),
+                    );
                 }
             }
         }
@@ -15600,7 +15698,7 @@ mod tests {
     }
 
     #[test]
-    fn git_tab_renders_git_details() {
+    fn git_tab_renders_lazygit_placeholder_and_launches_session() {
         let mut app = fixture_app();
         ftui::Model::update(
             &mut app,
@@ -15624,8 +15722,98 @@ mod tests {
 
             assert!(tabs_line.contains("Agent"));
             assert!(tabs_line.contains("Git"));
-            assert!(output_line.contains("Branch:"));
+            assert!(output_line.contains("lazygit"));
         });
+    }
+
+    #[test]
+    fn git_tab_launches_lazygit_with_dedicated_tmux_session() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+
+        assert_eq!(
+            commands.borrow().as_slice(),
+            &[
+                vec![
+                    "tmux".to_string(),
+                    "new-session".to_string(),
+                    "-d".to_string(),
+                    "-s".to_string(),
+                    "grove-ws-grove-git".to_string(),
+                    "-c".to_string(),
+                    "/repos/grove".to_string(),
+                ],
+                vec![
+                    "tmux".to_string(),
+                    "set-option".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-grove-git".to_string(),
+                    "history-limit".to_string(),
+                    "10000".to_string(),
+                ],
+                vec![
+                    "tmux".to_string(),
+                    "send-keys".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-grove-git".to_string(),
+                    "lazygit".to_string(),
+                    "Enter".to_string(),
+                ],
+            ]
+        );
+    }
+
+    #[test]
+    fn git_tab_launches_lazygit_with_zellij_session_plan() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+        app.multiplexer = MultiplexerKind::Zellij;
+
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+
+        let command_lines: Vec<String> = commands
+            .borrow()
+            .iter()
+            .map(|command| command.join(" "))
+            .collect();
+
+        assert!(
+            command_lines
+                .iter()
+                .any(|line| line.contains("kill-session 'grove-ws-grove-git'"))
+        );
+        assert!(
+            command_lines
+                .iter()
+                .any(|line| line.contains("--session grove-ws-grove-git run"))
+        );
+        assert!(
+            command_lines
+                .iter()
+                .any(|line| line.contains("script -qefc 'lazygit'"))
+        );
+    }
+
+    #[test]
+    fn enter_on_git_tab_attaches_to_lazygit_session() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+
+        assert_eq!(
+            app.interactive
+                .as_ref()
+                .map(|state| state.target_session.as_str()),
+            Some("grove-ws-grove-git")
+        );
+        assert_eq!(app.mode_label(), "Interactive");
     }
 
     #[test]
