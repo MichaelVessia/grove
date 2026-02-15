@@ -5070,7 +5070,10 @@ impl GroveApp {
         };
 
         if dialog.multiplexer != self.multiplexer && self.has_running_workspace_sessions() {
-            self.show_toast("stop running workspaces before switching multiplexer", true);
+            self.show_toast(
+                "restart running workspaces before switching multiplexer",
+                true,
+            );
             return;
         }
 
@@ -5119,28 +5122,22 @@ impl GroveApp {
             }
             KeyCode::Left | KeyCode::Char('h') => {
                 if dialog.focused_field == SettingsDialogField::Multiplexer {
-                    dialog.multiplexer = MultiplexerKind::Tmux;
+                    dialog.multiplexer = dialog.multiplexer.previous();
                 }
             }
             KeyCode::Right | KeyCode::Char('l') => {
                 if dialog.focused_field == SettingsDialogField::Multiplexer {
-                    dialog.multiplexer = MultiplexerKind::Zellij;
+                    dialog.multiplexer = dialog.multiplexer.next();
                 }
             }
             KeyCode::Char(' ') => {
                 if dialog.focused_field == SettingsDialogField::Multiplexer {
-                    dialog.multiplexer = match dialog.multiplexer {
-                        MultiplexerKind::Tmux => MultiplexerKind::Zellij,
-                        MultiplexerKind::Zellij => MultiplexerKind::Tmux,
-                    };
+                    dialog.multiplexer = dialog.multiplexer.next();
                 }
             }
             KeyCode::Enter => match dialog.focused_field {
                 SettingsDialogField::Multiplexer => {
-                    dialog.multiplexer = match dialog.multiplexer {
-                        MultiplexerKind::Tmux => MultiplexerKind::Zellij,
-                        MultiplexerKind::Zellij => MultiplexerKind::Tmux,
-                    };
+                    dialog.multiplexer = dialog.multiplexer.next();
                 }
                 SettingsDialogField::SaveButton => post_action = PostAction::Save,
                 SettingsDialogField::CancelButton => post_action = PostAction::Cancel,
@@ -9361,7 +9358,14 @@ impl GroveApp {
                 theme.text,
             ),
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("  h/l, Left/Right, Space toggles", content_width),
+                pad_or_truncate_to_display_width("  h/l, Left/Right, Space cycles", content_width),
+                Style::new().fg(theme.overlay0),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "  Switching requires restarting running workspaces",
+                    content_width,
+                ),
                 Style::new().fg(theme.overlay0),
             )]),
             FtLine::raw(""),
@@ -11797,6 +11801,46 @@ mod tests {
     }
 
     #[test]
+    fn settings_dialog_multiplexer_cycles_with_h_and_l() {
+        let mut app = fixture_app();
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
+        assert!(app.settings_dialog.is_some());
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press));
+        assert_eq!(
+            app.settings_dialog
+                .as_ref()
+                .map(|dialog| dialog.multiplexer),
+            Some(MultiplexerKind::Zellij)
+        );
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press));
+        assert_eq!(
+            app.settings_dialog
+                .as_ref()
+                .map(|dialog| dialog.multiplexer),
+            Some(MultiplexerKind::Tmux)
+        );
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press));
+        assert_eq!(
+            app.settings_dialog
+                .as_ref()
+                .map(|dialog| dialog.multiplexer),
+            Some(MultiplexerKind::Zellij)
+        );
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press));
+        assert_eq!(
+            app.settings_dialog
+                .as_ref()
+                .map(|dialog| dialog.multiplexer),
+            Some(MultiplexerKind::Tmux)
+        );
+    }
+
+    #[test]
     fn settings_dialog_blocks_switch_when_workspace_running() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -11811,7 +11855,7 @@ mod tests {
 
         assert!(app.settings_dialog.is_some());
         assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
-        assert!(app.status_bar_line().contains("stop running workspaces"));
+        assert!(app.status_bar_line().contains("restart running workspaces"));
     }
 
     #[test]

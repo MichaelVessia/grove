@@ -18,6 +18,20 @@ impl MultiplexerKind {
             Self::Zellij => "zellij",
         }
     }
+
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Tmux => Self::Zellij,
+            Self::Zellij => Self::Tmux,
+        }
+    }
+
+    pub const fn previous(self) -> Self {
+        match self {
+            Self::Tmux => Self::Zellij,
+            Self::Zellij => Self::Tmux,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
