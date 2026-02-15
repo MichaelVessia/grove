@@ -16,9 +16,7 @@ use ftui::core::keybinding::{
     AppState as KeybindingAppState, SequenceConfig as KeySequenceConfig,
 };
 use ftui::layout::{Constraint, Flex};
-use ftui::render::budget::FrameBudgetConfig;
 use ftui::render::frame::{Frame, HitGrid, HitId, HitRegion as FrameHitRegion};
-use ftui::runtime::WidgetRefreshConfig;
 use ftui::text::{
     Line as FtLine, Span as FtSpan, Text as FtText, display_width as text_display_width,
 };
@@ -34,7 +32,7 @@ use ftui::widgets::notification_queue::{
 };
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::toast::{Toast, ToastIcon, ToastPosition, ToastStyle};
-use ftui::{App, Cmd, Model, PackedRgba, ScreenMode, Style};
+use ftui::{Cmd, Model, PackedRgba, Style};
 use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
 use serde_json::Value;
 
@@ -46,7 +44,7 @@ use crate::agent_runtime::{
 };
 use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
-use crate::event_log::{Event as LogEvent, EventLogger, FileEventLogger, NullEventLogger};
+use crate::event_log::{Event as LogEvent, EventLogger};
 #[cfg(test)]
 use crate::interactive::render_cursor_overlay;
 use crate::interactive::{
@@ -82,6 +80,8 @@ use msg::*;
 mod logging;
 mod selection;
 use selection::{TextSelectionPoint, TextSelectionState};
+mod runner;
+pub use runner::{run, run_with_debug_record, run_with_event_log};
 mod shared;
 use shared::*;
 mod text;
@@ -172,52 +172,6 @@ impl Model for GroveApp {
     fn view(&self, frame: &mut Frame) {
         self.render_model(frame);
     }
-}
-
-pub fn run() -> std::io::Result<()> {
-    run_with_event_log(None)
-}
-
-pub fn run_with_event_log(event_log_path: Option<PathBuf>) -> std::io::Result<()> {
-    run_with_logger(event_log_path, None)
-}
-
-pub fn run_with_debug_record(event_log_path: PathBuf, app_start_ts: u64) -> std::io::Result<()> {
-    run_with_logger(Some(event_log_path), Some(app_start_ts))
-}
-
-fn run_with_logger(
-    event_log_path: Option<PathBuf>,
-    debug_record_start_ts: Option<u64>,
-) -> std::io::Result<()> {
-    let event_log: Box<dyn EventLogger> = if let Some(path) = event_log_path {
-        Box::new(FileEventLogger::open(&path)?)
-    } else {
-        Box::new(NullEventLogger)
-    };
-
-    if let Some(app_start_ts) = debug_record_start_ts {
-        event_log.log(
-            LogEvent::new("debug_record", "started")
-                .with_data("app_start_ts", Value::from(app_start_ts)),
-        );
-    }
-
-    let app = if let Some(app_start_ts) = debug_record_start_ts {
-        GroveApp::new_with_debug_recorder(event_log, app_start_ts)
-    } else {
-        GroveApp::new_with_event_logger(event_log)
-    };
-
-    App::new(app)
-        .screen_mode(ScreenMode::AltScreen)
-        .with_mouse()
-        .with_budget(FrameBudgetConfig::strict(Duration::from_millis(250)))
-        .with_widget_refresh(WidgetRefreshConfig {
-            enabled: false,
-            ..WidgetRefreshConfig::default()
-        })
-        .run()
 }
 
 #[cfg(test)]
