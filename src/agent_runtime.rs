@@ -236,6 +236,15 @@ pub fn live_preview_session_for_tab(
     live_preview_agent_session(workspace)
 }
 
+pub fn live_preview_capture_target_for_tab(
+    workspace: Option<&Workspace>,
+    preview_tab_is_git: bool,
+    ready_sessions: &HashSet<String>,
+) -> Option<(String, bool)> {
+    let session = live_preview_session_for_tab(workspace, preview_tab_is_git, ready_sessions)?;
+    Some((session, true))
+}
+
 pub fn workspace_status_session_target(
     workspace: &Workspace,
     multiplexer: MultiplexerKind,
