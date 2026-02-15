@@ -11,9 +11,9 @@ use super::{
     git_session_name_for_workspace, live_preview_agent_session, normalized_agent_command_override,
     poll_interval, reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace,
     session_name_for_workspace_ref, stop_plan, strip_mouse_fragments,
-    tmux_capture_error_indicates_missing_session, workspace_should_poll_status,
-    workspace_status_session_target, zellij_capture_log_path, zellij_capture_log_path_in,
-    zellij_config_path,
+    tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
+    workspace_should_poll_status, workspace_status_session_target, zellij_capture_log_path,
+    zellij_capture_log_path_in, zellij_config_path,
 };
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -142,6 +142,24 @@ fn workspace_status_session_target_skips_selected_live_session() {
         ),
         None
     );
+}
+
+#[test]
+fn workspace_can_enter_interactive_depends_on_preview_tab_mode() {
+    let idle_workspace = fixture_workspace("feature", false);
+    assert!(!workspace_can_enter_interactive(
+        Some(&idle_workspace),
+        false
+    ));
+    assert!(workspace_can_enter_interactive(Some(&idle_workspace), true));
+    assert!(!workspace_can_enter_interactive(None, false));
+
+    let mut active_workspace = fixture_workspace("feature", false);
+    active_workspace.status = WorkspaceStatus::Active;
+    assert!(workspace_can_enter_interactive(
+        Some(&active_workspace),
+        false
+    ));
 }
 
 #[test]

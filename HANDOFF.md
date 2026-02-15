@@ -581,7 +581,7 @@
   - `cargo test --lib` (pass, 283)
 
 ### Phase 6f, remove UI wrapper for workspace session naming
-- Commit: uncommitted (worktree changes)
+- Commit: `a9c50a6`
 - Changes:
   - removed `workspace_session_name` wrapper from `src/ui/tui/update.rs`
   - replaced call sites with direct runtime boundary call `session_name_for_workspace_ref(workspace)`
@@ -589,11 +589,30 @@
 - Gates:
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6g, centralize interactive-entry eligibility policy in `agent_runtime`
+- Commit: uncommitted (worktree changes)
+- Changes:
+  - added `workspace_can_enter_interactive(Option<&Workspace>, bool) -> bool` in `src/agent_runtime.rs`
+    - runtime now owns git-tab vs agent-session eligibility policy for interactive entry
+  - updated UI callers in `src/ui/tui/update.rs`:
+    - `can_enter_interactive` now delegates to runtime helper
+    - agent-tab path in `enter_interactive` now uses `live_preview_agent_session`
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `workspace_can_enter_interactive_depends_on_preview_tab_mode`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 37)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree has uncommitted phase 6f changes:
-  - `HANDOFF.md`
+- Worktree has uncommitted phase 6g changes:
+  - `src/agent_runtime.rs`
+  - `src/agent_runtime/tests.rs`
+  - `src/ui/tui/mod.rs`
   - `src/ui/tui/update.rs`
 - Recent refactor commits on local `master`:
+  - `a9c50a6` phase 6f
   - `19b5ecd` phase 6e
   - `87bb133` phase 6d
   - `3b365f0` phase 6c

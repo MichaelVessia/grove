@@ -176,6 +176,17 @@ pub fn live_preview_agent_session(workspace: Option<&Workspace>) -> Option<Strin
     Some(session_name_for_workspace_ref(workspace))
 }
 
+pub fn workspace_can_enter_interactive(
+    workspace: Option<&Workspace>,
+    preview_tab_is_git: bool,
+) -> bool {
+    if preview_tab_is_git {
+        return workspace.is_some();
+    }
+
+    live_preview_agent_session(workspace).is_some()
+}
+
 pub fn workspace_status_session_target(
     workspace: &Workspace,
     multiplexer: MultiplexerKind,

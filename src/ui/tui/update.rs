@@ -3302,15 +3302,10 @@ impl GroveApp {
     }
 
     pub(super) fn can_enter_interactive(&self) -> bool {
-        if self.preview_tab == PreviewTab::Git {
-            return self.state.selected_workspace().is_some();
-        }
-
-        let Some(workspace) = self.state.selected_workspace() else {
-            return false;
-        };
-
-        workspace.status.has_session()
+        workspace_can_enter_interactive(
+            self.state.selected_workspace(),
+            self.preview_tab == PreviewTab::Git,
+        )
     }
 
     pub(super) fn enter_interactive(&mut self, now: Instant) -> bool {
@@ -3324,10 +3319,11 @@ impl GroveApp {
             };
             session_name
         } else {
-            let Some(workspace) = self.state.selected_workspace() else {
+            let Some(session_name) = live_preview_agent_session(self.state.selected_workspace())
+            else {
                 return false;
             };
-            session_name_for_workspace_ref(workspace)
+            session_name
         };
 
         self.interactive = Some(InteractiveState::new(
