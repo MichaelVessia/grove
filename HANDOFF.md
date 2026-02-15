@@ -713,9 +713,27 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 45)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6o, introduce typed live-preview poll target in `agent_runtime`
+- Commit: `a3a13bf`
+- Changes:
+  - added runtime type in `src/agent_runtime.rs`:
+    - `LivePreviewTarget { session_name, include_escape_sequences }`
+  - updated runtime helper in `src/agent_runtime.rs`:
+    - `live_preview_capture_target_for_tab` now returns `Option<LivePreviewTarget>`
+  - updated UI callers in `src/ui/tui/update.rs`:
+    - `selected_session_for_live_preview`, `prepare_live_preview_session`, sync/async poll wiring, and interactive-entry git path now use `LivePreviewTarget` instead of tuple plumbing
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - updated focused runtime test in `src/agent_runtime/tests.rs`:
+    - `live_preview_capture_target_for_tab_sets_capture_mode` now asserts typed target
+  - no behavior changes, type ownership/boundary cleanup only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 45)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `a3a13bf` phase 6o
   - `843f3c2` phase 6n
   - `0da752e` phase 6m
   - `7e3f610` phase 6l
@@ -780,7 +798,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move live-preview poll-target type ownership from `ui/tui` to `agent_runtime` (parallel to `WorkspaceStatusTarget`) and remove tuple-based plumbing
+- next candidate: move remaining live-preview orchestration glue from `ui/tui/update.rs` to runtime boundary helpers (selected-live-session extraction + status-target exclusion inputs), while keeping lazygit launch orchestration local
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
