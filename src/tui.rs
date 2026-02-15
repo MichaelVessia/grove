@@ -29,6 +29,7 @@ use ftui::text::{
 use ftui::widgets::Widget;
 use ftui::widgets::block::{Alignment as BlockAlignment, Block};
 use ftui::widgets::borders::Borders;
+use ftui::widgets::command_palette::{ActionItem as PaletteActionItem, CommandPalette, PaletteAction};
 use ftui::widgets::modal::{BackdropConfig, Modal, ModalSizeConstraints};
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::status_line::{StatusItem, StatusLine};
@@ -83,6 +84,25 @@ const HIT_ID_LAUNCH_DIALOG: u32 = 8;
 const HIT_ID_DELETE_DIALOG: u32 = 9;
 const HIT_ID_KEYBIND_HELP_DIALOG: u32 = 10;
 const HIT_ID_SETTINGS_DIALOG: u32 = 11;
+const PALETTE_CMD_TOGGLE_FOCUS: &str = "palette:toggle_focus";
+const PALETTE_CMD_OPEN_PREVIEW: &str = "palette:open_preview";
+const PALETTE_CMD_ENTER_INTERACTIVE: &str = "palette:enter_interactive";
+const PALETTE_CMD_FOCUS_LIST: &str = "palette:focus_list";
+const PALETTE_CMD_MOVE_SELECTION_UP: &str = "palette:move_selection_up";
+const PALETTE_CMD_MOVE_SELECTION_DOWN: &str = "palette:move_selection_down";
+const PALETTE_CMD_SCROLL_UP: &str = "palette:scroll_up";
+const PALETTE_CMD_SCROLL_DOWN: &str = "palette:scroll_down";
+const PALETTE_CMD_PAGE_UP: &str = "palette:page_up";
+const PALETTE_CMD_PAGE_DOWN: &str = "palette:page_down";
+const PALETTE_CMD_SCROLL_BOTTOM: &str = "palette:scroll_bottom";
+const PALETTE_CMD_NEW_WORKSPACE: &str = "palette:new_workspace";
+const PALETTE_CMD_START_AGENT: &str = "palette:start_agent";
+const PALETTE_CMD_STOP_AGENT: &str = "palette:stop_agent";
+const PALETTE_CMD_DELETE_WORKSPACE: &str = "palette:delete_workspace";
+const PALETTE_CMD_OPEN_SETTINGS: &str = "palette:open_settings";
+const PALETTE_CMD_TOGGLE_UNSAFE: &str = "palette:toggle_unsafe";
+const PALETTE_CMD_OPEN_HELP: &str = "palette:open_help";
+const PALETTE_CMD_QUIT: &str = "palette:quit";
 const MAX_PENDING_INPUT_TRACES: usize = 256;
 const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
@@ -1788,6 +1808,7 @@ struct GroveApp {
     create_dialog: Option<CreateDialogState>,
     settings_dialog: Option<SettingsDialogState>,
     keybind_help_open: bool,
+    command_palette: CommandPalette,
     create_branch_all: Vec<String>,
     create_branch_filtered: Vec<String>,
     create_branch_index: usize,
@@ -1919,6 +1940,7 @@ impl GroveApp {
             create_dialog: None,
             settings_dialog: None,
             keybind_help_open: false,
+            command_palette: CommandPalette::new().with_max_visible(12),
             create_branch_all: Vec::new(),
             create_branch_filtered: Vec::new(),
             create_branch_index: 0,
@@ -2607,6 +2629,9 @@ impl GroveApp {
     }
 
     fn keybind_hints_line(&self) -> &'static str {
+        if self.command_palette.is_visible() {
+            return "Type to search, Up/Down choose, Enter run, Esc close";
+        }
         if self.keybind_help_open {
             return "Esc/? close help";
         }
@@ -2626,10 +2651,10 @@ impl GroveApp {
             return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
         }
         if self.state.mode == UiMode::Preview {
-            return "j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, s start, x stop, D delete, S settings, ? help, q quit";
+            return "j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
         }
 
-        "j/k move, h/l pane, Enter open, n new, s start, x stop, D delete, S settings, ? help, q quit"
+        "j/k move, h/l pane, Enter open, n new, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit"
     }
 
     fn selected_workspace_summary(&self) -> String {
@@ -2691,12 +2716,289 @@ impl GroveApp {
         .join("\n")
     }
 
-    fn modal_open(&self) -> bool {
+    fn has_non_palette_modal_open(&self) -> bool {
         self.launch_dialog.is_some()
             || self.create_dialog.is_some()
             || self.delete_dialog.is_some()
             || self.settings_dialog.is_some()
             || self.keybind_help_open
+    }
+
+    fn can_open_command_palette(&self) -> bool {
+        !self.has_non_palette_modal_open() && self.interactive.is_none()
+    }
+
+    fn palette_action(
+        id: &'static str,
+        title: &'static str,
+        description: &'static str,
+        tags: &[&str],
+        category: &'static str,
+    ) -> PaletteActionItem {
+        PaletteActionItem::new(id, title)
+            .with_description(description)
+            .with_tags(tags)
+            .with_category(category)
+    }
+
+    fn build_command_palette_actions(&self) -> Vec<PaletteActionItem> {
+        let mut actions: Vec<PaletteActionItem> = vec![
+            Self::palette_action(
+                PALETTE_CMD_TOGGLE_FOCUS,
+                "Toggle Pane Focus",
+                "Switch focus between workspace list and preview (Tab)",
+                &["tab", "focus", "pane"],
+                "Navigation",
+            ),
+            Self::palette_action(
+                PALETTE_CMD_NEW_WORKSPACE,
+                "New Workspace",
+                "Open workspace creation dialog (n)",
+                &["new", "workspace", "create", "n"],
+                "Workspace",
+            ),
+            Self::palette_action(
+                PALETTE_CMD_OPEN_SETTINGS,
+                "Settings",
+                "Open settings dialog (S)",
+                &["settings", "multiplexer", "S"],
+                "Workspace",
+            ),
+            Self::palette_action(
+                PALETTE_CMD_TOGGLE_UNSAFE,
+                "Toggle Unsafe Launch",
+                "Toggle launch skip-permissions default (!)",
+                &["unsafe", "permissions", "!"],
+                "Workspace",
+            ),
+            Self::palette_action(
+                PALETTE_CMD_OPEN_HELP,
+                "Keybind Help",
+                "Open keyboard shortcut help (?)",
+                &["help", "shortcuts", "?"],
+                "System",
+            ),
+            Self::palette_action(
+                PALETTE_CMD_QUIT,
+                "Quit Grove",
+                "Exit application (q)",
+                &["quit", "exit", "q"],
+                "System",
+            ),
+        ];
+
+        if self.can_start_selected_workspace() {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_START_AGENT,
+                "Start Agent",
+                "Open start-agent dialog for selected workspace (s)",
+                &["start", "agent", "workspace", "s"],
+                "Workspace",
+            ));
+        }
+
+        if self.can_stop_selected_workspace() {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_STOP_AGENT,
+                "Stop Agent",
+                "Stop selected workspace agent (x)",
+                &["stop", "agent", "workspace", "x"],
+                "Workspace",
+            ));
+        }
+
+        if !self.delete_in_flight
+            && self
+                .state
+                .selected_workspace()
+                .is_some_and(|workspace| !workspace.is_main)
+        {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_DELETE_WORKSPACE,
+                "Delete Workspace",
+                "Open delete dialog for selected workspace (D)",
+                &["delete", "workspace", "worktree", "D"],
+                "Workspace",
+            ));
+        }
+
+        if self.state.focus == PaneFocus::WorkspaceList {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_MOVE_SELECTION_UP,
+                "Select Previous Workspace",
+                "Move workspace selection up (k / Up)",
+                &["up", "previous", "workspace", "k"],
+                "List",
+            ));
+            actions.push(Self::palette_action(
+                PALETTE_CMD_MOVE_SELECTION_DOWN,
+                "Select Next Workspace",
+                "Move workspace selection down (j / Down)",
+                &["down", "next", "workspace", "j"],
+                "List",
+            ));
+            actions.push(Self::palette_action(
+                PALETTE_CMD_OPEN_PREVIEW,
+                "Open Preview",
+                "Focus preview pane for selected workspace (Enter/l)",
+                &["open", "preview", "enter", "l"],
+                "List",
+            ));
+        } else {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_FOCUS_LIST,
+                "Focus Workspace List",
+                "Return focus to workspace list (h/Esc)",
+                &["list", "focus", "h", "esc"],
+                "Navigation",
+            ));
+            if self.can_enter_interactive() {
+                actions.push(Self::palette_action(
+                    PALETTE_CMD_ENTER_INTERACTIVE,
+                    "Enter Interactive Mode",
+                    "Attach to selected workspace session (Enter)",
+                    &["interactive", "attach", "enter"],
+                    "Preview",
+                ));
+            }
+        }
+
+        if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_SCROLL_UP,
+                "Scroll Up",
+                "Scroll preview output up (k / Up)",
+                &["scroll", "up", "k"],
+                "Preview",
+            ));
+            actions.push(Self::palette_action(
+                PALETTE_CMD_SCROLL_DOWN,
+                "Scroll Down",
+                "Scroll preview output down (j / Down)",
+                &["scroll", "down", "j"],
+                "Preview",
+            ));
+            actions.push(Self::palette_action(
+                PALETTE_CMD_PAGE_UP,
+                "Page Up",
+                "Scroll preview up by one page (PgUp)",
+                &["pageup", "pgup", "scroll"],
+                "Preview",
+            ));
+            actions.push(Self::palette_action(
+                PALETTE_CMD_PAGE_DOWN,
+                "Page Down",
+                "Scroll preview down by one page (PgDn)",
+                &["pagedown", "pgdn", "scroll"],
+                "Preview",
+            ));
+            actions.push(Self::palette_action(
+                PALETTE_CMD_SCROLL_BOTTOM,
+                "Jump To Bottom",
+                "Jump preview output to bottom (G)",
+                &["bottom", "latest", "G"],
+                "Preview",
+            ));
+        }
+
+        actions
+    }
+
+    fn refresh_command_palette_actions(&mut self) {
+        self.command_palette
+            .replace_actions(self.build_command_palette_actions());
+    }
+
+    fn open_command_palette(&mut self) {
+        if !self.can_open_command_palette() {
+            return;
+        }
+
+        self.refresh_command_palette_actions();
+        self.command_palette.open();
+    }
+
+    fn execute_command_palette_action(&mut self, id: &str) -> bool {
+        match id {
+            PALETTE_CMD_TOGGLE_FOCUS => {
+                reduce(&mut self.state, Action::ToggleFocus);
+                false
+            }
+            PALETTE_CMD_OPEN_PREVIEW => {
+                self.enter_preview_or_interactive();
+                false
+            }
+            PALETTE_CMD_ENTER_INTERACTIVE => {
+                self.enter_interactive(Instant::now());
+                false
+            }
+            PALETTE_CMD_FOCUS_LIST => {
+                reduce(&mut self.state, Action::EnterListMode);
+                false
+            }
+            PALETTE_CMD_MOVE_SELECTION_UP => {
+                self.move_selection(Action::MoveSelectionUp);
+                false
+            }
+            PALETTE_CMD_MOVE_SELECTION_DOWN => {
+                self.move_selection(Action::MoveSelectionDown);
+                false
+            }
+            PALETTE_CMD_SCROLL_UP => {
+                self.scroll_preview(-1);
+                false
+            }
+            PALETTE_CMD_SCROLL_DOWN => {
+                self.scroll_preview(1);
+                false
+            }
+            PALETTE_CMD_PAGE_UP => {
+                self.scroll_preview(-5);
+                false
+            }
+            PALETTE_CMD_PAGE_DOWN => {
+                self.scroll_preview(5);
+                false
+            }
+            PALETTE_CMD_SCROLL_BOTTOM => {
+                self.jump_preview_to_bottom();
+                false
+            }
+            PALETTE_CMD_NEW_WORKSPACE => {
+                self.open_create_dialog();
+                false
+            }
+            PALETTE_CMD_START_AGENT => {
+                self.open_start_dialog();
+                false
+            }
+            PALETTE_CMD_STOP_AGENT => {
+                self.stop_selected_workspace_agent();
+                false
+            }
+            PALETTE_CMD_DELETE_WORKSPACE => {
+                self.open_delete_dialog();
+                false
+            }
+            PALETTE_CMD_OPEN_SETTINGS => {
+                self.open_settings_dialog();
+                false
+            }
+            PALETTE_CMD_TOGGLE_UNSAFE => {
+                self.launch_skip_permissions = !self.launch_skip_permissions;
+                false
+            }
+            PALETTE_CMD_OPEN_HELP => {
+                self.open_keybind_help();
+                false
+            }
+            PALETTE_CMD_QUIT => true,
+            _ => false,
+        }
+    }
+
+    fn modal_open(&self) -> bool {
+        self.has_non_palette_modal_open() || self.command_palette.is_visible()
     }
 
     fn refresh_preview_summary(&mut self) {
@@ -3472,6 +3774,16 @@ impl GroveApp {
             key_event.code,
             KeyCode::Char('q')
                 if key_event.kind == KeyEventKind::Press && key_event.modifiers.is_empty()
+        )
+    }
+
+    fn is_ctrl_char_key(key_event: &KeyEvent, character: char) -> bool {
+        matches!(
+            key_event.code,
+            KeyCode::Char(value)
+                if value == character
+                    && key_event.kind == KeyEventKind::Press
+                    && key_event.modifiers == Modifiers::CTRL
         )
     }
 
@@ -5472,15 +5784,17 @@ impl GroveApp {
         send_cmd
     }
 
+    fn enter_preview_or_interactive(&mut self) {
+        if !self.enter_interactive(Instant::now()) {
+            reduce(&mut self.state, Action::EnterPreviewMode);
+            self.poll_preview();
+        }
+    }
+
     fn handle_non_interactive_key(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Tab => reduce(&mut self.state, Action::ToggleFocus),
-            KeyCode::Enter => {
-                if !self.enter_interactive(Instant::now()) {
-                    reduce(&mut self.state, Action::EnterPreviewMode);
-                    self.poll_preview();
-                }
-            }
+            KeyCode::Enter => self.enter_preview_or_interactive(),
             KeyCode::Escape => reduce(&mut self.state, Action::EnterListMode),
             KeyCode::Char('!') => {
                 self.launch_skip_permissions = !self.launch_skip_permissions;
@@ -6339,6 +6653,24 @@ impl GroveApp {
 
     fn handle_key(&mut self, key_event: KeyEvent) -> (bool, Cmd<Msg>) {
         if !matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+            return (false, Cmd::None);
+        }
+
+        if Self::is_ctrl_char_key(&key_event, 'k') {
+            self.open_command_palette();
+            return (false, Cmd::None);
+        }
+
+        if self.command_palette.is_visible() {
+            let event = Event::Key(key_event);
+            if let Some(action) = self.command_palette.handle_event(&event) {
+                return match action {
+                    PaletteAction::Dismiss => (false, Cmd::None),
+                    PaletteAction::Execute(id) => {
+                        (self.execute_command_palette_action(id.as_str()), Cmd::None)
+                    }
+                };
+            }
             return (false, Cmd::None);
         }
 
@@ -7283,6 +7615,14 @@ impl GroveApp {
             .render(area, frame);
     }
 
+    fn render_command_palette_overlay(&self, frame: &mut Frame, area: Rect) {
+        if !self.command_palette.is_visible() {
+            return;
+        }
+
+        self.command_palette.render(area, frame);
+    }
+
     fn render_keybind_help_overlay(&self, frame: &mut Frame, area: Rect) {
         if !self.keybind_help_open {
             return;
@@ -7311,6 +7651,13 @@ impl GroveApp {
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
                     "  n new, s start, x stop, D delete, S settings, ! unsafe toggle",
+                    content_width,
+                ),
+                Style::new().fg(theme.text),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "  Ctrl+K command palette",
                     content_width,
                 ),
                 Style::new().fg(theme.text),
@@ -7873,6 +8220,7 @@ impl Model for GroveApp {
         self.render_delete_dialog_overlay(frame, area);
         self.render_settings_dialog_overlay(frame, area);
         self.render_keybind_help_overlay(frame, area);
+        self.render_command_palette_overlay(frame, area);
         let draw_completed_at = Instant::now();
         self.last_hit_grid.replace(frame.hit_grid.clone());
         let frame_log_started_at = Instant::now();
@@ -7966,11 +8314,12 @@ mod tests {
         AppPaths, ClipboardAccess, CommandZellijInput, CreateDialogField,
         CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, FAST_SPINNER_FRAMES, GroveApp,
         HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
-        LaunchDialogState, LivePreviewCapture, Msg, PREVIEW_METADATA_ROWS,
-        PendingResizeVerification, PreviewPollCompletion, StartAgentCompletion,
-        StopAgentCompletion, TextSelectionPoint, TmuxInput, WORKSPACE_ITEM_HEIGHT,
-        WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
-        ui_theme,
+        LaunchDialogState, LivePreviewCapture, Msg, PALETTE_CMD_FOCUS_LIST,
+        PALETTE_CMD_MOVE_SELECTION_DOWN, PALETTE_CMD_OPEN_PREVIEW, PALETTE_CMD_SCROLL_DOWN,
+        PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
+        StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
+        WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line,
+        parse_cursor_metadata, ui_theme,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::config::MultiplexerKind;
@@ -8524,6 +8873,7 @@ mod tests {
                     app.create_dialog.is_some(),
                     app.delete_dialog.is_some(),
                     app.keybind_help_open,
+                    app.command_palette.is_visible(),
                     app.interactive.is_some(),
                 ]
                     .iter()
@@ -8978,6 +9328,121 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_k_opens_command_palette() {
+        let mut app = fixture_app();
+
+        let _ = app.handle_key(
+            KeyEvent::new(KeyCode::Char('k'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        );
+
+        assert!(app.command_palette.is_visible());
+    }
+
+    #[test]
+    fn ctrl_k_is_blocked_while_modal_is_open() {
+        let mut app = fixture_app();
+        app.open_create_dialog();
+        assert!(app.create_dialog.is_some());
+
+        let _ = app.handle_key(
+            KeyEvent::new(KeyCode::Char('k'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        );
+
+        assert!(app.create_dialog.is_some());
+        assert!(!app.command_palette.is_visible());
+    }
+
+    #[test]
+    fn ctrl_k_is_blocked_in_interactive_mode() {
+        let mut app = fixture_app();
+        app.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            "grove-ws-feature-a".to_string(),
+            Instant::now(),
+            24,
+            80,
+        ));
+
+        let _ = app.handle_key(
+            KeyEvent::new(KeyCode::Char('k'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        );
+
+        assert!(app.interactive.is_some());
+        assert!(!app.command_palette.is_visible());
+    }
+
+    #[test]
+    fn command_palette_blocks_background_navigation_keys() {
+        let mut app = fixture_app();
+        let selected_before = app.state.selected_index;
+
+        let _ = app.handle_key(
+            KeyEvent::new(KeyCode::Char('k'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        );
+        assert!(app.command_palette.is_visible());
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press));
+
+        assert_eq!(app.state.selected_index, selected_before);
+        assert_eq!(app.command_palette.query(), "j");
+    }
+
+    #[test]
+    fn command_palette_enter_executes_selected_action() {
+        let mut app = fixture_app();
+
+        let _ = app.handle_key(
+            KeyEvent::new(KeyCode::Char('k'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        );
+        assert!(app.command_palette.is_visible());
+
+        for character in ['n', 'e', 'w'] {
+            let _ =
+                app.handle_key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press));
+        }
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
+
+        assert!(!app.command_palette.is_visible());
+        assert!(app.create_dialog.is_some());
+    }
+
+    #[test]
+    fn command_palette_action_set_scopes_to_focus_and_mode() {
+        let mut app = fixture_app();
+        let list_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        assert!(list_ids.iter().any(|id| id == PALETTE_CMD_MOVE_SELECTION_DOWN));
+        assert!(list_ids.iter().any(|id| id == PALETTE_CMD_OPEN_PREVIEW));
+        assert!(!list_ids.iter().any(|id| id == PALETTE_CMD_SCROLL_DOWN));
+
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        let preview_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        assert!(preview_ids.iter().any(|id| id == PALETTE_CMD_SCROLL_DOWN));
+        assert!(preview_ids.iter().any(|id| id == PALETTE_CMD_FOCUS_LIST));
+        assert!(!preview_ids
+            .iter()
+            .any(|id| id == PALETTE_CMD_MOVE_SELECTION_DOWN));
+    }
+
+    #[test]
     fn uppercase_s_opens_settings_dialog() {
         let mut app = fixture_app();
 
@@ -9096,6 +9561,19 @@ mod tests {
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
             assert!(status_text.contains("Esc/? close help"));
+        });
+    }
+
+    #[test]
+    fn status_row_shows_palette_hints_when_palette_open() {
+        let mut app = fixture_app();
+        app.open_command_palette();
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(status_text.contains("Type to search"));
+            assert!(status_text.contains("Enter run"));
         });
     }
 
