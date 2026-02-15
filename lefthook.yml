@@ -1,0 +1,9 @@
+pre-commit:
+  commands:
+    fmt:
+      run: make fmt
+
+pre-push:
+  commands:
+    ci:
+      run: make ci

@@ -28,6 +28,7 @@
               gnugrep
               gnused
               jq
+              lefthook
               openssl
               pkg-config
               ripgrep

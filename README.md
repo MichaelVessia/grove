@@ -8,6 +8,9 @@ Minimal workspace manager for AI coding agents (Rust + FrankenTUI).
 # Enter pinned toolchain shell
 nix develop
 
+# Install git hooks (once per clone)
+lefthook install
+
 # Validate clean clone setup
 make ci
 ```

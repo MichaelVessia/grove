@@ -29,7 +29,9 @@ use ftui::text::{
 use ftui::widgets::Widget;
 use ftui::widgets::block::{Alignment as BlockAlignment, Block};
 use ftui::widgets::borders::Borders;
-use ftui::widgets::command_palette::{ActionItem as PaletteActionItem, CommandPalette, PaletteAction};
+use ftui::widgets::command_palette::{
+    ActionItem as PaletteActionItem, CommandPalette, PaletteAction,
+};
 use ftui::widgets::modal::{BackdropConfig, Modal, ModalSizeConstraints};
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::status_line::{StatusItem, StatusLine};
@@ -7656,10 +7658,7 @@ impl GroveApp {
                 Style::new().fg(theme.text),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(
-                    "  Ctrl+K command palette",
-                    content_width,
-                ),
+                pad_or_truncate_to_display_width("  Ctrl+K command palette", content_width),
                 Style::new().fg(theme.text),
             )]),
             FtLine::raw(""),
@@ -7768,7 +7767,7 @@ impl GroveApp {
             .bg(if focused(CreateDialogField::Agent) {
                 theme.surface1
             } else {
-                theme.surface0
+                theme.base
             })
             .bold();
         let unselected_agent_style = Style::new().fg(theme.subtext0).bg(theme.base);
@@ -9244,6 +9243,36 @@ mod tests {
     }
 
     #[test]
+    fn create_dialog_unfocused_agent_row_uses_base_background() {
+        let mut app = fixture_app();
+        app.open_create_dialog();
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let dialog_width = frame.width().saturating_sub(8).min(90);
+            let dialog_height = 14u16;
+            let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+            let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+            let x_start = dialog_x.saturating_add(1);
+            let x_end = dialog_x.saturating_add(dialog_width.saturating_sub(1));
+            let y_start = dialog_y.saturating_add(1);
+            let y_end = dialog_y.saturating_add(dialog_height.saturating_sub(1));
+            let find_dialog_row = |needle: &str| {
+                (y_start..y_end).find(|&row| row_text(frame, row, x_start, x_end).contains(needle))
+            };
+
+            let Some(name_row) = find_dialog_row("[Name]") else {
+                panic!("name row should be rendered");
+            };
+            assert_row_bg(frame, name_row, x_start, x_end, ui_theme().surface1);
+
+            let Some(selected_agent_row) = find_dialog_row("Claude") else {
+                panic!("selected agent row should be rendered");
+            };
+            assert_row_bg(frame, selected_agent_row, x_start, x_end, ui_theme().base);
+        });
+    }
+
+    #[test]
     fn create_dialog_renders_action_buttons() {
         let mut app = fixture_app();
         app.open_create_dialog();
@@ -9407,8 +9436,8 @@ mod tests {
         assert!(app.command_palette.is_visible());
 
         for character in ['n', 'e', 'w'] {
-            let _ =
-                app.handle_key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press));
+            let _ = app
+                .handle_key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press));
         }
         let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
 
@@ -9424,7 +9453,11 @@ mod tests {
             .into_iter()
             .map(|action| action.id)
             .collect();
-        assert!(list_ids.iter().any(|id| id == PALETTE_CMD_MOVE_SELECTION_DOWN));
+        assert!(
+            list_ids
+                .iter()
+                .any(|id| id == PALETTE_CMD_MOVE_SELECTION_DOWN)
+        );
         assert!(list_ids.iter().any(|id| id == PALETTE_CMD_OPEN_PREVIEW));
         assert!(!list_ids.iter().any(|id| id == PALETTE_CMD_SCROLL_DOWN));
 
@@ -9437,9 +9470,11 @@ mod tests {
             .collect();
         assert!(preview_ids.iter().any(|id| id == PALETTE_CMD_SCROLL_DOWN));
         assert!(preview_ids.iter().any(|id| id == PALETTE_CMD_FOCUS_LIST));
-        assert!(!preview_ids
-            .iter()
-            .any(|id| id == PALETTE_CMD_MOVE_SELECTION_DOWN));
+        assert!(
+            !preview_ids
+                .iter()
+                .any(|id| id == PALETTE_CMD_MOVE_SELECTION_DOWN)
+        );
     }
 
     #[test]
