@@ -518,9 +518,24 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 277)
 
+### Phase 6b, centralize workspace status poll policy in `agent_runtime`
+- Commit: `e4859a5`
+- Changes:
+  - added `workspace_should_poll_status(&Workspace, MultiplexerKind) -> bool` in `src/agent_runtime.rs`
+    - moved multiplexer-specific poll eligibility policy out of `ui/tui`
+  - updated `src/ui/tui/update.rs` to use runtime helper inside `workspace_status_poll_targets`
+  - added focused runtime tests in `src/agent_runtime/tests.rs`:
+    - `workspace_status_poll_policy_requires_supported_agent_for_all_multiplexers`
+    - `workspace_status_poll_policy_differs_between_tmux_and_zellij_for_idle_non_main`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 279)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `e4859a5` phase 6b
   - `3366bf3` phase 6a
   - `ea873d9` phase 5af
   - `9ce1826` phase 5ae
@@ -572,7 +587,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move workspace status poll target selection logic from `ui/tui` into runtime/application layer
+- next candidate: move additional session/poll orchestration helpers from `ui/tui/update.rs` into runtime/application layer
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
