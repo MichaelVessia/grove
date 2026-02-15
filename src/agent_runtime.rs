@@ -144,6 +144,13 @@ pub fn session_name_for_workspace(workspace_name: &str) -> String {
     session_name_for_workspace_in_project(None, workspace_name)
 }
 
+pub fn git_session_name_for_workspace(workspace: &Workspace) -> String {
+    format!(
+        "{}-git",
+        session_name_for_workspace_in_project(workspace.project_name.as_deref(), &workspace.name)
+    )
+}
+
 pub fn session_name_for_workspace_in_project(
     project_name: Option<&str>,
     workspace_name: &str,

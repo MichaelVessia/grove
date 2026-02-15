@@ -1658,7 +1658,7 @@ impl GroveApp {
 
                 if visible_render_lines.is_empty() {
                     let fallback = if let Some(workspace) = selected_workspace {
-                        let session_name = Self::git_tab_session_name(workspace);
+                        let session_name = git_session_name_for_workspace(workspace);
                         if self.lazygit_failed_sessions.contains(&session_name) {
                             "(lazygit launch failed)"
                         } else if self.lazygit_ready_sessions.contains(&session_name) {

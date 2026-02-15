@@ -241,7 +241,7 @@ impl GroveApp {
         if self.preview_tab == PreviewTab::Git
             && let Some(workspace) = self.state.selected_workspace()
         {
-            let session_name = Self::git_tab_session_name(workspace);
+            let session_name = git_session_name_for_workspace(workspace);
             self.lazygit_failed_sessions.remove(&session_name);
         }
         self.poll_preview();
@@ -636,15 +636,11 @@ impl GroveApp {
         Some((inner.width, output_height))
     }
 
-    pub(super) fn git_tab_session_name(workspace: &Workspace) -> String {
-        format!("{}-git", Self::workspace_session_name(workspace))
-    }
-
     fn ensure_lazygit_session_for_selected_workspace(&mut self) -> Option<String> {
         let (workspace_path, session_name) = self.state.selected_workspace().map(|workspace| {
             (
                 workspace.path.clone(),
-                Self::git_tab_session_name(workspace),
+                git_session_name_for_workspace(workspace),
             )
         })?;
 
@@ -701,7 +697,7 @@ impl GroveApp {
     fn selected_session_for_live_preview(&self) -> Option<(String, bool)> {
         if self.preview_tab == PreviewTab::Git {
             let workspace = self.state.selected_workspace()?;
-            let session_name = Self::git_tab_session_name(workspace);
+            let session_name = git_session_name_for_workspace(workspace);
             if self.lazygit_ready_sessions.contains(&session_name) {
                 return Some((session_name, true));
             }

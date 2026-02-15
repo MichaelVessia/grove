@@ -8,9 +8,9 @@ use super::{
     CaptureChange, LaunchRequest, SessionActivity, build_launch_plan, default_agent_command,
     detect_agent_session_status_in_home, detect_status,
     detect_status_with_session_override_in_home, detect_waiting_prompt, evaluate_capture_change,
-    normalized_agent_command_override, poll_interval, reconcile_with_sessions,
-    sanitize_workspace_name, session_name_for_workspace, stop_plan, strip_mouse_fragments,
-    zellij_capture_log_path, zellij_capture_log_path_in, zellij_config_path,
+    git_session_name_for_workspace, normalized_agent_command_override, poll_interval,
+    reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace, stop_plan,
+    strip_mouse_fragments, zellij_capture_log_path, zellij_capture_log_path_in, zellij_config_path,
 };
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -57,6 +57,18 @@ fn session_name_sanitizes_workspace_label() {
         "grove-ws-feature-auth-v2"
     );
     assert_eq!(sanitize_workspace_name("///"), "workspace");
+}
+
+#[test]
+fn git_session_name_uses_project_context_when_present() {
+    let workspace = fixture_workspace("feature/auth.v2", false).with_project_context(
+        "project.one".to_string(),
+        PathBuf::from("/repos/project.one"),
+    );
+    assert_eq!(
+        git_session_name_for_workspace(&workspace),
+        "grove-ws-project-one-feature-auth-v2-git"
+    );
 }
 
 #[test]

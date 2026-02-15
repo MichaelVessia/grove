@@ -40,7 +40,8 @@ use crate::adapters::{BootstrapData, DiscoveryState};
 use crate::agent_runtime::{
     LaunchRequest, OutputDigest, SessionActivity, ShellLaunchRequest, build_launch_plan,
     build_shell_launch_plan, detect_status_with_session_override, evaluate_capture_change,
-    poll_interval, session_name_for_workspace_in_project, stop_plan, zellij_config_path,
+    git_session_name_for_workspace, poll_interval, session_name_for_workspace_in_project,
+    stop_plan, zellij_config_path,
 };
 use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
