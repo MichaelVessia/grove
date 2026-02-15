@@ -503,9 +503,25 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 6a, move git-tab session naming helper to `agent_runtime`
+- Commit: `3366bf3`
+- Changes:
+  - added `git_session_name_for_workspace(&Workspace) -> String` to `src/agent_runtime.rs`
+    - centralizes `"{workspace_session}-git"` naming alongside other session-name helpers
+  - updated UI callers in `src/ui/tui/update.rs` and `src/ui/tui/view.rs`
+    - removed local `git_tab_session_name` method from TUI update logic
+    - switched git tab lazygit/session lookup callsites to `git_session_name_for_workspace`
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `git_session_name_uses_project_context_when_present`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 277)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `3366bf3` phase 6a
   - `ea873d9` phase 5af
   - `9ce1826` phase 5ae
   - `0d9b21d` phase 5ad
@@ -555,7 +571,8 @@ Status:
 - `mod.rs` is now mostly module root + app state struct.
 
 Next sub-targets:
-- begin phase 6 boundary work for non-UI runtime logic
+- continue phase 6 boundary work for non-UI runtime logic
+- next candidate: move workspace status poll target selection logic from `ui/tui` into runtime/application layer
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
