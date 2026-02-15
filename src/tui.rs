@@ -3171,7 +3171,7 @@ impl GroveApp {
             return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
         }
         if self.state.mode == UiMode::Preview {
-            return "[/] tabs, j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, n new, e edit, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
+            return "[ prev tab, ] next tab, j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, n new, e edit, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
         }
 
         "j/k move, h/l pane, Enter open, n new, e edit, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit"
@@ -9478,7 +9478,7 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  [/] switch tab, j/k or Up/Down scroll, PgUp/PgDn page, G bottom",
+                    "  [ previous tab, ] next tab, j/k or Up/Down scroll, PgUp/PgDn page, G bottom",
                     content_width,
                 ),
                 Style::new().fg(theme.text),

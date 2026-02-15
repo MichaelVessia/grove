@@ -69,3 +69,9 @@ cat docs/PRD.md
   multiplexers (`tmux` and `zellij`).
 - Do not ship multiplexer-specific changes without explicitly checking the
   other multiplexer path and adding/updating tests where behavior differs.
+
+## Keybind + Command Discoverability
+
+- Whenever adding or changing a keybind or command, update both the Keybind
+  Help modal content and the Command Palette actions so UI discoverability
+  stays in sync.
