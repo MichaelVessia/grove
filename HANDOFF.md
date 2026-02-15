@@ -606,7 +606,7 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
 ### Phase 6h, move delete-session command construction to `agent_runtime`
-- Commit: uncommitted (worktree changes)
+- Commit: `af85ec7`
 - Changes:
   - added `kill_workspace_session_command(Option<&str>, &str, MultiplexerKind) -> Vec<String>` in `src/agent_runtime.rs`
     - centralizes workspace session-name construction + multiplexer-specific kill command shape
@@ -621,13 +621,31 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 39)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6i, move workspace status poll target construction to `agent_runtime`
+- Commit: uncommitted (worktree changes)
+- Changes:
+  - added runtime struct + helper in `src/agent_runtime.rs`:
+    - `WorkspaceStatusTarget`
+    - `workspace_status_targets_for_polling(&[Workspace], MultiplexerKind, Option<&str>) -> Vec<WorkspaceStatusTarget>`
+  - updated UI caller in `src/ui/tui/update.rs`:
+    - `workspace_status_poll_targets` now maps runtime targets into UI message target structs
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime tests in `src/agent_runtime/tests.rs`:
+    - `workspace_status_targets_for_polling_skip_selected_session`
+    - `workspace_status_targets_for_polling_include_idle_non_main_for_zellij`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 41)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree has uncommitted phase 6h changes:
+- Worktree has uncommitted phase 6i changes:
   - `src/agent_runtime.rs`
   - `src/agent_runtime/tests.rs`
   - `src/ui/tui/mod.rs`
   - `src/ui/tui/update.rs`
 - Recent refactor commits on local `master`:
+  - `af85ec7` phase 6h
   - `5bfd1a4` phase 6g
   - `a9c50a6` phase 6f
   - `19b5ecd` phase 6e

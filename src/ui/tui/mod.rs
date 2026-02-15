@@ -43,7 +43,7 @@ use crate::agent_runtime::{
     git_session_name_for_workspace, kill_workspace_session_command, live_preview_agent_session,
     poll_interval, session_name_for_workspace_ref, stop_plan,
     tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
-    workspace_status_session_target,
+    workspace_status_targets_for_polling,
 };
 use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};

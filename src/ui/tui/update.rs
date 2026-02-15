@@ -722,23 +722,19 @@ impl GroveApp {
         &self,
         selected_live_session: Option<&str>,
     ) -> Vec<WorkspaceStatusPollTarget> {
-        self.state
-            .workspaces
-            .iter()
-            .filter_map(|workspace| {
-                let session_name = workspace_status_session_target(
-                    workspace,
-                    self.multiplexer,
-                    selected_live_session,
-                )?;
-                Some(WorkspaceStatusPollTarget {
-                    workspace_name: workspace.name.clone(),
-                    workspace_path: workspace.path.clone(),
-                    session_name,
-                    supported_agent: workspace.supported_agent,
-                })
-            })
-            .collect()
+        workspace_status_targets_for_polling(
+            &self.state.workspaces,
+            self.multiplexer,
+            selected_live_session,
+        )
+        .into_iter()
+        .map(|target| WorkspaceStatusPollTarget {
+            workspace_name: target.workspace_name,
+            workspace_path: target.workspace_path,
+            session_name: target.session_name,
+            supported_agent: target.supported_agent,
+        })
+        .collect()
     }
 
     fn apply_workspace_status_capture(&mut self, capture: WorkspaceStatusCapture) {

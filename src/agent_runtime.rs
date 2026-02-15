@@ -94,6 +94,14 @@ pub struct ReconciliationResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceStatusTarget {
+    pub workspace_name: String,
+    pub workspace_path: PathBuf,
+    pub session_name: String,
+    pub supported_agent: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct OutputDigest {
     pub raw_hash: u64,
     pub raw_len: usize,
@@ -202,6 +210,26 @@ pub fn workspace_status_session_target(
     }
 
     Some(session_name)
+}
+
+pub fn workspace_status_targets_for_polling(
+    workspaces: &[Workspace],
+    multiplexer: MultiplexerKind,
+    selected_live_session: Option<&str>,
+) -> Vec<WorkspaceStatusTarget> {
+    workspaces
+        .iter()
+        .filter_map(|workspace| {
+            let session_name =
+                workspace_status_session_target(workspace, multiplexer, selected_live_session)?;
+            Some(WorkspaceStatusTarget {
+                workspace_name: workspace.name.clone(),
+                workspace_path: workspace.path.clone(),
+                session_name,
+                supported_agent: workspace.supported_agent,
+            })
+        })
+        .collect()
 }
 
 pub fn tmux_capture_error_indicates_missing_session(error: &str) -> bool {
