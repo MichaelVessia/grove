@@ -8242,8 +8242,6 @@ impl GroveApp {
                         is_selected,
                     );
                     let selected = if is_selected { "▸" } else { " " };
-                    let age = self.relative_age_label(workspace.last_activity_unix_secs);
-
                     let row_background = if is_selected {
                         if self.state.focus == PaneFocus::WorkspaceList && !self.modal_open() {
                             Some(theme.surface1)
@@ -8271,14 +8269,10 @@ impl GroveApp {
                     } else {
                         primary_style
                     };
-                    let mut primary_spans = vec![
+                    let primary_spans = vec![
                         FtSpan::styled(format!("{selected} "), primary_style),
                         FtSpan::styled(workspace.name.clone(), workspace_label_style),
                     ];
-                    if !age.is_empty() {
-                        primary_spans.push(FtSpan::styled("  ", primary_style));
-                        primary_spans.push(FtSpan::styled(age, primary_style.fg(theme.overlay0)));
-                    }
                     lines.push(FtLine::from_spans(primary_spans));
 
                     let mut secondary_spans = vec![
@@ -8426,9 +8420,11 @@ impl GroveApp {
             } else {
                 format!("{} ({})", workspace.name, workspace.branch)
             };
+            let age_label = self.relative_age_label(workspace.last_activity_unix_secs);
             (
                 mode_label.to_string(),
                 name_label,
+                age_label,
                 is_working,
                 workspace.agent,
             )
@@ -8440,10 +8436,10 @@ impl GroveApp {
             .max(1);
 
         let mut text_lines = vec![
-            if let Some((mode_label, name_label, is_working, agent)) =
+            if let Some((mode_label, name_label, age_label, is_working, agent)) =
                 selected_workspace_header.as_ref()
             {
-                FtLine::from_spans(vec![
+                let mut spans = vec![
                     FtSpan::styled(format!("{mode_label} | "), Style::new().fg(theme.subtext0)),
                     FtSpan::styled(
                         name_label.clone(),
@@ -8453,7 +8449,15 @@ impl GroveApp {
                             Style::new().fg(theme.subtext0)
                         },
                     ),
-                ])
+                ];
+                if !age_label.is_empty() {
+                    spans.push(FtSpan::styled("  ", Style::new().fg(theme.subtext0)));
+                    spans.push(FtSpan::styled(
+                        age_label.clone(),
+                        Style::new().fg(theme.overlay0),
+                    ));
+                }
+                FtLine::from_spans(spans)
             } else {
                 FtLine::from_spans(vec![FtSpan::styled(
                     "PREVIEW | none",
@@ -8480,7 +8484,7 @@ impl GroveApp {
                 )])
             },
         ];
-        if let Some((mode_label, name_label, true, agent)) = selected_workspace_header.as_ref() {
+        if let Some((mode_label, name_label, _, true, agent)) = selected_workspace_header.as_ref() {
             let name_x = inner.x.saturating_add(
                 u16::try_from(text_display_width(&format!("{mode_label} | "))).unwrap_or(u16::MAX),
             );
@@ -10497,6 +10501,53 @@ mod tests {
         with_rendered_frame(&app, 80, 24, |frame| {
             assert!(find_row_containing(frame, "grove", x_start, x_end).is_some());
             assert!(find_row_containing(frame, "feature-a", x_start, x_end).is_some());
+        });
+    }
+
+    #[test]
+    fn workspace_age_renders_in_preview_header_not_sidebar_row() {
+        let mut app = fixture_app();
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_secs();
+        let last_activity =
+            i64::try_from(now_secs.saturating_sub(17 * 60)).expect("timestamp should fit i64");
+        app.state.workspaces[0].last_activity_unix_secs = Some(last_activity);
+        app.state.selected_index = 0;
+        let expected_age = app.relative_age_label(app.state.workspaces[0].last_activity_unix_secs);
+
+        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+        let sidebar_x_start = layout.sidebar.x.saturating_add(1);
+        let sidebar_x_end = layout.sidebar.right().saturating_sub(1);
+        let preview_x_start = layout.preview.x.saturating_add(1);
+        let preview_x_end = layout.preview.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(sidebar_row) =
+                find_row_containing(frame, "grove", sidebar_x_start, sidebar_x_end)
+            else {
+                panic!("sidebar workspace row should be rendered");
+            };
+            let sidebar_text = row_text(frame, sidebar_row, sidebar_x_start, sidebar_x_end);
+            assert!(
+                !sidebar_text.contains(expected_age.as_str()),
+                "sidebar row should not include age label, got: {sidebar_text}"
+            );
+
+            let Some(preview_row) = find_row_containing(
+                frame,
+                "PREVIEW | grove (main)",
+                preview_x_start,
+                preview_x_end,
+            ) else {
+                panic!("preview header row should be rendered");
+            };
+            let preview_text = row_text(frame, preview_row, preview_x_start, preview_x_end);
+            assert!(
+                preview_text.contains(expected_age.as_str()),
+                "preview header should include age label, got: {preview_text}"
+            );
         });
     }
 
