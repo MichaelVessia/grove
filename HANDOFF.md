@@ -443,9 +443,22 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5ac, move app bootstrap constructors into `bootstrap.rs`
+- Commit: `aa91ca5`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/bootstrap.rs`:
+    - app constructor/bootstrap methods (`new_with_event_logger`, `new_with_debug_recorder`, `from_parts*`)
+    - test bootstrap helper (`projects_from_bootstrap`)
+  - adjusted visibility to `pub(super)` where sibling modules/tests need access
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `aa91ca5` phase 5ac
   - `e5686a0` phase 5ab
   - `1cb3248` phase 5aa
   - `55612c8` phase 5z
@@ -484,7 +497,8 @@ Status:
 - frame debug logging helpers moved into `logging.rs`.
 - deferred command/input-seq helpers moved into `update.rs`.
 - workspace helper methods moved into `update.rs`.
-- `mod.rs` is now mostly module root, shared types/constants/helpers, constructors, and logging utilities.
+- app bootstrap constructors moved into `bootstrap.rs`.
+- `mod.rs` is now mostly module root, shared types/constants/helpers, and run entrypoints.
 
 Next sub-targets:
 - optional: split remaining shared utility helpers from `mod.rs` into focused helper modules (logging)
