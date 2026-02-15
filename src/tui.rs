@@ -36,6 +36,7 @@ use ftui::widgets::modal::{BackdropConfig, Modal, ModalSizeConstraints};
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::status_line::{StatusItem, StatusLine};
 use ftui::{App, Cmd, Model, PackedRgba, ScreenMode, Style};
+use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
 use serde_json::Value;
 
 use crate::adapters::{
@@ -110,8 +111,7 @@ const MAX_PENDING_INPUT_TRACES: usize = 256;
 const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
 const AGENT_ACTIVITY_WINDOW_FRAMES: usize = 6;
-const STATUS_BADGE_WIDTH: usize = 7;
-const FAST_SPINNER_FRAMES: [&str; 4] = ["run.   ", "run..  ", "run... ", "run...."];
+const LOCAL_TYPING_SUPPRESS_MS: u64 = 400;
 
 #[derive(Debug, Clone, Copy)]
 struct UiTheme {
@@ -125,7 +125,6 @@ struct UiTheme {
     subtext0: PackedRgba,
     blue: PackedRgba,
     lavender: PackedRgba,
-    green: PackedRgba,
     yellow: PackedRgba,
     red: PackedRgba,
     peach: PackedRgba,
@@ -145,7 +144,6 @@ fn ui_theme() -> UiTheme {
         subtext0: PackedRgba::rgb(166, 173, 200),
         blue: PackedRgba::rgb(137, 180, 250),
         lavender: PackedRgba::rgb(180, 190, 254),
-        green: PackedRgba::rgb(166, 227, 161),
         yellow: PackedRgba::rgb(249, 226, 175),
         red: PackedRgba::rgb(243, 139, 168),
         peach: PackedRgba::rgb(250, 179, 135),
@@ -2040,39 +2038,6 @@ impl GroveApp {
         }
     }
 
-    fn selected_status_hint(&self) -> &'static str {
-        match self
-            .state
-            .selected_workspace()
-            .map(|workspace| workspace.status)
-        {
-            Some(WorkspaceStatus::Main) => "main worktree",
-            Some(WorkspaceStatus::Idle) => "paused (no session)",
-            Some(WorkspaceStatus::Active) => {
-                let selected_workspace_name = self
-                    .state
-                    .selected_workspace()
-                    .map(|workspace| workspace.name.as_str());
-                if self.status_is_visually_working(
-                    selected_workspace_name,
-                    WorkspaceStatus::Active,
-                    true,
-                ) {
-                    "working"
-                } else {
-                    "paused"
-                }
-            }
-            Some(WorkspaceStatus::Thinking) => "thinking",
-            Some(WorkspaceStatus::Waiting) => "awaiting input",
-            Some(WorkspaceStatus::Done) => "completed",
-            Some(WorkspaceStatus::Error) => "error",
-            Some(WorkspaceStatus::Unsupported) => "unsupported",
-            Some(WorkspaceStatus::Unknown) => "unknown",
-            None => "none",
-        }
-    }
-
     fn focus_name(focus: PaneFocus) -> &'static str {
         match focus {
             PaneFocus::WorkspaceList => "workspace_list",
@@ -2650,11 +2615,7 @@ impl GroveApp {
                 }
 
                 match self.state.mode {
-                    UiMode::List => format!(
-                        "Status: list, selected={}, unsafe={}",
-                        self.selected_status_hint(),
-                        self.unsafe_label()
-                    ),
+                    UiMode::List => format!("Status: list, unsafe={}", self.unsafe_label()),
                     UiMode::Preview => format!(
                         "Status: preview, autoscroll={}, offset={}, split={}%, unsafe={}",
                         if self.preview.auto_scroll {
@@ -2708,12 +2669,11 @@ impl GroveApp {
                     return self.main_worktree_splash();
                 }
                 format!(
-                    "Workspace: {}\nBranch: {}\nPath: {}\nAgent: {}\nStatus: {}\nOrphaned session: {}",
+                    "Workspace: {}\nBranch: {}\nPath: {}\nAgent: {}\nOrphaned session: {}",
                     workspace.name,
                     workspace.branch,
                     workspace.path.display(),
                     workspace.agent.label(),
-                    self.selected_status_hint(),
                     if workspace.is_orphaned { "yes" } else { "no" }
                 )
             })
@@ -6904,6 +6864,14 @@ impl GroveApp {
         status: WorkspaceStatus,
         is_selected: bool,
     ) -> bool {
+        if is_selected
+            && self.interactive.as_ref().is_some_and(|interactive| {
+                Instant::now().saturating_duration_since(interactive.last_key_time)
+                    < Duration::from_millis(LOCAL_TYPING_SUPPRESS_MS)
+            })
+        {
+            return false;
+        }
         match status {
             WorkspaceStatus::Thinking => true,
             WorkspaceStatus::Active => {
@@ -7034,19 +7002,6 @@ impl GroveApp {
         Style::new().fg(theme.overlay0)
     }
 
-    fn workspace_status_color(&self, status: WorkspaceStatus) -> PackedRgba {
-        let theme = ui_theme();
-        match status {
-            WorkspaceStatus::Main => theme.lavender,
-            WorkspaceStatus::Idle => theme.overlay0,
-            WorkspaceStatus::Active | WorkspaceStatus::Thinking => theme.green,
-            WorkspaceStatus::Waiting => theme.peach,
-            WorkspaceStatus::Done => theme.teal,
-            WorkspaceStatus::Error => theme.red,
-            WorkspaceStatus::Unknown | WorkspaceStatus::Unsupported => theme.peach,
-        }
-    }
-
     fn workspace_agent_color(&self, agent: AgentType) -> PackedRgba {
         let theme = ui_theme();
         match agent {
@@ -7055,42 +7010,45 @@ impl GroveApp {
         }
     }
 
-    fn status_badge_label(
-        &self,
-        workspace_name: Option<&str>,
-        status: WorkspaceStatus,
-        is_selected: bool,
-    ) -> &'static str {
-        if self.status_is_visually_working(workspace_name, status, is_selected) {
-            return FAST_SPINNER_FRAMES[self.fast_animation_frame % FAST_SPINNER_FRAMES.len()];
-        }
-
-        match status {
-            WorkspaceStatus::Main => "main",
-            WorkspaceStatus::Idle => "paused",
-            WorkspaceStatus::Active => "paused",
-            WorkspaceStatus::Thinking => "thinking",
-            WorkspaceStatus::Waiting => "ACTION!",
-            WorkspaceStatus::Done => "done",
-            WorkspaceStatus::Error => "error",
-            WorkspaceStatus::Unknown => "unknown",
-            WorkspaceStatus::Unsupported => "unsup",
+    fn activity_effect_secondary_color(&self, agent: AgentType) -> PackedRgba {
+        let theme = ui_theme();
+        match agent {
+            AgentType::Claude => theme.text,
+            AgentType::Codex => theme.overlay0,
         }
     }
 
-    fn status_badge(
+    fn activity_effect_gradient(&self, agent: AgentType) -> ColorGradient {
+        let primary = self.workspace_agent_color(agent);
+        let secondary = self.activity_effect_secondary_color(agent);
+        ColorGradient::new(vec![(0.0, primary), (0.5, secondary), (1.0, primary)])
+    }
+
+    fn activity_effect_time(&self) -> f64 {
+        self.fast_animation_frame as f64 * (FAST_ANIMATION_INTERVAL_MS as f64 / 1000.0)
+    }
+
+    fn render_activity_effect_label(
         &self,
-        workspace_name: Option<&str>,
-        status: WorkspaceStatus,
-        is_selected: bool,
-    ) -> String {
-        format!(
-            "[{}]",
-            pad_or_truncate_to_display_width(
-                self.status_badge_label(workspace_name, status, is_selected),
-                STATUS_BADGE_WIDTH,
-            )
-        )
+        label: &str,
+        agent: AgentType,
+        area: Rect,
+        frame: &mut Frame,
+    ) {
+        if area.is_empty() || label.is_empty() {
+            return;
+        }
+
+        let primary = self.workspace_agent_color(agent);
+        StyledText::new(label)
+            .bold()
+            .base_color(primary)
+            .effect(TextEffect::AnimatedGradient {
+                gradient: self.activity_effect_gradient(agent),
+                speed: 1.8,
+            })
+            .time(self.activity_effect_time())
+            .render(area, frame);
     }
 
     fn relative_age_label(&self, unix_secs: Option<i64>) -> String {
@@ -7125,13 +7083,6 @@ impl GroveApp {
         let theme = ui_theme();
         let mode_chip = format!("[{}]", self.mode_label());
         let focus_chip = format!("[{}]", self.focus_label());
-        let selected_workspace = self.state.selected_workspace();
-        let selected_status =
-            selected_workspace.map_or(WorkspaceStatus::Unknown, |workspace| workspace.status);
-        let selected_workspace_name = selected_workspace.map(|workspace| workspace.name.as_str());
-        let selected_status_badge =
-            self.status_badge(selected_workspace_name, selected_status, true);
-        let activity_chip = format!("{} {}", selected_status_badge, self.selected_status_hint());
 
         let base_header = StatusLine::new()
             .separator("  ")
@@ -7153,8 +7104,7 @@ impl GroveApp {
             return;
         }
 
-        let header = base_header.right(StatusItem::text(activity_chip.as_str()));
-        header.render(area, frame);
+        base_header.render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
     }
 
@@ -7179,6 +7129,7 @@ impl GroveApp {
 
         let theme = ui_theme();
         let mut lines: Vec<FtLine> = Vec::new();
+        let mut animated_labels: Vec<(String, AgentType, u16, u16)> = Vec::new();
         match &self.discovery_state {
             DiscoveryState::Error(message) => {
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(
@@ -7200,17 +7151,22 @@ impl GroveApp {
                 let max_items = usize::from(inner.height / WORKSPACE_ITEM_HEIGHT);
                 for (idx, workspace) in self.state.workspaces.iter().take(max_items).enumerate() {
                     let is_selected = idx == self.state.selected_index;
+                    let is_working = self.status_is_visually_working(
+                        Some(workspace.name.as_str()),
+                        workspace.status,
+                        is_selected,
+                    );
                     let selected = if idx == self.state.selected_index {
                         "▸"
                     } else {
                         " "
                     };
-                    let status_badge = self.status_badge(
-                        Some(workspace.name.as_str()),
-                        workspace.status,
-                        is_selected,
-                    );
                     let age = self.relative_age_label(workspace.last_activity_unix_secs);
+                    let row_y = inner.y.saturating_add(
+                        u16::try_from(idx)
+                            .unwrap_or(u16::MAX)
+                            .saturating_mul(WORKSPACE_ITEM_HEIGHT),
+                    );
 
                     let row_background = if idx == self.state.selected_index {
                         if self.state.focus == PaneFocus::WorkspaceList && !self.modal_open() {
@@ -7218,8 +7174,6 @@ impl GroveApp {
                         } else {
                             Some(theme.surface0)
                         }
-                    } else if workspace.status == WorkspaceStatus::Waiting {
-                        Some(theme.surface1)
                     } else {
                         None
                     };
@@ -7234,16 +7188,16 @@ impl GroveApp {
                         primary_style = primary_style.bold();
                     }
 
+                    let workspace_label_style = if is_working {
+                        primary_style
+                            .fg(self.workspace_agent_color(workspace.agent))
+                            .bold()
+                    } else {
+                        primary_style
+                    };
                     let mut primary_spans = vec![
                         FtSpan::styled(format!("{selected} "), primary_style),
-                        FtSpan::styled(
-                            status_badge,
-                            primary_style
-                                .fg(self.workspace_status_color(workspace.status))
-                                .bold(),
-                        ),
-                        FtSpan::styled(" ", primary_style),
-                        FtSpan::styled(workspace.name.clone(), primary_style),
+                        FtSpan::styled(workspace.name.clone(), workspace_label_style),
                     ];
                     if !age.is_empty() {
                         primary_spans.push(FtSpan::styled("  ", primary_style));
@@ -7262,12 +7216,6 @@ impl GroveApp {
                                 .bold(),
                         ),
                     ];
-                    if workspace.status == WorkspaceStatus::Waiting {
-                        secondary_spans.push(FtSpan::styled(
-                            " | NEEDS INPUT",
-                            secondary_style.fg(theme.yellow).bold(),
-                        ));
-                    }
                     if workspace.is_orphaned {
                         secondary_spans.push(FtSpan::styled(
                             " | session ended",
@@ -7276,12 +7224,33 @@ impl GroveApp {
                     }
                     lines.push(FtLine::from_spans(secondary_spans));
 
-                    if let Ok(data) = u64::try_from(idx) {
-                        let row_y = inner.y.saturating_add(
-                            u16::try_from(idx)
-                                .unwrap_or(u16::MAX)
-                                .saturating_mul(WORKSPACE_ITEM_HEIGHT),
+                    if is_working {
+                        let primary_label_x = inner.x.saturating_add(
+                            u16::try_from(text_display_width("▸ ")).unwrap_or(u16::MAX),
                         );
+                        animated_labels.push((
+                            workspace.name.clone(),
+                            workspace.agent,
+                            primary_label_x,
+                            row_y,
+                        ));
+                        let agent_prefix = format!("{} | ", workspace.branch);
+                        let secondary_label_x = inner.x.saturating_add(
+                            u16::try_from(
+                                text_display_width("  ")
+                                    .saturating_add(text_display_width(&agent_prefix)),
+                            )
+                            .unwrap_or(u16::MAX),
+                        );
+                        animated_labels.push((
+                            workspace.agent.label().to_string(),
+                            workspace.agent,
+                            secondary_label_x,
+                            row_y.saturating_add(1),
+                        ));
+                    }
+
+                    if let Ok(data) = u64::try_from(idx) {
                         let row_height =
                             WORKSPACE_ITEM_HEIGHT.min(inner.bottom().saturating_sub(row_y));
                         let row_rect = Rect::new(inner.x, row_y, inner.width, row_height);
@@ -7297,6 +7266,16 @@ impl GroveApp {
         }
 
         Paragraph::new(FtText::from_lines(lines)).render(inner, frame);
+        for (label, agent, x, y) in animated_labels {
+            if y >= inner.bottom() {
+                continue;
+            }
+            let width = inner.right().saturating_sub(x);
+            if width == 0 {
+                continue;
+            }
+            self.render_activity_effect_label(&label, agent, Rect::new(x, y, width, 1), frame);
+        }
     }
 
     fn render_divider(&self, frame: &mut Frame, area: Rect) {
@@ -7355,27 +7334,30 @@ impl GroveApp {
         let selected_agent = selected_workspace.map(|workspace| workspace.agent);
         let allow_cursor_overlay = selected_agent != Some(AgentType::Codex);
         let theme = ui_theme();
-        let selected_workspace_label = selected_workspace
-            .map(|workspace| {
-                let name_label = if workspace.name == workspace.branch {
-                    workspace.name.clone()
-                } else {
-                    format!("{} ({})", workspace.name, workspace.branch)
-                };
-                let mode_label = if self.interactive.is_some() {
-                    "INTERACTIVE"
-                } else {
-                    "PREVIEW"
-                };
-                let detail = format!(
-                    "{} | {} | {}",
-                    workspace.agent.label(),
-                    self.status_badge(Some(workspace.name.as_str()), workspace.status, false),
-                    workspace.path.display()
-                );
-                (format!("{mode_label} | {name_label}"), detail)
-            })
-            .unwrap_or_else(|| ("PREVIEW | none".to_string(), "no workspace".to_string()));
+        let mut animated_labels: Vec<(String, AgentType, u16, u16)> = Vec::new();
+        let selected_workspace_header = selected_workspace.map(|workspace| {
+            let mode_label = if self.interactive.is_some() {
+                "INTERACTIVE"
+            } else {
+                "PREVIEW"
+            };
+            let is_working = self.status_is_visually_working(
+                Some(workspace.name.as_str()),
+                workspace.status,
+                true,
+            );
+            let name_label = if workspace.name == workspace.branch {
+                workspace.name.clone()
+            } else {
+                format!("{} ({})", workspace.name, workspace.branch)
+            };
+            (
+                mode_label.to_string(),
+                name_label,
+                is_working,
+                workspace.agent,
+            )
+        });
 
         let metadata_rows = usize::from(PREVIEW_METADATA_ROWS);
         let preview_height = usize::from(inner.height)
@@ -7383,15 +7365,58 @@ impl GroveApp {
             .max(1);
 
         let mut text_lines = vec![
-            FtLine::from_spans(vec![FtSpan::styled(
-                selected_workspace_label.0,
-                Style::new().fg(theme.subtext0),
-            )]),
-            FtLine::from_spans(vec![FtSpan::styled(
-                selected_workspace_label.1,
-                Style::new().fg(theme.overlay0),
-            )]),
+            if let Some((mode_label, name_label, is_working, agent)) =
+                selected_workspace_header.as_ref()
+            {
+                FtLine::from_spans(vec![
+                    FtSpan::styled(format!("{mode_label} | "), Style::new().fg(theme.subtext0)),
+                    FtSpan::styled(
+                        name_label.clone(),
+                        if *is_working {
+                            Style::new().fg(self.workspace_agent_color(*agent)).bold()
+                        } else {
+                            Style::new().fg(theme.subtext0)
+                        },
+                    ),
+                ])
+            } else {
+                FtLine::from_spans(vec![FtSpan::styled(
+                    "PREVIEW | none",
+                    Style::new().fg(theme.subtext0),
+                )])
+            },
+            if let Some(workspace) = selected_workspace {
+                FtLine::from_spans(vec![
+                    FtSpan::styled(
+                        format!("{} | ", workspace.agent.label()),
+                        Style::new()
+                            .fg(self.workspace_agent_color(workspace.agent))
+                            .bold(),
+                    ),
+                    FtSpan::styled(
+                        workspace.path.display().to_string(),
+                        Style::new().fg(theme.overlay0),
+                    ),
+                ])
+            } else {
+                FtLine::from_spans(vec![FtSpan::styled(
+                    "no workspace",
+                    Style::new().fg(theme.overlay0),
+                )])
+            },
         ];
+        if let Some((mode_label, name_label, true, agent)) = selected_workspace_header.as_ref() {
+            let name_x = inner.x.saturating_add(
+                u16::try_from(text_display_width(&format!("{mode_label} | "))).unwrap_or(u16::MAX),
+            );
+            animated_labels.push((name_label.clone(), *agent, name_x, inner.y));
+            animated_labels.push((
+                agent.label().to_string(),
+                *agent,
+                inner.x,
+                inner.y.saturating_add(1),
+            ));
+        }
 
         let (visible_start, visible_end) = self.preview_visible_range_for_height(preview_height);
         let visible_plain_lines = self.preview_plain_lines_range(visible_start, visible_end);
@@ -7435,6 +7460,16 @@ impl GroveApp {
         }
 
         Paragraph::new(FtText::from_lines(text_lines)).render(inner, frame);
+        for (label, agent, x, y) in animated_labels {
+            if y >= inner.bottom() {
+                continue;
+            }
+            let width = inner.right().saturating_sub(x);
+            if width == 0 {
+                continue;
+            }
+            self.render_activity_effect_label(&label, agent, Rect::new(x, y, width, 1), frame);
+        }
         self.apply_preview_selection_highlight_cells(
             frame,
             inner,
@@ -8074,13 +8109,8 @@ impl GroveApp {
                         " "
                     };
                     lines.push(format!(
-                        "{} {} {} | {} | {} | {}{}",
+                        "{} {} | {} | {} | {}{}",
                         selected,
-                        self.status_badge(
-                            Some(workspace.name.as_str()),
-                            workspace.status,
-                            idx == self.state.selected_index,
-                        ),
                         workspace.name,
                         workspace.branch,
                         workspace.agent.label(),
@@ -8454,14 +8484,14 @@ mod tests {
     };
     use super::{
         AppPaths, ClipboardAccess, CommandZellijInput, CreateDialogField,
-        CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, FAST_SPINNER_FRAMES, GroveApp,
-        HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
-        LaunchDialogState, LivePreviewCapture, Msg, PALETTE_CMD_FOCUS_LIST,
-        PALETTE_CMD_MOVE_SELECTION_DOWN, PALETTE_CMD_OPEN_PREVIEW, PALETTE_CMD_SCROLL_DOWN,
-        PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
-        StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
-        WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line,
-        parse_cursor_metadata, ui_theme,
+        CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, GroveApp, HIT_ID_HEADER,
+        HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogField, LaunchDialogState,
+        LivePreviewCapture, Msg, PALETTE_CMD_FOCUS_LIST, PALETTE_CMD_MOVE_SELECTION_DOWN,
+        PALETTE_CMD_OPEN_PREVIEW, PALETTE_CMD_SCROLL_DOWN, PREVIEW_METADATA_ROWS,
+        PendingResizeVerification, PreviewPollCompletion, StartAgentCompletion,
+        StopAgentCompletion, TextSelectionPoint, TmuxInput, WORKSPACE_ITEM_HEIGHT,
+        WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+        ui_theme,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::config::MultiplexerKind;
@@ -8770,10 +8800,6 @@ mod tests {
             }
             _ => false,
         }
-    }
-
-    fn contains_spinner_frame(text: &str) -> bool {
-        FAST_SPINNER_FRAMES.iter().any(|frame| text.contains(frame))
     }
 
     fn arb_key_event() -> impl Strategy<Value = KeyEvent> {
@@ -9102,7 +9128,7 @@ mod tests {
     }
 
     #[test]
-    fn shell_lines_show_status_badges_and_agent_labels() {
+    fn shell_lines_show_workspace_and_agent_labels_without_status_badges() {
         let app = fixture_app();
         let lines = app.shell_lines(12);
         let Some(main_line) = lines.iter().find(|line| line.contains("grove | main")) else {
@@ -9115,12 +9141,12 @@ mod tests {
             panic!("feature workspace shell line should be present");
         };
         assert!(
-            main_line.contains("[main"),
-            "main workspace should show main status badge, got: {main_line}"
+            !main_line.contains("["),
+            "main workspace should not show status badge, got: {main_line}"
         );
         assert!(
-            feature_line.contains("[paused"),
-            "feature workspace should show paused status badge, got: {feature_line}"
+            !feature_line.contains("["),
+            "feature workspace should not show status badge, got: {feature_line}"
         );
         assert!(
             main_line.contains("Claude"),
@@ -9139,6 +9165,7 @@ mod tests {
         app.state.selected_index = 1;
         app.output_changing = false;
         app.agent_output_changing = false;
+        assert!(!app.status_is_visually_working(Some("feature-a"), WorkspaceStatus::Active, true));
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -9150,20 +9177,14 @@ mod tests {
             };
             let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(
-                sidebar_row_text.contains("[paused"),
-                "active workspace should show static paused badge when not changing, got: {sidebar_row_text}"
+                !sidebar_row_text.contains("["),
+                "active workspace should not show status badge when not changing, got: {sidebar_row_text}"
             );
-            assert!(
-                !contains_spinner_frame(&sidebar_row_text),
-                "active workspace should not animate without recent output, got: {sidebar_row_text}"
-            );
+            assert!(!sidebar_row_text.contains("run."));
 
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
-            assert!(
-                !contains_spinner_frame(&status_text),
-                "status bar should not animate without recent output, got: {status_text}"
-            );
+            assert!(!status_text.contains("run."));
         });
     }
 
@@ -9175,6 +9196,7 @@ mod tests {
         app.output_changing = false;
         app.agent_output_changing = false;
         app.push_agent_activity_frame(true);
+        assert!(app.status_is_visually_working(Some("feature-a"), WorkspaceStatus::Active, true));
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -9185,10 +9207,7 @@ mod tests {
                 panic!("selected workspace row should be rendered");
             };
             let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
-            assert!(
-                contains_spinner_frame(&sidebar_row_text),
-                "active workspace should animate for recent window activity, got: {sidebar_row_text}"
-            );
+            assert!(!sidebar_row_text.contains("run."));
         });
     }
 
@@ -9199,6 +9218,7 @@ mod tests {
         app.state.selected_index = 1;
         app.output_changing = true;
         app.agent_output_changing = true;
+        assert!(app.status_is_visually_working(Some("feature-a"), WorkspaceStatus::Active, true));
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -9209,10 +9229,7 @@ mod tests {
                 panic!("selected workspace row should be rendered");
             };
             let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
-            assert!(
-                contains_spinner_frame(&sidebar_row_text),
-                "active workspace should animate when output is changing, got: {sidebar_row_text}"
-            );
+            assert!(!sidebar_row_text.contains("run."));
         });
     }
 
@@ -9227,6 +9244,7 @@ mod tests {
         for _ in 0..super::AGENT_ACTIVITY_WINDOW_FRAMES {
             app.push_agent_activity_frame(false);
         }
+        assert!(!app.status_is_visually_working(Some("feature-a"), WorkspaceStatus::Active, true));
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -9237,15 +9255,12 @@ mod tests {
                 panic!("selected workspace row should be rendered");
             };
             let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
-            assert!(
-                !contains_spinner_frame(&sidebar_row_text),
-                "active workspace should stop animating after inactive window, got: {sidebar_row_text}"
-            );
+            assert!(!sidebar_row_text.contains("run."));
         });
     }
 
     #[test]
-    fn waiting_workspace_row_calls_out_required_input() {
+    fn waiting_workspace_row_has_no_status_badge_or_input_banner() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
         app.state.selected_index = 1;
@@ -9261,15 +9276,15 @@ mod tests {
             };
             let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(
-                sidebar_row_text.contains("[ACTION!"),
-                "waiting workspace should show action badge, got: {sidebar_row_text}"
+                !sidebar_row_text.contains("["),
+                "waiting workspace should not show status badge, got: {sidebar_row_text}"
             );
 
             let secondary_row = selected_row.saturating_add(1);
             let secondary_text = row_text(frame, secondary_row, x_start, x_end);
             assert!(
-                secondary_text.contains("NEEDS INPUT"),
-                "waiting workspace should call out required input, got: {secondary_text}"
+                !secondary_text.contains("NEEDS INPUT"),
+                "waiting workspace should not show extra input banner, got: {secondary_text}"
             );
         });
     }
@@ -9323,6 +9338,7 @@ mod tests {
         app.state.selected_index = 1;
         app.output_changing = true;
         app.agent_output_changing = false;
+        assert!(!app.status_is_visually_working(Some("feature-a"), WorkspaceStatus::Active, true));
 
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -9333,10 +9349,7 @@ mod tests {
                 panic!("selected workspace row should be rendered");
             };
             let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
-            assert!(
-                !contains_spinner_frame(&sidebar_row_text),
-                "spinner should not animate for user-driven echo output, got: {sidebar_row_text}"
-            );
+            assert!(!sidebar_row_text.contains("run."));
 
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
@@ -13313,7 +13326,7 @@ mod tests {
         assert!(content.contains("Workspaces"));
         assert!(content.contains("Preview Pane"));
         assert!(content.contains("Status:"));
-        assert!(content.contains("feature-a | feature-a | /repos/grove-feature-a"));
+        assert!(content.contains("feature-a | feature-a | Codex | /repos/grove-feature-a"));
         assert!(content.contains("Press 'n' to create a workspace"));
     }
 

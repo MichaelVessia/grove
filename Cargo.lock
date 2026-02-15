@@ -191,7 +191,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -226,7 +226,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -342,6 +342,19 @@ dependencies = [
  "unicode-display-width",
  "unicode-segmentation",
  "unicode-width",
+ "web-time",
+]
+
+[[package]]
+name = "ftui-extras"
+version = "0.1.1"
+source = "git+https://github.com/Dicklesworthstone/frankentui.git?rev=507542bea6d84bf1d83c438a2168a0194a7e5264#507542bea6d84bf1d83c438a2168a0194a7e5264"
+dependencies = [
+ "ftui-core",
+ "ftui-render",
+ "ftui-style",
+ "ftui-text",
+ "ftui-widgets",
  "web-time",
 ]
 
@@ -487,6 +500,7 @@ dependencies = [
  "dirs",
  "frankenterm-core",
  "ftui",
+ "ftui-extras",
  "proptest",
  "serde",
  "serde_json",
@@ -998,7 +1012,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1163,7 +1177,7 @@ dependencies = [
  "getrandom 0.4.1",
  "once_cell",
  "rustix",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

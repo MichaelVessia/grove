@@ -8,6 +8,7 @@ arboard = "3.6.1"
 dirs = "6.0.0"
 frankenterm-core = { git = "https://github.com/Dicklesworthstone/frankentui.git", rev = "507542bea6d84bf1d83c438a2168a0194a7e5264" }
 ftui = { git = "https://github.com/Dicklesworthstone/frankentui.git", rev = "507542bea6d84bf1d83c438a2168a0194a7e5264", default-features = false, features = ["runtime", "crossterm"] }
+ftui-extras = { git = "https://github.com/Dicklesworthstone/frankentui.git", rev = "507542bea6d84bf1d83c438a2168a0194a7e5264", default-features = false, features = ["text-effects"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 toml = "0.9.8"
