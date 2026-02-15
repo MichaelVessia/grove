@@ -874,9 +874,34 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 298)
 
+### Phase 6z, move launch/stop command execution helpers into `agent_runtime`
+- Commit: `34e7784`
+- Changes:
+  - added runtime execution helpers in `src/agent_runtime.rs`:
+    - `execute_launch_plan(LaunchPlan) -> std::io::Result<()>`
+    - `execute_commands(&[Vec<String>]) -> std::io::Result<()>`
+    - private command execution helpers for stderr/status shaping
+  - updated UI caller in `src/ui/tui/update.rs`:
+    - background start flow now delegates to `execute_launch_plan`
+    - background stop flow now delegates to `execute_commands`
+  - removed UI-only helpers from `src/ui/tui/update.rs`:
+    - `run_start_agent_plan`
+    - `run_stop_commands`
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime tests in `src/agent_runtime/tests.rs`:
+    - `execute_commands_runs_successful_command_sequence`
+    - `execute_commands_returns_error_for_missing_program`
+    - `execute_launch_plan_writes_launcher_script_and_executes_commands`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 51)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 301)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `34e7784` phase 6z
   - `ee13b44` phase 6y
   - `e6ffffc` phase 6x
   - `a5f5bff` phase 6w
@@ -952,7 +977,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move start/stop command execution helpers (`run_start_agent_plan`, `run_stop_commands`) out of `src/ui/tui/update.rs` into a non-UI runtime boundary
+- next candidate: move sync-mode start/stop launch command execution path out of `src/ui/tui/update.rs` (currently inline `execute_tmux_command` loops) into shared runtime/infrastructure helper
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
