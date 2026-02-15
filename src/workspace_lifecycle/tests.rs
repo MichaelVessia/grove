@@ -3,7 +3,7 @@ use super::{
     SetupScriptContext, SetupScriptRunner, WorkspaceLifecycleError, WorkspaceMarkerError,
     copy_env_files, create_workspace, delete_workspace, ensure_grove_gitignore_entries,
     read_workspace_agent_marker, read_workspace_markers, workspace_directory_path,
-    write_workspace_agent_marker,
+    workspace_lifecycle_error_message, write_workspace_agent_marker,
 };
 use crate::config::MultiplexerKind;
 use crate::domain::AgentType;
@@ -367,6 +367,20 @@ fn workspace_directory_path_uses_repo_prefix() {
     assert_eq!(
         workspace_directory_path(repo_root, "feature_a").expect("path derivation should succeed"),
         PathBuf::from("/repos/grove-feature_a")
+    );
+}
+
+#[test]
+fn workspace_lifecycle_error_messages_are_user_friendly() {
+    assert_eq!(
+        workspace_lifecycle_error_message(&WorkspaceLifecycleError::InvalidWorkspaceName),
+        "workspace name must be [A-Za-z0-9_-]"
+    );
+    assert_eq!(
+        workspace_lifecycle_error_message(&WorkspaceLifecycleError::GitCommandFailed(
+            "boom".to_string()
+        )),
+        "git command failed: boom"
     );
 }
 

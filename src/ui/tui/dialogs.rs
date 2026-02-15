@@ -1719,7 +1719,7 @@ impl GroveApp {
             self.show_toast(
                 format!(
                     "workspace edit failed: {}",
-                    Self::workspace_lifecycle_error_message(&error)
+                    workspace_lifecycle_error_message(&error)
                 ),
                 true,
             );

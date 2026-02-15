@@ -61,7 +61,7 @@ use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
 use crate::workspace_lifecycle::{
     BranchMode, CommandGitRunner, CommandSetupScriptRunner, CreateWorkspaceRequest,
     CreateWorkspaceResult, DeleteWorkspaceRequest, WorkspaceLifecycleError, create_workspace,
-    delete_workspace, write_workspace_agent_marker,
+    delete_workspace, workspace_lifecycle_error_message, write_workspace_agent_marker,
 };
 
 mod ansi;

@@ -34,6 +34,22 @@ pub enum WorkspaceLifecycleError {
     Io(String),
 }
 
+pub fn workspace_lifecycle_error_message(error: &WorkspaceLifecycleError) -> String {
+    match error {
+        WorkspaceLifecycleError::EmptyWorkspaceName => "workspace name is required".to_string(),
+        WorkspaceLifecycleError::InvalidWorkspaceName => {
+            "workspace name must be [A-Za-z0-9_-]".to_string()
+        }
+        WorkspaceLifecycleError::EmptyBaseBranch => "base branch is required".to_string(),
+        WorkspaceLifecycleError::EmptyExistingBranch => "existing branch is required".to_string(),
+        WorkspaceLifecycleError::RepoNameUnavailable => "repo name unavailable".to_string(),
+        WorkspaceLifecycleError::GitCommandFailed(message) => {
+            format!("git command failed: {message}")
+        }
+        WorkspaceLifecycleError::Io(message) => format!("io error: {message}"),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceMarkerError {
     MissingAgentMarker,
