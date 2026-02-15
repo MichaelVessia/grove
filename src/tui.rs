@@ -34,7 +34,6 @@ use ftui::widgets::command_palette::{
 };
 use ftui::widgets::modal::{BackdropConfig, Modal, ModalSizeConstraints};
 use ftui::widgets::paragraph::Paragraph;
-use ftui::widgets::status_line::{StatusItem, StatusLine};
 use ftui::{App, Cmd, Model, PackedRgba, ScreenMode, Style};
 use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
 use serde_json::Value;
@@ -366,6 +365,156 @@ fn pad_or_truncate_to_display_width(value: &str, width: usize) -> String {
         out.push_str(&" ".repeat(width.saturating_sub(used)));
     }
     out
+}
+
+fn clip_to_display_width(value: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+    if text_display_width(value) <= max_width {
+        return value.to_string();
+    }
+
+    let mut out = String::new();
+    let mut width = 0usize;
+    for grapheme in text_graphemes(value) {
+        let grapheme_width = line_visual_width(grapheme);
+        if width.saturating_add(grapheme_width) > max_width {
+            break;
+        }
+        out.push_str(grapheme);
+        width = width.saturating_add(grapheme_width);
+    }
+    out
+}
+
+fn spans_display_width(spans: &[FtSpan<'_>]) -> usize {
+    spans
+        .iter()
+        .map(|span| text_display_width(span.content.as_ref()))
+        .sum()
+}
+
+fn truncate_spans_to_width(spans: &[FtSpan<'_>], max_width: usize) -> Vec<FtSpan<'static>> {
+    if max_width == 0 {
+        return Vec::new();
+    }
+
+    let mut rendered: Vec<FtSpan<'static>> = Vec::new();
+    let mut used = 0usize;
+    for span in spans {
+        if used >= max_width {
+            break;
+        }
+
+        let remaining = max_width.saturating_sub(used);
+        let rendered_text = clip_to_display_width(span.content.as_ref(), remaining);
+        if rendered_text.is_empty() {
+            continue;
+        }
+
+        let rendered_span = match span.style {
+            Some(style) => FtSpan::styled(rendered_text, style),
+            None => FtSpan::raw(rendered_text),
+        };
+        used = used.saturating_add(text_display_width(rendered_span.content.as_ref()));
+        rendered.push(rendered_span);
+    }
+
+    rendered
+}
+
+fn chrome_bar_line(
+    width: usize,
+    base_style: Style,
+    left: Vec<FtSpan<'static>>,
+    center: Vec<FtSpan<'static>>,
+    right: Vec<FtSpan<'static>>,
+) -> FtLine {
+    if width == 0 {
+        return FtLine::raw("");
+    }
+
+    let right = truncate_spans_to_width(&right, width);
+    let right_width = spans_display_width(&right);
+    let right_start = width.saturating_sub(right_width);
+
+    let center = truncate_spans_to_width(&center, width);
+    let center_width = spans_display_width(&center);
+    let center_start = width.saturating_sub(center_width) / 2;
+    let center_can_render =
+        center_width > 0 && center_start.saturating_add(center_width) <= right_start;
+
+    let left_max_width = if center_can_render {
+        center_start
+    } else {
+        right_start
+    };
+    let left = truncate_spans_to_width(&left, left_max_width);
+    let left_width = spans_display_width(&left);
+
+    let mut spans: Vec<FtSpan<'static>> = Vec::new();
+    spans.extend(left);
+    let mut cursor = left_width;
+
+    if center_can_render {
+        if center_start > cursor {
+            spans.push(FtSpan::styled(
+                " ".repeat(center_start.saturating_sub(cursor)),
+                base_style,
+            ));
+        }
+        spans.extend(center);
+        cursor = center_start.saturating_add(center_width);
+    }
+
+    if right_start > cursor {
+        spans.push(FtSpan::styled(
+            " ".repeat(right_start.saturating_sub(cursor)),
+            base_style,
+        ));
+    }
+    spans.extend(right);
+    cursor = right_start.saturating_add(right_width);
+
+    if width > cursor {
+        spans.push(FtSpan::styled(
+            " ".repeat(width.saturating_sub(cursor)),
+            base_style,
+        ));
+    }
+
+    FtLine::from_spans(spans)
+}
+
+fn keybind_hint_spans(
+    hints: &str,
+    base_style: Style,
+    key_style: Style,
+    sep_style: Style,
+) -> Vec<FtSpan<'static>> {
+    let mut spans: Vec<FtSpan<'static>> = Vec::new();
+    for (chunk_index, chunk) in hints.split(", ").enumerate() {
+        if chunk_index > 0 {
+            spans.push(FtSpan::styled(", ", sep_style));
+        }
+
+        if let Some(split_index) = chunk.rfind(' ') {
+            let key = &chunk[..split_index];
+            let action = &chunk[split_index..];
+            if !key.is_empty() {
+                spans.push(FtSpan::styled(key.to_string(), key_style));
+            }
+            if !action.is_empty() {
+                spans.push(FtSpan::styled(action.to_string(), base_style));
+            }
+            continue;
+        }
+
+        spans.push(FtSpan::styled(chunk.to_string(), key_style));
+    }
+
+    spans
 }
 
 fn modal_labeled_input_row(
@@ -8121,28 +8270,50 @@ impl GroveApp {
         let theme = ui_theme();
         let mode_chip = format!("[{}]", self.mode_label());
         let focus_chip = format!("[{}]", self.focus_label());
+        let base_style = Style::new().bg(theme.crust).fg(theme.text);
+        let left_style = Style::new().bg(theme.surface0).fg(theme.blue).bold();
+        let repo_style = Style::new().bg(theme.mantle).fg(theme.subtext0);
+        let mode_style = Style::new().bg(theme.surface1).fg(theme.yellow).bold();
+        let focus_style = Style::new().bg(theme.surface1).fg(theme.teal).bold();
 
-        let base_header = StatusLine::new()
-            .separator("  ")
-            .style(Style::new().bg(theme.crust).fg(theme.text))
-            .left(StatusItem::text("Grove"))
-            .left(StatusItem::text(self.repo_name.as_str()))
-            .center(StatusItem::text(mode_chip.as_str()))
-            .center(StatusItem::text(focus_chip.as_str()));
-
-        if let Some(flash) = &self.flash {
-            let flash_chip = if flash.is_error {
-                format!("error: {}", flash.text)
-            } else {
-                flash.text.clone()
-            };
-            let header = base_header.right(StatusItem::text(flash_chip.as_str()));
-            header.render(area, frame);
-            let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
-            return;
+        let mut left: Vec<FtSpan> = vec![
+            FtSpan::styled(" ".to_string(), base_style),
+            FtSpan::styled(" Grove ".to_string(), left_style),
+            FtSpan::styled(" ".to_string(), base_style),
+            FtSpan::styled(format!(" {} ", self.repo_name), repo_style),
+        ];
+        if self.command_palette.is_visible() {
+            left.push(FtSpan::styled(
+                " [Palette] ".to_string(),
+                Style::new().bg(theme.surface1).fg(theme.mauve).bold(),
+            ));
         }
 
-        base_header.render(area, frame);
+        let center: Vec<FtSpan> = vec![
+            FtSpan::styled(mode_chip, mode_style),
+            FtSpan::styled(" ".to_string(), base_style),
+            FtSpan::styled(focus_chip, focus_style),
+        ];
+
+        let right: Vec<FtSpan> = match &self.flash {
+            Some(flash) => {
+                let flash_text = if flash.is_error {
+                    format!(" error: {} ", flash.text)
+                } else {
+                    format!(" {} ", flash.text)
+                };
+                let flash_style = if flash.is_error {
+                    Style::new().bg(theme.red).fg(theme.crust).bold()
+                } else {
+                    Style::new().bg(theme.blue).fg(theme.crust).bold()
+                };
+                vec![FtSpan::styled(flash_text, flash_style)]
+            }
+            None => Vec::new(),
+        };
+
+        let line = chrome_bar_line(usize::from(area.width), base_style, left, center, right);
+        Paragraph::new(FtText::from_line(line)).render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
     }
 
@@ -8585,12 +8756,27 @@ impl GroveApp {
 
         let theme = ui_theme();
         let hints = self.keybind_hints_line();
+        let base_style = Style::new().bg(theme.mantle).fg(theme.text);
+        let chip_style = Style::new().bg(theme.surface0).fg(theme.blue).bold();
+        let key_style = Style::new().bg(theme.mantle).fg(theme.lavender).bold();
+        let text_style = Style::new().bg(theme.mantle).fg(theme.subtext0);
+        let sep_style = Style::new().bg(theme.mantle).fg(theme.overlay0);
 
-        let status = StatusLine::new()
-            .separator("  ")
-            .style(Style::new().bg(theme.mantle).fg(theme.text))
-            .left(StatusItem::text(hints));
-        status.render(area, frame);
+        let mut left: Vec<FtSpan> = vec![
+            FtSpan::styled(" ".to_string(), base_style),
+            FtSpan::styled(" Keys ".to_string(), chip_style),
+            FtSpan::styled(" ".to_string(), base_style),
+        ];
+        left.extend(keybind_hint_spans(hints, text_style, key_style, sep_style));
+
+        let line = chrome_bar_line(
+            usize::from(area.width),
+            base_style,
+            left,
+            Vec::new(),
+            Vec::new(),
+        );
+        Paragraph::new(FtText::from_line(line)).render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_STATUS));
     }
 
