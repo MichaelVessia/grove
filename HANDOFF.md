@@ -1233,9 +1233,25 @@
 - Gates:
   - `cargo test --lib` (pass, 314)
 
+### Phase 7b, move `workspace_lifecycle` module under `src/application/`
+- Commit: `e5e4e9a`
+- Changes:
+  - moved module files:
+    - `src/workspace_lifecycle.rs` -> `src/application/workspace_lifecycle.rs`
+    - `src/workspace_lifecycle/tests.rs` -> `src/application/workspace_lifecycle/tests.rs`
+  - updated `src/application/mod.rs` with `pub mod workspace_lifecycle;`
+  - updated crate root in `src/lib.rs`:
+    - removed `pub mod workspace_lifecycle;`
+  - updated imports across crate from `crate::workspace_lifecycle::...` to `crate::application::workspace_lifecycle::...`
+  - no behavior changes, crate-tree alignment move only
+- Gates:
+  - `cargo test --lib` (pass, 314)
+
 ## Current State
-- Worktree is clean after phase 7a commit.
+- Worktree is clean after phase 7b commit.
 - Recent refactor commits on local `master`:
+  - `e5e4e9a` refactor(application): move workspace lifecycle under application
+  - `c6fcfe2` docs(handoff): record phase 7a
   - `aa8e75d` refactor(application): move agent runtime under application
   - `4fc9053` docs(handoff): record phase 6ar
   - `5ce9c52` refactor(runtime): inline typed lifecycle execution paths
@@ -1345,7 +1361,7 @@ Status:
 Next sub-targets:
 - phase 6 runtime-boundary extraction is functionally complete for lifecycle start/stop flow
 - continue phase 7 crate-tree alignment in small compile-safe moves
-- next candidate: move `workspace_lifecycle` under `src/application/` and update imports/tests
+- next candidate: move remaining non-UI runtime modules into DDD buckets (`preview`, `interactive`, `mouse`, `zellij_emulator`) with compile-safe import rewrites per module
 
 Rules:
 - keep behavior unchanged
