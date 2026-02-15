@@ -690,14 +690,6 @@ impl GroveApp {
         Some(session_name)
     }
 
-    fn selected_session_for_live_preview(&self) -> Option<LivePreviewTarget> {
-        live_preview_capture_target_for_tab(
-            self.state.selected_workspace(),
-            self.preview_tab == PreviewTab::Git,
-            &self.lazygit_ready_sessions,
-        )
-    }
-
     pub(super) fn prepare_live_preview_session(&mut self) -> Option<LivePreviewTarget> {
         if self.preview_tab == PreviewTab::Git {
             return self
@@ -707,7 +699,11 @@ impl GroveApp {
                     include_escape_sequences: true,
                 });
         }
-        self.selected_session_for_live_preview()
+        live_preview_capture_target_for_tab(
+            self.state.selected_workspace(),
+            false,
+            &self.lazygit_ready_sessions,
+        )
     }
 
     pub(super) fn interactive_target_session(&self) -> Option<String> {
