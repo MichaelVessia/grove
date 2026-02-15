@@ -4,13 +4,13 @@ pub mod config;
 pub mod domain;
 pub mod event_log;
 pub mod hardening;
+pub mod infrastructure;
 pub mod interactive;
 pub mod mouse;
 pub mod preview;
 pub mod state;
 pub mod tui;
 pub mod ui;
-pub mod zellij_emulator;
 
 pub fn hello_message(app_name: &str) -> String {
     format!("Hello from {app_name}.")

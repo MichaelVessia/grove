@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use arboard::Clipboard;
 
 use crate::application::agent_runtime::{zellij_capture_log_path, zellij_config_path};
-use crate::zellij_emulator::ZellijPreviewEmulator;
+use crate::infrastructure::zellij_emulator::ZellijPreviewEmulator;
 
 use super::CursorMetadata;
 
