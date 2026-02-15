@@ -8,11 +8,12 @@ use super::{
     CaptureChange, LaunchRequest, SessionActivity, build_launch_plan, default_agent_command,
     detect_agent_session_status_in_home, detect_status,
     detect_status_with_session_override_in_home, detect_waiting_prompt, evaluate_capture_change,
-    git_session_name_for_workspace, normalized_agent_command_override, poll_interval,
-    reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace,
+    git_session_name_for_workspace, live_preview_agent_session, normalized_agent_command_override,
+    poll_interval, reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace,
     session_name_for_workspace_ref, stop_plan, strip_mouse_fragments,
     tmux_capture_error_indicates_missing_session, workspace_should_poll_status,
-    zellij_capture_log_path, zellij_capture_log_path_in, zellij_config_path,
+    workspace_status_session_target, zellij_capture_log_path, zellij_capture_log_path_in,
+    zellij_config_path,
 };
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -109,6 +110,38 @@ fn workspace_status_poll_policy_differs_between_tmux_and_zellij_for_idle_non_mai
         &workspace,
         MultiplexerKind::Zellij
     ));
+}
+
+#[test]
+fn live_preview_agent_session_requires_live_workspace_session() {
+    let idle_workspace = fixture_workspace("feature", false);
+    assert_eq!(live_preview_agent_session(Some(&idle_workspace)), None);
+
+    let mut active_workspace = fixture_workspace("feature", false);
+    active_workspace.status = WorkspaceStatus::Active;
+    assert_eq!(
+        live_preview_agent_session(Some(&active_workspace)),
+        Some("grove-ws-feature".to_string())
+    );
+}
+
+#[test]
+fn workspace_status_session_target_skips_selected_live_session() {
+    let mut workspace = fixture_workspace("feature", false);
+    workspace.status = WorkspaceStatus::Active;
+
+    assert_eq!(
+        workspace_status_session_target(&workspace, MultiplexerKind::Tmux, None),
+        Some("grove-ws-feature".to_string())
+    );
+    assert_eq!(
+        workspace_status_session_target(
+            &workspace,
+            MultiplexerKind::Tmux,
+            Some("grove-ws-feature")
+        ),
+        None
+    );
 }
 
 #[test]

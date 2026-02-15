@@ -40,9 +40,10 @@ use crate::adapters::{BootstrapData, DiscoveryState};
 use crate::agent_runtime::{
     LaunchRequest, OutputDigest, SessionActivity, ShellLaunchRequest, build_launch_plan,
     build_shell_launch_plan, detect_status_with_session_override, evaluate_capture_change,
-    git_session_name_for_workspace, poll_interval, session_name_for_workspace_in_project,
-    session_name_for_workspace_ref, stop_plan, tmux_capture_error_indicates_missing_session,
-    workspace_should_poll_status, zellij_config_path,
+    git_session_name_for_workspace, live_preview_agent_session, poll_interval,
+    session_name_for_workspace_in_project, session_name_for_workspace_ref, stop_plan,
+    tmux_capture_error_indicates_missing_session, workspace_status_session_target,
+    zellij_config_path,
 };
 use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};

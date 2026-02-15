@@ -561,8 +561,31 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 281)
 
+### Phase 6e, move live-preview session/target selection helpers to `agent_runtime`
+- Commit: uncommitted (worktree changes)
+- Changes:
+  - added runtime helpers in `src/agent_runtime.rs`:
+    - `live_preview_agent_session(Option<&Workspace>) -> Option<String>`
+    - `workspace_status_session_target(&Workspace, MultiplexerKind, Option<&str>) -> Option<String>`
+  - updated UI callers in `src/ui/tui/update.rs`:
+    - `selected_session_for_live_preview` now delegates agent-tab session selection to runtime helper
+    - `workspace_status_poll_targets` now delegates per-workspace target selection/filtering to runtime helper
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime tests in `src/agent_runtime/tests.rs`:
+    - `live_preview_agent_session_requires_live_workspace_session`
+    - `workspace_status_session_target_skips_selected_live_session`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 36)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 283)
+
 ## Current State
-- Worktree is clean.
+- Worktree has uncommitted phase 6e changes:
+  - `src/agent_runtime.rs`
+  - `src/agent_runtime/tests.rs`
+  - `src/ui/tui/mod.rs`
+  - `src/ui/tui/update.rs`
 - Recent refactor commits on local `master`:
   - `87bb133` phase 6d
   - `3b365f0` phase 6c
@@ -618,7 +641,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move live-preview session selection and target construction helpers from `ui/tui/update.rs` into runtime/application layer
+- next candidate: move remaining non-UI session-target helpers from `ui/tui/update.rs` (for example interactive target/session resolution wrappers) into runtime/application layer
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:

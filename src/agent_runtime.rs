@@ -167,6 +167,32 @@ pub fn workspace_should_poll_status(workspace: &Workspace, multiplexer: Multiple
     workspace.status.has_session()
 }
 
+pub fn live_preview_agent_session(workspace: Option<&Workspace>) -> Option<String> {
+    let workspace = workspace?;
+    if !workspace.status.has_session() {
+        return None;
+    }
+
+    Some(session_name_for_workspace_ref(workspace))
+}
+
+pub fn workspace_status_session_target(
+    workspace: &Workspace,
+    multiplexer: MultiplexerKind,
+    selected_live_session: Option<&str>,
+) -> Option<String> {
+    if !workspace_should_poll_status(workspace, multiplexer) {
+        return None;
+    }
+
+    let session_name = session_name_for_workspace_ref(workspace);
+    if selected_live_session == Some(session_name.as_str()) {
+        return None;
+    }
+
+    Some(session_name)
+}
+
 pub fn tmux_capture_error_indicates_missing_session(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
     lower.contains("can't find pane")

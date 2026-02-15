@@ -704,12 +704,7 @@ impl GroveApp {
             return None;
         }
 
-        let workspace = self.state.selected_workspace()?;
-        if workspace.status.has_session() {
-            return Some((Self::workspace_session_name(workspace), true));
-        }
-
-        None
+        live_preview_agent_session(self.state.selected_workspace()).map(|session| (session, true))
     }
 
     pub(super) fn prepare_live_preview_session(&mut self) -> Option<(String, bool)> {
@@ -734,14 +729,19 @@ impl GroveApp {
         self.state
             .workspaces
             .iter()
-            .filter(|workspace| workspace_should_poll_status(workspace, self.multiplexer))
-            .map(|workspace| WorkspaceStatusPollTarget {
-                workspace_name: workspace.name.clone(),
-                workspace_path: workspace.path.clone(),
-                session_name: Self::workspace_session_name(workspace),
-                supported_agent: workspace.supported_agent,
+            .filter_map(|workspace| {
+                let session_name = workspace_status_session_target(
+                    workspace,
+                    self.multiplexer,
+                    selected_live_session,
+                )?;
+                Some(WorkspaceStatusPollTarget {
+                    workspace_name: workspace.name.clone(),
+                    workspace_path: workspace.path.clone(),
+                    session_name,
+                    supported_agent: workspace.supported_agent,
+                })
             })
-            .filter(|target| selected_live_session != Some(target.session_name.as_str()))
             .collect()
     }
 
