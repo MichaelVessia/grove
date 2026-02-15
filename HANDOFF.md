@@ -755,8 +755,25 @@
 - Gates:
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6r, remove status-poll wrapper in UI update flow
+- Commit: `(uncommitted)`
+- Changes:
+  - removed `workspace_status_poll_targets` wrapper from `src/ui/tui/update.rs`
+  - updated sync and async poll callsites in `src/ui/tui/update.rs` to call
+    `workspace_status_targets_for_polling_with_live_preview` directly
+  - updated wrapper-oriented TUI tests in `src/ui/tui/tests/mod.rs`:
+    - `zellij_workspace_status_poll_targets_include_idle_workspaces`
+    - `tmux_workspace_status_poll_targets_skip_idle_workspaces`
+    - both now assert runtime helper output directly
+  - no behavior changes, UI shim cleanup only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree is clean.
+- Worktree has uncommitted phase 6r changes in:
+  - `src/ui/tui/update.rs`
+  - `src/ui/tui/tests/mod.rs`
+  - `HANDOFF.md`
 - Recent refactor commits on local `master`:
   - `ce477d5` phase 6q
   - `16ead82` phase 6p

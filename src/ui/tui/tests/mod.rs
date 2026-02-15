@@ -20,6 +20,7 @@ use super::{
     ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
 };
 use crate::adapters::{BootstrapData, DiscoveryState};
+use crate::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::config::{MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
@@ -2026,7 +2027,11 @@ fn zellij_workspace_status_poll_targets_include_idle_workspaces() {
     app.state.selected_index = 0;
     app.state.workspaces[1].status = WorkspaceStatus::Idle;
 
-    let targets = app.workspace_status_poll_targets(None);
+    let targets = workspace_status_targets_for_polling_with_live_preview(
+        &app.state.workspaces,
+        app.multiplexer,
+        None,
+    );
     assert_eq!(targets.len(), 1);
     assert_eq!(targets[0].workspace_name, "feature-a");
     assert_eq!(targets[0].session_name, "grove-ws-feature-a");
@@ -2039,7 +2044,11 @@ fn tmux_workspace_status_poll_targets_skip_idle_workspaces() {
     app.state.selected_index = 0;
     app.state.workspaces[1].status = WorkspaceStatus::Idle;
 
-    let targets = app.workspace_status_poll_targets(None);
+    let targets = workspace_status_targets_for_polling_with_live_preview(
+        &app.state.workspaces,
+        app.multiplexer,
+        None,
+    );
     assert!(targets.is_empty());
 }
 
