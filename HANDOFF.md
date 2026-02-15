@@ -1318,9 +1318,25 @@
 - Gates:
   - `cargo test --lib` (pass, 314)
 
+### Phase 7h, move `adapters` module under `src/infrastructure/`
+- Commit: `696ff76`
+- Changes:
+  - moved module files:
+    - `src/adapters.rs` -> `src/infrastructure/adapters.rs`
+    - `src/adapters/tests.rs` -> `src/infrastructure/adapters/tests.rs`
+  - updated `src/infrastructure/mod.rs` with `pub mod adapters;`
+  - updated crate root in `src/lib.rs`:
+    - removed `pub mod adapters;`
+  - updated imports from `crate::adapters::...` to `crate::infrastructure::adapters::...` in TUI modules and tests
+  - no behavior changes, crate-tree alignment move only
+- Gates:
+  - `cargo test --lib` (pass, 314)
+
 ## Current State
-- Worktree is clean after phase 7g commit.
+- Worktree is clean after phase 7h commit.
 - Recent refactor commits on local `master`:
+  - `696ff76` refactor(infrastructure): move adapters module under infrastructure
+  - `a88d3f4` docs(handoff): record phase 7g
   - `5baa43d` refactor(ui): move state module under ui
   - `2ff2ce2` docs(handoff): record phase 7f
   - `2a4dc5d` refactor(ui): move mouse module under ui
@@ -1442,7 +1458,7 @@ Status:
 Next sub-targets:
 - phase 6 runtime-boundary extraction is functionally complete for lifecycle start/stop flow
 - continue phase 7 crate-tree alignment in small compile-safe moves
-- next candidate: move remaining root modules into DDD buckets (`adapters`, `config`, `event_log`, `hardening`) with compile-safe import rewrites
+- next candidate: move remaining root modules into DDD buckets (`config`, `event_log`, `hardening`) with compile-safe import rewrites
 
 Rules:
 - keep behavior unchanged
