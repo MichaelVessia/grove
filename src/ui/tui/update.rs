@@ -691,14 +691,10 @@ impl GroveApp {
     }
 
     fn selected_session_for_live_preview(&self) -> Option<(String, bool)> {
-        let selected_workspace = self.state.selected_workspace();
-        let git_preview_session =
-            git_preview_session_if_ready(selected_workspace, &self.lazygit_ready_sessions);
-
-        workspace_session_for_preview_tab(
-            selected_workspace,
+        live_preview_session_for_tab(
+            self.state.selected_workspace(),
             self.preview_tab == PreviewTab::Git,
-            git_preview_session.as_deref(),
+            &self.lazygit_ready_sessions,
         )
         .map(|session| (session, true))
     }

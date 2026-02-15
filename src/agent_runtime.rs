@@ -224,6 +224,18 @@ pub fn git_preview_session_if_ready(
     Some(session_name)
 }
 
+pub fn live_preview_session_for_tab(
+    workspace: Option<&Workspace>,
+    preview_tab_is_git: bool,
+    ready_sessions: &HashSet<String>,
+) -> Option<String> {
+    if preview_tab_is_git {
+        return git_preview_session_if_ready(workspace, ready_sessions);
+    }
+
+    live_preview_agent_session(workspace)
+}
+
 pub fn workspace_status_session_target(
     workspace: &Workspace,
     multiplexer: MultiplexerKind,

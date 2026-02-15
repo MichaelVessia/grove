@@ -9,8 +9,8 @@ use super::{
     detect_agent_session_status_in_home, detect_status,
     detect_status_with_session_override_in_home, detect_waiting_prompt, evaluate_capture_change,
     git_preview_session_if_ready, git_session_name_for_workspace, kill_workspace_session_command,
-    live_preview_agent_session, normalized_agent_command_override, poll_interval,
-    reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace,
+    live_preview_agent_session, live_preview_session_for_tab, normalized_agent_command_override,
+    poll_interval, reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace,
     session_name_for_workspace_ref, stop_plan, strip_mouse_fragments,
     tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
     workspace_session_for_preview_tab, workspace_should_poll_status,
@@ -243,6 +243,28 @@ fn git_preview_session_if_ready_requires_matching_ready_session() {
         Some("grove-ws-feature-git".to_string())
     );
     assert_eq!(git_preview_session_if_ready(None, &ready_sessions), None);
+}
+
+#[test]
+fn live_preview_session_for_tab_uses_git_or_agent_policy() {
+    let idle_workspace = fixture_workspace("feature", false);
+    let mut active_workspace = fixture_workspace("feature", false);
+    active_workspace.status = WorkspaceStatus::Active;
+    let mut ready_sessions = HashSet::new();
+    ready_sessions.insert("grove-ws-feature-git".to_string());
+
+    assert_eq!(
+        live_preview_session_for_tab(Some(&idle_workspace), true, &ready_sessions),
+        Some("grove-ws-feature-git".to_string())
+    );
+    assert_eq!(
+        live_preview_session_for_tab(Some(&idle_workspace), false, &ready_sessions),
+        None
+    );
+    assert_eq!(
+        live_preview_session_for_tab(Some(&active_workspace), false, &ready_sessions),
+        Some("grove-ws-feature".to_string())
+    );
 }
 
 #[test]
