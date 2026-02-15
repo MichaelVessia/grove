@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-master
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package artifacts
+        run: |
+          mkdir -p dist
+          cp target/release/grove dist/grove-linux-x86_64
+          tar -C dist -czf dist/grove-linux-x86_64.tar.gz grove-linux-x86_64
+          sha256sum dist/grove-linux-x86_64.tar.gz > dist/grove-linux-x86_64.tar.gz.sha256
+
+      - name: Publish rolling latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            gh release delete latest --cleanup-tag --yes
+          fi
+
+          gh release create latest \
+            dist/grove-linux-x86_64.tar.gz \
+            dist/grove-linux-x86_64.tar.gz.sha256 \
+            --title "Latest" \
+            --notes "Automated release from master at commit $GITHUB_SHA."
