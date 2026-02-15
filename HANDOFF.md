@@ -730,9 +730,26 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 45)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6p, move live-preview exclusion glue for status polling to `agent_runtime`
+- Commit: `16ead82`
+- Changes:
+  - added runtime helper in `src/agent_runtime.rs`:
+    - `workspace_status_targets_for_polling_with_live_preview(&[Workspace], MultiplexerKind, Option<&LivePreviewTarget>) -> Vec<WorkspaceStatusTarget>`
+  - updated UI caller in `src/ui/tui/update.rs`:
+    - `workspace_status_poll_targets` now accepts `Option<&LivePreviewTarget>` and delegates selected-live-session exclusion to runtime helper
+    - sync/async poll callsites now pass `live_preview.as_ref()` directly (no UI-side session-name extraction)
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `workspace_status_targets_for_polling_with_live_preview_skips_selected_session`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 46)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `16ead82` phase 6p
   - `a3a13bf` phase 6o
   - `843f3c2` phase 6n
   - `0da752e` phase 6m
@@ -798,7 +815,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move remaining live-preview orchestration glue from `ui/tui/update.rs` to runtime boundary helpers (selected-live-session extraction + status-target exclusion inputs), while keeping lazygit launch orchestration local
+- next candidate: remove remaining UI wrapper shims now delegated to runtime (`selected_session_for_live_preview`, `workspace_status_poll_targets`) by inlining or moving direct runtime calls, while keeping lazygit launch orchestration local
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
