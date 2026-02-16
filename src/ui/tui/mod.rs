@@ -159,6 +159,7 @@ mod view_overlays_workspace_launch;
 mod view_overlays_workspace_merge;
 mod view_overlays_workspace_update;
 mod view_preview;
+mod view_preview_content;
 mod view_preview_shell;
 mod view_selection_interaction;
 mod view_selection_logging;
