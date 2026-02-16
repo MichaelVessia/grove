@@ -1756,7 +1756,7 @@ impl GroveApp {
         if workspace
             .base_branch
             .as_ref()
-            .map_or(true, |value| value.trim().is_empty())
+            .is_none_or(|value| value.trim().is_empty())
         {
             self.show_toast("workspace base branch marker is missing", true);
             return;
@@ -1827,7 +1827,7 @@ impl GroveApp {
         if workspace
             .base_branch
             .as_ref()
-            .map_or(true, |value| value.trim().is_empty())
+            .is_none_or(|value| value.trim().is_empty())
         {
             self.show_toast("workspace base branch marker is missing", true);
             return;
