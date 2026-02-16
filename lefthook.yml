@@ -1,9 +1,4 @@
 pre-commit:
   commands:
-    fmt:
-      run: make fmt
-
-pre-push:
-  commands:
     ci:
-      run: make ci
+      run: env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_COMMON_DIR make ci
