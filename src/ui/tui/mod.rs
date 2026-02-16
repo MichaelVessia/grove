@@ -155,6 +155,7 @@ mod view_overlays_create;
 mod view_overlays_edit;
 mod view_overlays_help;
 mod view_overlays_projects;
+mod view_overlays_settings;
 mod view_overlays_workspace_delete;
 mod view_overlays_workspace_launch;
 mod view_overlays_workspace_merge;
