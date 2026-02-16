@@ -2,6 +2,20 @@
 
 Minimal workspace manager for AI coding agents (Rust + FrankenTUI).
 
+## Prerequisites
+
+Grove depends on external tools on your `PATH`:
+
+- `git`
+- `tmux` (required)
+- `lazygit` (required for Git tab)
+
+Quick check:
+
+```bash
+command -v git tmux lazygit
+```
+
 ## Bootstrap
 
 ```bash
