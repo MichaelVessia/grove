@@ -90,6 +90,7 @@ mod dialogs_edit;
 mod dialogs_launch;
 mod dialogs_merge;
 mod dialogs_projects;
+mod dialogs_settings;
 mod dialogs_state;
 mod dialogs_update_from_base;
 use dialogs::*;
