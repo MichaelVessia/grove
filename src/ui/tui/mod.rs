@@ -72,13 +72,16 @@ mod ansi;
 #[cfg(test)]
 use ansi::ansi_16_color;
 use ansi::ansi_line_to_styled_line;
-mod bootstrap;
+mod bootstrap_app;
+mod bootstrap_config;
+mod bootstrap_discovery;
 #[cfg(test)]
-use bootstrap::{AppDependencies, AppPaths};
-use bootstrap::{
-    bootstrap_data_for_projects, filter_branches, input_for_multiplexer, load_local_branches,
-    project_display_name, project_paths_equal, read_workspace_launch_prompt,
+use bootstrap_config::{AppDependencies, AppPaths};
+use bootstrap_config::{
+    filter_branches, input_for_multiplexer, load_local_branches, project_display_name,
+    project_paths_equal, read_workspace_launch_prompt,
 };
+use bootstrap_discovery::bootstrap_data_for_projects;
 mod terminal;
 use terminal::{
     ClipboardAccess, CommandTmuxInput, SystemClipboardAccess, TmuxInput, parse_cursor_metadata,
