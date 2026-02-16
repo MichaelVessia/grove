@@ -2,13 +2,16 @@
 
 Minimal workspace manager for AI coding agents (Rust + FrankenTUI).
 
-Grove helps you run many agent tasks in parallel, each in its own git worktree and tmux session, with one fast keyboard-first TUI.
+Grove helps you run many agent tasks in parallel, each in its own git worktree
+and tmux session, with one fast keyboard-first TUI.
 
 ## What Grove Is
 
-Grove is a focused workspace manager for AI coding agents, built with Rust and FrankenTUI.
+Grove is a focused workspace manager for AI coding agents, built with Rust and
+FrankenTUI.
 
-It is built for a single job: manage isolated coding workspaces, launch agents, monitor output live, and clean up safely.
+It is built for a single job: manage isolated coding workspaces, launch agents,
+monitor output live, and clean up safely.
 
 ## What Grove Supports
 
@@ -24,7 +27,7 @@ It is built for a single job: manage isolated coding workspaces, launch agents, 
 - Command palette + keybind help modal
 - Event logs and debug record stream for diagnostics
 
-## Scope (Intentional)
+## Scope
 
 - Single-repo workflow per active project
 - tmux-only multiplexer support
@@ -50,14 +53,21 @@ command -v git tmux lazygit
 
 ## Install
 
-### Option 1, Nix dev shell
+### Option 1, direnv (auto Nix shell)
+
+```bash
+direnv allow
+cargo build
+```
+
+### Option 2, Nix dev shell
 
 ```bash
 nix develop
 cargo build
 ```
 
-### Option 2, plain Cargo
+### Option 3, plain Cargo
 
 ```bash
 cargo build --release
@@ -101,7 +111,8 @@ Inside Grove:
 
 - `--print-hello`, sanity check output path
 - `--event-log <path>`, write event log to explicit file
-- `--debug-record`, write continuous debug record to `.grove/debug-record-*.jsonl`
+- `--debug-record`, write continuous debug record to
+  `.grove/debug-record-*.jsonl`
 
 Example:
 
@@ -142,7 +153,9 @@ make ci
 
 ## Credits
 
-Grove's workflow and UX direction were heavily inspired by [Sidecar](https://github.com/marcus/sidecar), which was the main reference for session lifecycle, interaction model, and overall operator experience.
+Grove's workflow and UX direction were heavily inspired by
+[Sidecar](https://github.com/marcus/sidecar), which was the main reference for
+session lifecycle, interaction model, and overall operator experience.
 
 Also built on [FrankenTUI](https://github.com/Dicklesworthstone/frankentui).
 
