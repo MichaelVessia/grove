@@ -29,7 +29,7 @@ fn missing_config_defaults_to_tmux() {
 fn save_and_load_round_trip() {
     let path = unique_temp_path("roundtrip");
     let config = GroveConfig {
-        multiplexer: MultiplexerKind::Zellij,
+        multiplexer: MultiplexerKind::Tmux,
         projects: vec![ProjectConfig {
             name: "grove".to_string(),
             path: PathBuf::from("/repos/grove"),

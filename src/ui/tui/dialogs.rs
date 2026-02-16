@@ -1916,7 +1916,7 @@ impl GroveApp {
             is_missing: dialog.is_missing,
             delete_local_branch: dialog.delete_local_branch,
         };
-        if !self.tmux_input.supports_background_send() {
+        if !self.tmux_input.supports_background_launch() {
             let (result, warnings) = delete_workspace(request, self.multiplexer);
             self.apply_delete_workspace_completion(DeleteWorkspaceCompletion {
                 workspace_name,
@@ -1994,7 +1994,7 @@ impl GroveApp {
             cleanup_local_branch: dialog.cleanup_local_branch,
         };
 
-        if !self.tmux_input.supports_background_send() {
+        if !self.tmux_input.supports_background_launch() {
             let (result, warnings) = merge_workspace(request, self.multiplexer);
             self.apply_merge_workspace_completion(MergeWorkspaceCompletion {
                 workspace_name,
@@ -2066,7 +2066,7 @@ impl GroveApp {
             base_branch: dialog.base_branch,
         };
 
-        if !self.tmux_input.supports_background_send() {
+        if !self.tmux_input.supports_background_launch() {
             let (result, warnings) = update_workspace_from_base(request, self.multiplexer);
             self.apply_update_from_base_completion(UpdateWorkspaceFromBaseCompletion {
                 workspace_name,

@@ -19,6 +19,7 @@ fn file_event_logger_writes_ndjson() {
     let path = unique_path("writer");
     let logger = FileEventLogger::open(&path).expect("event log file should open");
     logger.log(Event::new("state_change", "selection_changed").with_data("index", Value::from(1)));
+    drop(logger);
 
     let raw = fs::read_to_string(&path).expect("event log should be readable");
     assert!(!raw.trim().is_empty());

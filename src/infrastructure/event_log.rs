@@ -2,7 +2,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value};
 
@@ -67,22 +67,35 @@ impl EventLogger for NullEventLogger {
     fn log(&self, _event: Event) {}
 }
 
+const EVENT_LOG_FLUSH_INTERVAL: Duration = Duration::from_millis(100);
+const EVENT_LOG_FLUSH_EVERY_EVENTS: usize = 64;
+
+struct FileEventWriter {
+    writer: BufWriter<File>,
+    pending_events: usize,
+    last_flush_at: Instant,
+}
+
 pub struct FileEventLogger {
-    writer: Mutex<BufWriter<File>>,
+    writer: Mutex<FileEventWriter>,
 }
 
 impl FileEventLogger {
     pub fn open(path: &Path) -> std::io::Result<Self> {
         let file = OpenOptions::new().create(true).append(true).open(path)?;
         Ok(Self {
-            writer: Mutex::new(BufWriter::new(file)),
+            writer: Mutex::new(FileEventWriter {
+                writer: BufWriter::new(file),
+                pending_events: 0,
+                last_flush_at: Instant::now(),
+            }),
         })
     }
 }
 
 impl EventLogger for FileEventLogger {
     fn log(&self, event: Event) {
-        let Ok(mut writer) = self.writer.lock() else {
+        let Ok(mut state) = self.writer.lock() else {
             return;
         };
 
@@ -90,13 +103,25 @@ impl EventLogger for FileEventLogger {
             return;
         };
 
-        if writer.write_all(line.as_bytes()).is_err() {
+        if state.writer.write_all(line.as_bytes()).is_err() {
             return;
         }
-        if writer.write_all(b"\n").is_err() {
+        if state.writer.write_all(b"\n").is_err() {
             return;
         }
-        let _ = writer.flush();
+        state.pending_events = state.pending_events.saturating_add(1);
+
+        let should_flush = state.pending_events >= EVENT_LOG_FLUSH_EVERY_EVENTS
+            || state.last_flush_at.elapsed() >= EVENT_LOG_FLUSH_INTERVAL;
+        if !should_flush {
+            return;
+        }
+
+        if state.writer.flush().is_err() {
+            return;
+        }
+        state.pending_events = 0;
+        state.last_flush_at = Instant::now();
     }
 }
 

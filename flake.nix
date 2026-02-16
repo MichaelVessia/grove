@@ -37,7 +37,6 @@
               rust-analyzer
               rustfmt
               tmux
-              zellij
             ];
           };
         });

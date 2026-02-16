@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use super::{
     BootstrapData, DiscoveryState, GitAdapter, GitAdapterError, MultiplexerAdapter, SystemAdapter,
     bootstrap_data, build_workspaces, parse_branch_activity, parse_worktree_porcelain,
-    parse_zellij_running_sessions, workspace_name_from_path,
+    workspace_name_from_path,
 };
 
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -262,19 +262,4 @@ fn bootstrap_data_reports_error_state() {
         }
         other => panic!("expected error state, got: {other:?}"),
     }
-}
-
-#[test]
-fn parse_zellij_running_sessions_ignores_exited_sessions() {
-    let parsed = parse_zellij_running_sessions(
-        "grove-ws-alpha [Created 1m ago]\n\
-             grove-ws-beta [Created 2m ago] (EXITED - attach to resurrect)\n\
-             unrelated [Created 1m ago]\n\
-             grove-ws-gamma\n",
-    );
-
-    assert_eq!(
-        parsed,
-        HashSet::from(["grove-ws-alpha".to_string(), "grove-ws-gamma".to_string()])
-    );
 }

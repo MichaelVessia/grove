@@ -9,14 +9,14 @@ use self::render_support::{
     assert_row_bg, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
 };
 use super::{
-    AppDependencies, AppPaths, ClipboardAccess, CommandTmuxInput, CommandZellijInput,
-    CreateDialogField, CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, GroveApp,
-    HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW,
-    LaunchDialogField, LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture,
-    MergeDialogField, Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
-    PreviewTab, StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
-    UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture,
-    ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
+    AppDependencies, AppPaths, ClipboardAccess, CommandTmuxInput, CreateDialogField,
+    CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, GroveApp, HIT_ID_HEADER,
+    HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
+    LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg,
+    PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
+    StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput, UiCommand,
+    UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color,
+    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;
@@ -221,6 +221,14 @@ impl TmuxInput for BackgroundOnlyTmuxInput {
     }
 
     fn supports_background_send(&self) -> bool {
+        true
+    }
+
+    fn supports_background_poll(&self) -> bool {
+        true
+    }
+
+    fn supports_background_launch(&self) -> bool {
         true
     }
 }
@@ -1548,26 +1556,25 @@ fn uppercase_s_opens_settings_dialog() {
 }
 
 #[test]
-fn settings_dialog_save_switches_multiplexer_and_persists_config() {
+fn settings_dialog_save_persists_tmux_config() {
     let mut app = fixture_app();
     assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
     assert!(app.settings_dialog.is_some());
 
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press));
     let _ = app.handle_key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press));
     let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
 
     assert!(app.settings_dialog.is_none());
-    assert_eq!(app.multiplexer, MultiplexerKind::Zellij);
+    assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
     let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
         .expect("config should load");
-    assert_eq!(loaded.multiplexer, MultiplexerKind::Zellij);
+    assert_eq!(loaded.multiplexer, MultiplexerKind::Tmux);
 }
 
 #[test]
-fn settings_dialog_multiplexer_cycles_with_h_and_l() {
+fn settings_dialog_multiplexer_keys_keep_tmux_selection() {
     let mut app = fixture_app();
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
@@ -1578,7 +1585,7 @@ fn settings_dialog_multiplexer_cycles_with_h_and_l() {
         app.settings_dialog
             .as_ref()
             .map(|dialog| dialog.multiplexer),
-        Some(MultiplexerKind::Zellij)
+        Some(MultiplexerKind::Tmux)
     );
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press));
@@ -1594,34 +1601,8 @@ fn settings_dialog_multiplexer_cycles_with_h_and_l() {
         app.settings_dialog
             .as_ref()
             .map(|dialog| dialog.multiplexer),
-        Some(MultiplexerKind::Zellij)
-    );
-
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press));
-    assert_eq!(
-        app.settings_dialog
-            .as_ref()
-            .map(|dialog| dialog.multiplexer),
         Some(MultiplexerKind::Tmux)
     );
-}
-
-#[test]
-fn settings_dialog_blocks_switch_when_workspace_running() {
-    let (mut app, _commands, _captures, _cursor_captures) =
-        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-    assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
-
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
-    assert!(app.settings_dialog.is_some());
-
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press));
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press));
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
-
-    assert!(app.settings_dialog.is_some());
-    assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
-    assert!(app.status_bar_line().contains("restart running workspaces"));
 }
 
 #[test]
@@ -1631,71 +1612,15 @@ fn command_tmux_input_uses_background_send_mode() {
 }
 
 #[test]
-fn command_zellij_input_keeps_sync_send_mode() {
-    let input = CommandZellijInput::default();
-    assert!(!input.supports_background_send());
+fn command_tmux_input_uses_background_poll_mode() {
+    let input = CommandTmuxInput;
+    assert!(input.supports_background_poll());
 }
 
 #[test]
-fn zellij_capture_session_output_emulates_ansi_from_session_log() {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock should be monotonic")
-        .as_nanos();
-    let session_name = format!(
-        "grove-ws-zellij-emulator-test-{}-{timestamp}",
-        std::process::id()
-    );
-    let log_path = crate::application::agent_runtime::zellij_capture_log_path(&session_name);
-    let log_dir = log_path
-        .parent()
-        .expect("capture log path should have parent")
-        .to_path_buf();
-    fs::create_dir_all(&log_dir).expect("capture log directory should exist");
-    fs::write(
-        &log_path,
-        concat!(
-            "Script started on 2026-02-14 21:24:17-05:00 [COMMAND=\"codex\"]\n",
-            "\0line one\n",
-            "\u{1b}[31mline two red\u{1b}[0m\n",
-            "\u{1b}[32mline three green\u{1b}[0m\n",
-            "Script done on 2026-02-14 21:25:06-05:00 [COMMAND_EXIT_CODE=\"0\"]\n"
-        ),
-    )
-    .expect("capture log should be written");
-    let input = CommandZellijInput::default();
-
-    let captured = input
-        .capture_session_output(&session_name, 4)
-        .expect("capture should load from log file");
-
-    assert!(captured.contains("line one"));
-    assert!(captured.contains("line two red"));
-    assert!(captured.contains("line three green"));
-    assert!(captured.contains("exited with code 0"));
-    assert!(captured.contains("\u{1b}["));
-    assert!(!captured.contains("Script started on "));
-    assert!(!captured.contains("Script done on "));
-
-    let _ = fs::remove_file(log_path);
-}
-
-#[test]
-fn zellij_capture_session_output_returns_empty_when_log_missing() {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock should be monotonic")
-        .as_nanos();
-    let session_name = format!(
-        "grove-ws-zellij-missing-log-{}-{timestamp}",
-        std::process::id()
-    );
-    let input = CommandZellijInput::default();
-
-    let captured = input
-        .capture_session_output(&session_name, 50)
-        .expect("missing log should return empty output");
-    assert!(captured.is_empty());
+fn command_tmux_input_keeps_sync_launch_mode() {
+    let input = CommandTmuxInput;
+    assert!(!input.supports_background_launch());
 }
 
 #[test]
@@ -2262,23 +2187,6 @@ fn preview_poll_updates_non_selected_workspace_status_from_background_capture() 
 
     assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Waiting);
     assert!(!app.state.workspaces[1].is_orphaned);
-}
-
-#[test]
-fn zellij_workspace_status_poll_targets_include_idle_workspaces() {
-    let mut app = fixture_app();
-    app.multiplexer = MultiplexerKind::Zellij;
-    app.state.selected_index = 0;
-    app.state.workspaces[1].status = WorkspaceStatus::Idle;
-
-    let targets = workspace_status_targets_for_polling_with_live_preview(
-        &app.state.workspaces,
-        app.multiplexer,
-        None,
-    );
-    assert_eq!(targets.len(), 1);
-    assert_eq!(targets[0].workspace_name, "feature-a");
-    assert_eq!(targets[0].session_name, "grove-ws-feature-a");
 }
 
 #[test]
@@ -5913,38 +5821,6 @@ fn lazygit_launch_completion_failure_marks_session_failed() {
     assert!(app.lazygit_failed_sessions.contains("grove-ws-grove-git"));
     assert!(!app.lazygit_launch_in_flight.contains("grove-ws-grove-git"));
     assert!(app.status_bar_line().contains("lazygit launch failed"));
-}
-
-#[test]
-fn git_tab_launches_lazygit_with_zellij_session_plan() {
-    let (mut app, commands, _captures, _cursor_captures) =
-        fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-    app.multiplexer = MultiplexerKind::Zellij;
-
-    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
-    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
-
-    let command_lines: Vec<String> = commands
-        .borrow()
-        .iter()
-        .map(|command| command.join(" "))
-        .collect();
-
-    assert!(
-        command_lines
-            .iter()
-            .any(|line| line.contains("kill-session 'grove-ws-grove-git'"))
-    );
-    assert!(
-        command_lines
-            .iter()
-            .any(|line| line.contains("--session grove-ws-grove-git run"))
-    );
-    assert!(
-        command_lines
-            .iter()
-            .any(|line| line.contains("script -qefc 'lazygit'"))
-    );
 }
 
 #[test]

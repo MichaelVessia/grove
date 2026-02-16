@@ -8,29 +8,19 @@ use serde::{Deserialize, Serialize};
 pub enum MultiplexerKind {
     #[default]
     Tmux,
-    Zellij,
 }
 
 impl MultiplexerKind {
     pub fn label(self) -> &'static str {
-        match self {
-            Self::Tmux => "tmux",
-            Self::Zellij => "zellij",
-        }
+        "tmux"
     }
 
     pub const fn next(self) -> Self {
-        match self {
-            Self::Tmux => Self::Zellij,
-            Self::Zellij => Self::Tmux,
-        }
+        self
     }
 
     pub const fn previous(self) -> Self {
-        match self {
-            Self::Tmux => Self::Zellij,
-            Self::Zellij => Self::Tmux,
-        }
+        self
     }
 }
 

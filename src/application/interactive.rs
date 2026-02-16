@@ -1,6 +1,5 @@
 use std::time::{Duration, Instant};
 
-use crate::application::agent_runtime::zellij_config_path;
 use crate::infrastructure::config::MultiplexerKind;
 
 const DOUBLE_ESCAPE_WINDOW_MS: u64 = 150;
@@ -221,14 +220,11 @@ pub fn tmux_send_keys_command(
 }
 
 pub fn multiplexer_send_input_command(
-    multiplexer: MultiplexerKind,
+    _multiplexer: MultiplexerKind,
     target_session: &str,
     action: &InteractiveAction,
 ) -> Option<Vec<String>> {
-    match multiplexer {
-        MultiplexerKind::Tmux => tmux_send_keys_command_impl(target_session, action),
-        MultiplexerKind::Zellij => zellij_send_input_command(target_session, action),
-    }
+    tmux_send_keys_command_impl(target_session, action)
 }
 
 fn tmux_send_keys_command_impl(
@@ -253,92 +249,6 @@ fn tmux_send_keys_command_impl(
         ]),
         _ => None,
     }
-}
-
-fn zellij_send_input_command(
-    target_session: &str,
-    action: &InteractiveAction,
-) -> Option<Vec<String>> {
-    let config_path = zellij_config_path().to_string_lossy().to_string();
-    match action {
-        InteractiveAction::SendLiteral(text) => Some(vec![
-            "zellij".to_string(),
-            "--config".to_string(),
-            config_path.clone(),
-            "--session".to_string(),
-            target_session.to_string(),
-            "action".to_string(),
-            "write-chars".to_string(),
-            text.clone(),
-        ]),
-        InteractiveAction::SendNamed(key) => {
-            let bytes = zellij_named_key_bytes(key)?;
-            let mut command = vec![
-                "zellij".to_string(),
-                "--config".to_string(),
-                config_path,
-                "--session".to_string(),
-                target_session.to_string(),
-                "action".to_string(),
-                "write".to_string(),
-            ];
-            command.extend(bytes.into_iter().map(|value| value.to_string()));
-            Some(command)
-        }
-        _ => None,
-    }
-}
-
-fn zellij_named_key_bytes(key: &str) -> Option<Vec<u8>> {
-    if let Some(character) = key.strip_prefix("C-") {
-        let mut chars = character.chars();
-        let value = chars.next()?;
-        if chars.next().is_some() || !value.is_ascii_alphabetic() {
-            return None;
-        }
-        let lower = value.to_ascii_lowercase();
-        let lower_u8 = u8::try_from(u32::from(lower)).ok()?;
-        let control = lower_u8 & 0x1f;
-        return Some(vec![control]);
-    }
-
-    if let Some(index_text) = key.strip_prefix('F') {
-        let index = index_text.parse::<u8>().ok()?;
-        let sequence = match index {
-            1 => "\u{1b}OP",
-            2 => "\u{1b}OQ",
-            3 => "\u{1b}OR",
-            4 => "\u{1b}OS",
-            5 => "\u{1b}[15~",
-            6 => "\u{1b}[17~",
-            7 => "\u{1b}[18~",
-            8 => "\u{1b}[19~",
-            9 => "\u{1b}[20~",
-            10 => "\u{1b}[21~",
-            11 => "\u{1b}[23~",
-            12 => "\u{1b}[24~",
-            _ => return None,
-        };
-        return Some(sequence.as_bytes().to_vec());
-    }
-
-    let sequence = match key {
-        "Enter" => "\r",
-        "Tab" => "\t",
-        "BSpace" => "\u{7f}",
-        "DC" => "\u{1b}[3~",
-        "Up" => "\u{1b}[A",
-        "Down" => "\u{1b}[B",
-        "Left" => "\u{1b}[D",
-        "Right" => "\u{1b}[C",
-        "Home" => "\u{1b}[H",
-        "End" => "\u{1b}[F",
-        "PPage" => "\u{1b}[5~",
-        "NPage" => "\u{1b}[6~",
-        "Escape" => "\u{1b}",
-        _ => return None,
-    };
-    Some(sequence.as_bytes().to_vec())
 }
 
 fn is_paste_event(text: &str) -> bool {

@@ -167,55 +167,25 @@ pub struct CommandMultiplexerAdapter {
 
 impl MultiplexerAdapter for CommandMultiplexerAdapter {
     fn running_sessions(&self) -> HashSet<String> {
-        let output = match self.multiplexer {
-            MultiplexerKind::Tmux => Command::new("tmux")
-                .args(["list-sessions", "-F", "#{session_name}"])
-                .output(),
-            MultiplexerKind::Zellij => Command::new("zellij")
-                .args(["list-sessions", "--no-formatting"])
-                .output(),
-        };
+        let output = Command::new("tmux")
+            .args(["list-sessions", "-F", "#{session_name}"])
+            .output();
 
         match output {
             Ok(output) if output.status.success() => {
                 let stdout = String::from_utf8(output.stdout);
                 match stdout {
-                    Ok(content) => match self.multiplexer {
-                        MultiplexerKind::Tmux => content
-                            .lines()
-                            .filter(|name| name.starts_with(TMUX_SESSION_PREFIX))
-                            .map(ToOwned::to_owned)
-                            .collect(),
-                        MultiplexerKind::Zellij => parse_zellij_running_sessions(&content),
-                    },
+                    Ok(content) => content
+                        .lines()
+                        .filter(|name| name.starts_with(TMUX_SESSION_PREFIX))
+                        .map(ToOwned::to_owned)
+                        .collect(),
                     Err(_) => HashSet::new(),
                 }
             }
             _ => HashSet::new(),
         }
     }
-}
-
-fn parse_zellij_running_sessions(output: &str) -> HashSet<String> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.to_ascii_uppercase().contains("EXITED") {
-                return None;
-            }
-
-            let session_name = trimmed
-                .split_once(" [")
-                .map_or(trimmed, |(name, _)| name)
-                .trim();
-            if session_name.starts_with(TMUX_SESSION_PREFIX) {
-                return Some(session_name.to_string());
-            }
-
-            None
-        })
-        .collect()
 }
 
 #[derive(Debug, Clone, Default)]

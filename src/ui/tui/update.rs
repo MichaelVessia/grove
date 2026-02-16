@@ -1348,7 +1348,7 @@ impl GroveApp {
     }
 
     pub(super) fn poll_preview(&mut self) {
-        if !self.tmux_input.supports_background_send() {
+        if !self.tmux_input.supports_background_poll() {
             self.poll_preview_sync();
             return;
         }
@@ -1661,7 +1661,7 @@ impl GroveApp {
     }
 
     pub(super) fn refresh_workspaces(&mut self, preferred_workspace_path: Option<PathBuf>) {
-        if !self.tmux_input.supports_background_send() {
+        if !self.tmux_input.supports_background_launch() {
             self.refresh_workspaces_sync(preferred_workspace_path);
             return;
         }
@@ -1781,7 +1781,7 @@ impl GroveApp {
         }
 
         let repo_root = project.path;
-        if !self.tmux_input.supports_background_send() {
+        if !self.tmux_input.supports_background_launch() {
             let git = CommandGitRunner;
             let setup = CommandSetupScriptRunner;
             let result = create_workspace(&repo_root, &request, &git, &setup);
@@ -1865,7 +1865,7 @@ impl GroveApp {
             Some(capture_rows),
         );
 
-        if !self.tmux_input.supports_background_send() {
+        if !self.tmux_input.supports_background_launch() {
             let completion = execute_launch_request_with_result_for_mode(
                 &request,
                 self.multiplexer,
@@ -1983,7 +1983,7 @@ impl GroveApp {
         };
         let workspace_for_task = workspace.clone();
 
-        if !self.tmux_input.supports_background_send() {
+        if !self.tmux_input.supports_background_launch() {
             let completion = execute_stop_workspace_with_result_for_mode(
                 &workspace,
                 self.multiplexer,

@@ -192,10 +192,8 @@ pub(super) fn bootstrap_data_for_projects(
 }
 
 pub(super) fn input_for_multiplexer(multiplexer: MultiplexerKind) -> Box<dyn TmuxInput> {
-    match multiplexer {
-        MultiplexerKind::Tmux => Box::new(CommandTmuxInput),
-        MultiplexerKind::Zellij => Box::new(CommandZellijInput::default()),
-    }
+    let _ = multiplexer;
+    Box::new(CommandTmuxInput)
 }
 
 pub(super) fn read_workspace_launch_prompt(workspace_path: &Path) -> Option<String> {

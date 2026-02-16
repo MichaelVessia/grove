@@ -11,9 +11,6 @@ use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::config::MultiplexerKind;
 
 pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
-pub(crate) const ZELLIJ_CAPTURE_COLS: u16 = 120;
-pub(crate) const ZELLIJ_CAPTURE_ROWS: u16 = 40;
-const DEFAULT_GROVE_ZELLIJ_CONFIG: &str = "show_startup_tips false\nshow_release_notes false\n";
 const WAITING_PATTERNS: [&str; 9] = [
     "[y/n]",
     "(y/n)",
@@ -176,15 +173,9 @@ pub fn git_session_name_for_workspace(workspace: &Workspace) -> String {
 }
 
 pub fn workspace_should_poll_status(workspace: &Workspace, multiplexer: MultiplexerKind) -> bool {
+    let _ = multiplexer;
     if !workspace.supported_agent {
         return false;
-    }
-
-    if multiplexer == MultiplexerKind::Zellij {
-        if workspace.is_main {
-            return workspace.status.has_session();
-        }
-        return true;
     }
 
     workspace.status.has_session()
@@ -403,43 +394,8 @@ pub fn session_name_for_workspace_in_project(
     )
 }
 
-fn default_zellij_capture_directory() -> PathBuf {
-    if let Some(path) = dirs::cache_dir() {
-        return path.join("grove").join("zellij");
-    }
-
-    if let Some(path) = dirs::home_dir() {
-        return path.join(".cache").join("grove").join("zellij");
-    }
-
-    PathBuf::from(".grove").join("zellij")
-}
-
-fn default_grove_config_directory() -> PathBuf {
-    if let Some(path) = dirs::config_dir() {
-        return path.join("grove");
-    }
-
-    if let Some(path) = dirs::home_dir() {
-        return path.join(".config").join("grove");
-    }
-
-    PathBuf::from(".grove")
-}
-
-pub(crate) fn zellij_config_path() -> PathBuf {
-    default_grove_config_directory().join("zellij.kdl")
-}
-
-fn zellij_capture_log_path_in(base_directory: &Path, session_name: &str) -> PathBuf {
-    base_directory.join(format!("{session_name}.ansi.log"))
-}
-
-pub fn zellij_capture_log_path(session_name: &str) -> PathBuf {
-    zellij_capture_log_path_in(&default_zellij_capture_directory(), session_name)
-}
-
 pub fn build_launch_plan(request: &LaunchRequest, multiplexer: MultiplexerKind) -> LaunchPlan {
+    let _ = multiplexer;
     let session_name = session_name_for_workspace_in_project(
         request.project_name.as_deref(),
         &request.workspace_name,
@@ -448,17 +404,14 @@ pub fn build_launch_plan(request: &LaunchRequest, multiplexer: MultiplexerKind) 
     let pre_launch_command = normalized_pre_launch_command(request.pre_launch_command.as_deref());
     let launch_agent_cmd =
         launch_command_with_pre_launch(&agent_cmd, pre_launch_command.as_deref());
-
-    match multiplexer {
-        MultiplexerKind::Tmux => tmux_launch_plan(request, session_name, launch_agent_cmd),
-        MultiplexerKind::Zellij => zellij_launch_plan(request, session_name, launch_agent_cmd),
-    }
+    tmux_launch_plan(request, session_name, launch_agent_cmd)
 }
 
 pub fn build_shell_launch_plan(
     request: &ShellLaunchRequest,
     multiplexer: MultiplexerKind,
 ) -> LaunchPlan {
+    let _ = multiplexer;
     let shared = LaunchRequest {
         project_name: None,
         workspace_name: request.session_name.clone(),
@@ -470,19 +423,11 @@ pub fn build_shell_launch_plan(
         capture_cols: request.capture_cols,
         capture_rows: request.capture_rows,
     };
-
-    match multiplexer {
-        MultiplexerKind::Tmux => tmux_launch_plan(
-            &shared,
-            request.session_name.clone(),
-            request.command.clone(),
-        ),
-        MultiplexerKind::Zellij => zellij_launch_plan(
-            &shared,
-            request.session_name.clone(),
-            request.command.clone(),
-        ),
-    }
+    tmux_launch_plan(
+        &shared,
+        request.session_name.clone(),
+        request.command.clone(),
+    )
 }
 
 fn tmux_launch_plan(
@@ -559,225 +504,23 @@ fn tmux_launch_plan(
     }
 }
 
-fn zellij_launch_plan(
-    request: &LaunchRequest,
-    session_name: String,
-    launch_agent_cmd: String,
-) -> LaunchPlan {
-    let capture_cols = request
-        .capture_cols
-        .filter(|value| *value > 0)
-        .unwrap_or(ZELLIJ_CAPTURE_COLS);
-    let capture_rows = request
-        .capture_rows
-        .filter(|value| *value > 0)
-        .unwrap_or(ZELLIJ_CAPTURE_ROWS);
-
-    fn zellij_script_capture_command(
-        command: &str,
-        capture_log_path_text: &str,
-        capture_cols: u16,
-        capture_rows: u16,
-    ) -> String {
-        format!(
-            "stty cols {cols} rows {rows}; export COLUMNS={cols} LINES={rows} TERM=xterm-256color COLORTERM=truecolor; unset NO_COLOR; script -qefc {} {}",
-            shell_single_quote(command),
-            shell_single_quote(capture_log_path_text),
-            cols = capture_cols,
-            rows = capture_rows,
-        )
-    }
-
-    let capture_log_path = zellij_capture_log_path(&session_name);
-    let capture_log_path_text = capture_log_path.to_string_lossy().to_string();
-    let capture_log_directory_text = capture_log_path.parent().map_or_else(
-        || ".".to_string(),
-        |path| path.to_string_lossy().to_string(),
-    );
-    let zellij_config_path = zellij_config_path();
-    let zellij_config_path_text = zellij_config_path.to_string_lossy().to_string();
-    let zellij_config_directory_text = zellij_config_path.parent().map_or_else(
-        || ".".to_string(),
-        |path| path.to_string_lossy().to_string(),
-    );
-    let pre_launch_cmds = vec![
-        vec![
-            "sh".to_string(),
-            "-lc".to_string(),
-            format!(
-                "mkdir -p {config_dir} && if [ ! -f {config_file} ]; then printf '%s\\n' {config_lines} > {config_file}; fi",
-                config_dir = shell_single_quote(&zellij_config_directory_text),
-                config_file = shell_single_quote(&zellij_config_path_text),
-                config_lines = shell_single_quote(DEFAULT_GROVE_ZELLIJ_CONFIG.trim_end()),
-            ),
-        ],
-        vec![
-            "sh".to_string(),
-            "-lc".to_string(),
-            format!(
-                "zellij --config {config} kill-session {session} >/dev/null 2>&1 || true",
-                config = shell_single_quote(&zellij_config_path_text),
-                session = shell_single_quote(&session_name),
-            ),
-        ],
-        vec![
-            "sh".to_string(),
-            "-lc".to_string(),
-            format!(
-                "mkdir -p {capture_dir} && : > {capture_file}",
-                capture_dir = shell_single_quote(&capture_log_directory_text),
-                capture_file = shell_single_quote(&capture_log_path_text),
-            ),
-        ],
-        vec![
-            "sh".to_string(),
-            "-lc".to_string(),
-            format!(
-                "zellij --config {config} attach {session} --create --create-background >/dev/null 2>&1 || true",
-                config = shell_single_quote(&zellij_config_path_text),
-                session = shell_single_quote(&session_name),
-            ),
-        ],
-        vec![
-            "sh".to_string(),
-            "-lc".to_string(),
-            format!(
-                "nohup script -q /dev/null -c \"stty cols {cols} rows {rows}; export COLUMNS={cols} LINES={rows} TERM=xterm-256color COLORTERM=truecolor; unset NO_COLOR; zellij --config {config} attach {session}\" >/dev/null 2>&1 &",
-                cols = capture_cols,
-                rows = capture_rows,
-                config = shell_single_quote(&zellij_config_path_text),
-                session = session_name,
-            ),
-        ],
-        vec!["sh".to_string(), "-lc".to_string(), "sleep 1".to_string()],
-    ];
-
-    match &request.prompt {
-        None => LaunchPlan {
-            session_name: session_name.clone(),
-            pane_lookup_cmd: Vec::new(),
-            pre_launch_cmds,
-            launch_cmd: vec![
-                "zellij".to_string(),
-                "--config".to_string(),
-                zellij_config_path_text.clone(),
-                "--session".to_string(),
-                session_name,
-                "run".to_string(),
-                "--floating".to_string(),
-                "--width".to_string(),
-                "100%".to_string(),
-                "--height".to_string(),
-                "100%".to_string(),
-                "--x".to_string(),
-                "0".to_string(),
-                "--y".to_string(),
-                "0".to_string(),
-                "--cwd".to_string(),
-                request.workspace_path.to_string_lossy().to_string(),
-                "--".to_string(),
-                "bash".to_string(),
-                "-lc".to_string(),
-                zellij_script_capture_command(
-                    &launch_agent_cmd,
-                    &capture_log_path_text,
-                    capture_cols,
-                    capture_rows,
-                ),
-            ],
-            launcher_script: None,
-        },
-        Some(prompt) => {
-            let launcher_path = request.workspace_path.join(".grove-start.sh");
-            let launcher_contents =
-                build_launcher_script(&launch_agent_cmd, prompt, &launcher_path);
-            let launcher_exec = format!(
-                "bash {}",
-                shell_single_quote(&launcher_path.to_string_lossy())
-            );
-            LaunchPlan {
-                session_name: session_name.clone(),
-                pane_lookup_cmd: Vec::new(),
-                pre_launch_cmds,
-                launch_cmd: vec![
-                    "zellij".to_string(),
-                    "--config".to_string(),
-                    zellij_config_path_text,
-                    "--session".to_string(),
-                    session_name,
-                    "run".to_string(),
-                    "--floating".to_string(),
-                    "--width".to_string(),
-                    "100%".to_string(),
-                    "--height".to_string(),
-                    "100%".to_string(),
-                    "--x".to_string(),
-                    "0".to_string(),
-                    "--y".to_string(),
-                    "0".to_string(),
-                    "--cwd".to_string(),
-                    request.workspace_path.to_string_lossy().to_string(),
-                    "--".to_string(),
-                    "bash".to_string(),
-                    "-lc".to_string(),
-                    zellij_script_capture_command(
-                        &launcher_exec,
-                        &capture_log_path_text,
-                        capture_cols,
-                        capture_rows,
-                    ),
-                ],
-                launcher_script: Some(LauncherScript {
-                    path: launcher_path,
-                    contents: launcher_contents,
-                }),
-            }
-        }
-    }
-}
-
-fn shell_single_quote(value: &str) -> String {
-    let escaped = value.replace('\'', "'\"'\"'");
-    format!("'{escaped}'")
-}
-
 pub fn stop_plan(session_name: &str, multiplexer: MultiplexerKind) -> Vec<Vec<String>> {
-    match multiplexer {
-        MultiplexerKind::Tmux => vec![
-            vec![
-                "tmux".to_string(),
-                "send-keys".to_string(),
-                "-t".to_string(),
-                session_name.to_string(),
-                "C-c".to_string(),
-            ],
-            vec![
-                "tmux".to_string(),
-                "kill-session".to_string(),
-                "-t".to_string(),
-                session_name.to_string(),
-            ],
+    let _ = multiplexer;
+    vec![
+        vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-t".to_string(),
+            session_name.to_string(),
+            "C-c".to_string(),
         ],
-        MultiplexerKind::Zellij => vec![
-            vec![
-                "zellij".to_string(),
-                "--config".to_string(),
-                zellij_config_path().to_string_lossy().to_string(),
-                "--session".to_string(),
-                session_name.to_string(),
-                "action".to_string(),
-                "write".to_string(),
-                "3".to_string(),
-            ],
-            vec![
-                "zellij".to_string(),
-                "--config".to_string(),
-                zellij_config_path().to_string_lossy().to_string(),
-                "kill-session".to_string(),
-                session_name.to_string(),
-            ],
+        vec![
+            "tmux".to_string(),
+            "kill-session".to_string(),
+            "-t".to_string(),
+            session_name.to_string(),
         ],
-    }
+    ]
 }
 
 pub fn execute_launch_plan(launch_plan: LaunchPlan) -> std::io::Result<()> {
@@ -1009,22 +752,14 @@ pub fn kill_workspace_session_command(
     workspace_name: &str,
     multiplexer: MultiplexerKind,
 ) -> Vec<String> {
+    let _ = multiplexer;
     let session_name = session_name_for_workspace_in_project(project_name, workspace_name);
-    match multiplexer {
-        MultiplexerKind::Tmux => vec![
-            "tmux".to_string(),
-            "kill-session".to_string(),
-            "-t".to_string(),
-            session_name,
-        ],
-        MultiplexerKind::Zellij => vec![
-            "zellij".to_string(),
-            "--config".to_string(),
-            zellij_config_path().to_string_lossy().to_string(),
-            "kill-session".to_string(),
-            session_name,
-        ],
-    }
+    vec![
+        "tmux".to_string(),
+        "kill-session".to_string(),
+        "-t".to_string(),
+        session_name,
+    ]
 }
 
 pub(crate) fn build_agent_command(agent: AgentType, skip_permissions: bool) -> String {

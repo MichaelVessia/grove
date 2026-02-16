@@ -1,12 +1,7 @@
-use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
-use std::sync::Mutex;
 
 use arboard::Clipboard;
-
-use crate::application::agent_runtime::{zellij_capture_log_path, zellij_config_path};
-use crate::infrastructure::zellij_emulator::ZellijPreviewEmulator;
 
 use super::CursorMetadata;
 
@@ -28,6 +23,10 @@ pub(super) trait TmuxInput {
     fn paste_buffer(&self, target_session: &str, text: &str) -> std::io::Result<()>;
 
     fn supports_background_send(&self) -> bool {
+        false
+    }
+
+    fn supports_background_poll(&self) -> bool {
         false
     }
 
@@ -240,125 +239,12 @@ impl TmuxInput for CommandTmuxInput {
         true
     }
 
-    fn supports_background_launch(&self) -> bool {
+    fn supports_background_poll(&self) -> bool {
         true
     }
-}
 
-#[derive(Default)]
-pub(super) struct CommandZellijInput {
-    pane_sizes: Mutex<HashMap<String, (u16, u16)>>,
-    emulator: Mutex<ZellijPreviewEmulator>,
-}
-
-impl TmuxInput for CommandZellijInput {
-    fn execute(&self, command: &[String]) -> std::io::Result<()> {
-        CommandTmuxInput::execute_command(command)
-    }
-
-    fn capture_output(
-        &self,
-        target_session: &str,
-        scrollback_lines: usize,
-        _include_escape_sequences: bool,
-    ) -> std::io::Result<String> {
-        self.capture_session_output(target_session, scrollback_lines)
-    }
-
-    fn capture_cursor_metadata(&self, target_session: &str) -> std::io::Result<String> {
-        let (pane_width, pane_height) = self
-            .pane_sizes
-            .lock()
-            .ok()
-            .and_then(|sizes| sizes.get(target_session).copied())
-            .unwrap_or((120, 40));
-        Ok(format!("0 0 0 {pane_width} {pane_height}"))
-    }
-
-    fn resize_session(
-        &self,
-        target_session: &str,
-        target_width: u16,
-        target_height: u16,
-    ) -> std::io::Result<()> {
-        let mut sizes = self
-            .pane_sizes
-            .lock()
-            .map_err(|_| std::io::Error::other("zellij pane size lock poisoned"))?;
-        sizes.insert(target_session.to_string(), (target_width, target_height));
-        Ok(())
-    }
-
-    fn paste_buffer(&self, target_session: &str, text: &str) -> std::io::Result<()> {
-        let config_path_text = zellij_config_path().to_string_lossy().to_string();
-        let output = Command::new("zellij")
-            .args([
-                "--config",
-                config_path_text.as_str(),
-                "--session",
-                target_session,
-                "action",
-                "write-chars",
-                text,
-            ])
-            .output()?;
-        if output.status.success() {
-            return Ok(());
-        }
-
-        Err(std::io::Error::other(format!(
-            "zellij paste failed: {}",
-            CommandTmuxInput::stderr_or_status(&output),
-        )))
-    }
-
-    fn supports_background_send(&self) -> bool {
+    fn supports_background_launch(&self) -> bool {
         false
-    }
-
-    fn supports_background_launch(&self) -> bool {
-        true
-    }
-}
-
-impl CommandZellijInput {
-    pub(super) fn capture_session_output(
-        &self,
-        target_session: &str,
-        scrollback_lines: usize,
-    ) -> std::io::Result<String> {
-        #[cfg(not(test))]
-        {
-            if !Self::session_exists(target_session)? {
-                return Err(std::io::Error::other(format!(
-                    "zellij session not found: {target_session}"
-                )));
-            }
-        }
-
-        let log_path = zellij_capture_log_path(target_session);
-        self.emulator
-            .lock()
-            .map_err(|_| std::io::Error::other("zellij emulator lock poisoned"))?
-            .capture_from_log(target_session, &log_path, None, scrollback_lines)
-    }
-
-    #[cfg(not(test))]
-    fn session_exists(target_session: &str) -> std::io::Result<bool> {
-        let output = Command::new("zellij")
-            .args(["list-sessions", "--short"])
-            .output()?;
-        if !output.status.success() {
-            return Err(std::io::Error::other(format!(
-                "zellij list-sessions failed: {}",
-                CommandTmuxInput::stderr_or_status(&output),
-            )));
-        }
-        let stdout = String::from_utf8(output.stdout).map_err(|error| {
-            std::io::Error::other(format!("zellij list-sessions utf8 decode failed: {error}"))
-        })?;
-
-        Ok(stdout.lines().any(|line| line.trim() == target_session))
     }
 }
 

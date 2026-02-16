@@ -81,8 +81,7 @@ use bootstrap::{
 };
 mod terminal;
 use terminal::{
-    ClipboardAccess, CommandTmuxInput, CommandZellijInput, SystemClipboardAccess, TmuxInput,
-    parse_cursor_metadata,
+    ClipboardAccess, CommandTmuxInput, SystemClipboardAccess, TmuxInput, parse_cursor_metadata,
 };
 mod dialogs;
 use dialogs::*;

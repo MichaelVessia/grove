@@ -62,13 +62,11 @@ docs/
 cat docs/PRD.md
 ```
 
-## Multiplexer Parity
+## Runtime Parity
 
 - Any change that touches session lifecycle, capture, polling, key forwarding,
-  status detection, or workspace runtime behavior must be evaluated for both
-  multiplexers (`tmux` and `zellij`).
-- Do not ship multiplexer-specific changes without explicitly checking the
-  other multiplexer path and adding/updating tests where behavior differs.
+  status detection, or workspace runtime behavior must preserve tmux behavior
+  and include matching tests.
 
 ## Keybind + Command Discoverability
 

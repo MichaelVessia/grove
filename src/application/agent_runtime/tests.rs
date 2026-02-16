@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -22,8 +22,7 @@ use super::{
     workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
     workspace_session_for_preview_tab, workspace_should_poll_status,
     workspace_status_session_target, workspace_status_targets_for_polling,
-    workspace_status_targets_for_polling_with_live_preview, zellij_capture_log_path,
-    zellij_capture_log_path_in, zellij_config_path,
+    workspace_status_targets_for_polling_with_live_preview,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::config::MultiplexerKind;
@@ -172,23 +171,6 @@ fn workspace_status_poll_policy_requires_supported_agent_for_all_multiplexers() 
         &workspace,
         MultiplexerKind::Tmux
     ));
-    assert!(!workspace_should_poll_status(
-        &workspace,
-        MultiplexerKind::Zellij
-    ));
-}
-
-#[test]
-fn workspace_status_poll_policy_differs_between_tmux_and_zellij_for_idle_non_main() {
-    let workspace = fixture_workspace("feature", false);
-    assert!(!workspace_should_poll_status(
-        &workspace,
-        MultiplexerKind::Tmux
-    ));
-    assert!(workspace_should_poll_status(
-        &workspace,
-        MultiplexerKind::Zellij
-    ));
 }
 
 #[test]
@@ -239,17 +221,6 @@ fn workspace_status_targets_for_polling_skip_selected_session() {
     assert_eq!(targets.len(), 1);
     assert_eq!(targets[0].workspace_name, "other");
     assert_eq!(targets[0].session_name, "grove-ws-other");
-}
-
-#[test]
-fn workspace_status_targets_for_polling_include_idle_non_main_for_zellij() {
-    let idle_workspace = fixture_workspace("feature", false);
-    let workspaces = vec![idle_workspace];
-
-    let targets = workspace_status_targets_for_polling(&workspaces, MultiplexerKind::Zellij, None);
-    assert_eq!(targets.len(), 1);
-    assert_eq!(targets[0].workspace_name, "feature");
-    assert_eq!(targets[0].session_name, "grove-ws-feature");
 }
 
 #[test]
@@ -833,173 +804,6 @@ fn kill_workspace_session_command_uses_project_scoped_tmux_session_name() {
             "kill-session".to_string(),
             "-t".to_string(),
             "grove-ws-project-one-feature-auth-v2".to_string(),
-        ]
-    );
-}
-
-#[test]
-fn kill_workspace_session_command_uses_zellij_config_for_zellij() {
-    assert_eq!(
-        kill_workspace_session_command(None, "feature", MultiplexerKind::Zellij),
-        vec![
-            "zellij".to_string(),
-            "--config".to_string(),
-            zellij_config_path().to_string_lossy().to_string(),
-            "kill-session".to_string(),
-            "grove-ws-feature".to_string(),
-        ]
-    );
-}
-
-#[test]
-fn zellij_launch_plan_creates_background_session_and_runs_agent() {
-    let request = LaunchRequest {
-        project_name: None,
-        workspace_name: "auth-flow".to_string(),
-        workspace_path: PathBuf::from("/repos/grove-auth-flow"),
-        agent: AgentType::Codex,
-        prompt: None,
-        pre_launch_command: None,
-        skip_permissions: false,
-        capture_cols: None,
-        capture_rows: None,
-    };
-
-    let plan = build_launch_plan(&request, MultiplexerKind::Zellij);
-    let capture_log_path = zellij_capture_log_path("grove-ws-auth-flow");
-    let capture_log_path_text = capture_log_path.to_string_lossy().to_string();
-    let capture_log_dir_text = capture_log_path
-        .parent()
-        .expect("capture path should have parent")
-        .to_string_lossy()
-        .to_string();
-    let config_path = zellij_config_path();
-    let config_path_text = config_path.to_string_lossy().to_string();
-    let config_dir_text = config_path
-        .parent()
-        .expect("config path should have parent")
-        .to_string_lossy()
-        .to_string();
-
-    assert_eq!(plan.session_name, "grove-ws-auth-flow");
-    assert_eq!(
-        plan.pre_launch_cmds[0],
-        vec![
-            "sh",
-            "-lc",
-            &format!(
-                "mkdir -p '{config_dir_text}' && if [ ! -f '{config_path_text}' ]; then printf '%s\\n' 'show_startup_tips false\nshow_release_notes false' > '{config_path_text}'; fi"
-            ),
-        ]
-    );
-    assert_eq!(
-        plan.pre_launch_cmds[1],
-        vec![
-            "sh",
-            "-lc",
-            &format!(
-                "zellij --config '{config_path_text}' kill-session 'grove-ws-auth-flow' >/dev/null 2>&1 || true"
-            ),
-        ]
-    );
-    assert_eq!(
-        plan.pre_launch_cmds[2],
-        vec![
-            "sh",
-            "-lc",
-            &format!(
-                "mkdir -p '{}' && : > '{}'",
-                capture_log_dir_text, capture_log_path_text
-            ),
-        ]
-    );
-    assert_eq!(
-        plan.pre_launch_cmds[3],
-        vec![
-            "sh",
-            "-lc",
-            &format!(
-                "zellij --config '{config_path_text}' attach 'grove-ws-auth-flow' --create --create-background >/dev/null 2>&1 || true"
-            ),
-        ]
-    );
-    assert_eq!(
-        plan.pre_launch_cmds[4],
-        vec![
-            "sh",
-            "-lc",
-            &format!(
-                "nohup script -q /dev/null -c \"stty cols 120 rows 40; export COLUMNS=120 LINES=40 TERM=xterm-256color COLORTERM=truecolor; unset NO_COLOR; zellij --config '{config_path_text}' attach grove-ws-auth-flow\" >/dev/null 2>&1 &"
-            ),
-        ]
-    );
-    assert_eq!(plan.pre_launch_cmds[5], vec!["sh", "-lc", "sleep 1"]);
-    assert_eq!(
-        plan.launch_cmd,
-        vec![
-            "zellij",
-            "--config",
-            &config_path_text,
-            "--session",
-            "grove-ws-auth-flow",
-            "run",
-            "--floating",
-            "--width",
-            "100%",
-            "--height",
-            "100%",
-            "--x",
-            "0",
-            "--y",
-            "0",
-            "--cwd",
-            "/repos/grove-auth-flow",
-            "--",
-            "bash",
-            "-lc",
-            &format!(
-                "stty cols 120 rows 40; export COLUMNS=120 LINES=40 TERM=xterm-256color COLORTERM=truecolor; unset NO_COLOR; script -qefc 'codex' '{}'",
-                capture_log_path_text
-            ),
-        ]
-    );
-}
-
-#[test]
-fn zellij_capture_log_path_joins_session_file_name() {
-    let path = zellij_capture_log_path_in(Path::new("/tmp/grove-zellij-capture"), "grove-ws-x");
-    assert_eq!(
-        path,
-        PathBuf::from("/tmp/grove-zellij-capture/grove-ws-x.ansi.log")
-    );
-}
-
-#[test]
-fn zellij_stop_plan_uses_ctrl_c_then_kill_session() {
-    let plan = stop_plan("grove-ws-auth-flow", MultiplexerKind::Zellij);
-    let config_path_text = zellij_config_path().to_string_lossy().to_string();
-    assert_eq!(plan.len(), 2);
-    assert_eq!(
-        plan[0],
-        vec![
-            "zellij",
-            "--config",
-            &config_path_text,
-            "--session",
-            "grove-ws-auth-flow",
-            "action",
-            "write",
-            "3",
-        ]
-    );
-    assert_eq!(
-        plan[1],
-        vec![
-            "zellij",
-            "--config",
-            &config_path_text,
-            "kill-session",
-            "grove-ws-auth-flow"
         ]
     );
 }
