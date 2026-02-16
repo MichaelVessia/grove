@@ -194,6 +194,14 @@ impl GroveApp {
                 self.apply_delete_workspace_completion(completion);
                 Cmd::None
             }
+            Msg::MergeWorkspaceCompleted(completion) => {
+                self.apply_merge_workspace_completion(completion);
+                Cmd::None
+            }
+            Msg::UpdateWorkspaceFromBaseCompleted(completion) => {
+                self.apply_update_from_base_completion(completion);
+                Cmd::None
+            }
             Msg::CreateWorkspaceCompleted(completion) => {
                 self.apply_create_workspace_completion(completion);
                 Cmd::None
@@ -309,6 +317,8 @@ impl GroveApp {
             || self.create_dialog.is_some()
             || self.edit_dialog.is_some()
             || self.delete_dialog.is_some()
+            || self.merge_dialog.is_some()
+            || self.update_from_base_dialog.is_some()
             || self.settings_dialog.is_some()
             || self.project_dialog.is_some()
             || self.keybind_help_open
@@ -421,6 +431,34 @@ impl GroveApp {
                 "Delete Workspace",
                 "Open delete dialog for selected workspace (D)",
                 &["delete", "workspace", "worktree", "D"],
+                "Workspace",
+            ));
+        }
+        if !self.merge_in_flight
+            && self
+                .state
+                .selected_workspace()
+                .is_some_and(|workspace| !workspace.is_main)
+        {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_MERGE_WORKSPACE,
+                "Merge Workspace",
+                "Merge selected workspace branch into base (m)",
+                &["merge", "workspace", "branch", "m"],
+                "Workspace",
+            ));
+        }
+        if !self.update_from_base_in_flight
+            && self
+                .state
+                .selected_workspace()
+                .is_some_and(|workspace| !workspace.is_main)
+        {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_UPDATE_FROM_BASE,
+                "Update From Base",
+                "Merge base branch into selected workspace (u)",
+                &["update", "sync", "base", "workspace", "u"],
                 "Workspace",
             ));
         }
@@ -602,6 +640,14 @@ impl GroveApp {
             }
             PALETTE_CMD_DELETE_WORKSPACE => {
                 self.open_delete_dialog();
+                false
+            }
+            PALETTE_CMD_MERGE_WORKSPACE => {
+                self.open_merge_dialog();
+                false
+            }
+            PALETTE_CMD_UPDATE_FROM_BASE => {
+                self.open_update_from_base_dialog();
                 false
             }
             PALETTE_CMD_OPEN_SETTINGS => {
@@ -1553,6 +1599,130 @@ impl GroveApp {
         }
     }
 
+    pub(super) fn apply_merge_workspace_completion(
+        &mut self,
+        completion: MergeWorkspaceCompletion,
+    ) {
+        self.merge_in_flight = false;
+        match completion.result {
+            Ok(()) => {
+                self.event_log.log(
+                    LogEvent::new("workspace_lifecycle", "workspace_merged")
+                        .with_data("workspace", Value::from(completion.workspace_name.clone()))
+                        .with_data(
+                            "workspace_branch",
+                            Value::from(completion.workspace_branch.clone()),
+                        )
+                        .with_data("base_branch", Value::from(completion.base_branch.clone()))
+                        .with_data(
+                            "workspace_path",
+                            Value::from(completion.workspace_path.display().to_string()),
+                        )
+                        .with_data(
+                            "warning_count",
+                            Value::from(
+                                u64::try_from(completion.warnings.len()).unwrap_or(u64::MAX),
+                            ),
+                        ),
+                );
+                self.last_tmux_error = None;
+                self.refresh_workspaces(None);
+                if completion.warnings.is_empty() {
+                    self.show_toast(
+                        format!(
+                            "workspace '{}' merged into '{}'",
+                            completion.workspace_name, completion.base_branch
+                        ),
+                        false,
+                    );
+                } else if let Some(first_warning) = completion.warnings.first() {
+                    self.show_toast(
+                        format!(
+                            "workspace '{}' merged, warning: {}",
+                            completion.workspace_name, first_warning
+                        ),
+                        true,
+                    );
+                }
+            }
+            Err(error) => {
+                self.event_log.log(
+                    LogEvent::new("workspace_lifecycle", "workspace_merge_failed")
+                        .with_data("workspace", Value::from(completion.workspace_name))
+                        .with_data(
+                            "workspace_path",
+                            Value::from(completion.workspace_path.display().to_string()),
+                        )
+                        .with_data("error", Value::from(error.clone())),
+                );
+                self.last_tmux_error = Some(error.clone());
+                self.show_toast(format!("workspace merge failed: {error}"), true);
+            }
+        }
+    }
+
+    pub(super) fn apply_update_from_base_completion(
+        &mut self,
+        completion: UpdateWorkspaceFromBaseCompletion,
+    ) {
+        self.update_from_base_in_flight = false;
+        match completion.result {
+            Ok(()) => {
+                self.event_log.log(
+                    LogEvent::new("workspace_lifecycle", "workspace_updated_from_base")
+                        .with_data("workspace", Value::from(completion.workspace_name.clone()))
+                        .with_data(
+                            "workspace_branch",
+                            Value::from(completion.workspace_branch.clone()),
+                        )
+                        .with_data("base_branch", Value::from(completion.base_branch.clone()))
+                        .with_data(
+                            "workspace_path",
+                            Value::from(completion.workspace_path.display().to_string()),
+                        )
+                        .with_data(
+                            "warning_count",
+                            Value::from(
+                                u64::try_from(completion.warnings.len()).unwrap_or(u64::MAX),
+                            ),
+                        ),
+                );
+                self.last_tmux_error = None;
+                self.refresh_workspaces(Some(completion.workspace_path));
+                if completion.warnings.is_empty() {
+                    self.show_toast(
+                        format!(
+                            "workspace '{}' updated from '{}'",
+                            completion.workspace_name, completion.base_branch
+                        ),
+                        false,
+                    );
+                } else if let Some(first_warning) = completion.warnings.first() {
+                    self.show_toast(
+                        format!(
+                            "workspace '{}' updated, warning: {}",
+                            completion.workspace_name, first_warning
+                        ),
+                        true,
+                    );
+                }
+            }
+            Err(error) => {
+                self.event_log.log(
+                    LogEvent::new("workspace_lifecycle", "workspace_update_from_base_failed")
+                        .with_data("workspace", Value::from(completion.workspace_name))
+                        .with_data(
+                            "workspace_path",
+                            Value::from(completion.workspace_path.display().to_string()),
+                        )
+                        .with_data("error", Value::from(error.clone())),
+                );
+                self.last_tmux_error = Some(error.clone());
+                self.show_toast(format!("workspace update failed: {error}"), true);
+            }
+        }
+    }
+
     pub(super) fn refresh_workspaces(&mut self, preferred_workspace_path: Option<PathBuf>) {
         if !self.tmux_input.supports_background_send() {
             self.refresh_workspaces_sync(preferred_workspace_path);
@@ -2241,6 +2411,8 @@ impl GroveApp {
             }
             KeyCode::Char('n') | KeyCode::Char('N') => self.open_create_dialog(),
             KeyCode::Char('e') | KeyCode::Char('E') => self.open_edit_dialog(),
+            KeyCode::Char('m') => self.open_merge_dialog(),
+            KeyCode::Char('u') => self.open_update_from_base_dialog(),
             KeyCode::Char('p') | KeyCode::Char('P') => self.open_project_dialog(),
             KeyCode::Char('?') => self.open_keybind_help(),
             KeyCode::Char('D') => self.open_delete_dialog(),
@@ -2587,6 +2759,14 @@ impl GroveApp {
 
         if self.delete_dialog.is_some() {
             self.handle_delete_dialog_key(key_event);
+            return (false, Cmd::None);
+        }
+        if self.merge_dialog.is_some() {
+            self.handle_merge_dialog_key(key_event);
+            return (false, Cmd::None);
+        }
+        if self.update_from_base_dialog.is_some() {
+            self.handle_update_from_base_dialog_key(key_event);
             return (false, Cmd::None);
         }
         if self.project_dialog.is_some() {
@@ -3057,6 +3237,8 @@ impl GroveApp {
     fn keybinding_task_running(&self) -> bool {
         self.refresh_in_flight
             || self.delete_in_flight
+            || self.merge_in_flight
+            || self.update_from_base_in_flight
             || self.create_in_flight
             || self.start_in_flight
             || self.stop_in_flight
@@ -3116,6 +3298,12 @@ impl GroveApp {
                 } else if self.delete_dialog.is_some() {
                     self.log_dialog_event("delete", "dialog_cancelled");
                     self.delete_dialog = None;
+                } else if self.merge_dialog.is_some() {
+                    self.log_dialog_event("merge", "dialog_cancelled");
+                    self.merge_dialog = None;
+                } else if self.update_from_base_dialog.is_some() {
+                    self.log_dialog_event("update_from_base", "dialog_cancelled");
+                    self.update_from_base_dialog = None;
                 } else if self.settings_dialog.is_some() {
                     self.log_dialog_event("settings", "dialog_cancelled");
                     self.settings_dialog = None;

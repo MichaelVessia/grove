@@ -1,8 +1,9 @@
 use super::{
     BranchMode, CreateWorkspaceRequest, DeleteWorkspaceRequest, GitCommandRunner,
-    SetupScriptContext, SetupScriptRunner, WorkspaceLifecycleError, WorkspaceMarkerError,
-    copy_env_files, create_workspace, delete_workspace, ensure_grove_gitignore_entries,
-    read_workspace_agent_marker, read_workspace_markers, workspace_directory_path,
+    MergeWorkspaceRequest, SetupScriptContext, SetupScriptRunner, UpdateWorkspaceFromBaseRequest,
+    WorkspaceLifecycleError, WorkspaceMarkerError, copy_env_files, create_workspace,
+    delete_workspace, ensure_grove_gitignore_entries, merge_workspace, read_workspace_agent_marker,
+    read_workspace_markers, update_workspace_from_base, workspace_directory_path,
     workspace_lifecycle_error_message, write_workspace_agent_marker,
 };
 use crate::domain::AgentType;
@@ -433,15 +434,253 @@ fn delete_workspace_records_branch_delete_failure_as_warning() {
     );
 }
 
+#[test]
+fn merge_workspace_merges_branch_and_cleans_up_when_requested() {
+    let temp = TestDir::new("merge-cleanup");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    init_git_repo(&repo_root);
+
+    let base_branch = current_branch(&repo_root);
+    let workspace_path = temp.path.join("grove-feature-merge");
+    run_git(
+        &repo_root,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feature-merge",
+            workspace_path.to_string_lossy().as_ref(),
+            "HEAD",
+        ],
+    );
+    fs::write(workspace_path.join("feature.txt"), "merged\n").expect("feature file should exist");
+    run_git(&workspace_path, &["add", "feature.txt"]);
+    run_git(&workspace_path, &["commit", "-m", "add feature"]);
+
+    let request = MergeWorkspaceRequest {
+        project_name: None,
+        project_path: Some(repo_root.clone()),
+        workspace_name: "feature-merge".to_string(),
+        workspace_branch: "feature-merge".to_string(),
+        workspace_path: workspace_path.clone(),
+        base_branch: base_branch.clone(),
+        cleanup_workspace: true,
+        cleanup_local_branch: true,
+    };
+
+    let (result, warnings) = merge_workspace(request, MultiplexerKind::Tmux);
+    assert_eq!(result, Ok(()));
+    assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    assert!(
+        !workspace_path.exists(),
+        "workspace path should be removed after cleanup"
+    );
+
+    let merged_file = repo_root.join("feature.txt");
+    assert!(
+        merged_file.exists(),
+        "merged file should exist in base worktree after merge"
+    );
+    let branch_list = git_stdout(&repo_root, &["branch", "--list", "feature-merge"]);
+    assert!(
+        branch_list.trim().is_empty(),
+        "feature branch should be removed from local refs"
+    );
+}
+
+#[test]
+fn merge_workspace_requires_clean_base_and_workspace_worktrees() {
+    let temp = TestDir::new("merge-dirty");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    init_git_repo(&repo_root);
+
+    let base_branch = current_branch(&repo_root);
+    let workspace_path = temp.path.join("grove-feature-dirty");
+    run_git(
+        &repo_root,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feature-dirty",
+            workspace_path.to_string_lossy().as_ref(),
+            "HEAD",
+        ],
+    );
+    fs::write(workspace_path.join("dirty.txt"), "dirty\n").expect("dirty file should exist");
+
+    let workspace_dirty_request = MergeWorkspaceRequest {
+        project_name: None,
+        project_path: Some(repo_root.clone()),
+        workspace_name: "feature-dirty".to_string(),
+        workspace_branch: "feature-dirty".to_string(),
+        workspace_path: workspace_path.clone(),
+        base_branch: base_branch.clone(),
+        cleanup_workspace: false,
+        cleanup_local_branch: false,
+    };
+
+    let (workspace_result, workspace_warnings) =
+        merge_workspace(workspace_dirty_request, MultiplexerKind::Tmux);
+    assert!(workspace_warnings.is_empty());
+    let workspace_error = workspace_result.expect_err("dirty workspace should block merge");
+    assert!(
+        workspace_error.contains("workspace worktree has uncommitted changes"),
+        "unexpected workspace error: {workspace_error}"
+    );
+
+    fs::write(repo_root.join("base-dirty.txt"), "dirty\n").expect("base dirty file should exist");
+    run_git(&workspace_path, &["add", "dirty.txt"]);
+    run_git(&workspace_path, &["commit", "-m", "clean workspace branch"]);
+
+    let base_dirty_request = MergeWorkspaceRequest {
+        project_name: None,
+        project_path: Some(repo_root.clone()),
+        workspace_name: "feature-dirty".to_string(),
+        workspace_branch: "feature-dirty".to_string(),
+        workspace_path: workspace_path.clone(),
+        base_branch,
+        cleanup_workspace: false,
+        cleanup_local_branch: false,
+    };
+
+    let (base_result, base_warnings) = merge_workspace(base_dirty_request, MultiplexerKind::Tmux);
+    assert!(base_warnings.is_empty());
+    let base_error = base_result.expect_err("dirty base should block merge");
+    assert!(
+        base_error.contains("base worktree has uncommitted changes"),
+        "unexpected base error: {base_error}"
+    );
+}
+
+#[test]
+fn update_workspace_from_base_merges_base_into_workspace_branch() {
+    let temp = TestDir::new("update-from-base");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    init_git_repo(&repo_root);
+
+    let base_branch = current_branch(&repo_root);
+    let workspace_path = temp.path.join("grove-feature-sync");
+    run_git(
+        &repo_root,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feature-sync",
+            workspace_path.to_string_lossy().as_ref(),
+            "HEAD",
+        ],
+    );
+
+    fs::write(repo_root.join("base-change.txt"), "from base\n").expect("base file should exist");
+    run_git(&repo_root, &["add", "base-change.txt"]);
+    run_git(&repo_root, &["commit", "-m", "base change"]);
+
+    let request = UpdateWorkspaceFromBaseRequest {
+        project_name: None,
+        project_path: Some(repo_root),
+        workspace_name: "feature-sync".to_string(),
+        workspace_branch: "feature-sync".to_string(),
+        workspace_path: workspace_path.clone(),
+        base_branch,
+    };
+
+    let (result, warnings) = update_workspace_from_base(request, MultiplexerKind::Tmux);
+    assert_eq!(result, Ok(()));
+    assert!(warnings.is_empty());
+    assert!(
+        workspace_path.join("base-change.txt").exists(),
+        "workspace should receive base branch changes"
+    );
+}
+
+#[test]
+fn update_workspace_from_base_requires_clean_workspace_worktree() {
+    let temp = TestDir::new("update-from-base-dirty");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    init_git_repo(&repo_root);
+
+    let base_branch = current_branch(&repo_root);
+    let workspace_path = temp.path.join("grove-feature-sync-dirty");
+    run_git(
+        &repo_root,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feature-sync-dirty",
+            workspace_path.to_string_lossy().as_ref(),
+            "HEAD",
+        ],
+    );
+    fs::write(workspace_path.join("dirty.txt"), "dirty\n").expect("dirty file should exist");
+
+    let request = UpdateWorkspaceFromBaseRequest {
+        project_name: None,
+        project_path: Some(repo_root),
+        workspace_name: "feature-sync-dirty".to_string(),
+        workspace_branch: "feature-sync-dirty".to_string(),
+        workspace_path,
+        base_branch,
+    };
+
+    let (result, warnings) = update_workspace_from_base(request, MultiplexerKind::Tmux);
+    assert!(warnings.is_empty());
+    let error = result.expect_err("dirty workspace should block update");
+    assert!(
+        error.contains("workspace worktree has uncommitted changes"),
+        "unexpected error: {error}"
+    );
+}
+
 fn init_git_repo(repo_root: &Path) {
+    run_git(repo_root, &["init"]);
+    run_git(
+        repo_root,
+        &["config", "user.email", "grove-tests@example.com"],
+    );
+    run_git(repo_root, &["config", "user.name", "Grove Tests"]);
+    fs::write(repo_root.join("README.md"), "hello\n").expect("README should be writable");
+    run_git(repo_root, &["add", "README.md"]);
+    run_git(repo_root, &["commit", "-m", "initial commit"]);
+}
+
+fn current_branch(repo_root: &Path) -> String {
+    git_stdout(repo_root, &["rev-parse", "--abbrev-ref", "HEAD"])
+        .trim()
+        .to_string()
+}
+
+fn git_stdout(repo_root: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
         .current_dir(repo_root)
-        .args(["init"])
+        .args(args)
         .output()
-        .expect("git init should run");
+        .expect("git should run");
     assert!(
         output.status.success(),
-        "git init failed: {}",
+        "git {} failed: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("stdout should be utf8")
+}
+
+fn run_git(repo_root: &Path, args: &[&str]) {
+    let output = Command::new("git")
+        .current_dir(repo_root)
+        .args(args)
+        .output()
+        .expect("git should run");
+    assert!(
+        output.status.success(),
+        "git {} failed: {}",
+        args.join(" "),
         String::from_utf8_lossy(&output.stderr)
     );
 }

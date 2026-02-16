@@ -22,6 +22,8 @@ impl GroveApp {
         self.render_edit_dialog_overlay(frame, area);
         self.render_launch_dialog_overlay(frame, area);
         self.render_delete_dialog_overlay(frame, area);
+        self.render_merge_dialog_overlay(frame, area);
+        self.render_update_from_base_dialog_overlay(frame, area);
         self.render_settings_dialog_overlay(frame, area);
         self.render_project_dialog_overlay(frame, area);
         self.render_keybind_help_overlay(frame, area);
@@ -285,6 +287,238 @@ impl GroveApp {
             )
             .backdrop(BackdropConfig::new(theme.crust, 0.55))
             .hit_id(HitId::new(HIT_ID_DELETE_DIALOG))
+            .render(area, frame);
+    }
+
+    fn render_merge_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
+        let Some(dialog) = self.merge_dialog.as_ref() else {
+            return;
+        };
+        if area.width < 28 || area.height < 14 {
+            return;
+        }
+
+        let dialog_width = area.width.saturating_sub(8).min(98);
+        let dialog_height = 17u16;
+        let theme = ui_theme();
+        let content_width = usize::from(dialog_width.saturating_sub(2));
+        let focused = |field| dialog.focused_field == field;
+        let cleanup_workspace_focused = focused(MergeDialogField::CleanupWorkspace);
+        let cleanup_workspace_state = if dialog.cleanup_workspace {
+            "enabled, remove workspace directory".to_string()
+        } else {
+            "disabled, keep workspace directory".to_string()
+        };
+        let cleanup_branch_focused = focused(MergeDialogField::CleanupLocalBranch);
+        let cleanup_branch_state = if dialog.cleanup_local_branch {
+            format!("enabled, delete '{}' branch", dialog.workspace_branch)
+        } else {
+            "disabled, keep local branch".to_string()
+        };
+        let merge_focused = focused(MergeDialogField::MergeButton);
+        let cancel_focused = focused(MergeDialogField::CancelButton);
+        let merge_hint = pad_or_truncate_to_display_width(
+            "Tab move, Space toggle cleanup, Enter or m merge, Esc cancel",
+            content_width,
+        );
+        let path = dialog.workspace_path.display().to_string();
+        let body = FtText::from_lines(vec![
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("Merge plan", content_width),
+                Style::new().fg(theme.overlay0),
+            )]),
+            FtLine::raw(""),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Name",
+                dialog.workspace_name.as_str(),
+                theme.blue,
+                theme.text,
+            ),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Branch",
+                dialog.workspace_branch.as_str(),
+                theme.blue,
+                theme.text,
+            ),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Base",
+                dialog.base_branch.as_str(),
+                theme.blue,
+                theme.text,
+            ),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Path",
+                path.as_str(),
+                theme.blue,
+                theme.overlay0,
+            ),
+            FtLine::raw(""),
+            modal_focus_badged_row(
+                content_width,
+                theme,
+                "CleanupWorktree",
+                cleanup_workspace_state.as_str(),
+                cleanup_workspace_focused,
+                theme.peach,
+                if dialog.cleanup_workspace {
+                    theme.red
+                } else {
+                    theme.text
+                },
+            ),
+            modal_focus_badged_row(
+                content_width,
+                theme,
+                "CleanupBranch",
+                cleanup_branch_state.as_str(),
+                cleanup_branch_focused,
+                theme.peach,
+                if dialog.cleanup_local_branch {
+                    theme.red
+                } else {
+                    theme.text
+                },
+            ),
+            FtLine::raw(""),
+            modal_actions_row(
+                content_width,
+                theme,
+                "Merge",
+                "Cancel",
+                merge_focused,
+                cancel_focused,
+            ),
+            FtLine::from_spans(vec![FtSpan::styled(
+                merge_hint,
+                Style::new().fg(theme.overlay0),
+            )]),
+        ]);
+
+        let content = OverlayModalContent {
+            title: "Merge Workspace?",
+            body,
+            theme,
+            border_color: theme.peach,
+        };
+
+        Modal::new(content)
+            .size(
+                ModalSizeConstraints::new()
+                    .min_width(dialog_width)
+                    .max_width(dialog_width)
+                    .min_height(dialog_height)
+                    .max_height(dialog_height),
+            )
+            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .hit_id(HitId::new(HIT_ID_MERGE_DIALOG))
+            .render(area, frame);
+    }
+
+    fn render_update_from_base_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
+        let Some(dialog) = self.update_from_base_dialog.as_ref() else {
+            return;
+        };
+        if area.width < 28 || area.height < 12 {
+            return;
+        }
+
+        let dialog_width = area.width.saturating_sub(8).min(96);
+        let dialog_height = 14u16;
+        let theme = ui_theme();
+        let content_width = usize::from(dialog_width.saturating_sub(2));
+        let focused = |field| dialog.focused_field == field;
+        let update_focused = focused(UpdateFromBaseDialogField::UpdateButton);
+        let cancel_focused = focused(UpdateFromBaseDialogField::CancelButton);
+        let update_hint = pad_or_truncate_to_display_width(
+            "Tab move, h/l switch buttons, Enter or u update, Esc cancel",
+            content_width,
+        );
+        let path = dialog.workspace_path.display().to_string();
+        let body = FtText::from_lines(vec![
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("Update plan", content_width),
+                Style::new().fg(theme.overlay0),
+            )]),
+            FtLine::raw(""),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Name",
+                dialog.workspace_name.as_str(),
+                theme.blue,
+                theme.text,
+            ),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Branch",
+                dialog.workspace_branch.as_str(),
+                theme.blue,
+                theme.text,
+            ),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Base",
+                dialog.base_branch.as_str(),
+                theme.blue,
+                theme.text,
+            ),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Path",
+                path.as_str(),
+                theme.blue,
+                theme.overlay0,
+            ),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "  Strategy: git merge --no-ff <base> into workspace branch",
+                    content_width,
+                ),
+                Style::new().fg(theme.subtext0),
+            )]),
+            FtLine::raw(""),
+            modal_actions_row(
+                content_width,
+                theme,
+                "Update",
+                "Cancel",
+                update_focused,
+                cancel_focused,
+            ),
+            FtLine::from_spans(vec![FtSpan::styled(
+                update_hint,
+                Style::new().fg(theme.overlay0),
+            )]),
+        ]);
+
+        let content = OverlayModalContent {
+            title: "Update From Base?",
+            body,
+            theme,
+            border_color: theme.teal,
+        };
+
+        Modal::new(content)
+            .size(
+                ModalSizeConstraints::new()
+                    .min_width(dialog_width)
+                    .max_width(dialog_width)
+                    .min_height(dialog_height)
+                    .max_height(dialog_height),
+            )
+            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .hit_id(HitId::new(HIT_ID_UPDATE_FROM_BASE_DIALOG))
             .render(area, frame);
     }
 
@@ -555,7 +789,7 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  n new, e edit, p projects, D delete, S settings, ! unsafe toggle",
+                    "  n new, e edit, m merge, u update, p projects, D delete, S settings, ! unsafe toggle",
                     content_width,
                 ),
                 Style::new().fg(theme.text),
@@ -633,6 +867,20 @@ impl GroveApp {
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
                     "[Modals] Delete: Tab/S-Tab fields, j/k move, Space toggle, Enter/D confirm, Esc",
+                    content_width,
+                ),
+                Style::new().fg(theme.subtext0),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "[Modals] Merge:  Tab/S-Tab fields, j/k move, Space toggle, Enter/m confirm, Esc",
+                    content_width,
+                ),
+                Style::new().fg(theme.subtext0),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "[Modals] Update: Tab/S-Tab fields, h/l buttons, Enter/u confirm, Esc",
                     content_width,
                 ),
                 Style::new().fg(theme.subtext0),
@@ -1040,6 +1288,12 @@ impl GroveApp {
         if self.delete_dialog.is_some() {
             return "Tab/S-Tab field, j/k move, Space toggle branch delete, Enter select/delete, D confirm, Esc cancel";
         }
+        if self.merge_dialog.is_some() {
+            return "Tab/S-Tab field, j/k move, Space toggle cleanup, Enter select/merge, m confirm, Esc cancel";
+        }
+        if self.update_from_base_dialog.is_some() {
+            return "Tab/S-Tab field, h/l buttons, Enter select/update, u confirm, Esc cancel";
+        }
         if self.settings_dialog.is_some() {
             return "Tab/S-Tab field, j/k or h/l change, Enter save/select, Esc cancel";
         }
@@ -1050,13 +1304,13 @@ impl GroveApp {
             return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
         }
         if self.preview_agent_tab_is_focused() {
-            return "[ prev tab, ] next tab, j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, n new, e edit, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
+            return "[ prev tab, ] next tab, j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, n new, e edit, m merge, u update, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
         }
         if self.preview_git_tab_is_focused() {
-            return "[ prev tab, ] next tab, h/l pane, Enter attach lazygit, n new, e edit, p projects, D delete, S settings, Ctrl+K palette, ? help, q quit";
+            return "[ prev tab, ] next tab, h/l pane, Enter attach lazygit, n new, e edit, m merge, u update, p projects, D delete, S settings, Ctrl+K palette, ? help, q quit";
         }
 
-        "j/k move, h/l pane, Enter open, n new, e edit, p projects, D delete, S settings, Ctrl+K palette, ? help, q quit"
+        "j/k move, h/l pane, Enter open, n new, e edit, m merge, u update, p projects, D delete, S settings, Ctrl+K palette, ? help, q quit"
     }
 
     fn pane_border_style(&self, focused: bool) -> Style {
@@ -1739,7 +1993,7 @@ impl GroveApp {
                 self.mode_label(),
                 self.focus_label()
             ),
-            "Workspaces (j/k, arrows, Tab/h/l focus, Enter preview, n create, e edit, s/x start-stop, D delete, S settings, ? help, ! unsafe, Esc list, mouse)"
+            "Workspaces (j/k, arrows, Tab/h/l focus, Enter preview, n create, e edit, m merge, u update, s/x start-stop, D delete, S settings, ? help, ! unsafe, Esc list, mouse)"
                 .to_string(),
         ];
 
@@ -1813,6 +2067,36 @@ impl GroveApp {
                     "off"
                 }
             ));
+        }
+        if let Some(dialog) = &self.merge_dialog {
+            lines.push(String::new());
+            lines.push("Merge Workspace Dialog".to_string());
+            lines.push(format!("Workspace: {}", dialog.workspace_name));
+            lines.push(format!("Branch: {}", dialog.workspace_branch));
+            lines.push(format!("Base branch: {}", dialog.base_branch));
+            lines.push(format!(
+                "Cleanup worktree: {}",
+                if dialog.cleanup_workspace {
+                    "on"
+                } else {
+                    "off"
+                }
+            ));
+            lines.push(format!(
+                "Cleanup local branch: {}",
+                if dialog.cleanup_local_branch {
+                    "on"
+                } else {
+                    "off"
+                }
+            ));
+        }
+        if let Some(dialog) = &self.update_from_base_dialog {
+            lines.push(String::new());
+            lines.push("Update From Base Dialog".to_string());
+            lines.push(format!("Workspace: {}", dialog.workspace_name));
+            lines.push(format!("Branch: {}", dialog.workspace_branch));
+            lines.push(format!("Base branch: {}", dialog.base_branch));
         }
 
         let selected_workspace = self

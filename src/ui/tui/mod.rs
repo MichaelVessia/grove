@@ -56,8 +56,10 @@ use crate::application::interactive::{
 use crate::application::preview::PreviewState;
 use crate::application::workspace_lifecycle::{
     BranchMode, CommandGitRunner, CommandSetupScriptRunner, CreateWorkspaceRequest,
-    CreateWorkspaceResult, DeleteWorkspaceRequest, WorkspaceLifecycleError, create_workspace,
-    delete_workspace, workspace_lifecycle_error_message, write_workspace_agent_marker,
+    CreateWorkspaceResult, DeleteWorkspaceRequest, MergeWorkspaceRequest,
+    UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError, create_workspace, delete_workspace,
+    merge_workspace, update_workspace_from_base, workspace_lifecycle_error_message,
+    write_workspace_agent_marker,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
@@ -114,6 +116,8 @@ struct GroveApp {
     action_mapper: ActionMapper,
     launch_dialog: Option<LaunchDialogState>,
     delete_dialog: Option<DeleteDialogState>,
+    merge_dialog: Option<MergeDialogState>,
+    update_from_base_dialog: Option<UpdateFromBaseDialogState>,
     create_dialog: Option<CreateDialogState>,
     edit_dialog: Option<EditDialogState>,
     project_dialog: Option<ProjectDialogState>,
@@ -162,6 +166,8 @@ struct GroveApp {
     pending_resize_verification: Option<PendingResizeVerification>,
     refresh_in_flight: bool,
     delete_in_flight: bool,
+    merge_in_flight: bool,
+    update_from_base_in_flight: bool,
     create_in_flight: bool,
     start_in_flight: bool,
     stop_in_flight: bool,

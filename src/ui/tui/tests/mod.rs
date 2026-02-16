@@ -12,12 +12,14 @@ use super::{
     AppDependencies, AppPaths, ClipboardAccess, CommandZellijInput, CreateDialogField,
     CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, GroveApp, HIT_ID_HEADER,
     HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
-    LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, Msg, PALETTE_CMD_FOCUS_LIST,
-    PALETTE_CMD_MOVE_SELECTION_DOWN, PALETTE_CMD_OPEN_PREVIEW, PALETTE_CMD_SCROLL_DOWN,
-    PALETTE_CMD_START_AGENT, PREVIEW_METADATA_ROWS, PendingResizeVerification,
+    LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg,
+    PALETTE_CMD_FOCUS_LIST, PALETTE_CMD_MERGE_WORKSPACE, PALETTE_CMD_MOVE_SELECTION_DOWN,
+    PALETTE_CMD_OPEN_PREVIEW, PALETTE_CMD_SCROLL_DOWN, PALETTE_CMD_START_AGENT,
+    PALETTE_CMD_UPDATE_FROM_BASE, PREVIEW_METADATA_ROWS, PendingResizeVerification,
     PreviewPollCompletion, PreviewTab, StartAgentCompletion, StopAgentCompletion,
-    TextSelectionPoint, TmuxInput, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color,
-    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
+    TextSelectionPoint, TmuxInput, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
+    WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+    ui_theme,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;
@@ -289,6 +291,7 @@ fn fixture_bootstrap(status: WorkspaceStatus) -> BootstrapData {
     )
     .expect("workspace should be valid");
     feature_workspace.project_path = Some(PathBuf::from("/repos/grove"));
+    feature_workspace.base_branch = Some("main".to_string());
 
     BootstrapData {
         repo_name: "grove".to_string(),
@@ -633,6 +636,8 @@ proptest::proptest! {
                 app.launch_dialog.is_some(),
                 app.create_dialog.is_some(),
                 app.delete_dialog.is_some(),
+                app.merge_dialog.is_some(),
+                app.update_from_base_dialog.is_some(),
                 app.keybind_help_open,
                 app.command_palette.is_visible(),
                 app.interactive.is_some(),
@@ -1362,6 +1367,7 @@ fn command_palette_enter_executes_selected_action() {
 #[test]
 fn command_palette_action_set_scopes_to_focus_and_mode() {
     let mut app = fixture_app();
+    app.state.selected_index = 1;
     let list_ids: Vec<String> = app
         .build_command_palette_actions()
         .into_iter()
@@ -1373,6 +1379,8 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
             .any(|id| id == PALETTE_CMD_MOVE_SELECTION_DOWN)
     );
     assert!(list_ids.iter().any(|id| id == PALETTE_CMD_OPEN_PREVIEW));
+    assert!(list_ids.iter().any(|id| id == PALETTE_CMD_MERGE_WORKSPACE));
+    assert!(list_ids.iter().any(|id| id == PALETTE_CMD_UPDATE_FROM_BASE));
     assert!(!list_ids.iter().any(|id| id == PALETTE_CMD_SCROLL_DOWN));
     assert!(!list_ids.iter().any(|id| id == PALETTE_CMD_START_AGENT));
 
@@ -1666,6 +1674,34 @@ fn status_row_shows_delete_dialog_keybind_hints_when_modal_open() {
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(status_text.contains("Tab/S-Tab field"));
         assert!(status_text.contains("Space toggle"));
+    });
+}
+
+#[test]
+fn status_row_shows_merge_dialog_keybind_hints_when_modal_open() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.open_merge_dialog();
+
+    with_rendered_frame(&app, 80, 24, |frame| {
+        let status_row = frame.height().saturating_sub(1);
+        let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains("Tab/S-Tab field"));
+        assert!(status_text.contains("Space toggle cleanup"));
+    });
+}
+
+#[test]
+fn status_row_shows_update_from_base_dialog_hints_when_modal_open() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.open_update_from_base_dialog();
+
+    with_rendered_frame(&app, 80, 24, |frame| {
+        let status_row = frame.height().saturating_sub(1);
+        let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains("Tab/S-Tab field"));
+        assert!(status_text.contains("Enter select/update"));
     });
 }
 
@@ -3085,6 +3121,125 @@ fn delete_dialog_confirm_queues_background_task() {
     assert!(cmd_contains_task(&cmd));
     assert!(app.delete_dialog.is_none());
     assert!(app.delete_in_flight);
+}
+
+#[test]
+fn merge_key_opens_merge_dialog_for_selected_workspace() {
+    let mut app = fixture_app();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('m')).with_kind(KeyEventKind::Press)),
+    );
+
+    let Some(dialog) = app.merge_dialog.as_ref() else {
+        panic!("merge dialog should be open");
+    };
+    assert_eq!(dialog.workspace_name, "feature-a");
+    assert_eq!(dialog.workspace_branch, "feature-a");
+    assert_eq!(dialog.base_branch, "main");
+    assert!(dialog.cleanup_workspace);
+    assert!(dialog.cleanup_local_branch);
+    assert_eq!(dialog.focused_field, MergeDialogField::CleanupWorkspace);
+}
+
+#[test]
+fn merge_key_on_main_workspace_shows_guard_toast() {
+    let mut app = fixture_app();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('m')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(app.merge_dialog.is_none());
+    assert!(
+        app.status_bar_line()
+            .contains("cannot merge base workspace")
+    );
+}
+
+#[test]
+fn merge_dialog_confirm_queues_background_task() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+    app.state.selected_index = 1;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('m')).with_kind(KeyEventKind::Press)),
+    );
+    let cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('m')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(cmd_contains_task(&cmd));
+    assert!(app.merge_dialog.is_none());
+    assert!(app.merge_in_flight);
+}
+
+#[test]
+fn update_key_opens_update_from_base_dialog_for_selected_workspace() {
+    let mut app = fixture_app();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('u')).with_kind(KeyEventKind::Press)),
+    );
+
+    let Some(dialog) = app.update_from_base_dialog.as_ref() else {
+        panic!("update dialog should be open");
+    };
+    assert_eq!(dialog.workspace_name, "feature-a");
+    assert_eq!(dialog.workspace_branch, "feature-a");
+    assert_eq!(dialog.base_branch, "main");
+    assert_eq!(
+        dialog.focused_field,
+        UpdateFromBaseDialogField::UpdateButton
+    );
+}
+
+#[test]
+fn update_key_on_main_workspace_shows_guard_toast() {
+    let mut app = fixture_app();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('u')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(app.update_from_base_dialog.is_none());
+    assert!(
+        app.status_bar_line()
+            .contains("cannot update base workspace from itself")
+    );
+}
+
+#[test]
+fn update_dialog_confirm_queues_background_task() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+    app.state.selected_index = 1;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('u')).with_kind(KeyEventKind::Press)),
+    );
+    let cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('u')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(cmd_contains_task(&cmd));
+    assert!(app.update_from_base_dialog.is_none());
+    assert!(app.update_from_base_in_flight);
 }
 
 #[test]

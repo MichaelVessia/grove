@@ -131,6 +131,28 @@ pub struct DeleteWorkspaceRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MergeWorkspaceRequest {
+    pub project_name: Option<String>,
+    pub project_path: Option<PathBuf>,
+    pub workspace_name: String,
+    pub workspace_branch: String,
+    pub workspace_path: PathBuf,
+    pub base_branch: String,
+    pub cleanup_workspace: bool,
+    pub cleanup_local_branch: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateWorkspaceFromBaseRequest {
+    pub project_name: Option<String>,
+    pub project_path: Option<PathBuf>,
+    pub workspace_name: String,
+    pub workspace_branch: String,
+    pub workspace_path: PathBuf,
+    pub base_branch: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceMarkers {
     pub agent: AgentType,
     pub base_branch: String,
@@ -289,6 +311,196 @@ pub fn delete_workspace(
     (Ok(()), warnings)
 }
 
+pub fn merge_workspace(
+    request: MergeWorkspaceRequest,
+    multiplexer: MultiplexerKind,
+) -> (Result<(), String>, Vec<String>) {
+    let mut warnings = Vec::new();
+    let stop_session_command = kill_workspace_session_command(
+        request.project_name.as_deref(),
+        &request.workspace_name,
+        multiplexer,
+    );
+    let _ = run_command(&stop_session_command);
+
+    if request.workspace_name.trim().is_empty() {
+        return (Err("workspace name is required".to_string()), warnings);
+    }
+    if request.workspace_branch.trim().is_empty() {
+        return (Err("workspace branch is required".to_string()), warnings);
+    }
+    if request.base_branch.trim().is_empty() {
+        return (Err("base branch is required".to_string()), warnings);
+    }
+    if request.workspace_branch == request.base_branch {
+        return (
+            Err("workspace branch matches base branch".to_string()),
+            warnings,
+        );
+    }
+    if !request.workspace_path.exists() {
+        return (
+            Err("workspace path does not exist on disk".to_string()),
+            warnings,
+        );
+    }
+
+    let repo_root = if let Some(project_path) = request.project_path {
+        project_path
+    } else if let Ok(cwd) = std::env::current_dir() {
+        cwd
+    } else {
+        return (
+            Err("workspace project root unavailable".to_string()),
+            warnings,
+        );
+    };
+
+    if let Err(error) = ensure_git_worktree_clean(&repo_root) {
+        return (
+            Err(format!("base worktree has uncommitted changes: {error}")),
+            warnings,
+        );
+    }
+    if let Err(error) = ensure_git_worktree_clean(&request.workspace_path) {
+        return (
+            Err(format!(
+                "workspace worktree has uncommitted changes: {error}"
+            )),
+            warnings,
+        );
+    }
+
+    if let Err(error) = run_git_command(
+        &repo_root,
+        &["switch".to_string(), request.base_branch.clone()],
+    ) {
+        return (Err(format!("git switch failed: {error}")), warnings);
+    }
+
+    if let Err(error) = run_git_command(
+        &repo_root,
+        &[
+            "merge".to_string(),
+            "--no-ff".to_string(),
+            request.workspace_branch.clone(),
+        ],
+    ) {
+        let _ = run_git_command(&repo_root, &["merge".to_string(), "--abort".to_string()]);
+        return (Err(format!("git merge failed: {error}")), warnings);
+    }
+
+    if request.cleanup_workspace
+        && let Err(error) = run_delete_worktree_git(&repo_root, &request.workspace_path, false)
+    {
+        warnings.push(format!("workspace cleanup: {error}"));
+    }
+
+    if request.cleanup_local_branch
+        && let Err(error) = run_delete_local_branch_git(&repo_root, &request.workspace_branch)
+    {
+        warnings.push(format!("local branch cleanup: {error}"));
+    }
+
+    (Ok(()), warnings)
+}
+
+pub fn update_workspace_from_base(
+    request: UpdateWorkspaceFromBaseRequest,
+    multiplexer: MultiplexerKind,
+) -> (Result<(), String>, Vec<String>) {
+    let warnings = Vec::new();
+    let stop_session_command = kill_workspace_session_command(
+        request.project_name.as_deref(),
+        &request.workspace_name,
+        multiplexer,
+    );
+    let _ = run_command(&stop_session_command);
+
+    if request.workspace_name.trim().is_empty() {
+        return (Err("workspace name is required".to_string()), warnings);
+    }
+    if request.workspace_branch.trim().is_empty() {
+        return (Err("workspace branch is required".to_string()), warnings);
+    }
+    if request.base_branch.trim().is_empty() {
+        return (Err("base branch is required".to_string()), warnings);
+    }
+    if request.workspace_branch == request.base_branch {
+        return (
+            Err("workspace branch matches base branch".to_string()),
+            warnings,
+        );
+    }
+    if !request.workspace_path.exists() {
+        return (
+            Err("workspace path does not exist on disk".to_string()),
+            warnings,
+        );
+    }
+
+    let repo_root = if let Some(project_path) = request.project_path {
+        project_path
+    } else if let Ok(cwd) = std::env::current_dir() {
+        cwd
+    } else {
+        return (
+            Err("workspace project root unavailable".to_string()),
+            warnings,
+        );
+    };
+
+    if let Err(error) = run_git_command(
+        &repo_root,
+        &[
+            "rev-parse".to_string(),
+            "--verify".to_string(),
+            request.base_branch.clone(),
+        ],
+    ) {
+        return (
+            Err(format!(
+                "base branch '{}' is not available: {error}",
+                request.base_branch
+            )),
+            warnings,
+        );
+    }
+
+    if let Err(error) = ensure_git_worktree_clean(&request.workspace_path) {
+        return (
+            Err(format!(
+                "workspace worktree has uncommitted changes: {error}"
+            )),
+            warnings,
+        );
+    }
+
+    if let Err(error) = run_git_command(
+        &request.workspace_path,
+        &["switch".to_string(), request.workspace_branch.clone()],
+    ) {
+        return (Err(format!("git switch failed: {error}")), warnings);
+    }
+
+    if let Err(error) = run_git_command(
+        &request.workspace_path,
+        &[
+            "merge".to_string(),
+            "--no-ff".to_string(),
+            request.base_branch.clone(),
+        ],
+    ) {
+        let _ = run_git_command(
+            &request.workspace_path,
+            &["merge".to_string(), "--abort".to_string()],
+        );
+        return (Err(format!("git merge failed: {error}")), warnings);
+    }
+
+    (Ok(()), warnings)
+}
+
 pub(crate) fn workspace_directory_path(
     repo_root: &Path,
     workspace_name: &str,
@@ -385,6 +597,29 @@ fn run_git_command(repo_root: &Path, args: &[String]) -> Result<(), String> {
         ));
     }
     Err(format!("git {}: {stderr}", args.join(" ")))
+}
+
+fn ensure_git_worktree_clean(worktree_path: &Path) -> Result<(), String> {
+    let output = Command::new("git")
+        .current_dir(worktree_path)
+        .args(["status", "--porcelain"])
+        .output()
+        .map_err(|error| format!("git status --porcelain: {error}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            return Err(format!("git exited with status {}", output.status));
+        }
+        return Err(stderr);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if stdout.trim().is_empty() {
+        return Ok(());
+    }
+
+    Err("commit, stash, or discard changes first".to_string())
 }
 
 pub(crate) fn ensure_grove_gitignore_entries(
