@@ -96,6 +96,8 @@ mod dialogs_update_from_base;
 use dialogs::*;
 use dialogs_state::*;
 mod commands;
+mod commands_hints;
+mod commands_palette;
 use commands::*;
 mod msg;
 use msg::*;
