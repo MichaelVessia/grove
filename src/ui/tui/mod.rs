@@ -84,8 +84,9 @@ use terminal::{
     ClipboardAccess, CommandTmuxInput, SystemClipboardAccess, TmuxInput, parse_cursor_metadata,
 };
 mod dialogs;
-mod dialogs_create_launch;
+mod dialogs_create;
 mod dialogs_delete;
+mod dialogs_edit;
 mod dialogs_launch;
 mod dialogs_merge;
 mod dialogs_projects;
