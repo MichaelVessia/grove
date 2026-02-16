@@ -120,6 +120,8 @@ mod update;
 mod update_input_interactive;
 mod update_input_interactive_clipboard;
 mod update_input_interactive_send;
+mod update_input_key_events;
+mod update_input_keybinding;
 mod update_input_keys;
 mod update_input_mouse;
 mod update_lifecycle_agent;
