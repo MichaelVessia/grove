@@ -2,13 +2,48 @@
 
 Minimal workspace manager for AI coding agents (Rust + FrankenTUI).
 
-## Prerequisites
+Grove helps you run many agent tasks in parallel, each in its own git worktree
+and tmux session, with one fast keyboard-first TUI.
 
-Grove depends on external tools on your `PATH`:
+## What Grove Is
+
+Grove is a focused workspace manager for AI coding agents, built with Rust and
+FrankenTUI.
+
+It is built for a single job: manage isolated coding workspaces, launch agents,
+monitor output live, and clean up safely.
+
+## What Grove Supports
+
+- Git worktree lifecycle, create, edit, merge, update-from-base, delete
+- Agent runtime per workspace via tmux sessions (persistent across TUI restarts)
+- Supported agents, Claude Code and Codex
+- Interactive mode inside the TUI (send keys directly to running sessions)
+- Live output preview with ANSI rendering and cursor-aware display
+- Git preview tab via `lazygit`
+- Workspace status detection (idle, active, thinking, waiting, done, error)
+- Multi-project switching from config
+- Mouse support (selection, scroll, pane resize)
+- Command palette + keybind help modal
+- Event logs and debug record stream for diagnostics
+
+## Scope
+
+- Single-repo workflow per active project
+- tmux-only multiplexer support
+- No plugin system
+- No issue tracker / kanban features
+- No PR automation layer
+
+## Requirements
+
+Required binaries on `PATH`:
 
 - `git`
-- `tmux` (required)
-- `lazygit` (required for Git tab)
+- `tmux`
+- `lazygit`
+
+Rust toolchain is required to build from source.
 
 Quick check:
 
@@ -16,40 +51,114 @@ Quick check:
 command -v git tmux lazygit
 ```
 
-## Bootstrap
+## Install
+
+### Option 1, direnv (auto Nix shell)
 
 ```bash
-# Enter pinned toolchain shell
-nix develop
-
-# Install git hooks (once per clone)
-lefthook install
-
-# Validate clean clone setup
-make ci
+direnv allow
+cargo build
 ```
 
-## Commands
+### Option 2, Nix dev shell
+
+```bash
+nix develop
+cargo build
+```
+
+### Option 3, plain Cargo
+
+```bash
+cargo build --release
+```
+
+Binary path:
+
+```bash
+target/release/grove
+```
+
+## Quick Start
+
+```bash
+# optional, install hooks
+lefthook install
+
+# run quality gates
+make ci
+
+# run app
+cargo run
+```
+
+Inside Grove:
+
+- `n` new workspace
+- `s` start agent
+- `Enter` open preview / interactive attach (context dependent)
+- `x` stop agent
+- `m` merge workspace branch into base
+- `u` update workspace from base
+- `D` delete workspace
+- `p` open project switcher
+- `S` settings
+- `Ctrl+K` command palette
+- `?` keybind help
+- `q` quit
+
+## CLI Flags
+
+- `--print-hello`, sanity check output path
+- `--event-log <path>`, write event log to explicit file
+- `--debug-record`, write continuous debug record to
+  `.grove/debug-record-*.jsonl`
+
+Example:
+
+```bash
+cargo run -- --debug-record
+tail -f .grove/debug-record-*.jsonl
+```
+
+## Configuration
+
+Config file path:
+
+- Linux/macOS: `~/.config/grove/config.toml` (via XDG when available)
+
+Current config model includes:
+
+- `multiplexer` (currently `tmux`)
+- `projects` list (name + path)
+
+Example:
+
+```toml
+multiplexer = "tmux"
+
+[[projects]]
+name = "grove"
+path = "/path/to/repo"
+```
+
+## Development Commands
 
 ```bash
 make fmt
 make clippy
 make test
 make ci
-
-# local codex flicker harness (no manual interaction)
-scripts/check-codex-flicker.sh
-
-# run harness against real codex instead of fake emitter
-GROVE_FLICKER_CODEX_CMD='codex' scripts/check-codex-flicker.sh
-
-# continuous frame+event debug record (writes .grove/debug-record-<app-start>-<pid>.jsonl)
-cargo run -- --debug-record
-tail -f .grove/debug-record-*.jsonl
-
-# filter input-lag telemetry (seq-linked input -> tmux send -> preview update)
-rg '"event":"input"|"event":"preview_update"|"event":"preview_poll"' .grove/debug-record-*.jsonl
-
-# filter git-preview launch latency (first-open lazygit startup vs UI update stall)
-rg '"event":"lazygit_launch"|"event":"update_timing"' .grove/debug-record-*.jsonl
 ```
+
+## Credits
+
+Grove's workflow and UX direction were heavily inspired by
+[Sidecar](https://github.com/marcus/sidecar), which was the main reference for
+session lifecycle, interaction model, and overall operator experience.
+
+Also built on [FrankenTUI](https://github.com/Dicklesworthstone/frankentui).
+
+## License
+
+MIT, see `LICENSE`.
