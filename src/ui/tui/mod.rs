@@ -127,6 +127,7 @@ use text::{
     visual_grapheme_at, visual_substring,
 };
 mod update;
+mod update_core;
 mod update_input_interactive;
 mod update_input_interactive_clipboard;
 mod update_input_interactive_send;
@@ -149,6 +150,7 @@ mod update_polling_capture_live;
 mod update_polling_capture_scroll;
 mod update_polling_capture_workspace;
 mod update_polling_state;
+mod update_tick;
 mod view;
 mod view_chrome_divider;
 mod view_chrome_header;
