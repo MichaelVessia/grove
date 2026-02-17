@@ -1699,6 +1699,22 @@ fn status_row_shows_help_close_hint_when_help_modal_open() {
 }
 
 #[test]
+fn keybind_help_lists_interactive_reserved_keys() {
+    let mut app = fixture_app();
+    app.keybind_help_open = true;
+
+    with_rendered_frame(&app, 160, 28, |frame| {
+        let has_shift_tab = (0..frame.height())
+            .any(|row| row_text(frame, row, 0, frame.width()).contains("Shift+Tab"));
+        let has_reserved = (0..frame.height())
+            .any(|row| row_text(frame, row, 0, frame.width()).contains("Ctrl+K palette"));
+
+        assert!(has_shift_tab);
+        assert!(has_reserved);
+    });
+}
+
+#[test]
 fn status_row_shows_palette_hints_when_palette_open() {
     let mut app = fixture_app();
     app.open_command_palette();
@@ -1708,6 +1724,25 @@ fn status_row_shows_palette_hints_when_palette_open() {
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(status_text.contains("Type to search"));
         assert!(status_text.contains("Enter run"));
+    });
+}
+
+#[test]
+fn status_row_shows_interactive_reserved_key_hints() {
+    let mut app = fixture_app();
+    app.interactive = Some(InteractiveState::new(
+        "%0".to_string(),
+        "grove-ws-feature-a".to_string(),
+        Instant::now(),
+        34,
+        78,
+    ));
+
+    with_rendered_frame(&app, 160, 24, |frame| {
+        let status_row = frame.height().saturating_sub(1);
+        let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains("Ctrl+K palette"));
+        assert!(status_text.contains("Esc Esc/Ctrl+\\ exit"));
     });
 }
 

@@ -27,6 +27,7 @@ pub struct InteractiveState {
 pub enum InteractiveKey {
     Enter,
     Tab,
+    BackTab,
     Backspace,
     Delete,
     Up,
@@ -191,6 +192,7 @@ fn key_to_action(key: InteractiveKey) -> InteractiveAction {
     match key {
         InteractiveKey::Enter => InteractiveAction::SendNamed("Enter".to_string()),
         InteractiveKey::Tab => InteractiveAction::SendNamed("Tab".to_string()),
+        InteractiveKey::BackTab => InteractiveAction::SendNamed("BTab".to_string()),
         InteractiveKey::Backspace => InteractiveAction::SendNamed("BSpace".to_string()),
         InteractiveKey::Delete => InteractiveAction::SendNamed("DC".to_string()),
         InteractiveKey::Up => InteractiveAction::SendNamed("Up".to_string()),

@@ -14,6 +14,7 @@ impl GroveApp {
         match key_event.code {
             KeyCode::Enter => Some(InteractiveKey::Enter),
             KeyCode::Tab => Some(InteractiveKey::Tab),
+            KeyCode::BackTab => Some(InteractiveKey::BackTab),
             KeyCode::Backspace => Some(InteractiveKey::Backspace),
             KeyCode::Delete => Some(InteractiveKey::Delete),
             KeyCode::Up => Some(InteractiveKey::Up),

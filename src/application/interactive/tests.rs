@@ -82,6 +82,18 @@ fn key_mapping_covers_named_and_literal_tmux_forms() {
 }
 
 #[test]
+fn back_tab_maps_to_tmux_btab() {
+    let now = Instant::now();
+    let mut state =
+        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+
+    assert_eq!(
+        state.handle_key(InteractiveKey::BackTab, now),
+        InteractiveAction::SendNamed("BTab".to_string())
+    );
+}
+
+#[test]
 fn paste_payload_wraps_only_when_bracketed_mode_and_large_input() {
     assert!(!is_paste_event("short"));
     assert!(is_paste_event("line 1\nline 2"));

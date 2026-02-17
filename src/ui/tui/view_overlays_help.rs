@@ -91,14 +91,14 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  type sends input to attached session",
+                    "  type sends input to attached session (includes Shift+Tab)",
                     content_width,
                 ),
                 Style::new().fg(theme.text),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  Esc Esc or Ctrl+\\ exit, Alt+J/K browse workspaces, Alt+C copy, Alt+V paste",
+                    "  reserved: Ctrl+K palette, Esc Esc/Ctrl+\\ exit, Alt+J/K browse, Alt+C copy, Alt+V paste",
                     content_width,
                 ),
                 Style::new().fg(theme.text),

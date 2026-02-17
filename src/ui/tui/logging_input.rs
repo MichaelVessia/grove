@@ -29,6 +29,7 @@ impl GroveApp {
         match key {
             InteractiveKey::Enter => "enter",
             InteractiveKey::Tab => "tab",
+            InteractiveKey::BackTab => "back_tab",
             InteractiveKey::Backspace => "backspace",
             InteractiveKey::Delete => "delete",
             InteractiveKey::Up => "up",
