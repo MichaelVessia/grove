@@ -1641,17 +1641,18 @@ fn start_dialog_field_navigation_can_toggle_unsafe_for_launch() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
     );
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    assert_eq!(
+        app.launch_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(LaunchDialogField::Unsafe)
     );
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-    );
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Char(' ')).with_kind(KeyEventKind::Press)),
+    app.handle_launch_dialog_key(KeyEvent::new(KeyCode::Char(' ')).with_kind(KeyEventKind::Press));
+    assert_eq!(
+        app.launch_dialog
+            .as_ref()
+            .map(|dialog| dialog.skip_permissions),
+        Some(true)
     );
     ftui::Model::update(
         &mut app,
