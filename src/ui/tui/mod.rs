@@ -258,7 +258,7 @@ struct GroveApp {
     merge_in_flight: bool,
     update_from_base_in_flight: bool,
     create_in_flight: bool,
-    pending_auto_shell_workspace_path: Option<PathBuf>,
+    pending_auto_start_workspace_path: Option<PathBuf>,
     start_in_flight: bool,
     stop_in_flight: bool,
     deferred_cmds: Vec<Cmd<Msg>>,

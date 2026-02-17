@@ -122,6 +122,9 @@ impl GroveApp {
         &mut self,
         retry_failed: bool,
     ) -> Option<String> {
+        if self.start_in_flight {
+            return None;
+        }
         let workspace = self.state.selected_workspace()?.clone();
         if workspace.is_main || workspace.status.has_session() {
             return None;

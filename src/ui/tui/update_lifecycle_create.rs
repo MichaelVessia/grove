@@ -105,7 +105,7 @@ impl GroveApp {
             Ok(result) => {
                 self.create_dialog = None;
                 self.clear_create_branch_picker();
-                self.pending_auto_shell_workspace_path = Some(result.workspace_path.clone());
+                self.pending_auto_start_workspace_path = Some(result.workspace_path.clone());
                 self.refresh_workspaces(Some(result.workspace_path));
                 self.state.mode = UiMode::List;
                 self.state.focus = PaneFocus::WorkspaceList;

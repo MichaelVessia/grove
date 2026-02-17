@@ -1151,15 +1151,15 @@ fn create_workspace_completed_success_queues_refresh_task_in_background_mode() {
     assert!(cmd_contains_task(&cmd));
     assert!(app.refresh_in_flight);
     assert_eq!(
-        app.pending_auto_shell_workspace_path,
+        app.pending_auto_start_workspace_path,
         Some(PathBuf::from("/repos/grove-feature-x"))
     );
 }
 
 #[test]
-fn refresh_workspace_completion_autostarts_shell_for_new_workspace() {
+fn refresh_workspace_completion_autostarts_agent_for_new_workspace() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
-    app.pending_auto_shell_workspace_path = Some(PathBuf::from("/repos/grove-feature-a"));
+    app.pending_auto_start_workspace_path = Some(PathBuf::from("/repos/grove-feature-a"));
 
     let cmd = ftui::Model::update(
         &mut app,
@@ -1170,11 +1170,12 @@ fn refresh_workspace_completion_autostarts_shell_for_new_workspace() {
     );
 
     assert!(cmd_contains_task(&cmd));
+    assert!(app.start_in_flight);
+    assert!(app.pending_auto_start_workspace_path.is_none());
     assert!(
-        app.shell_launch_in_flight
+        !app.shell_launch_in_flight
             .contains("grove-ws-feature-a-shell")
     );
-    assert!(app.pending_auto_shell_workspace_path.is_none());
 }
 
 #[test]

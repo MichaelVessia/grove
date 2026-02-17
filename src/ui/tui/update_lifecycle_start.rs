@@ -1,7 +1,7 @@
 use super::*;
 
 impl GroveApp {
-    fn start_selected_workspace_agent_with_options(
+    pub(super) fn start_selected_workspace_agent_with_options(
         &mut self,
         prompt: Option<String>,
         pre_launch_command: Option<String>,
