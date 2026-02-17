@@ -10,12 +10,106 @@ impl GroveApp {
         PathBuf::from(raw)
     }
 
-    fn save_projects_config(&self) -> Result<(), String> {
+    fn save_projects_config_to_path(
+        config_path: &Path,
+        multiplexer: MultiplexerKind,
+        projects: &[ProjectConfig],
+    ) -> Result<(), String> {
         let config = GroveConfig {
-            multiplexer: self.multiplexer,
-            projects: self.projects.clone(),
+            multiplexer,
+            projects: projects.to_vec(),
         };
-        crate::infrastructure::config::save_to_path(&self.config_path, &config)
+        crate::infrastructure::config::save_to_path(config_path, &config)
+    }
+
+    fn save_projects_config(&self) -> Result<(), String> {
+        Self::save_projects_config_to_path(&self.config_path, self.multiplexer, &self.projects)
+    }
+
+    pub(super) fn delete_selected_project_from_dialog(&mut self) {
+        if self.project_delete_in_flight {
+            self.show_toast("project delete already in progress", true);
+            return;
+        }
+        let Some(project_index) = self.selected_project_dialog_project_index() else {
+            self.show_toast("no project selected", true);
+            return;
+        };
+        self.delete_project_by_index(project_index);
+    }
+
+    pub(super) fn delete_selected_workspace_project(&mut self) {
+        if self.project_delete_in_flight {
+            self.show_toast("project delete already in progress", true);
+            return;
+        }
+        let Some(workspace) = self.state.selected_workspace() else {
+            self.show_toast("no workspace selected", true);
+            return;
+        };
+        let Some(project_path) = workspace.project_path.as_ref() else {
+            self.show_toast("selected workspace has no project", true);
+            return;
+        };
+        let Some(project_index) = self
+            .projects
+            .iter()
+            .position(|project| project_paths_equal(&project.path, project_path))
+        else {
+            self.show_toast("selected project not found", true);
+            return;
+        };
+        self.delete_project_by_index(project_index);
+    }
+
+    fn delete_project_by_index(&mut self, project_index: usize) {
+        let Some(project) = self.projects.get(project_index).cloned() else {
+            self.show_toast("project not found", true);
+            return;
+        };
+        let mut updated_projects = self.projects.clone();
+        updated_projects.remove(project_index);
+
+        self.log_dialog_event_with_fields(
+            "projects",
+            "dialog_confirmed",
+            [
+                ("project".to_string(), Value::from(project.name.clone())),
+                (
+                    "path".to_string(),
+                    Value::from(project.path.display().to_string()),
+                ),
+            ],
+        );
+
+        if !self.tmux_input.supports_background_launch() {
+            let result = Self::save_projects_config_to_path(
+                &self.config_path,
+                self.multiplexer,
+                &updated_projects,
+            );
+            self.apply_delete_project_completion(DeleteProjectCompletion {
+                project_name: project.name,
+                project_path: project.path,
+                projects: updated_projects,
+                result,
+            });
+            return;
+        }
+
+        let config_path = self.config_path.clone();
+        let multiplexer = self.multiplexer;
+        self.project_delete_in_flight = true;
+        self.queue_cmd(Cmd::task(move || {
+            let result =
+                Self::save_projects_config_to_path(&config_path, multiplexer, &updated_projects);
+            Msg::DeleteProjectCompleted(DeleteProjectCompletion {
+                project_name: project.name,
+                project_path: project.path,
+                projects: updated_projects,
+                result,
+            })
+        }));
     }
 
     pub(super) fn add_project_from_dialog(&mut self) {

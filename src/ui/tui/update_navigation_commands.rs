@@ -141,6 +141,10 @@ impl GroveApp {
                 self.open_project_dialog();
                 false
             }
+            UiCommand::DeleteProject => {
+                self.delete_selected_workspace_project();
+                false
+            }
             UiCommand::OpenSettings => {
                 self.open_settings_dialog();
                 false

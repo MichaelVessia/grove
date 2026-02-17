@@ -11,6 +11,7 @@ pub(super) enum Msg {
     PreviewPollCompleted(PreviewPollCompletion),
     LazygitLaunchCompleted(LazygitLaunchCompletion),
     RefreshWorkspacesCompleted(RefreshWorkspacesCompletion),
+    DeleteProjectCompleted(DeleteProjectCompletion),
     DeleteWorkspaceCompleted(DeleteWorkspaceCompletion),
     MergeWorkspaceCompleted(MergeWorkspaceCompletion),
     UpdateWorkspaceFromBaseCompleted(UpdateWorkspaceFromBaseCompletion),
@@ -76,6 +77,14 @@ pub(super) struct DeleteWorkspaceCompletion {
     pub(super) workspace_path: PathBuf,
     pub(super) result: Result<(), String>,
     pub(super) warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct DeleteProjectCompletion {
+    pub(super) project_name: String,
+    pub(super) project_path: PathBuf,
+    pub(super) projects: Vec<ProjectConfig>,
+    pub(super) result: Result<(), String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

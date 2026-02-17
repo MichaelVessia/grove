@@ -3,6 +3,7 @@ use super::*;
 impl GroveApp {
     fn keybinding_task_running(&self) -> bool {
         self.refresh_in_flight
+            || self.project_delete_in_flight
             || self.delete_in_flight
             || self.merge_in_flight
             || self.update_from_base_in_flight

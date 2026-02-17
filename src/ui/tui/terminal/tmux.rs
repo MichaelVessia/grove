@@ -72,7 +72,7 @@ impl TmuxInput for CommandTmuxInput {
     }
 
     fn supports_background_launch(&self) -> bool {
-        false
+        true
     }
 }
 

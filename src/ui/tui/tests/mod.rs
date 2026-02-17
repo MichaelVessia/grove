@@ -11,12 +11,13 @@ use self::render_support::{
 use super::{
     AppDependencies, AppPaths, ClipboardAccess, CommandTmuxInput, CreateDialogField,
     CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, EditDialogField, GroveApp,
-    HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW,
-    LaunchDialogField, LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture,
-    MergeDialogField, Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
-    PreviewTab, StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
-    UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture,
-    ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
+    DeleteProjectCompletion, DeleteWorkspaceCompletion, HIT_ID_HEADER, HIT_ID_PREVIEW,
+    HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
+    LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg,
+    PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
+    StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput, UiCommand,
+    UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color,
+    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;
@@ -802,6 +803,38 @@ fn sidebar_row_omits_duplicate_workspace_and_branch_text() {
 }
 
 #[test]
+fn sidebar_row_shows_deleting_indicator_for_in_flight_delete() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+    app.state.selected_index = 1;
+    app.delete_in_flight = true;
+    app.delete_in_flight_workspace = Some(app.state.workspaces[1].path.clone());
+
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let x_start = layout.sidebar.x.saturating_add(1);
+    let x_end = layout.sidebar.right().saturating_sub(1);
+
+    with_rendered_frame(&app, 80, 24, |frame| {
+        let Some(feature_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+            panic!("feature row should be rendered");
+        };
+        let feature_row_text = row_text(frame, feature_row, x_start, x_end);
+        assert!(
+            feature_row_text.contains(" · De"),
+            "feature row should include deleting indicator, got: {feature_row_text}"
+        );
+
+        let Some(base_row) = find_row_containing(frame, "base", x_start, x_end) else {
+            panic!("base row should be rendered");
+        };
+        let base_row_text = row_text(frame, base_row, x_start, x_end);
+        assert!(
+            !base_row_text.contains(" · De"),
+            "base row should not include deleting indicator, got: {base_row_text}"
+        );
+    });
+}
+
+#[test]
 fn shell_lines_show_workspace_and_agent_labels_without_status_badges() {
     let app = fixture_app();
     let lines = app.shell_lines(12);
@@ -1430,6 +1463,11 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
     assert!(
         list_ids
             .iter()
+            .any(|id| id == &palette_id(UiCommand::DeleteProject))
+    );
+    assert!(
+        list_ids
+            .iter()
             .any(|id| id == &palette_id(UiCommand::ToggleSidebar))
     );
     assert!(
@@ -1618,9 +1656,9 @@ fn command_tmux_input_uses_background_poll_mode() {
 }
 
 #[test]
-fn command_tmux_input_keeps_sync_launch_mode() {
+fn command_tmux_input_uses_background_launch_mode() {
     let input = CommandTmuxInput;
-    assert!(!input.supports_background_launch());
+    assert!(input.supports_background_launch());
 }
 
 #[test]

@@ -67,6 +67,7 @@ impl GroveApp {
             Msg::PreviewPollCompleted(_) => "preview_poll_completed",
             Msg::LazygitLaunchCompleted(_) => "lazygit_launch_completed",
             Msg::RefreshWorkspacesCompleted(_) => "refresh_workspaces_completed",
+            Msg::DeleteProjectCompleted(_) => "delete_project_completed",
             Msg::DeleteWorkspaceCompleted(_) => "delete_workspace_completed",
             Msg::MergeWorkspaceCompleted(_) => "merge_workspace_completed",
             Msg::UpdateWorkspaceFromBaseCompleted(_) => "update_workspace_from_base_completed",

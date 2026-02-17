@@ -158,6 +158,13 @@ impl UiCommand {
                 tags: &["projects", "project", "switcher", "p"],
                 category: "Workspace",
             }),
+            Self::DeleteProject => Some(PaletteCommandSpec {
+                id: "palette:delete_project",
+                title: "Remove Selected Project",
+                description: "Remove selected workspace project (Ctrl+X/Del)",
+                tags: &["remove", "delete", "project", "workspace list", "ctrl+x", "del"],
+                category: "Workspace",
+            }),
             Self::OpenSettings => Some(PaletteCommandSpec {
                 id: "palette:open_settings",
                 title: "Settings",

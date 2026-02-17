@@ -183,6 +183,7 @@ impl GroveApp {
 
         let multiplexer = self.multiplexer;
         self.delete_in_flight = true;
+        self.delete_in_flight_workspace = Some(workspace_path.clone());
         self.queue_cmd(Cmd::task(move || {
             let (result, warnings) = delete_workspace(request, multiplexer);
             Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {

@@ -120,7 +120,7 @@ impl GroveApp {
             return "Tab/S-Tab field, j/k or h/l change, Enter save/select, Esc cancel".to_string();
         }
         if self.project_dialog.is_some() {
-            return "Type filter, Up/Down or Tab/S-Tab navigate, Enter focus project, Ctrl+A add, Esc close"
+            return "Type filter, Up/Down or Tab/S-Tab navigate, Enter focus project, Ctrl+A add, Ctrl+X/Del remove, Esc close"
                 .to_string();
         }
         if self.interactive.is_some() {

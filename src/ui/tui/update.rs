@@ -64,6 +64,10 @@ impl GroveApp {
                 self.apply_refresh_workspaces_completion(completion);
                 Cmd::None
             }
+            Msg::DeleteProjectCompleted(completion) => {
+                self.apply_delete_project_completion(completion);
+                Cmd::None
+            }
             Msg::DeleteWorkspaceCompleted(completion) => {
                 self.apply_delete_workspace_completion(completion);
                 Cmd::None

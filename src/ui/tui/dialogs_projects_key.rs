@@ -56,6 +56,9 @@ impl GroveApp {
             self.handle_project_add_dialog_key(key_event);
             return;
         }
+        if self.project_delete_in_flight {
+            return;
+        }
 
         match key_event.code {
             KeyCode::Escape => {
@@ -117,6 +120,15 @@ impl GroveApp {
                     dialog.filter.pop();
                 }
                 self.refresh_project_dialog_filtered();
+            }
+            KeyCode::Delete => {
+                self.delete_selected_project_from_dialog();
+            }
+            KeyCode::Char(character)
+                if key_event.modifiers == Modifiers::CTRL
+                    && (character == 'x' || character == 'X') =>
+            {
+                self.delete_selected_project_from_dialog();
             }
             KeyCode::Char(character)
                 if key_event.modifiers == Modifiers::CTRL

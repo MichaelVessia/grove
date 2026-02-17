@@ -611,6 +611,91 @@ fn project_dialog_tab_and_shift_tab_navigate_selection() {
 }
 
 #[test]
+fn project_dialog_ctrl_x_removes_selected_project() {
+    let mut app = fixture_app();
+    app.projects.push(ProjectConfig {
+        name: "site".to_string(),
+        path: PathBuf::from("/repos/site"),
+    });
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('x'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert_eq!(app.projects.len(), 1);
+    assert_eq!(app.projects[0].name, "grove");
+    let loaded =
+        crate::infrastructure::config::load_from_path(&app.config_path).expect("config loads");
+    assert_eq!(loaded.projects.len(), 1);
+    assert_eq!(loaded.projects[0].name, "grove");
+}
+
+#[test]
+fn project_dialog_ctrl_x_queues_background_project_delete() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+    app.projects.push(ProjectConfig {
+        name: "site".to_string(),
+        path: PathBuf::from("/repos/site"),
+    });
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    let cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('x'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert!(app.project_delete_in_flight);
+    assert!(cmd_contains_task(&cmd));
+}
+
+#[test]
+fn project_delete_completion_clears_in_flight_and_applies_projects() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+    app.project_delete_in_flight = true;
+    let kept = ProjectConfig {
+        name: "grove".to_string(),
+        path: PathBuf::from("/repos/grove"),
+    };
+
+    ftui::Model::update(
+        &mut app,
+        Msg::DeleteProjectCompleted(DeleteProjectCompletion {
+            project_name: "site".to_string(),
+            project_path: PathBuf::from("/repos/site"),
+            projects: vec![kept.clone()],
+            result: Ok(()),
+        }),
+    );
+
+    assert!(!app.project_delete_in_flight);
+    assert_eq!(app.projects, vec![kept]);
+}
+
+#[test]
 fn create_workspace_completed_success_queues_refresh_task_in_background_mode() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
     let request = CreateWorkspaceRequest {
@@ -1374,6 +1459,7 @@ fn delete_dialog_blocks_navigation_and_escape_cancels() {
 fn delete_dialog_confirm_queues_background_task() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
     app.state.selected_index = 1;
+    let deleting_path = app.state.workspaces[1].path.clone();
 
     ftui::Model::update(
         &mut app,
@@ -1387,6 +1473,28 @@ fn delete_dialog_confirm_queues_background_task() {
     assert!(cmd_contains_task(&cmd));
     assert!(app.delete_dialog.is_none());
     assert!(app.delete_in_flight);
+    assert_eq!(app.delete_in_flight_workspace, Some(deleting_path));
+}
+
+#[test]
+fn delete_workspace_completion_clears_in_flight_workspace_marker() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+    let deleting_path = app.state.workspaces[1].path.clone();
+    app.delete_in_flight = true;
+    app.delete_in_flight_workspace = Some(deleting_path.clone());
+
+    let _ = ftui::Model::update(
+        &mut app,
+        Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
+            workspace_name: "feature-a".to_string(),
+            workspace_path: deleting_path,
+            result: Ok(()),
+            warnings: Vec::new(),
+        }),
+    );
+
+    assert!(!app.delete_in_flight);
+    assert!(app.delete_in_flight_workspace.is_none());
 }
 
 #[test]

@@ -115,6 +115,7 @@ impl GroveApp {
                 UiCommand::OpenProjects => {
                     matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'))
                 }
+                UiCommand::DeleteProject => false,
                 UiCommand::OpenSettings => matches!(key_event.code, KeyCode::Char('S')),
                 UiCommand::ToggleUnsafe => matches!(key_event.code, KeyCode::Char('!')),
                 UiCommand::OpenHelp => matches!(key_event.code, KeyCode::Char('?')),

@@ -1,11 +1,47 @@
 use super::*;
 
 impl GroveApp {
+    pub(super) fn apply_delete_project_completion(&mut self, completion: DeleteProjectCompletion) {
+        self.project_delete_in_flight = false;
+        match completion.result {
+            Ok(()) => {
+                self.projects = completion.projects;
+                self.refresh_project_dialog_filtered();
+                self.event_log.log(
+                    LogEvent::new("project_lifecycle", "project_deleted")
+                        .with_data("project", Value::from(completion.project_name.clone()))
+                        .with_data(
+                            "path",
+                            Value::from(completion.project_path.display().to_string()),
+                        ),
+                );
+                self.refresh_workspaces(None);
+                self.show_toast(
+                    format!("project '{}' removed from workspace list", completion.project_name),
+                    false,
+                );
+            }
+            Err(error) => {
+                self.event_log.log(
+                    LogEvent::new("project_lifecycle", "project_delete_failed")
+                        .with_data("project", Value::from(completion.project_name))
+                        .with_data(
+                            "path",
+                            Value::from(completion.project_path.display().to_string()),
+                        )
+                        .with_data("error", Value::from(error.clone())),
+                );
+                self.show_toast(format!("project delete failed: {error}"), true);
+            }
+        }
+    }
+
     pub(super) fn apply_delete_workspace_completion(
         &mut self,
         completion: DeleteWorkspaceCompletion,
     ) {
         self.delete_in_flight = false;
+        self.delete_in_flight_workspace = None;
         match completion.result {
             Ok(()) => {
                 self.event_log.log(
