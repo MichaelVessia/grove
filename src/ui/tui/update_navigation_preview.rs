@@ -38,7 +38,7 @@ impl GroveApp {
         let launch_request = shell_launch_request_for_workspace(
             workspace,
             session_name.clone(),
-            LAZYGIT_COMMAND.to_string(),
+            self.lazygit_command.clone(),
             Some(capture_cols),
             Some(capture_rows),
         );

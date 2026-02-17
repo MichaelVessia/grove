@@ -5406,6 +5406,7 @@ fn git_tab_queues_async_lazygit_launch_when_supported() {
 fn git_tab_launches_lazygit_with_dedicated_tmux_session() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+    let lazygit_command = app.lazygit_command.clone();
 
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
@@ -5435,7 +5436,7 @@ fn git_tab_launches_lazygit_with_dedicated_tmux_session() {
                 "send-keys".to_string(),
                 "-t".to_string(),
                 "grove-ws-grove-git".to_string(),
-                "lazygit".to_string(),
+                lazygit_command,
                 "Enter".to_string(),
             ],
         ]

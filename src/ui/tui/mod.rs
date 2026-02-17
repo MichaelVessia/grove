@@ -221,6 +221,7 @@ struct GroveApp {
     shell_ready_sessions: HashSet<String>,
     shell_failed_sessions: HashSet<String>,
     shell_launch_in_flight: HashSet<String>,
+    lazygit_command: String,
     viewport_width: u16,
     viewport_height: u16,
     sidebar_width_pct: u16,
