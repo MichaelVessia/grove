@@ -154,6 +154,18 @@ impl GroveApp {
                             .fg(self.workspace_agent_color(workspace.agent))
                             .bold(),
                     ));
+                    let workspace_is_deleting =
+                        self.delete_in_flight
+                            && self
+                                .delete_in_flight_workspace
+                                .as_ref()
+                                .is_some_and(|path| path == &workspace.path);
+                    if workspace_is_deleting {
+                        row_spans.push(FtSpan::styled(
+                            " · Deleting...",
+                            secondary_style.fg(theme.peach).bold(),
+                        ));
+                    }
                     if workspace.is_orphaned {
                         row_spans.push(FtSpan::styled(
                             " · session ended",
