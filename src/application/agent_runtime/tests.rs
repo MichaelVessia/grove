@@ -496,6 +496,37 @@ fn launch_plan_without_prompt_sends_agent_directly() {
 }
 
 #[test]
+fn launch_plan_with_capture_dimensions_resizes_before_send_keys() {
+    let request = LaunchRequest {
+        project_name: None,
+        workspace_name: "auth-flow".to_string(),
+        workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+        agent: AgentType::Claude,
+        prompt: None,
+        pre_launch_command: None,
+        skip_permissions: true,
+        capture_cols: Some(132),
+        capture_rows: Some(44),
+    };
+
+    let plan = build_launch_plan(&request, MultiplexerKind::Tmux);
+
+    assert_eq!(
+        plan.pre_launch_cmds.last(),
+        Some(&vec![
+            "tmux".to_string(),
+            "resize-window".to_string(),
+            "-t".to_string(),
+            "grove-ws-auth-flow".to_string(),
+            "-x".to_string(),
+            "132".to_string(),
+            "-y".to_string(),
+            "44".to_string(),
+        ])
+    );
+}
+
+#[test]
 fn launch_plan_with_prompt_writes_launcher_script() {
     let request = LaunchRequest {
         project_name: None,

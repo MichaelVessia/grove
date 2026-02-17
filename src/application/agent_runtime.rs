@@ -415,7 +415,15 @@ pub fn build_launch_plan(request: &LaunchRequest, multiplexer: MultiplexerKind) 
     let pre_launch_command = normalized_pre_launch_command(request.pre_launch_command.as_deref());
     let launch_agent_cmd =
         launch_command_with_pre_launch(&agent_cmd, pre_launch_command.as_deref());
-    tmux_launch_plan(request, session_name, launch_agent_cmd)
+    let mut plan = tmux_launch_plan(request, session_name, launch_agent_cmd);
+    if let Some(resize_cmd) = launch_resize_window_command(
+        &plan.session_name,
+        request.capture_cols,
+        request.capture_rows,
+    ) {
+        plan.pre_launch_cmds.push(resize_cmd);
+    }
+    plan
 }
 
 pub fn build_shell_launch_plan(
@@ -517,6 +525,25 @@ fn tmux_launch_plan(
             }
         }
     }
+}
+
+fn launch_resize_window_command(
+    session_name: &str,
+    capture_cols: Option<u16>,
+    capture_rows: Option<u16>,
+) -> Option<Vec<String>> {
+    let cols = capture_cols.filter(|value| *value > 0)?;
+    let rows = capture_rows.filter(|value| *value > 0)?;
+    Some(vec![
+        "tmux".to_string(),
+        "resize-window".to_string(),
+        "-t".to_string(),
+        session_name.to_string(),
+        "-x".to_string(),
+        cols.to_string(),
+        "-y".to_string(),
+        rows.to_string(),
+    ])
 }
 
 pub fn stop_plan(session_name: &str, multiplexer: MultiplexerKind) -> Vec<Vec<String>> {

@@ -1420,6 +1420,16 @@ fn start_key_launches_selected_workspace_agent() {
             ],
             vec![
                 "tmux".to_string(),
+                "resize-window".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "-x".to_string(),
+                "80".to_string(),
+                "-y".to_string(),
+                "36".to_string(),
+            ],
+            vec![
+                "tmux".to_string(),
                 "send-keys".to_string(),
                 "-t".to_string(),
                 "grove-ws-feature-a".to_string(),
