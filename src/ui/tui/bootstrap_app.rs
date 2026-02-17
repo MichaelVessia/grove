@@ -210,6 +210,7 @@ impl GroveApp {
             pending_resize_verification: None,
             refresh_in_flight: false,
             delete_in_flight: false,
+            delete_in_flight_workspace: None,
             merge_in_flight: false,
             update_from_base_in_flight: false,
             create_in_flight: false,

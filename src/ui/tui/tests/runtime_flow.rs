@@ -1303,6 +1303,7 @@ fn delete_dialog_blocks_navigation_and_escape_cancels() {
 fn delete_dialog_confirm_queues_background_task() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
     app.state.selected_index = 1;
+    let deleting_path = app.state.workspaces[1].path.clone();
 
     ftui::Model::update(
         &mut app,
@@ -1316,6 +1317,28 @@ fn delete_dialog_confirm_queues_background_task() {
     assert!(cmd_contains_task(&cmd));
     assert!(app.delete_dialog.is_none());
     assert!(app.delete_in_flight);
+    assert_eq!(app.delete_in_flight_workspace, Some(deleting_path));
+}
+
+#[test]
+fn delete_workspace_completion_clears_in_flight_workspace_marker() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+    let deleting_path = app.state.workspaces[1].path.clone();
+    app.delete_in_flight = true;
+    app.delete_in_flight_workspace = Some(deleting_path.clone());
+
+    let _ = ftui::Model::update(
+        &mut app,
+        Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
+            workspace_name: "feature-a".to_string(),
+            workspace_path: deleting_path,
+            result: Ok(()),
+            warnings: Vec::new(),
+        }),
+    );
+
+    assert!(!app.delete_in_flight);
+    assert!(app.delete_in_flight_workspace.is_none());
 }
 
 #[test]

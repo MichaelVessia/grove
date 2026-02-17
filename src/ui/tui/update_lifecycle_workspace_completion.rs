@@ -6,6 +6,7 @@ impl GroveApp {
         completion: DeleteWorkspaceCompletion,
     ) {
         self.delete_in_flight = false;
+        self.delete_in_flight_workspace = None;
         match completion.result {
             Ok(()) => {
                 self.event_log.log(
