@@ -149,13 +149,19 @@ impl GroveApp {
                 }
                 self.event_log.log(event);
                 self.clear_agent_activity_tracking();
-                if self.selected_live_preview_session_for_completion().is_none() {
+                if self
+                    .selected_live_preview_session_for_completion()
+                    .is_none()
+                {
                     self.refresh_preview_summary();
                 }
             }
         } else {
             self.clear_agent_activity_tracking();
-            if self.selected_live_preview_session_for_completion().is_none() {
+            if self
+                .selected_live_preview_session_for_completion()
+                .is_none()
+            {
                 self.refresh_preview_summary();
             }
         }
@@ -163,7 +169,11 @@ impl GroveApp {
         for status_capture in completion.workspace_status_captures {
             self.apply_workspace_status_capture(status_capture);
         }
-        if !had_live_capture && self.selected_live_preview_session_for_completion().is_none() {
+        if !had_live_capture
+            && self
+                .selected_live_preview_session_for_completion()
+                .is_none()
+        {
             self.refresh_preview_summary();
         }
 

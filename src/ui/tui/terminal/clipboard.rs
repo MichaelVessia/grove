@@ -70,7 +70,7 @@ impl SystemClipboardAccess {
     fn write_text_with_platform_command(text: &str) -> Result<(), String> {
         #[cfg(target_os = "macos")]
         {
-            return Self::run_write_command("pbcopy", &[], text);
+            Self::run_write_command("pbcopy", &[], text)
         }
 
         #[cfg(all(unix, not(target_os = "macos")))]
@@ -110,7 +110,7 @@ impl SystemClipboardAccess {
     fn read_text_with_platform_command() -> Result<String, String> {
         #[cfg(target_os = "macos")]
         {
-            return Self::run_read_command("pbpaste", &[]);
+            Self::run_read_command("pbpaste", &[])
         }
 
         #[cfg(all(unix, not(target_os = "macos")))]

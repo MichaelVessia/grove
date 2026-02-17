@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
@@ -966,7 +966,8 @@ struct CodexMessageStatusCacheEntry {
     status: Option<WorkspaceStatus>,
 }
 
-fn codex_session_lookup_cache() -> &'static Mutex<HashMap<CodexSessionLookupKey, CodexSessionLookupCacheEntry>> {
+fn codex_session_lookup_cache()
+-> &'static Mutex<HashMap<CodexSessionLookupKey, CodexSessionLookupCacheEntry>> {
     static CACHE: OnceLock<Mutex<HashMap<CodexSessionLookupKey, CodexSessionLookupCacheEntry>>> =
         OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
@@ -1015,7 +1016,9 @@ fn find_codex_session_for_path_cached(
 }
 
 fn get_codex_last_message_status_cached(path: &Path) -> Option<WorkspaceStatus> {
-    let modified_at = fs::metadata(path).and_then(|metadata| metadata.modified()).ok()?;
+    let modified_at = fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()?;
     if let Ok(cache) = codex_message_status_cache().lock()
         && let Some(entry) = cache.get(path)
         && entry.modified_at == modified_at
