@@ -57,7 +57,7 @@ impl GroveApp {
     fn project_default_auto_run_setup_commands(&self, project_index: usize) -> bool {
         self.projects
             .get(project_index)
-            .map_or(true, |project| project.defaults.auto_run_setup_commands)
+            .is_none_or(|project| project.defaults.auto_run_setup_commands)
     }
 
     pub(super) fn apply_create_dialog_project_defaults(&mut self, project_index: usize) {

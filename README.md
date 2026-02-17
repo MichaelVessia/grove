@@ -82,8 +82,8 @@ target/release/grove
 ## Quick Start
 
 ```bash
-# optional, install hooks
-lefthook install
+# nix dev shell sets this automatically, run once if outside nix shell
+git config --local core.hooksPath .githooks
 
 # run quality gates
 make ci
