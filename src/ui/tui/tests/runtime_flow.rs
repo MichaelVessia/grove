@@ -4676,6 +4676,94 @@ fn mouse_workspace_switch_exits_interactive_mode() {
     assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
 }
 
+fn preview_tab_click_point(sidebar_width_pct: u16, tab: PreviewTab) -> (u16, u16) {
+    let layout = GroveApp::view_layout_for_size(100, 40, sidebar_width_pct);
+    let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+    let tab_y = preview_inner.y.saturating_add(1);
+    let mut tab_x = preview_inner.x;
+
+    for (index, current_tab) in [PreviewTab::Agent, PreviewTab::Shell, PreviewTab::Git]
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        if index > 0 {
+            tab_x = tab_x.saturating_add(1);
+        }
+        let Some(tab_width) = u16::try_from(current_tab.label().len().saturating_add(2)).ok()
+        else {
+            continue;
+        };
+        if current_tab == tab {
+            return (tab_x, tab_y);
+        }
+        tab_x = tab_x.saturating_add(tab_width);
+    }
+
+    (preview_inner.x, tab_y)
+}
+
+#[test]
+fn mouse_click_preview_tab_switches_tabs() {
+    let mut app = fixture_app();
+    assert_eq!(app.preview_tab, PreviewTab::Agent);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 100,
+            height: 40,
+        },
+    );
+    let (shell_tab_x, tab_y) = preview_tab_click_point(app.sidebar_width_pct, PreviewTab::Shell);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            shell_tab_x,
+            tab_y,
+        )),
+    );
+
+    assert_eq!(app.preview_tab, PreviewTab::Shell);
+    assert_eq!(app.state.mode, UiMode::Preview);
+    assert_eq!(app.state.focus, PaneFocus::Preview);
+    assert!(app.interactive.is_none());
+}
+
+#[test]
+fn mouse_click_preview_tab_exits_interactive_and_switches_tabs() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+    assert!(app.enter_interactive(Instant::now()));
+    assert_eq!(app.preview_tab, PreviewTab::Agent);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 100,
+            height: 40,
+        },
+    );
+    let (git_tab_x, tab_y) = preview_tab_click_point(app.sidebar_width_pct, PreviewTab::Git);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            git_tab_x,
+            tab_y,
+        )),
+    );
+
+    assert_eq!(app.preview_tab, PreviewTab::Git);
+    assert!(app.interactive.is_none());
+    assert_eq!(app.state.mode, UiMode::Preview);
+    assert_eq!(app.state.focus, PaneFocus::Preview);
+}
+
 #[test]
 fn mouse_click_preview_enters_interactive_mode() {
     let (mut app, _commands, _captures, _cursor_captures) =

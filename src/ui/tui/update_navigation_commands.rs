@@ -36,12 +36,7 @@ impl GroveApp {
         self.set_sidebar_ratio(ratio);
     }
 
-    fn cycle_preview_tab(&mut self, direction: i8) {
-        let next_tab = if direction.is_negative() {
-            self.preview_tab.previous()
-        } else {
-            self.preview_tab.next()
-        };
+    pub(super) fn select_preview_tab(&mut self, next_tab: PreviewTab) {
         if next_tab == self.preview_tab {
             return;
         }
@@ -61,6 +56,15 @@ impl GroveApp {
             self.shell_failed_sessions.remove(&session_name);
         }
         self.poll_preview();
+    }
+
+    fn cycle_preview_tab(&mut self, direction: i8) {
+        let next_tab = if direction.is_negative() {
+            self.preview_tab.previous()
+        } else {
+            self.preview_tab.next()
+        };
+        self.select_preview_tab(next_tab);
     }
     pub(super) fn execute_ui_command(&mut self, command: UiCommand) -> bool {
         match command {

@@ -3,6 +3,44 @@ use super::*;
 impl GroveApp {
     const PREVIEW_MOUSE_SCROLL_LINES: i32 = 3;
 
+    fn preview_tab_at_pointer(&self, x: u16, y: u16) -> Option<PreviewTab> {
+        let layout = self.view_layout();
+        if layout.preview.is_empty() {
+            return None;
+        }
+
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        if preview_inner.is_empty() || preview_inner.height < PREVIEW_METADATA_ROWS {
+            return None;
+        }
+
+        let tab_row_y = preview_inner.y.saturating_add(1);
+        if y != tab_row_y {
+            return None;
+        }
+
+        let mut tab_x = preview_inner.x;
+        for (index, tab) in [PreviewTab::Agent, PreviewTab::Shell, PreviewTab::Git]
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            if index > 0 {
+                tab_x = tab_x.saturating_add(1);
+            }
+            let Some(tab_width) = u16::try_from(tab.label().len().saturating_add(2)).ok() else {
+                continue;
+            };
+            let tab_end = tab_x.saturating_add(tab_width).min(preview_inner.right());
+            if x >= tab_x && x < tab_end {
+                return Some(tab);
+            }
+            tab_x = tab_x.saturating_add(tab_width);
+        }
+
+        None
+    }
+
     fn sidebar_ratio_for_drag_pointer(&self, pointer_x: i32) -> u16 {
         let layout = self.view_layout();
         let total_width = layout.preview.right().saturating_sub(layout.sidebar.x);
@@ -170,16 +208,27 @@ impl GroveApp {
                     }
                 }
                 HitRegion::Preview => {
-                    let interactive_before_click = self.interactive.is_some();
-                    self.enter_preview_or_interactive();
-                    if self.interactive.is_some() {
-                        if interactive_before_click {
-                            self.prepare_preview_selection_drag(mouse_event.x, mouse_event.y);
+                    if let Some(next_tab) =
+                        self.preview_tab_at_pointer(mouse_event.x, mouse_event.y)
+                    {
+                        if self.interactive.is_some() {
+                            self.exit_interactive_to_list();
+                        }
+                        reduce(&mut self.state, Action::EnterPreviewMode);
+                        self.select_preview_tab(next_tab);
+                        self.clear_preview_selection();
+                    } else {
+                        let interactive_before_click = self.interactive.is_some();
+                        self.enter_preview_or_interactive();
+                        if self.interactive.is_some() {
+                            if interactive_before_click {
+                                self.prepare_preview_selection_drag(mouse_event.x, mouse_event.y);
+                            } else {
+                                self.clear_preview_selection();
+                            }
                         } else {
                             self.clear_preview_selection();
                         }
-                    } else {
-                        self.clear_preview_selection();
                     }
                 }
                 HitRegion::StatusLine | HitRegion::Header | HitRegion::Outside => {}
