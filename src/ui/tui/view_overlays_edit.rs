@@ -15,10 +15,24 @@ impl GroveApp {
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let focused = |field| dialog.focused_field == field;
         let path = dialog.workspace_path.display().to_string();
-        let running_note = if dialog.was_running {
+        let running_note = if dialog.was_running && dialog.is_main {
+            "Branch switches now, restart agent to apply agent change"
+        } else if dialog.was_running {
             "Base branch applies now, restart agent to apply agent change"
+        } else if dialog.is_main {
+            "Branch switches immediately"
         } else {
             "Base branch applies immediately"
+        };
+        let branch_field_label = if dialog.is_main {
+            "Branch"
+        } else {
+            "BaseBranch"
+        };
+        let edit_hint = if dialog.is_main {
+            "Tab/C-n next, S-Tab/C-p prev, type/backspace branch, h/l or Space toggle agent, Enter save, Esc cancel"
+        } else {
+            "Tab/C-n next, S-Tab/C-p prev, type/backspace base branch, h/l or Space toggle agent, Enter save, Esc cancel"
         };
 
         let body = FtText::from_lines(vec![
@@ -55,7 +69,7 @@ impl GroveApp {
             modal_labeled_input_row(
                 content_width,
                 theme,
-                "BaseBranch",
+                branch_field_label,
                 dialog.base_branch.as_str(),
                 "main",
                 focused(EditDialogField::BaseBranch),
@@ -86,10 +100,7 @@ impl GroveApp {
                 focused(EditDialogField::CancelButton),
             ),
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(
-                    "Tab/C-n next, S-Tab/C-p prev, type/backspace base branch, h/l or Space toggle agent, Enter save, Esc cancel",
-                    content_width,
-                ),
+                pad_or_truncate_to_display_width(edit_hint, content_width),
                 Style::new().fg(theme.overlay0),
             )]),
         ]);

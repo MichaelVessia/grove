@@ -103,6 +103,14 @@ impl GroveApp {
                 .to_string();
         }
         if self.edit_dialog.is_some() {
+            let edits_main_workspace = self
+                .edit_dialog
+                .as_ref()
+                .is_some_and(|dialog| dialog.is_main);
+            if edits_main_workspace {
+                return "Tab/S-Tab or C-n/C-p field, type/backspace branch, h/l buttons, Space toggle agent, Enter save/select, Esc cancel"
+                    .to_string();
+            }
             return "Tab/S-Tab or C-n/C-p field, type/backspace base branch, h/l buttons, Space toggle agent, Enter save/select, Esc cancel"
                 .to_string();
         }

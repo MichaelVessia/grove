@@ -15,6 +15,7 @@ pub(super) struct CreateDialogState {
 pub(super) struct EditDialogState {
     pub(super) workspace_name: String,
     pub(super) workspace_path: PathBuf,
+    pub(super) is_main: bool,
     pub(super) branch: String,
     pub(super) base_branch: String,
     pub(super) agent: AgentType,

@@ -87,7 +87,7 @@ impl UiCommand {
             (UiCommand::PageDown, StatusHintContext::PreviewAgent) => Some("PgUp/PgDn"),
             (UiCommand::ScrollBottom, StatusHintContext::PreviewAgent) => Some("G/End bottom"),
             (UiCommand::NewWorkspace, _context) => Some("n new"),
-            (UiCommand::EditWorkspace, _context) => Some("e edit"),
+            (UiCommand::EditWorkspace, _context) => Some("e edit/switch"),
             (UiCommand::MergeWorkspace, _context) => Some("m merge"),
             (UiCommand::UpdateFromBase, _context) => Some("u update"),
             (UiCommand::OpenProjects, _context) => Some("p projects"),
@@ -162,7 +162,7 @@ impl UiCommand {
                 Some("Ctrl+K command palette")
             }
             (UiCommand::NewWorkspace, HelpHintContext::Workspace) => Some("n new"),
-            (UiCommand::EditWorkspace, HelpHintContext::Workspace) => Some("e edit"),
+            (UiCommand::EditWorkspace, HelpHintContext::Workspace) => Some("e edit/switch"),
             (UiCommand::MergeWorkspace, HelpHintContext::Workspace) => Some("m merge"),
             (UiCommand::UpdateFromBase, HelpHintContext::Workspace) => Some("u update"),
             (UiCommand::OpenProjects, HelpHintContext::Workspace) => Some("p projects"),

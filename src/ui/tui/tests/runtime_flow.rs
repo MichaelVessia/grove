@@ -1851,6 +1851,7 @@ fn edit_workspace_key_opens_edit_dialog() {
         panic!("edit dialog should be open");
     };
     assert_eq!(dialog.workspace_name, "grove");
+    assert!(dialog.is_main);
     assert_eq!(dialog.branch, "main");
     assert_eq!(dialog.base_branch, "main");
     assert_eq!(dialog.agent, AgentType::Claude);
@@ -1861,8 +1862,9 @@ fn edit_workspace_key_opens_edit_dialog() {
 fn edit_dialog_save_updates_workspace_agent_base_branch_and_markers() {
     let mut app = fixture_app();
     let workspace_dir = unique_temp_workspace_dir("edit-save");
-    app.state.workspaces[0].path = workspace_dir.clone();
-    app.state.workspaces[0].agent = AgentType::Claude;
+    app.state.selected_index = 1;
+    app.state.workspaces[1].path = workspace_dir.clone();
+    app.state.workspaces[1].agent = AgentType::Codex;
 
     ftui::Model::update(
         &mut app,
@@ -1908,16 +1910,16 @@ fn edit_dialog_save_updates_workspace_agent_base_branch_and_markers() {
     );
 
     assert!(app.edit_dialog.is_none());
-    assert_eq!(app.state.workspaces[0].agent, AgentType::Codex);
+    assert_eq!(app.state.workspaces[1].agent, AgentType::Claude);
     assert_eq!(
-        app.state.workspaces[0].base_branch.as_deref(),
+        app.state.workspaces[1].base_branch.as_deref(),
         Some("develop")
     );
     assert_eq!(
         fs::read_to_string(workspace_dir.join(".grove-agent"))
             .expect("agent marker should be readable")
             .trim(),
-        "codex"
+        "claude"
     );
     assert_eq!(
         fs::read_to_string(workspace_dir.join(".grove-base"))
@@ -1926,6 +1928,139 @@ fn edit_dialog_save_updates_workspace_agent_base_branch_and_markers() {
         "develop"
     );
     assert!(app.status_bar_line().contains("workspace updated"));
+}
+
+#[test]
+fn edit_dialog_save_switches_main_workspace_branch() {
+    let mut app = fixture_app();
+    let workspace_dir = unique_temp_workspace_dir("edit-main-branch");
+    let init_output = std::process::Command::new("git")
+        .current_dir(&workspace_dir)
+        .args(["init", "-b", "main"])
+        .output()
+        .expect("git init should run");
+    assert!(
+        init_output.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+    let user_name_output = std::process::Command::new("git")
+        .current_dir(&workspace_dir)
+        .args(["config", "user.name", "Grove Tests"])
+        .output()
+        .expect("git config user.name should run");
+    assert!(
+        user_name_output.status.success(),
+        "git config user.name failed: {}",
+        String::from_utf8_lossy(&user_name_output.stderr)
+    );
+    let user_email_output = std::process::Command::new("git")
+        .current_dir(&workspace_dir)
+        .args(["config", "user.email", "grove-tests@example.com"])
+        .output()
+        .expect("git config user.email should run");
+    assert!(
+        user_email_output.status.success(),
+        "git config user.email failed: {}",
+        String::from_utf8_lossy(&user_email_output.stderr)
+    );
+    fs::write(workspace_dir.join("README.md"), "initial\n").expect("write should succeed");
+    let add_output = std::process::Command::new("git")
+        .current_dir(&workspace_dir)
+        .args(["add", "README.md"])
+        .output()
+        .expect("git add should run");
+    assert!(
+        add_output.status.success(),
+        "git add failed: {}",
+        String::from_utf8_lossy(&add_output.stderr)
+    );
+    let commit_output = std::process::Command::new("git")
+        .current_dir(&workspace_dir)
+        .args(["commit", "-m", "initial"])
+        .output()
+        .expect("git commit should run");
+    assert!(
+        commit_output.status.success(),
+        "git commit failed: {}",
+        String::from_utf8_lossy(&commit_output.stderr)
+    );
+    let switch_output = std::process::Command::new("git")
+        .current_dir(&workspace_dir)
+        .args(["switch", "-c", "develop"])
+        .output()
+        .expect("git switch -c develop should run");
+    assert!(
+        switch_output.status.success(),
+        "git switch -c develop failed: {}",
+        String::from_utf8_lossy(&switch_output.stderr)
+    );
+    let back_to_main_output = std::process::Command::new("git")
+        .current_dir(&workspace_dir)
+        .args(["switch", "main"])
+        .output()
+        .expect("git switch main should run");
+    assert!(
+        back_to_main_output.status.success(),
+        "git switch main failed: {}",
+        String::from_utf8_lossy(&back_to_main_output.stderr)
+    );
+    app.state.workspaces[0].path = workspace_dir.clone();
+    app.state.workspaces[0].branch = "main".to_string();
+    app.state.workspaces[0].base_branch = Some("main".to_string());
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('e')).with_kind(KeyEventKind::Press)),
+    );
+    for _ in 0..4 {
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Backspace).with_kind(KeyEventKind::Press)),
+        );
+    }
+    for character in ['d', 'e', 'v', 'e', 'l', 'o', 'p'] {
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
+        );
+    }
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    let head_output = std::process::Command::new("git")
+        .current_dir(&workspace_dir)
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .expect("git rev-parse should run");
+    assert!(
+        head_output.status.success(),
+        "git rev-parse failed: {}",
+        String::from_utf8_lossy(&head_output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&head_output.stdout).trim(),
+        "develop"
+    );
+    assert_eq!(app.state.workspaces[0].branch, "develop");
+    assert_eq!(
+        app.state.workspaces[0].base_branch.as_deref(),
+        Some("develop")
+    );
+    assert!(
+        app.status_bar_line()
+            .contains("base workspace switched to 'develop'")
+    );
 }
 
 #[test]

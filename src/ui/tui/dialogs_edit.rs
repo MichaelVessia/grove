@@ -1,6 +1,26 @@
 use super::*;
 
 impl GroveApp {
+    fn switch_workspace_branch(workspace_path: &Path, branch: &str) -> Result<(), String> {
+        let output = Command::new("git")
+            .current_dir(workspace_path)
+            .args(["switch", branch])
+            .output()
+            .map_err(|error| format!("git switch {branch}: {error}"))?;
+        if output.status.success() {
+            return Ok(());
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            return Err(format!(
+                "git switch {branch}: exit status {}",
+                output.status
+            ));
+        }
+        Err(format!("git switch {branch}: {stderr}"))
+    }
+
     pub(super) fn handle_edit_dialog_key(&mut self, key_event: KeyEvent) {
         let Some(dialog) = self.edit_dialog.as_mut() else {
             return;
@@ -127,17 +147,22 @@ impl GroveApp {
             self.show_toast("no workspace selected", true);
             return;
         };
-        let base_branch = workspace
-            .base_branch
-            .as_ref()
-            .map(|branch| branch.trim())
-            .filter(|branch| !branch.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| workspace.branch.clone());
+        let base_branch = if workspace.is_main {
+            workspace.branch.clone()
+        } else {
+            workspace
+                .base_branch
+                .as_ref()
+                .map(|branch| branch.trim())
+                .filter(|branch| !branch.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| workspace.branch.clone())
+        };
 
         self.edit_dialog = Some(EditDialogState {
             workspace_name: workspace.name.clone(),
             workspace_path: workspace.path.clone(),
+            is_main: workspace.is_main,
             branch: workspace.branch.clone(),
             base_branch: base_branch.clone(),
             agent: workspace.agent,
@@ -170,12 +195,21 @@ impl GroveApp {
         let Some(dialog) = self.edit_dialog.as_ref().cloned() else {
             return;
         };
-        let base_branch = dialog.base_branch.trim().to_string();
-        if base_branch.is_empty() {
+        let target_branch = dialog.base_branch.trim().to_string();
+        if target_branch.is_empty() {
             self.show_toast(
                 workspace_lifecycle_error_message(&WorkspaceLifecycleError::EmptyBaseBranch),
                 true,
             );
+            return;
+        }
+        if dialog.is_main
+            && let Err(error) = Self::switch_workspace_branch(
+                dialog.workspace_path.as_path(),
+                target_branch.as_str(),
+            )
+        {
+            self.show_toast(format!("base workspace switch failed: {error}"), true);
             return;
         }
 
@@ -187,14 +221,18 @@ impl GroveApp {
                     "workspace".to_string(),
                     Value::from(dialog.workspace_name.clone()),
                 ),
-                ("base_branch".to_string(), Value::from(base_branch.clone())),
+                (
+                    "base_branch".to_string(),
+                    Value::from(target_branch.clone()),
+                ),
                 ("agent".to_string(), Value::from(dialog.agent.label())),
                 ("was_running".to_string(), Value::from(dialog.was_running)),
+                ("is_main".to_string(), Value::from(dialog.is_main)),
             ],
         );
 
         if let Err(error) =
-            write_workspace_base_marker(&dialog.workspace_path, base_branch.as_str())
+            write_workspace_base_marker(&dialog.workspace_path, target_branch.as_str())
         {
             self.show_toast(
                 format!(
@@ -224,13 +262,26 @@ impl GroveApp {
             .find(|workspace| workspace.path == dialog.workspace_path)
         {
             workspace.agent = dialog.agent;
-            workspace.base_branch = Some(base_branch);
+            workspace.base_branch = Some(target_branch.clone());
+            if dialog.is_main {
+                workspace.branch = target_branch.clone();
+            }
             workspace.supported_agent = true;
         }
 
         self.edit_dialog = None;
         self.last_tmux_error = None;
-        if dialog.was_running {
+        if dialog.is_main && dialog.was_running {
+            self.show_toast(
+                "base workspace switched, restart agent to apply agent change",
+                false,
+            );
+        } else if dialog.is_main {
+            self.show_toast(
+                format!("base workspace switched to '{target_branch}'"),
+                false,
+            );
+        } else if dialog.was_running {
             self.show_toast("workspace updated, restart agent to apply change", false);
         } else {
             self.show_toast("workspace updated", false);

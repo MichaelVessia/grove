@@ -119,8 +119,16 @@ impl UiCommand {
             Self::EditWorkspace => Some(PaletteCommandSpec {
                 id: "palette:edit_workspace",
                 title: "Edit Workspace",
-                description: "Open workspace edit dialog (agent + base branch) (e)",
-                tags: &["edit", "workspace", "agent", "base", "branch", "e"],
+                description: "Open workspace edit dialog (agent + base branch, or base branch switch on main) (e)",
+                tags: &[
+                    "edit",
+                    "workspace",
+                    "agent",
+                    "base",
+                    "branch",
+                    "switch",
+                    "e",
+                ],
                 category: "Workspace",
             }),
             Self::StartAgent => Some(PaletteCommandSpec {
