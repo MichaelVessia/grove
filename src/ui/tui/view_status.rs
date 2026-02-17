@@ -97,7 +97,7 @@ impl GroveApp {
                 .to_string();
         }
         if self.edit_dialog.is_some() {
-            return "Tab/S-Tab field, h/l buttons, Space toggle agent, Enter save/select, Esc cancel"
+            return "Tab/S-Tab field, type/backspace base branch, h/l buttons, Space toggle agent, Enter save/select, Esc cancel"
                 .to_string();
         }
         if self.launch_dialog.is_some() {

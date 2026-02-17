@@ -1284,11 +1284,13 @@ fn edit_workspace_key_opens_edit_dialog() {
     };
     assert_eq!(dialog.workspace_name, "grove");
     assert_eq!(dialog.branch, "main");
+    assert_eq!(dialog.base_branch, "main");
     assert_eq!(dialog.agent, AgentType::Claude);
+    assert_eq!(dialog.focused_field, EditDialogField::BaseBranch);
 }
 
 #[test]
-fn edit_dialog_save_updates_workspace_agent_and_marker() {
+fn edit_dialog_save_updates_workspace_agent_base_branch_and_markers() {
     let mut app = fixture_app();
     let workspace_dir = unique_temp_workspace_dir("edit-save");
     app.state.workspaces[0].path = workspace_dir.clone();
@@ -1297,6 +1299,32 @@ fn edit_dialog_save_updates_workspace_agent_and_marker() {
     ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('e')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Backspace).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Backspace).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Backspace).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Backspace).with_kind(KeyEventKind::Press)),
+    );
+    for character in ['d', 'e', 'v', 'e', 'l', 'o', 'p'] {
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
+        );
+    }
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
     );
     ftui::Model::update(
         &mut app,
@@ -1314,12 +1342,55 @@ fn edit_dialog_save_updates_workspace_agent_and_marker() {
     assert!(app.edit_dialog.is_none());
     assert_eq!(app.state.workspaces[0].agent, AgentType::Codex);
     assert_eq!(
+        app.state.workspaces[0].base_branch.as_deref(),
+        Some("develop")
+    );
+    assert_eq!(
         fs::read_to_string(workspace_dir.join(".grove-agent"))
             .expect("agent marker should be readable")
             .trim(),
         "codex"
     );
+    assert_eq!(
+        fs::read_to_string(workspace_dir.join(".grove-base"))
+            .expect("base marker should be readable")
+            .trim(),
+        "develop"
+    );
     assert!(app.status_bar_line().contains("workspace updated"));
+}
+
+#[test]
+fn edit_dialog_save_rejects_empty_base_branch() {
+    let mut app = fixture_app();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('e')).with_kind(KeyEventKind::Press)),
+    );
+
+    for _ in 0..4 {
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Backspace).with_kind(KeyEventKind::Press)),
+        );
+    }
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(app.edit_dialog.is_some());
+    assert!(app.status_bar_line().contains("base branch is required"));
 }
 
 #[test]

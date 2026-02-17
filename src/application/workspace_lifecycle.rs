@@ -777,10 +777,7 @@ fn write_workspace_markers(
     base_branch: &str,
 ) -> Result<(), WorkspaceLifecycleError> {
     write_workspace_agent_marker(workspace_path, agent)?;
-
-    let base_marker_path = workspace_path.join(GROVE_BASE_MARKER_FILE);
-    fs::write(base_marker_path, format!("{base_branch}\n"))
-        .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))
+    write_workspace_base_marker(workspace_path, base_branch)
 }
 
 pub fn write_workspace_agent_marker(
@@ -793,6 +790,15 @@ pub fn write_workspace_agent_marker(
         format!("{}\n", agent_marker_value(agent)),
     )
     .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))
+}
+
+pub fn write_workspace_base_marker(
+    workspace_path: &Path,
+    base_branch: &str,
+) -> Result<(), WorkspaceLifecycleError> {
+    let base_marker_path = workspace_path.join(GROVE_BASE_MARKER_FILE);
+    fs::write(base_marker_path, format!("{base_branch}\n"))
+        .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))
 }
 
 fn parse_agent_marker(value: &str) -> Result<AgentType, WorkspaceMarkerError> {

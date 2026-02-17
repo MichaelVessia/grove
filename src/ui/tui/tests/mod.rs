@@ -11,13 +11,13 @@ use self::render_support::{
 use super::{
     AppDependencies, AppPaths, ClipboardAccess, CommandTmuxInput, CreateDialogField,
     CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
-    DeleteWorkspaceCompletion, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS,
-    HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField, LaunchDialogState,
-    LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg, PREVIEW_METADATA_ROWS,
-    PendingResizeVerification, PreviewPollCompletion, PreviewTab, StartAgentCompletion,
-    StopAgentCompletion, TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField,
-    WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line,
-    parse_cursor_metadata, ui_theme,
+    DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
+    HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
+    LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg,
+    PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
+    StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput, UiCommand,
+    UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color,
+    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;
@@ -1734,8 +1734,8 @@ fn status_row_shows_edit_dialog_keybind_hints_when_modal_open() {
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Space toggle agent"));
-        assert!(status_text.contains("Enter save/select"));
+        assert!(status_text.contains("type/backspace base branch"));
+        assert!(status_text.contains("h/l buttons"));
     });
 }
 

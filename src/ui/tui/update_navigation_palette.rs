@@ -118,11 +118,14 @@ impl GroveApp {
             UiCommand::DeleteProject => {
                 !self.project_delete_in_flight
                     && self.state.selected_workspace().is_some_and(|workspace| {
-                        workspace.project_path.as_ref().is_some_and(|workspace_path| {
-                            self.projects.iter().any(|project| {
-                                project_paths_equal(&project.path, workspace_path)
+                        workspace
+                            .project_path
+                            .as_ref()
+                            .is_some_and(|workspace_path| {
+                                self.projects.iter().any(|project| {
+                                    project_paths_equal(&project.path, workspace_path)
+                                })
                             })
-                        })
                     })
             }
             UiCommand::MergeWorkspace => {

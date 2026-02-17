@@ -59,7 +59,7 @@ use crate::application::workspace_lifecycle::{
     CreateWorkspaceResult, DeleteWorkspaceRequest, MergeWorkspaceRequest,
     UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError, create_workspace, delete_workspace,
     merge_workspace, update_workspace_from_base, workspace_lifecycle_error_message,
-    write_workspace_agent_marker,
+    write_workspace_agent_marker, write_workspace_base_marker,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};

@@ -14,6 +14,7 @@ pub(super) struct EditDialogState {
     pub(super) workspace_name: String,
     pub(super) workspace_path: PathBuf,
     pub(super) branch: String,
+    pub(super) base_branch: String,
     pub(super) agent: AgentType,
     pub(super) was_running: bool,
     pub(super) focused_field: EditDialogField,
@@ -31,6 +32,7 @@ pub(super) enum CreateDialogField {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum EditDialogField {
+    BaseBranch,
     Agent,
     SaveButton,
     CancelButton,
@@ -39,15 +41,17 @@ pub(super) enum EditDialogField {
 impl EditDialogField {
     pub(super) fn next(self) -> Self {
         match self {
+            Self::BaseBranch => Self::Agent,
             Self::Agent => Self::SaveButton,
             Self::SaveButton => Self::CancelButton,
-            Self::CancelButton => Self::Agent,
+            Self::CancelButton => Self::BaseBranch,
         }
     }
 
     pub(super) fn previous(self) -> Self {
         match self {
-            Self::Agent => Self::CancelButton,
+            Self::BaseBranch => Self::CancelButton,
+            Self::Agent => Self::BaseBranch,
             Self::SaveButton => Self::Agent,
             Self::CancelButton => Self::SaveButton,
         }

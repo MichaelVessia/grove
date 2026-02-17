@@ -4,7 +4,7 @@ use super::{
     WorkspaceLifecycleError, WorkspaceMarkerError, copy_env_files, create_workspace,
     delete_workspace, ensure_grove_gitignore_entries, merge_workspace, read_workspace_agent_marker,
     read_workspace_markers, update_workspace_from_base, workspace_directory_path,
-    workspace_lifecycle_error_message, write_workspace_agent_marker,
+    workspace_lifecycle_error_message, write_workspace_agent_marker, write_workspace_base_marker,
 };
 use crate::domain::AgentType;
 use crate::infrastructure::config::MultiplexerKind;
@@ -361,6 +361,29 @@ fn write_workspace_agent_marker_writes_expected_value() {
             .expect("marker should be readable")
             .trim(),
         "codex"
+    );
+}
+
+#[test]
+fn write_workspace_base_marker_writes_expected_value() {
+    let temp = TestDir::new("base-marker-write");
+    let workspace = temp.path.join("grove");
+    fs::create_dir_all(&workspace).expect("workspace should exist");
+
+    write_workspace_base_marker(&workspace, "main").expect("write should succeed");
+    assert_eq!(
+        fs::read_to_string(workspace.join(".grove-base"))
+            .expect("marker should be readable")
+            .trim(),
+        "main"
+    );
+
+    write_workspace_base_marker(&workspace, "develop").expect("write should succeed");
+    assert_eq!(
+        fs::read_to_string(workspace.join(".grove-base"))
+            .expect("marker should be readable")
+            .trim(),
+        "develop"
     );
 }
 

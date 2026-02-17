@@ -5,20 +5,20 @@ impl GroveApp {
         let Some(dialog) = self.edit_dialog.as_ref() else {
             return;
         };
-        if area.width < 24 || area.height < 12 {
+        if area.width < 24 || area.height < 13 {
             return;
         }
 
         let dialog_width = area.width.saturating_sub(10).min(80);
-        let dialog_height = 13u16;
+        let dialog_height = 14u16;
         let theme = ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let focused = |field| dialog.focused_field == field;
         let path = dialog.workspace_path.display().to_string();
         let running_note = if dialog.was_running {
-            "Running now, restart agent to apply change"
+            "Base branch applies now, restart agent to apply agent change"
         } else {
-            "Agent change applies on next agent start"
+            "Base branch applies immediately"
         };
 
         let body = FtText::from_lines(vec![
@@ -52,6 +52,14 @@ impl GroveApp {
                 theme.overlay0,
             ),
             FtLine::raw(""),
+            modal_labeled_input_row(
+                content_width,
+                theme,
+                "BaseBranch",
+                dialog.base_branch.as_str(),
+                "main",
+                focused(EditDialogField::BaseBranch),
+            ),
             modal_focus_badged_row(
                 content_width,
                 theme,
@@ -79,7 +87,7 @@ impl GroveApp {
             ),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "Tab move, h/l or Space toggle agent, Enter save, Esc cancel",
+                    "Tab move, type/backspace base branch, h/l or Space toggle agent, Enter save, Esc cancel",
                     content_width,
                 ),
                 Style::new().fg(theme.overlay0),

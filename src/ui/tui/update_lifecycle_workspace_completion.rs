@@ -17,7 +17,10 @@ impl GroveApp {
                 );
                 self.refresh_workspaces(None);
                 self.show_toast(
-                    format!("project '{}' removed from workspace list", completion.project_name),
+                    format!(
+                        "project '{}' removed from workspace list",
+                        completion.project_name
+                    ),
                     false,
                 );
             }

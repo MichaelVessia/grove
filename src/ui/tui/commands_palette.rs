@@ -112,8 +112,8 @@ impl UiCommand {
             Self::EditWorkspace => Some(PaletteCommandSpec {
                 id: "palette:edit_workspace",
                 title: "Edit Workspace",
-                description: "Open workspace edit dialog (e)",
-                tags: &["edit", "workspace", "agent", "e"],
+                description: "Open workspace edit dialog (agent + base branch) (e)",
+                tags: &["edit", "workspace", "agent", "base", "branch", "e"],
                 category: "Workspace",
             }),
             Self::StartAgent => Some(PaletteCommandSpec {
@@ -162,7 +162,14 @@ impl UiCommand {
                 id: "palette:delete_project",
                 title: "Remove Selected Project",
                 description: "Remove selected workspace project (Ctrl+X/Del)",
-                tags: &["remove", "delete", "project", "workspace list", "ctrl+x", "del"],
+                tags: &[
+                    "remove",
+                    "delete",
+                    "project",
+                    "workspace list",
+                    "ctrl+x",
+                    "del",
+                ],
                 category: "Workspace",
             }),
             Self::OpenSettings => Some(PaletteCommandSpec {

@@ -110,7 +110,7 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "[Modals] Edit:   Tab/S-Tab fields, h/l or Space toggle agent, Enter/Esc",
+                    "[Modals] Edit:   Tab/S-Tab fields, type/backspace base, h/l or Space toggle agent, Enter/Esc",
                     content_width,
                 ),
                 Style::new().fg(theme.subtext0),

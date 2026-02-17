@@ -12,25 +12,73 @@ impl GroveApp {
             Cancel,
         }
 
+        if dialog.focused_field == EditDialogField::BaseBranch
+            && Self::allows_text_input_modifiers(key_event.modifiers)
+        {
+            match key_event.code {
+                KeyCode::Backspace => {
+                    dialog.base_branch.pop();
+                    return;
+                }
+                KeyCode::Char(character) if !character.is_control() => {
+                    dialog.base_branch.push(character);
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         let mut post_action = PostAction::None;
         match key_event.code {
             KeyCode::Escape => {
                 post_action = PostAction::Cancel;
             }
-            KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Tab | KeyCode::Down => {
                 dialog.focused_field = dialog.focused_field.next();
             }
-            KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => {
+            KeyCode::BackTab | KeyCode::Up => {
                 dialog.focused_field = dialog.focused_field.previous();
             }
-            KeyCode::Left | KeyCode::Char('h') => {
+            KeyCode::Char('j')
+                if key_event.modifiers.is_empty()
+                    && dialog.focused_field != EditDialogField::BaseBranch =>
+            {
+                dialog.focused_field = dialog.focused_field.next();
+            }
+            KeyCode::Char('k')
+                if key_event.modifiers.is_empty()
+                    && dialog.focused_field != EditDialogField::BaseBranch =>
+            {
+                dialog.focused_field = dialog.focused_field.previous();
+            }
+            KeyCode::Left => {
                 if dialog.focused_field == EditDialogField::Agent {
                     Self::toggle_edit_dialog_agent(dialog);
                 } else if dialog.focused_field == EditDialogField::CancelButton {
                     dialog.focused_field = EditDialogField::SaveButton;
                 }
             }
-            KeyCode::Right | KeyCode::Char('l') => {
+            KeyCode::Right => {
+                if dialog.focused_field == EditDialogField::Agent {
+                    Self::toggle_edit_dialog_agent(dialog);
+                } else if dialog.focused_field == EditDialogField::SaveButton {
+                    dialog.focused_field = EditDialogField::CancelButton;
+                }
+            }
+            KeyCode::Char('h')
+                if key_event.modifiers.is_empty()
+                    && dialog.focused_field != EditDialogField::BaseBranch =>
+            {
+                if dialog.focused_field == EditDialogField::Agent {
+                    Self::toggle_edit_dialog_agent(dialog);
+                } else if dialog.focused_field == EditDialogField::CancelButton {
+                    dialog.focused_field = EditDialogField::SaveButton;
+                }
+            }
+            KeyCode::Char('l')
+                if key_event.modifiers.is_empty()
+                    && dialog.focused_field != EditDialogField::BaseBranch =>
+            {
                 if dialog.focused_field == EditDialogField::Agent {
                     Self::toggle_edit_dialog_agent(dialog);
                 } else if dialog.focused_field == EditDialogField::SaveButton {
@@ -43,6 +91,7 @@ impl GroveApp {
                 }
             }
             KeyCode::Enter => match dialog.focused_field {
+                EditDialogField::BaseBranch => dialog.focused_field = dialog.focused_field.next(),
                 EditDialogField::Agent => Self::toggle_edit_dialog_agent(dialog),
                 EditDialogField::SaveButton => post_action = PostAction::Save,
                 EditDialogField::CancelButton => post_action = PostAction::Cancel,
@@ -68,20 +117,29 @@ impl GroveApp {
             self.show_toast("no workspace selected", true);
             return;
         };
+        let base_branch = workspace
+            .base_branch
+            .as_ref()
+            .map(|branch| branch.trim())
+            .filter(|branch| !branch.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| workspace.branch.clone());
 
         self.edit_dialog = Some(EditDialogState {
             workspace_name: workspace.name.clone(),
             workspace_path: workspace.path.clone(),
             branch: workspace.branch.clone(),
+            base_branch: base_branch.clone(),
             agent: workspace.agent,
             was_running: workspace.status.has_session(),
-            focused_field: EditDialogField::Agent,
+            focused_field: EditDialogField::BaseBranch,
         });
         self.log_dialog_event_with_fields(
             "edit",
             "dialog_opened",
             [
                 ("workspace".to_string(), Value::from(workspace.name.clone())),
+                ("base_branch".to_string(), Value::from(base_branch)),
                 ("agent".to_string(), Value::from(workspace.agent.label())),
                 (
                     "running".to_string(),
@@ -102,6 +160,14 @@ impl GroveApp {
         let Some(dialog) = self.edit_dialog.as_ref().cloned() else {
             return;
         };
+        let base_branch = dialog.base_branch.trim().to_string();
+        if base_branch.is_empty() {
+            self.show_toast(
+                workspace_lifecycle_error_message(&WorkspaceLifecycleError::EmptyBaseBranch),
+                true,
+            );
+            return;
+        }
 
         self.log_dialog_event_with_fields(
             "edit",
@@ -111,10 +177,24 @@ impl GroveApp {
                     "workspace".to_string(),
                     Value::from(dialog.workspace_name.clone()),
                 ),
+                ("base_branch".to_string(), Value::from(base_branch.clone())),
                 ("agent".to_string(), Value::from(dialog.agent.label())),
                 ("was_running".to_string(), Value::from(dialog.was_running)),
             ],
         );
+
+        if let Err(error) =
+            write_workspace_base_marker(&dialog.workspace_path, base_branch.as_str())
+        {
+            self.show_toast(
+                format!(
+                    "workspace edit failed: {}",
+                    workspace_lifecycle_error_message(&error)
+                ),
+                true,
+            );
+            return;
+        }
 
         if let Err(error) = write_workspace_agent_marker(&dialog.workspace_path, dialog.agent) {
             self.show_toast(
@@ -134,6 +214,7 @@ impl GroveApp {
             .find(|workspace| workspace.path == dialog.workspace_path)
         {
             workspace.agent = dialog.agent;
+            workspace.base_branch = Some(base_branch);
             workspace.supported_agent = true;
         }
 
