@@ -107,6 +107,7 @@ impl UiCommand {
                 UiCommand::ToggleFocus,
                 UiCommand::ToggleSidebar,
                 UiCommand::FocusList,
+                UiCommand::MoveSelectionDown,
                 UiCommand::OpenPreview,
                 UiCommand::OpenCommandPalette,
             ],
@@ -146,6 +147,7 @@ impl UiCommand {
             (UiCommand::ToggleFocus, HelpHintContext::Global) => Some("Tab/h/l switch pane"),
             (UiCommand::ToggleSidebar, HelpHintContext::Global) => Some("\\ toggle sidebar"),
             (UiCommand::FocusList, HelpHintContext::Global) => Some("Esc list pane"),
+            (UiCommand::MoveSelectionDown, HelpHintContext::Global) => Some("Alt+J/K workspace"),
             (UiCommand::FocusPreview, HelpHintContext::Global) => Some("l preview pane"),
             (UiCommand::OpenPreview, HelpHintContext::Global) => Some("Enter open/attach"),
             (UiCommand::OpenCommandPalette, HelpHintContext::Global) => {

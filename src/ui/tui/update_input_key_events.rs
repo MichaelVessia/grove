@@ -1,6 +1,18 @@
 use super::*;
 
 impl GroveApp {
+    fn global_workspace_navigation_command(key_event: &KeyEvent) -> Option<UiCommand> {
+        if key_event.modifiers != Modifiers::ALT {
+            return None;
+        }
+
+        match key_event.code {
+            KeyCode::Char('j') | KeyCode::Char('J') => Some(UiCommand::MoveSelectionDown),
+            KeyCode::Char('k') | KeyCode::Char('K') => Some(UiCommand::MoveSelectionUp),
+            _ => None,
+        }
+    }
+
     pub(super) fn handle_paste_event(&mut self, paste_event: PasteEvent) -> Cmd<Msg> {
         let input_seq = self.next_input_seq();
         let received_at = Instant::now();
@@ -165,6 +177,15 @@ impl GroveApp {
                 };
             }
             return (false, Cmd::None);
+        }
+
+        if !self.modal_open()
+            && let Some(command) = Self::global_workspace_navigation_command(&key_event)
+        {
+            if self.interactive.is_some() {
+                self.exit_interactive_to_list();
+            }
+            return (self.execute_ui_command(command), Cmd::None);
         }
 
         if self.interactive.is_some() {

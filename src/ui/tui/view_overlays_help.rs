@@ -98,7 +98,7 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  Esc Esc or Ctrl+\\ exit, Alt+C copy, Alt+V paste",
+                    "  Esc Esc or Ctrl+\\ exit, Alt+J/K browse workspaces, Alt+C copy, Alt+V paste",
                     content_width,
                 ),
                 Style::new().fg(theme.text),

@@ -1532,7 +1532,7 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
             .any(|id| id == &palette_id(UiCommand::ToggleSidebar))
     );
     assert!(
-        !preview_ids
+        preview_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::MoveSelectionDown))
     );
@@ -1585,6 +1585,11 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
         git_preview_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::ToggleSidebar))
+    );
+    assert!(
+        git_preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::MoveSelectionDown))
     );
 }
 

@@ -1,6 +1,12 @@
 use super::*;
 
 impl GroveApp {
+    pub(super) fn exit_interactive_to_list(&mut self) {
+        self.interactive = None;
+        reduce(&mut self.state, Action::EnterListMode);
+        self.clear_preview_selection();
+    }
+
     fn map_interactive_key(key_event: KeyEvent) -> Option<InteractiveKey> {
         let ctrl = key_event.modifiers.contains(Modifiers::CTRL);
         let alt = key_event.modifiers.contains(Modifiers::ALT);
@@ -110,10 +116,7 @@ impl GroveApp {
 
         match action {
             InteractiveAction::ExitInteractive => {
-                self.interactive = None;
-                self.state.mode = UiMode::Preview;
-                self.state.focus = PaneFocus::Preview;
-                self.clear_preview_selection();
+                self.exit_interactive_to_list();
                 Cmd::None
             }
             InteractiveAction::CopySelection => {

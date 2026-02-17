@@ -124,7 +124,7 @@ impl GroveApp {
                 .to_string();
         }
         if self.interactive.is_some() {
-            return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste".to_string();
+            return "Esc Esc / Ctrl+\\ exit, Alt+J/K browse, Alt+C copy, Alt+V paste".to_string();
         }
         if self.preview_agent_tab_is_focused() {
             return self.status_hints_line(StatusHintContext::PreviewAgent);

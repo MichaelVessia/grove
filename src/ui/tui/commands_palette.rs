@@ -49,15 +49,15 @@ impl UiCommand {
             Self::MoveSelectionUp => Some(PaletteCommandSpec {
                 id: "palette:move_selection_up",
                 title: "Select Previous Workspace",
-                description: "Move workspace selection up (k / Up)",
-                tags: &["up", "previous", "workspace", "k"],
+                description: "Move workspace selection up (k / Up / Alt+K)",
+                tags: &["up", "previous", "workspace", "k", "alt+k"],
                 category: "List",
             }),
             Self::MoveSelectionDown => Some(PaletteCommandSpec {
                 id: "palette:move_selection_down",
                 title: "Select Next Workspace",
-                description: "Move workspace selection down (j / Down)",
-                tags: &["down", "next", "workspace", "j"],
+                description: "Move workspace selection down (j / Down / Alt+J)",
+                tags: &["down", "next", "workspace", "j", "alt+j"],
                 category: "List",
             }),
             Self::ScrollUp => Some(PaletteCommandSpec {

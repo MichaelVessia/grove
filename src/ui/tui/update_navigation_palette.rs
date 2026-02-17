@@ -83,9 +83,7 @@ impl GroveApp {
                 self.state.focus == PaneFocus::Preview && self.can_enter_interactive_session()
             }
             UiCommand::FocusList => self.state.focus == PaneFocus::Preview,
-            UiCommand::MoveSelectionUp | UiCommand::MoveSelectionDown => {
-                self.state.focus == PaneFocus::WorkspaceList
-            }
+            UiCommand::MoveSelectionUp | UiCommand::MoveSelectionDown => true,
             UiCommand::ScrollUp
             | UiCommand::ScrollDown
             | UiCommand::PageUp

@@ -1153,6 +1153,36 @@ fn h_and_l_toggle_focus_between_panes_when_not_interactive() {
 }
 
 #[test]
+fn alt_j_and_alt_k_move_workspace_selection_from_preview_focus() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.state.mode = UiMode::Preview;
+    app.state.focus = PaneFocus::Preview;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('k'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(app.state.selected_index, 0);
+    assert_eq!(app.state.mode, UiMode::Preview);
+    assert_eq!(app.state.focus, PaneFocus::Preview);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('j'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(app.state.selected_index, 1);
+}
+
+#[test]
 fn background_start_confirm_queues_lifecycle_task() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
     app.state.selected_index = 1;
@@ -2657,6 +2687,8 @@ fn double_escape_exits_interactive_mode() {
     );
 
     assert!(app.interactive.is_none());
+    assert_eq!(app.state.mode, UiMode::List);
+    assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
     assert_eq!(
         commands.borrow().as_slice(),
         &[vec![
@@ -2693,6 +2725,8 @@ fn ctrl_backslash_exits_interactive_mode() {
     );
 
     assert!(app.interactive.is_none());
+    assert_eq!(app.state.mode, UiMode::List);
+    assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
     assert!(commands.borrow().is_empty());
 }
 
@@ -2716,6 +2750,8 @@ fn ctrl_backslash_control_character_exits_interactive_mode() {
     );
 
     assert!(app.interactive.is_none());
+    assert_eq!(app.state.mode, UiMode::List);
+    assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
     assert!(commands.borrow().is_empty());
 }
 
@@ -2743,6 +2779,36 @@ fn ctrl_four_exits_interactive_mode() {
     );
 
     assert!(app.interactive.is_none());
+    assert_eq!(app.state.mode, UiMode::List);
+    assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+    assert!(commands.borrow().is_empty());
+}
+
+#[test]
+fn alt_k_exits_interactive_and_selects_previous_workspace() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+    assert!(app.interactive.is_some());
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('k'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert!(app.interactive.is_none());
+    assert_eq!(app.state.mode, UiMode::List);
+    assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+    assert_eq!(app.state.selected_index, 0);
     assert!(commands.borrow().is_empty());
 }
 
