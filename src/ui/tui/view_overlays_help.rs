@@ -106,49 +106,49 @@ impl GroveApp {
             FtLine::raw(""),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "[Modals] Create: Tab/S-Tab fields, j/k or C-n/C-p move, ';' separates setup commands, Space toggles auto-run, h/l buttons, Enter/Esc",
+                    "[Modals] Create: Tab/S-Tab or C-n/C-p fields, j/k adjust controls, ';' separates setup commands, Space toggles auto-run, h/l buttons, Enter/Esc",
                     content_width,
                 ),
                 Style::new().fg(theme.subtext0),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "[Modals] Edit:   Tab/S-Tab fields, type/backspace base, h/l or Space toggle agent, Enter/Esc",
+                    "[Modals] Edit:   Tab/S-Tab or C-n/C-p fields, type/backspace base, h/l or Space toggle agent, Enter/Esc",
                     content_width,
                 ),
                 Style::new().fg(theme.subtext0),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "[Modals] Start:  Tab/S-Tab fields, Space toggle unsafe, h/l buttons, Enter/Esc",
+                    "[Modals] Start:  Tab/S-Tab or C-n/C-p fields, Space toggle unsafe, h/l buttons, Enter/Esc",
                     content_width,
                 ),
                 Style::new().fg(theme.subtext0),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "[Modals] Delete: Tab/S-Tab fields, j/k move, Space toggle, Enter/D confirm, Esc",
+                    "[Modals] Delete: Tab/S-Tab or C-n/C-p fields, j/k move, Space toggle, Enter/D confirm, Esc",
                     content_width,
                 ),
                 Style::new().fg(theme.subtext0),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "[Modals] Merge:  Tab/S-Tab fields, j/k move, Space toggle, Enter/m confirm, Esc",
+                    "[Modals] Merge:  Tab/S-Tab or C-n/C-p fields, j/k move, Space toggle, Enter/m confirm, Esc",
                     content_width,
                 ),
                 Style::new().fg(theme.subtext0),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "[Modals] Update: Tab/S-Tab fields, h/l buttons, Enter/u confirm, Esc",
+                    "[Modals] Update: Tab/S-Tab or C-n/C-p fields, h/l buttons, Enter/u confirm, Esc",
                     content_width,
                 ),
                 Style::new().fg(theme.subtext0),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "[Modals] Projects: Type filter, Up/Down or Tab/S-Tab move, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Enter/Esc",
+                    "[Modals] Projects: Type filter, Up/Down or Tab/S-Tab/C-n/C-p move, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Enter/Esc",
                     content_width,
                 ),
                 Style::new().fg(theme.subtext0),

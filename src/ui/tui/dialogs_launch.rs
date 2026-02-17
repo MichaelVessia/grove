@@ -5,6 +5,10 @@ impl GroveApp {
         if self.start_in_flight {
             return;
         }
+        let ctrl_n = key_event.modifiers == Modifiers::CTRL
+            && matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N'));
+        let ctrl_p = key_event.modifiers == Modifiers::CTRL
+            && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
 
         match key_event.code {
             KeyCode::Escape => {
@@ -43,6 +47,16 @@ impl GroveApp {
                 }
             }
             KeyCode::BackTab => {
+                if let Some(dialog) = self.launch_dialog.as_mut() {
+                    dialog.focused_field = dialog.focused_field.previous();
+                }
+            }
+            KeyCode::Char(_) if ctrl_n => {
+                if let Some(dialog) = self.launch_dialog.as_mut() {
+                    dialog.focused_field = dialog.focused_field.next();
+                }
+            }
+            KeyCode::Char(_) if ctrl_p => {
                 if let Some(dialog) = self.launch_dialog.as_mut() {
                     dialog.focused_field = dialog.focused_field.previous();
                 }

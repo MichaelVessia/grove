@@ -191,7 +191,7 @@ impl GroveApp {
         ));
         lines.push(FtLine::from_spans(vec![FtSpan::styled(
             pad_or_truncate_to_display_width(
-                "Tab move, j/k or C-n/C-p adjust project/branch, Space toggles auto-run, Enter create, Esc cancel",
+                "Tab/C-n next, S-Tab/C-p prev, j/k adjust project/branch, Space toggles auto-run, Enter create, Esc cancel",
                 content_width,
             ),
             Style::new().fg(theme.overlay0),

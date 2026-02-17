@@ -44,7 +44,7 @@ impl GroveApp {
                 ),
                 FtLine::from_spans(vec![FtSpan::styled(
                     pad_or_truncate_to_display_width(
-                        "Tab move, Enter confirm, Esc back",
+                        "Tab/C-n next, S-Tab/C-p prev, Enter confirm, Esc back",
                         content_width,
                     ),
                     Style::new().fg(theme.overlay0),
@@ -141,7 +141,7 @@ impl GroveApp {
                 ),
                 FtLine::from_spans(vec![FtSpan::styled(
                     pad_or_truncate_to_display_width(
-                        "Tab move, Space toggles auto-run, Enter confirm, Esc back",
+                        "Tab/C-n next, S-Tab/C-p prev, Space toggles auto-run, Enter confirm, Esc back",
                         content_width,
                     ),
                     Style::new().fg(theme.overlay0),
@@ -222,7 +222,7 @@ impl GroveApp {
         lines.push(FtLine::raw(""));
         lines.push(FtLine::from_spans(vec![FtSpan::styled(
             pad_or_truncate_to_display_width(
-                "Enter focus, Up/Down or Tab/S-Tab navigate, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close",
+                "Enter focus, Up/Down or Tab/S-Tab/C-n/C-p navigate, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close",
                 content_width,
             ),
             Style::new().fg(theme.overlay0),

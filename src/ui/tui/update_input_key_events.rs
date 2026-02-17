@@ -1,6 +1,13 @@
 use super::*;
 
 impl GroveApp {
+    fn is_ctrl_modal_nav_key(key_event: &KeyEvent) -> bool {
+        key_event.modifiers == Modifiers::CTRL
+            && matches!(
+                key_event.code,
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Char('p') | KeyCode::Char('P')
+            )
+    }
     fn global_workspace_navigation_command(key_event: &KeyEvent) -> Option<UiCommand> {
         if key_event.modifiers != Modifiers::ALT {
             return None;
@@ -192,12 +199,39 @@ impl GroveApp {
             return (false, self.handle_interactive_key(key_event));
         }
 
-        if self.create_dialog.is_some()
-            && key_event.modifiers == Modifiers::CTRL
-            && matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('p'))
-        {
-            self.handle_create_dialog_key(key_event);
-            return (false, Cmd::None);
+        if Self::is_ctrl_modal_nav_key(&key_event) {
+            if self.create_dialog.is_some() {
+                self.handle_create_dialog_key(key_event);
+                return (false, Cmd::None);
+            }
+            if self.edit_dialog.is_some() {
+                self.handle_edit_dialog_key(key_event);
+                return (false, Cmd::None);
+            }
+            if self.launch_dialog.is_some() {
+                self.handle_launch_dialog_key(key_event);
+                return (false, Cmd::None);
+            }
+            if self.delete_dialog.is_some() {
+                self.handle_delete_dialog_key(key_event);
+                return (false, Cmd::None);
+            }
+            if self.merge_dialog.is_some() {
+                self.handle_merge_dialog_key(key_event);
+                return (false, Cmd::None);
+            }
+            if self.update_from_base_dialog.is_some() {
+                self.handle_update_from_base_dialog_key(key_event);
+                return (false, Cmd::None);
+            }
+            if self.project_dialog.is_some() {
+                self.handle_project_dialog_key(key_event);
+                return (false, Cmd::None);
+            }
+            if self.settings_dialog.is_some() {
+                self.handle_settings_dialog_key(key_event);
+                return (false, Cmd::None);
+            }
         }
 
         let keybinding_state = self.keybinding_state();

@@ -29,6 +29,10 @@ impl GroveApp {
         let Some(dialog) = self.delete_dialog.as_mut() else {
             return;
         };
+        let ctrl_n = key_event.modifiers == Modifiers::CTRL
+            && matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N'));
+        let ctrl_p = key_event.modifiers == Modifiers::CTRL
+            && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
 
         match key_event.code {
             KeyCode::Enter => match dialog.focused_field {
@@ -46,6 +50,12 @@ impl GroveApp {
                 dialog.focused_field = dialog.focused_field.next();
             }
             KeyCode::BackTab => {
+                dialog.focused_field = dialog.focused_field.previous();
+            }
+            KeyCode::Char(_) if ctrl_n => {
+                dialog.focused_field = dialog.focused_field.next();
+            }
+            KeyCode::Char(_) if ctrl_p => {
                 dialog.focused_field = dialog.focused_field.previous();
             }
             KeyCode::Up | KeyCode::Char('k') if no_modifiers => {

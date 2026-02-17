@@ -131,37 +131,12 @@ impl GroveApp {
                 }
             }
             KeyCode::Char(_) if ctrl_n || ctrl_p => {
-                let focused_field = self
-                    .create_dialog
-                    .as_ref()
-                    .map(|dialog| dialog.focused_field);
-                if focused_field == Some(CreateDialogField::BaseBranch)
-                    && !self.create_branch_filtered.is_empty()
-                {
-                    if ctrl_n
-                        && self.create_branch_index.saturating_add(1)
-                            < self.create_branch_filtered.len()
-                    {
-                        self.create_branch_index = self.create_branch_index.saturating_add(1);
-                    }
-                    if ctrl_p && self.create_branch_index > 0 {
-                        self.create_branch_index = self.create_branch_index.saturating_sub(1);
-                    }
-                } else if focused_field == Some(CreateDialogField::Project) {
-                    if ctrl_n {
-                        self.shift_create_dialog_project(1);
-                    }
-                    if ctrl_p {
-                        self.shift_create_dialog_project(-1);
-                    }
-                } else if focused_field == Some(CreateDialogField::AutoRunSetupCommands) {
-                    if let Some(dialog) = self.create_dialog.as_mut() {
-                        dialog.auto_run_setup_commands = !dialog.auto_run_setup_commands;
-                    }
-                } else if focused_field == Some(CreateDialogField::Agent)
-                    && let Some(dialog) = self.create_dialog.as_mut()
-                {
-                    Self::toggle_create_dialog_agent(dialog);
+                if let Some(dialog) = self.create_dialog.as_mut() {
+                    dialog.focused_field = if ctrl_n {
+                        dialog.focused_field.next()
+                    } else {
+                        dialog.focused_field.previous()
+                    };
                 }
             }
             KeyCode::Backspace => {

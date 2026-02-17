@@ -719,6 +719,107 @@ fn project_dialog_tab_and_shift_tab_navigate_selection() {
 }
 
 #[test]
+fn project_dialog_ctrl_n_and_ctrl_p_match_tab_navigation() {
+    let mut app = fixture_app();
+    app.projects.push(ProjectConfig {
+        name: "site".to_string(),
+        path: PathBuf::from("/repos/site"),
+        defaults: Default::default(),
+    });
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('p'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.project_dialog
+            .as_ref()
+            .map(|dialog| dialog.selected_filtered_index),
+        Some(1)
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('n'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.project_dialog
+            .as_ref()
+            .map(|dialog| dialog.selected_filtered_index),
+        Some(0)
+    );
+}
+
+#[test]
+fn project_add_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
+    let mut app = fixture_app();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('a'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert_eq!(
+        app.project_dialog
+            .as_ref()
+            .and_then(|dialog| dialog.add_dialog.as_ref())
+            .map(|dialog| dialog.focused_field),
+        Some(ProjectAddDialogField::Name)
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('n'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.project_dialog
+            .as_ref()
+            .and_then(|dialog| dialog.add_dialog.as_ref())
+            .map(|dialog| dialog.focused_field),
+        Some(ProjectAddDialogField::Path)
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('p'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.project_dialog
+            .as_ref()
+            .and_then(|dialog| dialog.add_dialog.as_ref())
+            .map(|dialog| dialog.focused_field),
+        Some(ProjectAddDialogField::Name)
+    );
+}
+
+#[test]
 fn project_dialog_ctrl_x_removes_selected_project() {
     let mut app = fixture_app();
     app.projects.push(ProjectConfig {
@@ -835,6 +936,62 @@ fn project_dialog_ctrl_e_opens_project_defaults_dialog() {
             .and_then(|dialog| dialog.defaults_dialog.as_ref())
             .map(|dialog| dialog.auto_run_setup_commands),
         Some(true)
+    );
+}
+
+#[test]
+fn project_defaults_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
+    let mut app = fixture_app();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('e'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert_eq!(
+        app.project_dialog
+            .as_ref()
+            .and_then(|dialog| dialog.defaults_dialog.as_ref())
+            .map(|dialog| dialog.focused_field),
+        Some(ProjectDefaultsDialogField::BaseBranch)
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('n'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.project_dialog
+            .as_ref()
+            .and_then(|dialog| dialog.defaults_dialog.as_ref())
+            .map(|dialog| dialog.focused_field),
+        Some(ProjectDefaultsDialogField::SetupCommands)
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('p'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.project_dialog
+            .as_ref()
+            .and_then(|dialog| dialog.defaults_dialog.as_ref())
+            .map(|dialog| dialog.focused_field),
+        Some(ProjectDefaultsDialogField::BaseBranch)
     );
 }
 
@@ -1550,6 +1707,50 @@ fn start_dialog_blocks_background_navigation_and_escape_cancels() {
 }
 
 #[test]
+fn start_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.open_start_dialog();
+
+    assert_eq!(
+        app.launch_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(LaunchDialogField::Prompt)
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('n'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.launch_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(LaunchDialogField::PreLaunchCommand)
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('p'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.launch_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(LaunchDialogField::Prompt)
+    );
+}
+
+#[test]
 fn new_workspace_key_opens_create_dialog() {
     let mut app = fixture_app();
 
@@ -1694,6 +1895,41 @@ fn edit_dialog_save_rejects_empty_base_branch() {
 }
 
 #[test]
+fn edit_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
+    let mut app = fixture_app();
+    app.open_edit_dialog();
+
+    assert_eq!(
+        app.edit_dialog.as_ref().map(|dialog| dialog.focused_field),
+        Some(EditDialogField::BaseBranch)
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('n'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.edit_dialog.as_ref().map(|dialog| dialog.focused_field),
+        Some(EditDialogField::Agent)
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('p'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.edit_dialog.as_ref().map(|dialog| dialog.focused_field),
+        Some(EditDialogField::BaseBranch)
+    );
+}
+
+#[test]
 fn delete_key_opens_delete_dialog_for_selected_workspace() {
     let mut app = fixture_app();
 
@@ -1753,6 +1989,42 @@ fn delete_dialog_blocks_navigation_and_escape_cancels() {
         Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
     );
     assert!(app.delete_dialog.is_none());
+}
+
+#[test]
+fn delete_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.open_delete_dialog();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('n'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.delete_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(DeleteDialogField::DeleteButton)
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('p'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.delete_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(DeleteDialogField::DeleteLocalBranch)
+    );
 }
 
 #[test]
@@ -1857,6 +2129,38 @@ fn merge_dialog_confirm_queues_background_task() {
 }
 
 #[test]
+fn merge_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.open_merge_dialog();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('n'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.merge_dialog.as_ref().map(|dialog| dialog.focused_field),
+        Some(MergeDialogField::CleanupLocalBranch)
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('p'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.merge_dialog.as_ref().map(|dialog| dialog.focused_field),
+        Some(MergeDialogField::CleanupWorkspace)
+    );
+}
+
+#[test]
 fn update_key_opens_update_from_base_dialog_for_selected_workspace() {
     let mut app = fixture_app();
 
@@ -1914,6 +2218,83 @@ fn update_dialog_confirm_queues_background_task() {
     assert!(cmd_contains_task(&cmd));
     assert!(app.update_from_base_dialog.is_none());
     assert!(app.update_from_base_in_flight);
+}
+
+#[test]
+fn update_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.open_update_from_base_dialog();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('n'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.update_from_base_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(UpdateFromBaseDialogField::CancelButton)
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('p'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.update_from_base_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(UpdateFromBaseDialogField::UpdateButton)
+    );
+}
+
+#[test]
+fn settings_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
+    let mut app = fixture_app();
+    app.open_settings_dialog();
+
+    assert_eq!(
+        app.settings_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(SettingsDialogField::Multiplexer)
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('n'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.settings_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(SettingsDialogField::SaveButton)
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('p'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(
+        app.settings_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(SettingsDialogField::Multiplexer)
+    );
 }
 
 #[test]
@@ -2020,7 +2401,7 @@ fn create_dialog_branch_field_edits_base_branch_in_new_mode() {
 }
 
 #[test]
-fn create_dialog_ctrl_n_and_ctrl_p_toggle_agent() {
+fn create_dialog_ctrl_n_and_ctrl_p_follow_tab_navigation() {
     let mut app = fixture_app();
     ftui::Model::update(
         &mut app,
@@ -2041,8 +2422,10 @@ fn create_dialog_ctrl_n_and_ctrl_p_toggle_agent() {
         ),
     );
     assert_eq!(
-        app.create_dialog.as_ref().map(|dialog| dialog.agent),
-        Some(AgentType::Codex)
+        app.create_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(CreateDialogField::CreateButton)
     );
     ftui::Model::update(
         &mut app,
@@ -2053,13 +2436,15 @@ fn create_dialog_ctrl_n_and_ctrl_p_toggle_agent() {
         ),
     );
     assert_eq!(
-        app.create_dialog.as_ref().map(|dialog| dialog.agent),
-        Some(AgentType::Claude)
+        app.create_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(CreateDialogField::Agent)
     );
 }
 
 #[test]
-fn create_dialog_ctrl_n_and_ctrl_p_move_base_branch_dropdown() {
+fn create_dialog_ctrl_n_and_ctrl_p_move_focus_from_base_branch() {
     let mut app = fixture_app();
     ftui::Model::update(
         &mut app,
@@ -2089,7 +2474,12 @@ fn create_dialog_ctrl_n_and_ctrl_p_move_base_branch_dropdown() {
                 .with_kind(KeyEventKind::Press),
         ),
     );
-    assert_eq!(app.create_branch_index, 1);
+    assert_eq!(
+        app.create_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(CreateDialogField::SetupCommands)
+    );
     ftui::Model::update(
         &mut app,
         Msg::Key(
@@ -2098,7 +2488,12 @@ fn create_dialog_ctrl_n_and_ctrl_p_move_base_branch_dropdown() {
                 .with_kind(KeyEventKind::Press),
         ),
     );
-    assert_eq!(app.create_branch_index, 0);
+    assert_eq!(
+        app.create_dialog
+            .as_ref()
+            .map(|dialog| dialog.focused_field),
+        Some(CreateDialogField::BaseBranch)
+    );
 }
 
 #[test]

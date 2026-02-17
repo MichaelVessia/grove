@@ -17,7 +17,7 @@ impl GroveApp {
         let update_focused = focused(UpdateFromBaseDialogField::UpdateButton);
         let cancel_focused = focused(UpdateFromBaseDialogField::CancelButton);
         let update_hint = pad_or_truncate_to_display_width(
-            "Tab move, h/l switch buttons, Enter or u update, Esc cancel",
+            "Tab/C-n next, S-Tab/C-p prev, h/l switch buttons, Enter or u update, Esc cancel",
             content_width,
         );
         let path = dialog.workspace_path.display().to_string();

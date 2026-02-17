@@ -34,7 +34,7 @@ impl GroveApp {
         let delete_focused = focused(DeleteDialogField::DeleteButton);
         let cancel_focused = focused(DeleteDialogField::CancelButton);
         let delete_hint = pad_or_truncate_to_display_width(
-            "Tab move, Space toggle branch cleanup, Enter or D delete, Esc cancel",
+            "Tab/C-n next, S-Tab/C-p prev, Space toggle branch cleanup, Enter or D delete, Esc cancel",
             content_width,
         );
         let path = dialog.path.display().to_string();

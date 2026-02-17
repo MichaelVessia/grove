@@ -99,31 +99,32 @@ impl GroveApp {
             return "Esc/? close help".to_string();
         }
         if self.create_dialog.is_some() {
-            return "Tab/S-Tab field, j/k or C-n/C-p move, ';' separates setup commands, Space toggles auto-run, h/l buttons, Enter select/create, Esc cancel"
+            return "Tab/S-Tab or C-n/C-p field, j/k adjust controls, ';' separates setup commands, Space toggles auto-run, h/l buttons, Enter select/create, Esc cancel"
                 .to_string();
         }
         if self.edit_dialog.is_some() {
-            return "Tab/S-Tab field, type/backspace base branch, h/l buttons, Space toggle agent, Enter save/select, Esc cancel"
+            return "Tab/S-Tab or C-n/C-p field, type/backspace base branch, h/l buttons, Space toggle agent, Enter save/select, Esc cancel"
                 .to_string();
         }
         if self.launch_dialog.is_some() {
-            return "Tab/S-Tab field, h/l buttons, Space toggle unsafe, Enter select/start, Esc cancel"
+            return "Tab/S-Tab or C-n/C-p field, h/l buttons, Space toggle unsafe, Enter select/start, Esc cancel"
                 .to_string();
         }
         if self.delete_dialog.is_some() {
-            return "Tab/S-Tab field, j/k move, Space toggle branch delete, Enter select/delete, D confirm, Esc cancel"
+            return "Tab/S-Tab or C-n/C-p field, j/k move, Space toggle branch delete, Enter select/delete, D confirm, Esc cancel"
                 .to_string();
         }
         if self.merge_dialog.is_some() {
-            return "Tab/S-Tab field, j/k move, Space toggle cleanup, Enter select/merge, m confirm, Esc cancel"
+            return "Tab/S-Tab or C-n/C-p field, j/k move, Space toggle cleanup, Enter select/merge, m confirm, Esc cancel"
                 .to_string();
         }
         if self.update_from_base_dialog.is_some() {
-            return "Tab/S-Tab field, h/l buttons, Enter select/update, u confirm, Esc cancel"
+            return "Tab/S-Tab or C-n/C-p field, h/l buttons, Enter select/update, u confirm, Esc cancel"
                 .to_string();
         }
         if self.settings_dialog.is_some() {
-            return "Tab/S-Tab field, j/k or h/l change, Enter save/select, Esc cancel".to_string();
+            return "Tab/S-Tab or C-n/C-p field, j/k or h/l change, Enter save/select, Esc cancel"
+                .to_string();
         }
         if self.project_dialog.is_some() {
             if self
@@ -132,10 +133,10 @@ impl GroveApp {
                 .and_then(|dialog| dialog.defaults_dialog.as_ref())
                 .is_some()
             {
-                return "Tab/S-Tab field, type/backspace edit defaults, Space toggle auto-run, Enter save/select, Esc close"
+                return "Tab/S-Tab or C-n/C-p field, type/backspace edit defaults, Space toggle auto-run, Enter save/select, Esc close"
                     .to_string();
             }
-            return "Type filter, Up/Down or Tab/S-Tab navigate, Enter focus project, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close"
+            return "Type filter, Up/Down or Tab/S-Tab/C-n/C-p navigate, Enter focus project, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close"
                 .to_string();
         }
         if self.interactive.is_some() {

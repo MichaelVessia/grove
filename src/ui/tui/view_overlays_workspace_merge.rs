@@ -29,7 +29,7 @@ impl GroveApp {
         let merge_focused = focused(MergeDialogField::MergeButton);
         let cancel_focused = focused(MergeDialogField::CancelButton);
         let merge_hint = pad_or_truncate_to_display_width(
-            "Tab move, Space toggle cleanup, Enter or m merge, Esc cancel",
+            "Tab/C-n next, S-Tab/C-p prev, Space toggle cleanup, Enter or m merge, Esc cancel",
             content_width,
         );
         let path = dialog.workspace_path.display().to_string();

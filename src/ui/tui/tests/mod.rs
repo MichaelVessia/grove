@@ -15,10 +15,11 @@ use super::{
     HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
     LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg,
     PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
-    RefreshWorkspacesCompletion, StartAgentCompletion, StopAgentCompletion, TextSelectionPoint,
-    TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
-    WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, ansi_16_color,
-    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
+    ProjectAddDialogField, ProjectDefaultsDialogField, RefreshWorkspacesCompletion,
+    SettingsDialogField, StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
+    UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceShellLaunchCompletion,
+    WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+    ui_theme,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;
@@ -1790,8 +1791,8 @@ fn status_row_shows_create_dialog_keybind_hints_when_modal_open() {
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Tab/S-Tab field"));
-        assert!(status_text.contains("j/k or C-n/C-p move"));
+        assert!(status_text.contains("Tab/S-Tab or C-n/C-p field"));
+        assert!(status_text.contains("j/k adjust controls"));
     });
 }
 
@@ -1821,8 +1822,8 @@ fn status_row_shows_launch_dialog_keybind_hints_when_modal_open() {
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Tab/S-Tab field"));
-        assert!(status_text.contains("Enter select/start"));
+        assert!(status_text.contains("Tab/S-Tab or C-n/C-p field"));
+        assert!(status_text.contains("Space toggle unsafe"));
     });
 }
 
@@ -1835,7 +1836,7 @@ fn status_row_shows_delete_dialog_keybind_hints_when_modal_open() {
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Tab/S-Tab field"));
+        assert!(status_text.contains("Tab/S-Tab or C-n/C-p field"));
         assert!(status_text.contains("Space toggle"));
     });
 }
@@ -1849,7 +1850,7 @@ fn status_row_shows_merge_dialog_keybind_hints_when_modal_open() {
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Tab/S-Tab field"));
+        assert!(status_text.contains("Tab/S-Tab or C-n/C-p field"));
         assert!(status_text.contains("Space toggle cleanup"));
     });
 }
@@ -1863,7 +1864,7 @@ fn status_row_shows_update_from_base_dialog_hints_when_modal_open() {
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Tab/S-Tab field"));
+        assert!(status_text.contains("Tab/S-Tab or C-n/C-p field"));
         assert!(status_text.contains("Enter select/update"));
     });
 }

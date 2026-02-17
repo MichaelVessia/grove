@@ -14,6 +14,10 @@ impl GroveApp {
             Save,
             Close,
         }
+        let ctrl_n = key_event.modifiers == Modifiers::CTRL
+            && matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N'));
+        let ctrl_p = key_event.modifiers == Modifiers::CTRL
+            && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
 
         let mut post_action = PostAction::None;
         match key_event.code {
@@ -24,6 +28,12 @@ impl GroveApp {
                 defaults_dialog.focused_field = defaults_dialog.focused_field.next();
             }
             KeyCode::BackTab => {
+                defaults_dialog.focused_field = defaults_dialog.focused_field.previous();
+            }
+            KeyCode::Char(_) if ctrl_n => {
+                defaults_dialog.focused_field = defaults_dialog.focused_field.next();
+            }
+            KeyCode::Char(_) if ctrl_p => {
                 defaults_dialog.focused_field = defaults_dialog.focused_field.previous();
             }
             KeyCode::Enter => match defaults_dialog.focused_field {
@@ -109,6 +119,11 @@ impl GroveApp {
             return;
         };
 
+        let ctrl_n = key_event.modifiers == Modifiers::CTRL
+            && matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N'));
+        let ctrl_p = key_event.modifiers == Modifiers::CTRL
+            && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
+
         match key_event.code {
             KeyCode::Escape => {
                 project_dialog.add_dialog = None;
@@ -117,6 +132,12 @@ impl GroveApp {
                 add_dialog.focused_field = add_dialog.focused_field.next();
             }
             KeyCode::BackTab => {
+                add_dialog.focused_field = add_dialog.focused_field.previous();
+            }
+            KeyCode::Char(_) if ctrl_n => {
+                add_dialog.focused_field = add_dialog.focused_field.next();
+            }
+            KeyCode::Char(_) if ctrl_p => {
                 add_dialog.focused_field = add_dialog.focused_field.previous();
             }
             KeyCode::Enter => match add_dialog.focused_field {
@@ -168,6 +189,10 @@ impl GroveApp {
         if self.project_delete_in_flight {
             return;
         }
+        let ctrl_n = key_event.modifiers == Modifiers::CTRL
+            && matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N'));
+        let ctrl_p = key_event.modifiers == Modifiers::CTRL
+            && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
 
         match key_event.code {
             KeyCode::Escape => {
@@ -224,6 +249,27 @@ impl GroveApp {
                     }
                 }
             }
+            KeyCode::Char(_) if ctrl_n => {
+                if let Some(dialog) = self.project_dialog.as_mut() {
+                    let len = dialog.filtered_project_indices.len();
+                    if len > 0 {
+                        dialog.selected_filtered_index =
+                            dialog.selected_filtered_index.saturating_add(1) % len;
+                    }
+                }
+            }
+            KeyCode::Char(_) if ctrl_p => {
+                if let Some(dialog) = self.project_dialog.as_mut() {
+                    let len = dialog.filtered_project_indices.len();
+                    if len > 0 {
+                        dialog.selected_filtered_index = if dialog.selected_filtered_index == 0 {
+                            len.saturating_sub(1)
+                        } else {
+                            dialog.selected_filtered_index.saturating_sub(1)
+                        };
+                    }
+                }
+            }
             KeyCode::Backspace => {
                 if let Some(dialog) = self.project_dialog.as_mut() {
                     dialog.filter.pop();
@@ -250,27 +296,6 @@ impl GroveApp {
                     && (character == 'e' || character == 'E') =>
             {
                 self.open_selected_project_defaults_dialog();
-            }
-            KeyCode::Char(character)
-                if key_event.modifiers == Modifiers::CTRL
-                    && (character == 'n' || character == 'N') =>
-            {
-                if let Some(dialog) = self.project_dialog.as_mut()
-                    && dialog.selected_filtered_index.saturating_add(1)
-                        < dialog.filtered_project_indices.len()
-                {
-                    dialog.selected_filtered_index =
-                        dialog.selected_filtered_index.saturating_add(1);
-                }
-            }
-            KeyCode::Char(character)
-                if key_event.modifiers == Modifiers::CTRL
-                    && (character == 'p' || character == 'P') =>
-            {
-                if let Some(dialog) = self.project_dialog.as_mut() {
-                    dialog.selected_filtered_index =
-                        dialog.selected_filtered_index.saturating_sub(1);
-                }
             }
             KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
                 if let Some(dialog) = self.project_dialog.as_mut() {

@@ -87,7 +87,7 @@ impl GroveApp {
             ),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "Tab move, type/backspace base branch, h/l or Space toggle agent, Enter save, Esc cancel",
+                    "Tab/C-n next, S-Tab/C-p prev, type/backspace base branch, h/l or Space toggle agent, Enter save, Esc cancel",
                     content_width,
                 ),
                 Style::new().fg(theme.overlay0),

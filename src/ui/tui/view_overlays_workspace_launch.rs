@@ -68,7 +68,7 @@ impl GroveApp {
             ),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "Tab move, Space toggle unsafe, Enter start, Esc cancel",
+                    "Tab/C-n next, S-Tab/C-p prev, Space toggle unsafe, Enter start, Esc cancel",
                     content_width,
                 ),
                 Style::new().fg(theme.overlay0),
