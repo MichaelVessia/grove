@@ -10,7 +10,7 @@ impl GroveApp {
                 self.mode_label(),
                 self.focus_label()
             ),
-            "Workspaces (j/k, arrows, Tab/h/l focus, Enter preview, n create, e edit, m merge, u update, s/x start-stop, D delete, S settings, ? help, ! unsafe, Esc list, mouse)"
+            "Workspaces (j/k, arrows, Tab/h/l focus, Enter preview, n create, e edit, m merge, u update, s/x start-stop, D delete, S settings, M mouse, ? help, ! unsafe, Esc list)"
                 .to_string(),
         ];
 

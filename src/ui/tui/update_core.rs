@@ -50,7 +50,10 @@ impl GroveApp {
     pub(super) fn init_model(&mut self) -> Cmd<Msg> {
         self.poll_preview();
         let next_tick_cmd = self.schedule_next_tick();
-        let init_cmd = Cmd::batch(vec![next_tick_cmd, Cmd::set_mouse_capture(true)]);
+        let init_cmd = Cmd::batch(vec![
+            next_tick_cmd,
+            Cmd::set_mouse_capture(self.mouse_capture_enabled),
+        ]);
         self.merge_deferred_cmds(init_cmd)
     }
 }

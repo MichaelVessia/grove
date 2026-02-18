@@ -191,6 +191,7 @@ impl GroveApp {
             viewport_height: 40,
             sidebar_width_pct,
             sidebar_hidden: false,
+            mouse_capture_enabled: true,
             launch_skip_permissions: false,
             divider_drag_active: false,
             divider_drag_pointer_offset: 0,

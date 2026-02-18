@@ -27,6 +27,7 @@ pub(super) enum UiCommand {
     OpenProjects,
     DeleteProject,
     OpenSettings,
+    ToggleMouseCapture,
     ToggleUnsafe,
     OpenHelp,
     OpenCommandPalette,
@@ -61,7 +62,7 @@ pub(super) enum HelpHintContext {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 31] = [
+    pub(super) const ALL: [UiCommand; 32] = [
         UiCommand::ToggleFocus,
         UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
@@ -89,6 +90,7 @@ impl UiCommand {
         UiCommand::OpenProjects,
         UiCommand::DeleteProject,
         UiCommand::OpenSettings,
+        UiCommand::ToggleMouseCapture,
         UiCommand::ToggleUnsafe,
         UiCommand::OpenHelp,
         UiCommand::OpenCommandPalette,

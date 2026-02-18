@@ -399,6 +399,16 @@ fn cmd_contains_task(cmd: &Cmd<Msg>) -> bool {
     }
 }
 
+fn cmd_contains_mouse_capture_toggle(cmd: &Cmd<Msg>, enabled: bool) -> bool {
+    match cmd {
+        Cmd::SetMouseCapture(state) => *state == enabled,
+        Cmd::Batch(commands) | Cmd::Sequence(commands) => commands
+            .iter()
+            .any(|command| cmd_contains_mouse_capture_toggle(command, enabled)),
+        _ => false,
+    }
+}
+
 fn arb_key_event() -> impl Strategy<Value = KeyEvent> {
     proptest::prop_oneof![
         Just(key_press(KeyCode::Char('j'))),
@@ -1331,6 +1341,28 @@ fn backslash_toggles_sidebar_visibility() {
 }
 
 #[test]
+fn uppercase_m_toggles_mouse_capture_and_emits_runtime_command() {
+    let mut app = fixture_app();
+    assert!(app.mouse_capture_enabled);
+
+    let disable_cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('M')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(!app.mouse_capture_enabled);
+    assert!(cmd_contains_mouse_capture_toggle(&disable_cmd, false));
+
+    let enable_cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('M')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(app.mouse_capture_enabled);
+    assert!(cmd_contains_mouse_capture_toggle(&enable_cmd, true));
+}
+
+#[test]
 fn keybind_help_modal_closes_on_escape() {
     let mut app = fixture_app();
     app.keybind_help_open = true;
@@ -1484,6 +1516,11 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
     assert!(
         list_ids
             .iter()
+            .any(|id| id == &palette_id(UiCommand::ToggleMouseCapture))
+    );
+    assert!(
+        list_ids
+            .iter()
             .any(|id| id == &palette_id(UiCommand::DeleteProject))
     );
     assert!(
@@ -1574,6 +1611,11 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
         preview_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::MoveSelectionDown))
+    );
+    assert!(
+        preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::ToggleMouseCapture))
     );
     assert!(
         !preview_ids
@@ -1775,6 +1817,18 @@ fn keybind_help_lists_interactive_reserved_keys() {
         assert!(has_shift_tab);
         assert!(has_shift_enter);
         assert!(has_reserved);
+    });
+}
+
+#[test]
+fn keybind_help_lists_mouse_capture_toggle() {
+    let mut app = fixture_app();
+    app.keybind_help_open = true;
+
+    with_rendered_frame(&app, 160, 28, |frame| {
+        let has_mouse_toggle = (0..frame.height())
+            .any(|row| row_text(frame, row, 0, frame.width()).contains("M toggle mouse capture"));
+        assert!(has_mouse_toggle);
     });
 }
 

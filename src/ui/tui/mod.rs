@@ -225,6 +225,7 @@ struct GroveApp {
     viewport_height: u16,
     sidebar_width_pct: u16,
     sidebar_hidden: bool,
+    mouse_capture_enabled: bool,
     launch_skip_permissions: bool,
     divider_drag_active: bool,
     divider_drag_pointer_offset: i32,

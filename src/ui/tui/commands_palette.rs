@@ -224,6 +224,13 @@ impl UiCommand {
                 tags: &["settings", "multiplexer", "S"],
                 category: "Workspace",
             }),
+            Self::ToggleMouseCapture => Some(PaletteCommandSpec {
+                id: "palette:toggle_mouse_capture",
+                title: "Toggle Mouse Capture",
+                description: "Toggle Grove mouse handling to allow terminal URL click/select (M)",
+                tags: &["mouse", "capture", "url", "click", "select", "M"],
+                category: "System",
+            }),
             Self::ToggleUnsafe => Some(PaletteCommandSpec {
                 id: "palette:toggle_unsafe",
                 title: "Toggle Unsafe Launch",

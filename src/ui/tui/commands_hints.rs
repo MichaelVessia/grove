@@ -16,6 +16,7 @@ impl UiCommand {
                 UiCommand::OpenProjects,
                 UiCommand::DeleteWorkspace,
                 UiCommand::OpenSettings,
+                UiCommand::ToggleMouseCapture,
                 UiCommand::ToggleSidebar,
                 UiCommand::OpenCommandPalette,
                 UiCommand::OpenHelp,
@@ -38,6 +39,7 @@ impl UiCommand {
                 UiCommand::StopAgent,
                 UiCommand::DeleteWorkspace,
                 UiCommand::OpenSettings,
+                UiCommand::ToggleMouseCapture,
                 UiCommand::ToggleSidebar,
                 UiCommand::OpenCommandPalette,
                 UiCommand::OpenHelp,
@@ -58,6 +60,7 @@ impl UiCommand {
                 UiCommand::OpenProjects,
                 UiCommand::DeleteWorkspace,
                 UiCommand::OpenSettings,
+                UiCommand::ToggleMouseCapture,
                 UiCommand::ToggleSidebar,
                 UiCommand::OpenCommandPalette,
                 UiCommand::OpenHelp,
@@ -75,6 +78,7 @@ impl UiCommand {
                 UiCommand::OpenProjects,
                 UiCommand::DeleteWorkspace,
                 UiCommand::OpenSettings,
+                UiCommand::ToggleMouseCapture,
                 UiCommand::ToggleSidebar,
                 UiCommand::OpenCommandPalette,
                 UiCommand::OpenHelp,
@@ -124,6 +128,7 @@ impl UiCommand {
             (UiCommand::StopAgent, StatusHintContext::PreviewAgent) => Some("x stop"),
             (UiCommand::DeleteWorkspace, _context) => Some("D delete"),
             (UiCommand::OpenSettings, _context) => Some("S settings"),
+            (UiCommand::ToggleMouseCapture, _context) => Some("M mouse"),
             (UiCommand::ToggleSidebar, _context) => Some("\\ sidebar"),
             (UiCommand::OpenCommandPalette, _context) => Some("Ctrl+K palette"),
             (UiCommand::OpenHelp, _context) => Some("? help"),
@@ -139,6 +144,7 @@ impl UiCommand {
                 UiCommand::Quit,
                 UiCommand::ToggleFocus,
                 UiCommand::ToggleSidebar,
+                UiCommand::ToggleMouseCapture,
                 UiCommand::ResizeSidebarNarrower,
                 UiCommand::FocusList,
                 UiCommand::MoveSelectionDown,
@@ -190,6 +196,9 @@ impl UiCommand {
             (UiCommand::Quit, HelpHintContext::Global) => Some("q quit"),
             (UiCommand::ToggleFocus, HelpHintContext::Global) => Some("Tab/h/l switch pane"),
             (UiCommand::ToggleSidebar, HelpHintContext::Global) => Some("\\ toggle sidebar"),
+            (UiCommand::ToggleMouseCapture, HelpHintContext::Global) => {
+                Some("M toggle mouse capture")
+            }
             (UiCommand::ResizeSidebarNarrower, HelpHintContext::Global)
             | (UiCommand::ResizeSidebarWider, HelpHintContext::Global) => {
                 Some("Alt+Left/Right or Alt+H/L resize (Alt+B/F fallback)")

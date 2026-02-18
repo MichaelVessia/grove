@@ -152,6 +152,7 @@ impl GroveApp {
                 }
                 UiCommand::DeleteProject => false,
                 UiCommand::OpenSettings => matches!(key_event.code, KeyCode::Char('S')),
+                UiCommand::ToggleMouseCapture => matches!(key_event.code, KeyCode::Char('M')),
                 UiCommand::ToggleUnsafe => matches!(key_event.code, KeyCode::Char('!')),
                 UiCommand::OpenHelp => matches!(key_event.code, KeyCode::Char('?')),
                 UiCommand::OpenCommandPalette => Self::is_ctrl_char_key(key_event, 'k'),

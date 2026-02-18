@@ -66,6 +66,22 @@ impl GroveApp {
         };
         self.select_preview_tab(next_tab);
     }
+
+    fn toggle_mouse_capture(&mut self) {
+        self.mouse_capture_enabled = !self.mouse_capture_enabled;
+        self.divider_drag_active = false;
+        self.divider_drag_pointer_offset = 0;
+        self.queue_cmd(Cmd::set_mouse_capture(self.mouse_capture_enabled));
+        if self.mouse_capture_enabled {
+            self.show_toast("mouse capture enabled", false);
+        } else {
+            self.show_toast(
+                "mouse capture disabled, terminal URL clicks restored",
+                false,
+            );
+        }
+    }
+
     pub(super) fn execute_ui_command(&mut self, command: UiCommand) -> bool {
         match command {
             UiCommand::ToggleFocus => {
@@ -203,6 +219,10 @@ impl GroveApp {
             }
             UiCommand::OpenSettings => {
                 self.open_settings_dialog();
+                false
+            }
+            UiCommand::ToggleMouseCapture => {
+                self.toggle_mouse_capture();
                 false
             }
             UiCommand::ToggleUnsafe => {

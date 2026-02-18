@@ -77,6 +77,7 @@ impl GroveApp {
             | UiCommand::EditWorkspace
             | UiCommand::OpenProjects
             | UiCommand::OpenSettings
+            | UiCommand::ToggleMouseCapture
             | UiCommand::ToggleUnsafe
             | UiCommand::OpenHelp
             | UiCommand::Quit => true,
