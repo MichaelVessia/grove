@@ -25,6 +25,13 @@ impl GroveApp {
         }
     }
 
+    fn normalize_command_palette_key_event(mut key_event: KeyEvent) -> KeyEvent {
+        if key_event.kind == KeyEventKind::Repeat {
+            key_event.kind = KeyEventKind::Press;
+        }
+        key_event
+    }
+
     fn global_workspace_navigation_command(key_event: &KeyEvent) -> Option<UiCommand> {
         if !key_event.modifiers.contains(Modifiers::ALT) {
             return None;
@@ -205,7 +212,9 @@ impl GroveApp {
         }
 
         if self.command_palette.is_visible() {
-            let event = Event::Key(Self::remap_command_palette_nav_key(key_event));
+            let event = Event::Key(Self::normalize_command_palette_key_event(
+                Self::remap_command_palette_nav_key(key_event),
+            ));
             if let Some(action) = self.command_palette.handle_event(&event) {
                 return match action {
                     PaletteAction::Dismiss => (false, Cmd::None),

@@ -35,7 +35,7 @@ impl GroveApp {
             "Tab/C-n next, S-Tab/C-p prev, type/backspace base branch, h/l or Space toggle agent, Enter save, Esc cancel"
         };
 
-        let body = FtText::from_lines(vec![
+        let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width("Workspace settings", content_width),
                 Style::new().fg(theme.overlay0),
@@ -83,27 +83,23 @@ impl GroveApp {
                 theme.peach,
                 theme.text,
             ),
-            FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(
-                    format!("  [Note] {running_note}").as_str(),
-                    content_width,
-                ),
-                Style::new().fg(theme.overlay0),
-            )]),
-            FtLine::raw(""),
-            modal_actions_row(
-                content_width,
-                theme,
-                "Save",
-                "Cancel",
-                focused(EditDialogField::SaveButton),
-                focused(EditDialogField::CancelButton),
-            ),
-            FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(edit_hint, content_width),
-                Style::new().fg(theme.overlay0),
-            )]),
-        ]);
+        ];
+        lines.extend(modal_wrapped_hint_rows(
+            content_width,
+            theme,
+            format!("  [Note] {running_note}").as_str(),
+        ));
+        lines.push(FtLine::raw(""));
+        lines.push(modal_actions_row(
+            content_width,
+            theme,
+            "Save",
+            "Cancel",
+            focused(EditDialogField::SaveButton),
+            focused(EditDialogField::CancelButton),
+        ));
+        lines.extend(modal_wrapped_hint_rows(content_width, theme, edit_hint));
+        let body = FtText::from_lines(lines);
 
         let content = OverlayModalContent {
             title: "Edit Workspace",

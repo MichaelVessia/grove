@@ -189,13 +189,11 @@ impl GroveApp {
             create_focused,
             cancel_focused,
         ));
-        lines.push(FtLine::from_spans(vec![FtSpan::styled(
-            pad_or_truncate_to_display_width(
-                "Tab/C-n next, S-Tab/C-p prev, j/k adjust project/branch, Space toggles auto-run, Enter create, Esc cancel",
-                content_width,
-            ),
-            Style::new().fg(theme.overlay0),
-        )]));
+        lines.extend(modal_wrapped_hint_rows(
+            content_width,
+            theme,
+            "Tab/C-n next, S-Tab/C-p prev, j/k adjust project/branch, Space toggles auto-run, Enter create, Esc cancel",
+        ));
         let content = OverlayModalContent {
             title: "New Workspace",
             body: FtText::from_lines(lines),

@@ -28,12 +28,8 @@ impl GroveApp {
         };
         let merge_focused = focused(MergeDialogField::MergeButton);
         let cancel_focused = focused(MergeDialogField::CancelButton);
-        let merge_hint = pad_or_truncate_to_display_width(
-            "Tab/C-n next, S-Tab/C-p prev, Space toggle cleanup, Enter or m merge, Esc cancel",
-            content_width,
-        );
         let path = dialog.workspace_path.display().to_string();
-        let body = FtText::from_lines(vec![
+        let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width("Merge plan", content_width),
                 Style::new().fg(theme.overlay0),
@@ -107,11 +103,13 @@ impl GroveApp {
                 merge_focused,
                 cancel_focused,
             ),
-            FtLine::from_spans(vec![FtSpan::styled(
-                merge_hint,
-                Style::new().fg(theme.overlay0),
-            )]),
-        ]);
+        ];
+        lines.extend(modal_wrapped_hint_rows(
+            content_width,
+            theme,
+            "Tab/C-n next, S-Tab/C-p prev, Space toggle cleanup, Enter or m merge, Esc cancel",
+        ));
+        let body = FtText::from_lines(lines);
 
         let content = OverlayModalContent {
             title: "Merge Workspace?",

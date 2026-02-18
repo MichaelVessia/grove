@@ -18,7 +18,7 @@ impl GroveApp {
         let multiplexer_focused = focused(SettingsDialogField::Multiplexer);
         let save_focused = focused(SettingsDialogField::SaveButton);
         let cancel_focused = focused(SettingsDialogField::CancelButton);
-        let body = FtText::from_lines(vec![
+        let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width("Global settings", content_width),
                 Style::new().fg(theme.overlay0),
@@ -33,35 +33,33 @@ impl GroveApp {
                 theme.blue,
                 theme.text,
             ),
-            FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("  h/l, Left/Right, Space cycles", content_width),
-                Style::new().fg(theme.overlay0),
-            )]),
-            FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(
-                    "  Switching requires restarting running workspaces",
-                    content_width,
-                ),
-                Style::new().fg(theme.overlay0),
-            )]),
-            FtLine::raw(""),
-            modal_actions_row(
-                content_width,
-                theme,
-                "Save",
-                "Cancel",
-                save_focused,
-                cancel_focused,
-            ),
-            FtLine::raw(""),
-            FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(
-                    "Saved to ~/.config/grove/config.toml",
-                    content_width,
-                ),
-                Style::new().fg(theme.overlay0),
-            )]),
-        ]);
+        ];
+        lines.extend(modal_wrapped_hint_rows(
+            content_width,
+            theme,
+            "  h/l, Left/Right, Space cycles",
+        ));
+        lines.extend(modal_wrapped_hint_rows(
+            content_width,
+            theme,
+            "  Switching requires restarting running workspaces",
+        ));
+        lines.push(FtLine::raw(""));
+        lines.push(modal_actions_row(
+            content_width,
+            theme,
+            "Save",
+            "Cancel",
+            save_focused,
+            cancel_focused,
+        ));
+        lines.push(FtLine::raw(""));
+        lines.extend(modal_wrapped_hint_rows(
+            content_width,
+            theme,
+            "Saved to ~/.config/grove/config.toml",
+        ));
+        let body = FtText::from_lines(lines);
 
         let content = OverlayModalContent {
             title: "Settings",

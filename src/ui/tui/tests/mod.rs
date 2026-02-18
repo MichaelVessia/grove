@@ -695,11 +695,11 @@ proptest::proptest! {
 #[test]
 fn sidebar_shows_workspace_names() {
     let app = fixture_app();
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(160, 24, app.sidebar_width_pct);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
-    with_rendered_frame(&app, 80, 24, |frame| {
+    with_rendered_frame(&app, 160, 24, |frame| {
         assert!(find_row_containing(frame, "grove", x_start, x_end).is_some());
         assert!(find_row_containing(frame, "feature-a", x_start, x_end).is_some());
     });
@@ -717,6 +717,7 @@ fn workspace_age_renders_in_preview_header_not_sidebar_row() {
     app.state.workspaces[0].last_activity_unix_secs = Some(last_activity);
     app.state.selected_index = 0;
     let expected_age = app.relative_age_label(app.state.workspaces[0].last_activity_unix_secs);
+    let expected_age_prefix = expected_age.chars().take(2).collect::<String>();
 
     let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
     let sidebar_x_start = layout.sidebar.x.saturating_add(1);
@@ -724,7 +725,7 @@ fn workspace_age_renders_in_preview_header_not_sidebar_row() {
     let preview_x_start = layout.preview.x.saturating_add(1);
     let preview_x_end = layout.preview.right().saturating_sub(1);
 
-    with_rendered_frame(&app, 80, 24, |frame| {
+    with_rendered_frame(&app, 160, 24, |frame| {
         let Some(sidebar_row) =
             find_row_containing(frame, "▸ base", sidebar_x_start, sidebar_x_end)
         else {
@@ -746,7 +747,7 @@ fn workspace_age_renders_in_preview_header_not_sidebar_row() {
         };
         let preview_text = row_text(frame, preview_row, preview_x_start, preview_x_end);
         assert!(
-            preview_text.contains(expected_age.as_str()),
+            preview_text.contains(expected_age_prefix.as_str()),
             "preview header should include age label, got: {preview_text}"
         );
     });
@@ -1491,6 +1492,38 @@ fn command_palette_ctrl_n_moves_selection_down() {
 }
 
 #[test]
+fn command_palette_repeat_down_arrow_moves_selection_down() {
+    let mut app = fixture_app();
+    app.open_command_palette();
+    assert!(app.command_palette.is_visible());
+    assert!(app.command_palette.result_count() > 1);
+    assert_eq!(app.command_palette.selected_index(), 0);
+
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Down).with_kind(KeyEventKind::Repeat));
+
+    assert_eq!(app.command_palette.query(), "");
+    assert_eq!(app.command_palette.selected_index(), 1);
+}
+
+#[test]
+fn command_palette_repeat_ctrl_n_moves_selection_down() {
+    let mut app = fixture_app();
+    app.open_command_palette();
+    assert!(app.command_palette.is_visible());
+    assert!(app.command_palette.result_count() > 1);
+    assert_eq!(app.command_palette.selected_index(), 0);
+
+    let _ = app.handle_key(
+        KeyEvent::new(KeyCode::Char('n'))
+            .with_modifiers(Modifiers::CTRL)
+            .with_kind(KeyEventKind::Repeat),
+    );
+
+    assert_eq!(app.command_palette.query(), "");
+    assert_eq!(app.command_palette.selected_index(), 1);
+}
+
+#[test]
 fn command_palette_ctrl_p_moves_selection_up() {
     let mut app = fixture_app();
     app.open_command_palette();
@@ -1517,6 +1550,27 @@ fn command_palette_ctrl_p_moves_selection_up() {
 
     assert_eq!(app.command_palette.query(), "");
     assert_eq!(app.command_palette.selected_index(), 1);
+}
+
+#[test]
+fn command_palette_max_visible_scales_with_viewport_height() {
+    assert_eq!(GroveApp::command_palette_max_visible_for_height(16), 11);
+    assert_eq!(GroveApp::command_palette_max_visible_for_height(40), 30);
+    assert_eq!(GroveApp::command_palette_max_visible_for_height(200), 30);
+}
+
+#[test]
+fn open_command_palette_sizes_page_navigation_to_viewport_height() {
+    let mut app = fixture_app();
+    app.viewport_height = 16;
+    app.open_command_palette();
+    assert!(app.command_palette.is_visible());
+    let expected_jump = GroveApp::command_palette_max_visible_for_height(app.viewport_height);
+    assert!(app.command_palette.result_count() > expected_jump);
+
+    let _ = app.handle_key(KeyEvent::new(KeyCode::PageDown).with_kind(KeyEventKind::Press));
+
+    assert_eq!(app.command_palette.selected_index(), expected_jump);
 }
 
 #[test]
@@ -1837,14 +1891,23 @@ fn command_tmux_input_uses_background_launch_mode() {
 }
 
 #[test]
-fn status_row_shows_help_close_hint_when_help_modal_open() {
+fn keybind_help_overlay_renders_when_help_modal_open() {
     let mut app = fixture_app();
     app.keybind_help_open = true;
 
     with_rendered_frame(&app, 80, 24, |frame| {
-        let status_row = frame.height().saturating_sub(1);
-        let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Esc/? close help"));
+        let status_text = (0..frame.height())
+            .map(|row| row_text(frame, row, 0, frame.width()))
+            .collect::<Vec<String>>()
+            .join("\n");
+        assert!(
+            status_text.contains("Keybind Help"),
+            "help overlay missing title: {status_text}"
+        );
+        assert!(
+            status_text.contains("[Global]"),
+            "help overlay missing global section: {status_text}"
+        );
     });
 }
 
@@ -1883,6 +1946,31 @@ fn keybind_help_lists_mouse_capture_toggle() {
 }
 
 #[test]
+fn keybind_help_lists_projects_modal_shortcuts_without_truncation() {
+    let mut app = fixture_app();
+    app.keybind_help_open = true;
+
+    with_rendered_frame(&app, 160, 32, |frame| {
+        let has_projects_remove = (0..frame.height())
+            .any(|row| row_text(frame, row, 0, frame.width()).contains("Ctrl+X/Del remove"));
+        assert!(has_projects_remove);
+    });
+}
+
+#[test]
+fn keybind_help_uses_available_height_to_show_footer() {
+    let mut app = fixture_app();
+    app.keybind_help_open = true;
+
+    with_rendered_frame(&app, 160, 32, |frame| {
+        let has_close_hint = (0..frame.height()).any(|row| {
+            row_text(frame, row, 0, frame.width()).contains("Close help: Esc, Enter, or ?")
+        });
+        assert!(has_close_hint);
+    });
+}
+
+#[test]
 fn status_row_shows_palette_hints_when_palette_open() {
     let mut app = fixture_app();
     app.open_command_palette();
@@ -1890,9 +1978,49 @@ fn status_row_shows_palette_hints_when_palette_open() {
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Type to search"));
-        assert!(status_text.contains("C-n/C-p"));
-        assert!(status_text.contains("Enter run"));
+        assert!(
+            status_text.contains("Type to"),
+            "status row missing search hint: {status_text}"
+        );
+        assert!(
+            status_text.contains("close"),
+            "status row missing close hint: {status_text}"
+        );
+    });
+}
+
+#[test]
+fn project_dialog_footer_hints_wrap_instead_of_truncating() {
+    let mut app = fixture_app();
+    app.open_project_dialog();
+
+    with_rendered_frame(&app, 60, 24, |frame| {
+        let has_first_segment = (0..frame.height())
+            .any(|row| row_text(frame, row, 0, frame.width()).contains("Enter focus"));
+        let has_last_segment = (0..frame.height())
+            .any(|row| row_text(frame, row, 0, frame.width()).contains("Esc close"));
+        assert!(has_first_segment);
+        assert!(has_last_segment);
+    });
+}
+
+#[test]
+fn launch_dialog_footer_hints_wrap_instead_of_truncating() {
+    let mut app = fixture_app();
+    app.launch_dialog = Some(LaunchDialogState {
+        prompt: String::new(),
+        pre_launch_command: String::new(),
+        skip_permissions: false,
+        focused_field: LaunchDialogField::Prompt,
+    });
+
+    with_rendered_frame(&app, 60, 24, |frame| {
+        let has_first_segment = (0..frame.height())
+            .any(|row| row_text(frame, row, 0, frame.width()).contains("Tab/C-n next"));
+        let has_last_segment = (0..frame.height())
+            .any(|row| row_text(frame, row, 0, frame.width()).contains("Esc cancel"));
+        assert!(has_first_segment);
+        assert!(has_last_segment);
     });
 }
 

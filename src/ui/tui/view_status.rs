@@ -75,14 +75,6 @@ impl GroveApp {
         }
     }
 
-    pub(super) fn keybind_help_line(&self, context: HelpHintContext) -> String {
-        UiCommand::help_hints_for(context)
-            .iter()
-            .filter_map(|command| command.help_hint_label(context))
-            .collect::<Vec<&str>>()
-            .join(", ")
-    }
-
     fn status_hints_line(&self, context: StatusHintContext) -> String {
         UiCommand::status_hints_for(context)
             .iter()

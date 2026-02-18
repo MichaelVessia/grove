@@ -16,7 +16,7 @@ impl GroveApp {
         if let Some(add_dialog) = dialog.add_dialog.as_ref() {
             let dialog_height = 12u16;
             let focused = |field| add_dialog.focused_field == field;
-            let body = FtText::from_lines(vec![
+            let mut lines = vec![
                 modal_labeled_input_row(
                     content_width,
                     theme,
@@ -42,14 +42,13 @@ impl GroveApp {
                     focused(ProjectAddDialogField::AddButton),
                     focused(ProjectAddDialogField::CancelButton),
                 ),
-                FtLine::from_spans(vec![FtSpan::styled(
-                    pad_or_truncate_to_display_width(
-                        "Tab/C-n next, S-Tab/C-p prev, Enter confirm, Esc back",
-                        content_width,
-                    ),
-                    Style::new().fg(theme.overlay0),
-                )]),
-            ]);
+            ];
+            lines.extend(modal_wrapped_hint_rows(
+                content_width,
+                theme,
+                "Tab/C-n next, S-Tab/C-p prev, Enter confirm, Esc back",
+            ));
+            let body = FtText::from_lines(lines);
             let content = OverlayModalContent {
                 title: "Add Project",
                 body,
@@ -83,7 +82,7 @@ impl GroveApp {
                 .get(defaults_dialog.project_index)
                 .map(|project| project.path.display().to_string())
                 .unwrap_or_else(|| "(missing path)".to_string());
-            let body = FtText::from_lines(vec![
+            let mut lines = vec![
                 modal_static_badged_row(
                     content_width,
                     theme,
@@ -139,14 +138,13 @@ impl GroveApp {
                     focused(ProjectDefaultsDialogField::SaveButton),
                     focused(ProjectDefaultsDialogField::CancelButton),
                 ),
-                FtLine::from_spans(vec![FtSpan::styled(
-                    pad_or_truncate_to_display_width(
-                        "Tab/C-n next, S-Tab/C-p prev, Space toggles auto-run, Enter confirm, Esc back",
-                        content_width,
-                    ),
-                    Style::new().fg(theme.overlay0),
-                )]),
-            ]);
+            ];
+            lines.extend(modal_wrapped_hint_rows(
+                content_width,
+                theme,
+                "Tab/C-n next, S-Tab/C-p prev, Space toggles auto-run, Enter confirm, Esc back",
+            ));
+            let body = FtText::from_lines(lines);
             let content = OverlayModalContent {
                 title: "Project Defaults",
                 body,
@@ -220,13 +218,11 @@ impl GroveApp {
         }
 
         lines.push(FtLine::raw(""));
-        lines.push(FtLine::from_spans(vec![FtSpan::styled(
-            pad_or_truncate_to_display_width(
-                "Enter focus, Up/Down or Tab/S-Tab/C-n/C-p navigate, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close",
-                content_width,
-            ),
-            Style::new().fg(theme.overlay0),
-        )]));
+        lines.extend(modal_wrapped_hint_rows(
+            content_width,
+            theme,
+            "Enter focus, Up/Down or Tab/S-Tab/C-n/C-p navigate, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close",
+        ));
 
         let content = OverlayModalContent {
             title: "Projects",
