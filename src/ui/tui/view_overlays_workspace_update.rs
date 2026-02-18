@@ -59,7 +59,7 @@ impl GroveApp {
         lines.extend(modal_wrapped_rows(
             content_width,
             "  Strategy: git merge --no-ff <base> into workspace branch",
-            Style::new().fg(theme.subtext0),
+            Style::new().fg(theme.subtext0).bg(theme.base),
         ));
         lines.push(FtLine::raw(""));
         lines.push(modal_actions_row(

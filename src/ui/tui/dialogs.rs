@@ -200,12 +200,7 @@ where
 pub(super) fn modal_wrapped_rows(content_width: usize, text: &str, style: Style) -> Vec<FtLine> {
     ftui::text::wrap_text(text, content_width, ftui::text::WrapMode::Word)
         .into_iter()
-        .map(|line| {
-            FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(line.as_str(), content_width),
-                style,
-            )])
-        })
+        .map(|line| FtLine::from_spans(vec![FtSpan::styled(line, style)]))
         .collect()
 }
 
@@ -214,7 +209,11 @@ pub(super) fn modal_wrapped_hint_rows(
     theme: UiTheme,
     text: &str,
 ) -> Vec<FtLine> {
-    modal_wrapped_rows(content_width, text, Style::new().fg(theme.overlay0))
+    modal_wrapped_rows(
+        content_width,
+        text,
+        Style::new().fg(theme.overlay0).bg(theme.base),
+    )
 }
 
 #[derive(Debug, Clone)]

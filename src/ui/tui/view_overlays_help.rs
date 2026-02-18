@@ -423,7 +423,7 @@ impl GroveApp {
         lines.extend(modal_wrapped_rows(
             content_width,
             "Close help: Esc, Enter, or ?",
-            Style::new().fg(theme.lavender).bold(),
+            Style::new().fg(theme.lavender).bg(theme.base).bold(),
         ));
 
         let content = OverlayModalContent {

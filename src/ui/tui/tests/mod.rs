@@ -2020,6 +2020,37 @@ fn launch_dialog_footer_hints_wrap_instead_of_truncating() {
 }
 
 #[test]
+fn create_dialog_wrapped_hint_rows_keep_hint_style() {
+    let mut app = fixture_app();
+    app.open_create_dialog();
+
+    with_rendered_frame(&app, 80, 24, |frame| {
+        let dialog_width = frame.width().saturating_sub(8).min(90);
+        let dialog_height = 23u16;
+        let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+        let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+        let x_start = dialog_x.saturating_add(1);
+        let x_end = dialog_x.saturating_add(dialog_width.saturating_sub(1));
+        let y_start = dialog_y.saturating_add(1);
+        let y_end = dialog_y.saturating_add(dialog_height.saturating_sub(1));
+
+        let Some(first_row) = (y_start..y_end)
+            .find(|&row| row_text(frame, row, x_start, x_end).contains("Tab/C-n next"))
+        else {
+            panic!("create dialog wrapped hint first row should be rendered");
+        };
+        let Some(second_row) = ((first_row.saturating_add(1))..y_end)
+            .find(|&row| row_text(frame, row, x_start, x_end).contains("unsafe, Enter create"))
+        else {
+            panic!("create dialog wrapped hint second row should be rendered");
+        };
+
+        assert_row_fg(frame, first_row, x_start, x_end, ui_theme().overlay0);
+        assert_row_fg(frame, second_row, x_start, x_end, ui_theme().overlay0);
+    });
+}
+
+#[test]
 fn status_row_shows_interactive_reserved_key_hints() {
     let mut app = fixture_app();
     app.interactive = Some(InteractiveState::new(
