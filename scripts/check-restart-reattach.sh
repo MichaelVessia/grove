@@ -82,8 +82,9 @@ fi
 repo_name="$(basename "${repo_root}")"
 worktree_dir="$(mktemp -d "${TMPDIR:-/tmp}/${repo_name}-reattach-XXXXXX")"
 git worktree add -q -b "${worktree_branch}" "${worktree_dir}" HEAD
-printf 'codex\n' >"${worktree_dir}/.grove-agent"
-printf '%s\n' "${base_branch}" >"${worktree_dir}/.grove-base"
+mkdir -p "${worktree_dir}/.grove"
+printf 'codex\n' >"${worktree_dir}/.grove/agent"
+printf '%s\n' "${base_branch}" >"${worktree_dir}/.grove/base"
 
 cargo build --quiet
 

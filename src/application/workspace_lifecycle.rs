@@ -7,15 +7,11 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const GROVE_AGENT_MARKER_FILE: &str = ".grove-agent";
-const GROVE_BASE_MARKER_FILE: &str = ".grove-base";
-const GROVE_SETUP_SCRIPT_FILE: &str = ".grove-setup.sh";
-const GROVE_GITIGNORE_ENTRIES: [&str; 4] = [
-    ".grove-agent",
-    ".grove-base",
-    ".grove-start.sh",
-    ".grove-setup.sh",
-];
+const GROVE_DIR: &str = ".grove";
+const GROVE_AGENT_MARKER_FILE: &str = ".grove/agent";
+const GROVE_BASE_MARKER_FILE: &str = ".grove/base";
+const GROVE_SETUP_SCRIPT_FILE: &str = ".grove/setup.sh";
+const GROVE_GITIGNORE_ENTRIES: [&str; 1] = [".grove/"];
 const ENV_FILES_TO_COPY: [&str; 4] = [
     ".env",
     ".env.local",
@@ -874,6 +870,7 @@ pub fn write_workspace_agent_marker(
     workspace_path: &Path,
     agent: AgentType,
 ) -> Result<(), WorkspaceLifecycleError> {
+    ensure_workspace_grove_dir(workspace_path)?;
     let agent_marker_path = workspace_path.join(GROVE_AGENT_MARKER_FILE);
     fs::write(
         agent_marker_path,
@@ -886,8 +883,14 @@ pub fn write_workspace_base_marker(
     workspace_path: &Path,
     base_branch: &str,
 ) -> Result<(), WorkspaceLifecycleError> {
+    ensure_workspace_grove_dir(workspace_path)?;
     let base_marker_path = workspace_path.join(GROVE_BASE_MARKER_FILE);
     fs::write(base_marker_path, format!("{base_branch}\n"))
+        .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))
+}
+
+fn ensure_workspace_grove_dir(workspace_path: &Path) -> Result<(), WorkspaceLifecycleError> {
+    fs::create_dir_all(workspace_path.join(GROVE_DIR))
         .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))
 }
 

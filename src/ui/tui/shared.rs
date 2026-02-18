@@ -3,7 +3,7 @@ use std::time::Instant;
 use ftui::PackedRgba;
 use ftui::core::geometry::Rect;
 
-pub(super) const WORKSPACE_LAUNCH_PROMPT_FILENAME: &str = ".grove-prompt";
+pub(super) const WORKSPACE_LAUNCH_PROMPT_FILENAME: &str = ".grove/prompt";
 pub(super) const HEADER_HEIGHT: u16 = 1;
 pub(super) const STATUS_HEIGHT: u16 = 1;
 pub(super) const DIVIDER_WIDTH: u16 = 1;

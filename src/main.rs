@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DEBUG_RECORD_DIR: &str = ".grove";
@@ -68,6 +68,30 @@ fn debug_record_path(app_start_ts: u64) -> std::io::Result<PathBuf> {
     }
 }
 
+fn resolve_event_log_path(path: PathBuf) -> PathBuf {
+    if path.is_absolute() {
+        return path;
+    }
+
+    let grove_dir = Path::new(DEBUG_RECORD_DIR);
+    if path.starts_with(grove_dir) {
+        return path;
+    }
+
+    grove_dir.join(path)
+}
+
+fn ensure_event_log_parent_directory(path: &Path) -> std::io::Result<()> {
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+    if parent.as_os_str().is_empty() {
+        return Ok(());
+    }
+
+    fs::create_dir_all(parent)
+}
+
 fn main() -> std::io::Result<()> {
     let cli = parse_cli_args(std::env::args().skip(1))?;
     let app_start_ts = now_millis();
@@ -79,7 +103,10 @@ fn main() -> std::io::Result<()> {
     if let Some(path) = debug_record_path.as_ref() {
         eprintln!("grove debug record: {}", path.display());
     }
-    let event_log_path = debug_record_path.or(cli.event_log_path);
+    let event_log_path = debug_record_path.or(cli.event_log_path.map(resolve_event_log_path));
+    if let Some(path) = event_log_path.as_ref() {
+        ensure_event_log_parent_directory(path)?;
+    }
 
     if cli.print_hello {
         if let Some(event_log_path) = event_log_path.as_ref() {

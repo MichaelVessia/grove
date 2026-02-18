@@ -579,7 +579,7 @@ fn launch_plan_with_prompt_writes_launcher_script() {
             "send-keys",
             "-t",
             "grove-ws-db_migration",
-            "bash /repos/grove-db_migration/.grove-start.sh",
+            "bash /repos/grove-db_migration/.grove/start.sh",
             "Enter"
         ]
     );
@@ -705,7 +705,7 @@ fn execute_stop_workspace_with_result_for_mode_includes_workspace_context() {
 #[test]
 fn execute_launch_plan_writes_launcher_script_and_executes_commands() {
     let temp_dir = unique_test_dir("execute-launch-plan");
-    let script_path = temp_dir.join(".grove-start.sh");
+    let script_path = temp_dir.join(".grove/start.sh");
     let launch_plan = LaunchPlan {
         session_name: "grove-ws-test".to_string(),
         pane_lookup_cmd: Vec::new(),
@@ -775,7 +775,7 @@ fn execute_launch_plan_with_executor_runs_prelaunch_then_launch() {
         ],
         launch_cmd: vec!["echo".to_string(), "launch".to_string()],
         launcher_script: Some(LauncherScript {
-            path: PathBuf::from("/tmp/.grove-start.sh"),
+            path: PathBuf::from("/tmp/.grove/start.sh"),
             contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
         }),
     };
@@ -825,14 +825,15 @@ fn execute_command_with_invokes_executor_for_non_empty_commands() {
 #[test]
 fn execute_launch_plan_with_prefixes_script_write_errors() {
     let temp_dir = unique_test_dir("execute-launch-plan-sync");
-    let missing_dir = temp_dir.join("missing");
+    let blocked_path = temp_dir.join("blocked");
+    fs::write(&blocked_path, "not a directory").expect("blocked path should be writable");
     let launch_plan = LaunchPlan {
         session_name: "grove-ws-test".to_string(),
         pane_lookup_cmd: Vec::new(),
         pre_launch_cmds: Vec::new(),
         launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
         launcher_script: Some(LauncherScript {
-            path: missing_dir.join(".grove-start.sh"),
+            path: blocked_path.join(".grove/start.sh"),
             contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
         }),
     };
@@ -846,14 +847,15 @@ fn execute_launch_plan_with_prefixes_script_write_errors() {
 #[test]
 fn execute_launch_plan_for_mode_delegating_prefixes_script_write_errors() {
     let temp_dir = unique_test_dir("execute-launch-plan-sync-mode");
-    let missing_dir = temp_dir.join("missing");
+    let blocked_path = temp_dir.join("blocked");
+    fs::write(&blocked_path, "not a directory").expect("blocked path should be writable");
     let launch_plan = LaunchPlan {
         session_name: "grove-ws-test".to_string(),
         pane_lookup_cmd: Vec::new(),
         pre_launch_cmds: Vec::new(),
         launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
         launcher_script: Some(LauncherScript {
-            path: missing_dir.join(".grove-start.sh"),
+            path: blocked_path.join(".grove/start.sh"),
             contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
         }),
     };
@@ -870,14 +872,15 @@ fn execute_launch_plan_for_mode_delegating_prefixes_script_write_errors() {
 #[test]
 fn execute_launch_plan_keeps_unprefixed_script_write_errors() {
     let temp_dir = unique_test_dir("execute-launch-plan");
-    let missing_dir = temp_dir.join("missing");
+    let blocked_path = temp_dir.join("blocked");
+    fs::write(&blocked_path, "not a directory").expect("blocked path should be writable");
     let launch_plan = LaunchPlan {
         session_name: "grove-ws-test".to_string(),
         pane_lookup_cmd: Vec::new(),
         pre_launch_cmds: Vec::new(),
         launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
         launcher_script: Some(LauncherScript {
-            path: missing_dir.join(".grove-start.sh"),
+            path: blocked_path.join(".grove/start.sh"),
             contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
         }),
     };

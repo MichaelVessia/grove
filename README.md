@@ -142,7 +142,7 @@ Inside Grove:
 ## CLI Flags
 
 - `--print-hello`, sanity check output path
-- `--event-log <path>`, write event log to explicit file
+- `--event-log <path>`, write event log to explicit file (`relative/path` is stored under `.grove/relative/path`)
 - `--debug-record`, write continuous debug record to
   `.grove/debug-record-*.jsonl`
 

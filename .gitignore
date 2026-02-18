@@ -1,12 +1,7 @@
 .reference/
 /target/
 .direnv/
-.grove-agent
 .grove/
-.grove-base
-.grove-start.sh
-.grove-setup.sh
-.grove-debug-snapshot.json
-.grove-sidebar-width
+.grove/debug-snapshot.json
 .sidecar/
 .lefthook-local.yml

@@ -1,4 +1,7 @@
-use super::{CliArgs, debug_record_path, parse_cli_args};
+use super::{
+    CliArgs, debug_record_path, ensure_event_log_parent_directory, parse_cli_args,
+    resolve_event_log_path,
+};
 use std::path::PathBuf;
 
 #[test]
@@ -49,4 +52,45 @@ fn debug_record_path_uses_grove_directory_and_timestamp_prefix() {
     assert!(path_text.contains(".grove/"));
     assert!(path_text.contains(&format!("debug-record-{app_start_ts}")));
     let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn resolve_event_log_path_places_relative_paths_under_grove_directory() {
+    assert_eq!(
+        resolve_event_log_path(PathBuf::from("events.jsonl")),
+        PathBuf::from(".grove/events.jsonl")
+    );
+}
+
+#[test]
+fn resolve_event_log_path_keeps_absolute_paths_unchanged() {
+    assert_eq!(
+        resolve_event_log_path(PathBuf::from("/tmp/events.jsonl")),
+        PathBuf::from("/tmp/events.jsonl")
+    );
+}
+
+#[test]
+fn resolve_event_log_path_keeps_grove_prefixed_relative_paths() {
+    assert_eq!(
+        resolve_event_log_path(PathBuf::from(".grove/custom/events.jsonl")),
+        PathBuf::from(".grove/custom/events.jsonl")
+    );
+}
+
+#[test]
+fn ensure_event_log_parent_directory_creates_missing_directories() {
+    let root = std::env::temp_dir().join(format!(
+        "grove-main-tests-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos()
+    ));
+    let path = root.join(".grove/nested/events.jsonl");
+
+    ensure_event_log_parent_directory(&path).expect("parent directory should be created");
+    assert!(root.join(".grove/nested").exists());
+
+    let _ = std::fs::remove_dir_all(root);
 }

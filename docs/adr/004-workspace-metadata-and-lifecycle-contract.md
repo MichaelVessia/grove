@@ -16,8 +16,8 @@ files for Grove metadata.
 
 - Discover workspaces from `git worktree list --porcelain`.
 - Persist Grove metadata in each worktree root:
-  - `.grove-agent`
-  - `.grove-base`
+  - `.grove/agent`
+  - `.grove/base`
 - Keep lifecycle actions (create/delete/recover) driven by this contract.
 
 ## Rationale

@@ -13,6 +13,7 @@ use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::config::MultiplexerKind;
 
 pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
+const GROVE_LAUNCHER_SCRIPT_PATH: &str = ".grove/start.sh";
 const WAITING_PATTERNS: [&str; 9] = [
     "[y/n]",
     "(y/n)",
@@ -510,7 +511,7 @@ fn tmux_launch_plan(
             launcher_script: None,
         },
         Some(prompt) => {
-            let launcher_path = request.workspace_path.join(".grove-start.sh");
+            let launcher_path = request.workspace_path.join(GROVE_LAUNCHER_SCRIPT_PATH);
             let launcher_contents =
                 build_launcher_script(&launch_agent_cmd, prompt, &launcher_path);
             LaunchPlan {
@@ -703,7 +704,7 @@ pub trait CommandExecutor {
     fn execute(&mut self, command: &[String]) -> std::io::Result<()>;
 
     fn write_launcher_script(&mut self, script: &LauncherScript) -> std::io::Result<()> {
-        fs::write(&script.path, &script.contents)
+        write_launcher_script_to_disk(script)
     }
 }
 
@@ -741,11 +742,18 @@ impl CommandExecutor for DelegatingCommandExecutor<'_> {
 
     fn write_launcher_script(&mut self, script: &LauncherScript) -> std::io::Result<()> {
         match self.script_write_error_prefix {
-            Some(prefix) => fs::write(&script.path, &script.contents)
+            Some(prefix) => write_launcher_script_to_disk(script)
                 .map_err(|error| std::io::Error::other(format!("{prefix}{error}"))),
-            None => fs::write(&script.path, &script.contents),
+            None => write_launcher_script_to_disk(script),
         }
     }
+}
+
+fn write_launcher_script_to_disk(script: &LauncherScript) -> std::io::Result<()> {
+    if let Some(parent) = script.path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&script.path, &script.contents)
 }
 
 pub fn execute_commands_with_executor(

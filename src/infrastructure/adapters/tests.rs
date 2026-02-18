@@ -150,9 +150,10 @@ fn build_workspaces_includes_main_and_only_marker_managed_worktrees() {
     fs::create_dir_all(&main_root).expect("main should exist");
     fs::create_dir_all(&managed).expect("managed should exist");
     fs::create_dir_all(&unmanaged).expect("unmanaged should exist");
+    fs::create_dir_all(managed.join(".grove")).expect(".grove should exist");
 
-    fs::write(managed.join(".grove-agent"), "codex\n").expect("agent marker should exist");
-    fs::write(managed.join(".grove-base"), "main\n").expect("base marker should exist");
+    fs::write(managed.join(".grove/agent"), "codex\n").expect("agent marker should exist");
+    fs::write(managed.join(".grove/base"), "main\n").expect("base marker should exist");
 
     let parsed = parse_worktree_porcelain(&format!(
             "worktree {}\nHEAD 1\nbranch refs/heads/main\n\nworktree {}\nHEAD 2\nbranch refs/heads/feature-a\n\nworktree {}\nHEAD 3\nbranch refs/heads/unmanaged\n",
@@ -189,9 +190,11 @@ fn build_workspaces_main_uses_agent_marker_when_present() {
 
     fs::create_dir_all(&main_root).expect("main should exist");
     fs::create_dir_all(&managed).expect("managed should exist");
-    fs::write(main_root.join(".grove-agent"), "codex\n").expect("main agent marker should exist");
-    fs::write(managed.join(".grove-agent"), "claude\n").expect("agent marker should exist");
-    fs::write(managed.join(".grove-base"), "main\n").expect("base marker should exist");
+    fs::create_dir_all(main_root.join(".grove")).expect(".grove should exist");
+    fs::create_dir_all(managed.join(".grove")).expect(".grove should exist");
+    fs::write(main_root.join(".grove/agent"), "codex\n").expect("main agent marker should exist");
+    fs::write(managed.join(".grove/agent"), "claude\n").expect("agent marker should exist");
+    fs::write(managed.join(".grove/base"), "main\n").expect("base marker should exist");
 
     let parsed = parse_worktree_porcelain(&format!(
             "worktree {}\nHEAD 1\nbranch refs/heads/main\n\nworktree {}\nHEAD 2\nbranch refs/heads/feature-a\n",

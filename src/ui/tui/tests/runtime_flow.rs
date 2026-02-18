@@ -1743,7 +1743,8 @@ fn unsafe_toggle_changes_launch_command_flags() {
 #[test]
 fn start_key_uses_workspace_prompt_file_launcher_script() {
     let workspace_dir = unique_temp_workspace_dir("prompt");
-    let prompt_path = workspace_dir.join(".grove-prompt");
+    let prompt_path = workspace_dir.join(".grove/prompt");
+    fs::create_dir_all(workspace_dir.join(".grove")).expect(".grove dir should be writable");
     fs::write(&prompt_path, "fix bug\nand add tests").expect("prompt file should be writable");
 
     let (mut app, commands, _captures, _cursor_captures) =
@@ -1768,12 +1769,12 @@ fn start_key_uses_workspace_prompt_file_launcher_script() {
             "send-keys".to_string(),
             "-t".to_string(),
             "grove-ws-feature-a".to_string(),
-            format!("bash {}/.grove-start.sh", workspace_dir.display()),
+            format!("bash {}/.grove/start.sh", workspace_dir.display()),
             "Enter".to_string(),
         ])
     );
 
-    let launcher_path = workspace_dir.join(".grove-start.sh");
+    let launcher_path = workspace_dir.join(".grove/start.sh");
     let launcher_script =
         fs::read_to_string(&launcher_path).expect("launcher script should be written");
     assert!(launcher_script.contains("fix bug"));
@@ -2050,13 +2051,13 @@ fn edit_dialog_save_updates_workspace_agent_base_branch_and_markers() {
         Some("develop")
     );
     assert_eq!(
-        fs::read_to_string(workspace_dir.join(".grove-agent"))
+        fs::read_to_string(workspace_dir.join(".grove/agent"))
             .expect("agent marker should be readable")
             .trim(),
         "claude"
     );
     assert_eq!(
-        fs::read_to_string(workspace_dir.join(".grove-base"))
+        fs::read_to_string(workspace_dir.join(".grove/base"))
             .expect("base marker should be readable")
             .trim(),
         "develop"

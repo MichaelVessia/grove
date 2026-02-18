@@ -81,8 +81,8 @@ Decisions made during spec review, with rationale.
   about uncommitted changes, and an optional "Delete local branch"
   checkbox (off by default). Matches sidecar's delete dialog.
 - **Gitignore management**: auto-add Grove marker files to `.gitignore`
-  on worktree creation. Entries: `.grove-agent`, `.grove-base`,
-  `.grove-start.sh`, `.grove-setup.sh` (matches sidecar's approach with
+  on worktree creation. Entries: `.grove/agent`, `.grove/base`,
+  `.grove/start.sh`, `.grove/setup.sh` (matches sidecar's approach with
   `.sidecar-*` files).
 - **Status bar**: context-dependent keybinding hints in list/preview mode,
   `-- INSERT --` in interactive mode. Hints change based on selected
@@ -102,7 +102,7 @@ Decisions made during spec review, with rationale.
   output timestamp). Main worktree pinned at top.
 - **No notifications/toasts**: errors and confirmations shown as flash
   messages in the status bar. No overlay toast system.
-- **Setup script**: `.grove-setup.sh` in the repo root runs on workspace
+- **Setup script**: `.grove/setup.sh` in the repo root runs on workspace
   creation (before agent launch). Runs once, not on restart or orphan
   recovery. Also auto-copies `.env` files from main worktree (matches
   sidecar).
@@ -185,22 +185,22 @@ Following sidecar's approach: per-worktree marker files, project-local.
 
 Each worktree directory gets marker files at its root:
 
-- `.grove-agent` -- agent type string (`"claude"`, `"codex"`)
-- `.grove-base` -- base branch the worktree was created from
+- `.grove/agent` -- agent type string (`"claude"`, `"codex"`)
+- `.grove/base` -- base branch the worktree was created from
 
 These are plain text, single-line files. Cheap to read, survive across
 restarts, and don't require a central manifest for worktree metadata.
 
 #### Setup Script
 
-A `.grove-setup.sh` file in the main repo root is executed on workspace
+A `.grove/setup.sh` file in the main repo root is executed on workspace
 creation, before the agent launches. This is for project-specific
 environment setup (e.g., `direnv allow`, `nvm use`, custom tool init).
 
 **Execution:**
 
-1. Check if `.grove-setup.sh` exists in the main repo root
-2. Run it in the new worktree directory: `bash /path/to/main/.grove-setup.sh`
+1. Check if `.grove/setup.sh` exists in the main repo root
+2. Run it in the new worktree directory: `bash /path/to/main/.grove/setup.sh`
 3. Environment variables provided:
    - `MAIN_WORKTREE`: path to main repo
    - `WORKTREE_BRANCH`: branch name
@@ -241,10 +241,10 @@ On worktree creation, ensure the repo's `.gitignore` contains entries
 for Grove marker files. Check for missing entries and append them:
 
 ```
-.grove-agent
-.grove-base
-.grove-start.sh
-.grove-setup.sh
+.grove/agent
+.grove/base
+.grove/start.sh
+.grove/setup.sh
 ```
 
 Only append entries that are not already present. Do not rewrite or
@@ -256,7 +256,7 @@ No central workspace list. On startup, discover workspaces by:
 
 1. Run `git worktree list --porcelain` to get all worktrees
 2. The main worktree is always included (marked `is_main = true`)
-3. For each non-main worktree, check if `.grove-agent` exists
+3. For each non-main worktree, check if `.grove/agent` exists
 4. If it does, this is a Grove-managed workspace. Read agent type and base
    branch from marker files.
    - If agent marker is not `claude` or `codex`, mark workspace as unsupported
@@ -283,10 +283,10 @@ prefixed with the repo name, and grouped by a repo hash bucket:
 
 1. List all git worktrees via `git worktree list --porcelain`
 2. Identify main worktree, add to list with `is_main = true`
-3. Filter remaining to those with `.grove-agent` marker
+3. Filter remaining to those with `.grove/agent` marker
 4. List all tmux sessions matching `grove-ws-*`
 5. Match sessions to worktrees by name
-6. **Orphaned worktree** (`.grove-agent` exists, no tmux session): mark
+6. **Orphaned worktree** (`.grove/agent` exists, no tmux session): mark
    `is_orphaned = true`. Enter on this workspace restarts the agent.
 7. **Orphaned session** (tmux exists, worktree directory gone): mark for
    cleanup
@@ -434,7 +434,7 @@ Where `agent_cmd` is `claude` or `codex`.
 
 #### With Prompt
 
-Write a launcher script to `{worktree_path}/.grove-start.sh`:
+Write a launcher script to `{worktree_path}/.grove/start.sh`:
 
 ```bash
 #!/bin/bash
@@ -949,10 +949,10 @@ Modal overlay with fields:
 1. If **Existing branch** is set: create worktree from that branch
    (no new branch created)
 2. Otherwise: create new branch from base branch and workspace name
-3. Write marker files (`.grove-agent`, `.grove-base`)
+3. Write marker files (`.grove/agent`, `.grove/base`)
 4. Update `.gitignore`
 5. Copy `.env` files from main worktree
-6. Run `.grove-setup.sh` if it exists
+6. Run `.grove/setup.sh` if it exists
 7. Create tmux session
 8. Launch agent with optional prompt
 
@@ -2481,7 +2481,7 @@ fn local_branch_exists(repo_root: &Path, branch: &str) -> bool {
 
 pub fn ensure_gitignore(repo_root: &Path) -> Result<(), io::Error> {
     let gitignore_path = repo_root.join(".gitignore");
-    let entries = [".grove-agent", ".grove-base", ".grove-start.sh", ".grove-setup.sh"];
+    let entries = [".grove/agent", ".grove/base", ".grove/start.sh", ".grove/setup.sh"];
 
     let existing = fs::read_to_string(&gitignore_path).unwrap_or_default();
     let missing: Vec<&&str> = entries.iter()
@@ -2557,7 +2557,7 @@ scope for this PRD.
 2. Verify git repo (exit with error if not)
 3. Verify tmux available (exit with error if not)
 4. Discover workspaces: `git worktree list --porcelain`, filter by
-   `.grove-agent` marker. Include main worktree as `is_main`.
+   `.grove/agent` marker. Include main worktree as `is_main`.
 5. Discover live sessions: `tmux list-sessions`, filter `grove-ws-*`
 6. Reconcile: match sessions to worktrees, flag orphans/missing
 7. If current cwd is missing (deleted worktree), resolve and switch to the
@@ -2579,7 +2579,7 @@ scope for this PRD.
 
 ## Edge Cases
 
-- **Orphaned worktrees**: `.grove-agent` exists but tmux session is gone.
+- **Orphaned worktrees**: `.grove/agent` exists but tmux session is gone.
   Mark `is_orphaned`. Enter on this workspace auto-restarts the agent.
 - **Orphaned sessions**: tmux session exists but worktree directory gone.
   Show warning indicator, allow cleanup.

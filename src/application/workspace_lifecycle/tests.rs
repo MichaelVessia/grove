@@ -189,13 +189,13 @@ fn create_workspace_new_branch_sequences_git_markers_gitignore_and_env_copy() {
     );
 
     assert_eq!(
-        fs::read_to_string(result.workspace_path.join(".grove-agent"))
+        fs::read_to_string(result.workspace_path.join(".grove/agent"))
             .expect("agent marker should be readable")
             .trim(),
         "claude"
     );
     assert_eq!(
-        fs::read_to_string(result.workspace_path.join(".grove-base"))
+        fs::read_to_string(result.workspace_path.join(".grove/base"))
             .expect("base marker should be readable")
             .trim(),
         "main"
@@ -212,10 +212,7 @@ fn create_workspace_new_branch_sequences_git_markers_gitignore_and_env_copy() {
 
     let gitignore =
         fs::read_to_string(repo_root.join(".gitignore")).expect(".gitignore should exist");
-    assert!(gitignore.contains(".grove-agent"));
-    assert!(gitignore.contains(".grove-base"));
-    assert!(gitignore.contains(".grove-start.sh"));
-    assert!(gitignore.contains(".grove-setup.sh"));
+    assert!(gitignore.contains(".grove/"));
 }
 
 #[test]
@@ -249,13 +246,13 @@ fn create_workspace_existing_branch_uses_attach_command_and_marker_branch() {
         ]]
     );
     assert_eq!(
-        fs::read_to_string(result.workspace_path.join(".grove-base"))
+        fs::read_to_string(result.workspace_path.join(".grove/base"))
             .expect("base marker should be readable")
             .trim(),
         "feature/auth.v2"
     );
     assert_eq!(
-        fs::read_to_string(result.workspace_path.join(".grove-agent"))
+        fs::read_to_string(result.workspace_path.join(".grove/agent"))
             .expect("agent marker should be readable")
             .trim(),
         "codex"
@@ -267,8 +264,9 @@ fn create_workspace_setup_script_failure_is_warning_not_failure() {
     let temp = TestDir::new("setup-warning");
     let repo_root = temp.path.join("grove");
     fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    fs::create_dir_all(repo_root.join(".grove")).expect(".grove dir should exist");
     fs::write(
-        repo_root.join(".grove-setup.sh"),
+        repo_root.join(".grove/setup.sh"),
         "#!/usr/bin/env bash\nexit 1\n",
     )
     .expect("setup script should exist");
@@ -303,8 +301,9 @@ fn create_workspace_template_commands_run_after_setup_script() {
     let temp = TestDir::new("template-order");
     let repo_root = temp.path.join("grove");
     fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    fs::create_dir_all(repo_root.join(".grove")).expect(".grove dir should exist");
     fs::write(
-        repo_root.join(".grove-setup.sh"),
+        repo_root.join(".grove/setup.sh"),
         "#!/usr/bin/env bash\nexit 0\n",
     )
     .expect("setup script should exist");
@@ -388,7 +387,7 @@ fn ensure_gitignore_entries_is_idempotent() {
     let temp = TestDir::new("gitignore");
     let repo_root = temp.path.join("grove");
     fs::create_dir_all(&repo_root).expect("repo dir should exist");
-    fs::write(repo_root.join(".gitignore"), ".grove-agent\n/target/\n")
+    fs::write(repo_root.join(".gitignore"), ".grove/agent\n/target/\n")
         .expect(".gitignore should be writable");
 
     ensure_grove_gitignore_entries(&repo_root).expect("first ensure should succeed");
@@ -396,10 +395,7 @@ fn ensure_gitignore_entries_is_idempotent() {
 
     let gitignore =
         fs::read_to_string(repo_root.join(".gitignore")).expect(".gitignore should exist");
-    assert_eq!(count_line(&gitignore, ".grove-agent"), 1);
-    assert_eq!(count_line(&gitignore, ".grove-base"), 1);
-    assert_eq!(count_line(&gitignore, ".grove-start.sh"), 1);
-    assert_eq!(count_line(&gitignore, ".grove-setup.sh"), 1);
+    assert_eq!(count_line(&gitignore, ".grove/"), 1);
 }
 
 #[test]
@@ -435,10 +431,11 @@ fn read_workspace_markers_validates_marker_content() {
     let temp = TestDir::new("markers");
     let workspace = temp.path.join("grove-feature-z");
     fs::create_dir_all(&workspace).expect("workspace should exist");
+    fs::create_dir_all(workspace.join(".grove")).expect(".grove should exist");
 
-    fs::write(workspace.join(".grove-agent"), "unknown\n")
+    fs::write(workspace.join(".grove/agent"), "unknown\n")
         .expect("agent marker should be writable");
-    fs::write(workspace.join(".grove-base"), "main\n").expect("base marker should be writable");
+    fs::write(workspace.join(".grove/base"), "main\n").expect("base marker should be writable");
 
     assert_eq!(
         read_workspace_markers(&workspace),
@@ -453,7 +450,8 @@ fn read_workspace_agent_marker_reads_valid_marker() {
     let temp = TestDir::new("agent-marker-read");
     let workspace = temp.path.join("grove-feature-z");
     fs::create_dir_all(&workspace).expect("workspace should exist");
-    fs::write(workspace.join(".grove-agent"), "codex\n").expect("marker should be writable");
+    fs::create_dir_all(workspace.join(".grove")).expect(".grove should exist");
+    fs::write(workspace.join(".grove/agent"), "codex\n").expect("marker should be writable");
 
     let marker = read_workspace_agent_marker(&workspace).expect("marker should be readable");
     assert_eq!(marker, AgentType::Codex);
@@ -467,7 +465,7 @@ fn write_workspace_agent_marker_writes_expected_value() {
 
     write_workspace_agent_marker(&workspace, AgentType::Claude).expect("write should succeed");
     assert_eq!(
-        fs::read_to_string(workspace.join(".grove-agent"))
+        fs::read_to_string(workspace.join(".grove/agent"))
             .expect("marker should be readable")
             .trim(),
         "claude"
@@ -475,7 +473,7 @@ fn write_workspace_agent_marker_writes_expected_value() {
 
     write_workspace_agent_marker(&workspace, AgentType::Codex).expect("write should succeed");
     assert_eq!(
-        fs::read_to_string(workspace.join(".grove-agent"))
+        fs::read_to_string(workspace.join(".grove/agent"))
             .expect("marker should be readable")
             .trim(),
         "codex"
@@ -490,7 +488,7 @@ fn write_workspace_base_marker_writes_expected_value() {
 
     write_workspace_base_marker(&workspace, "main").expect("write should succeed");
     assert_eq!(
-        fs::read_to_string(workspace.join(".grove-base"))
+        fs::read_to_string(workspace.join(".grove/base"))
             .expect("marker should be readable")
             .trim(),
         "main"
@@ -498,7 +496,7 @@ fn write_workspace_base_marker_writes_expected_value() {
 
     write_workspace_base_marker(&workspace, "develop").expect("write should succeed");
     assert_eq!(
-        fs::read_to_string(workspace.join(".grove-base"))
+        fs::read_to_string(workspace.join(".grove/base"))
             .expect("marker should be readable")
             .trim(),
         "develop"
