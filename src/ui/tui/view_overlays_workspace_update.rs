@@ -91,24 +91,18 @@ impl GroveApp {
             "Tab/C-n next, S-Tab/C-p prev, h/l switch buttons, Enter or u update, Esc cancel",
         ));
         let body = FtText::from_lines(lines);
-
-        let content = OverlayModalContent {
-            title,
+        render_modal_dialog(
+            frame,
+            area,
             body,
-            theme,
-            border_color: theme.teal,
-        };
-
-        Modal::new(content)
-            .size(
-                ModalSizeConstraints::new()
-                    .min_width(dialog_width)
-                    .max_width(dialog_width)
-                    .min_height(dialog_height)
-                    .max_height(dialog_height),
-            )
-            .backdrop(BackdropConfig::new(theme.crust, 0.55))
-            .hit_id(HitId::new(HIT_ID_UPDATE_FROM_BASE_DIALOG))
-            .render(area, frame);
+            ModalDialogSpec {
+                dialog_width,
+                dialog_height,
+                title,
+                theme,
+                border_color: theme.teal,
+                hit_id: HIT_ID_UPDATE_FROM_BASE_DIALOG,
+            },
+        );
     }
 }

@@ -110,24 +110,18 @@ impl GroveApp {
             "Tab/C-n next, S-Tab/C-p prev, Space toggle cleanup, Enter or m merge, Esc cancel",
         ));
         let body = FtText::from_lines(lines);
-
-        let content = OverlayModalContent {
-            title: "Merge Workspace?",
+        render_modal_dialog(
+            frame,
+            area,
             body,
-            theme,
-            border_color: theme.peach,
-        };
-
-        Modal::new(content)
-            .size(
-                ModalSizeConstraints::new()
-                    .min_width(dialog_width)
-                    .max_width(dialog_width)
-                    .min_height(dialog_height)
-                    .max_height(dialog_height),
-            )
-            .backdrop(BackdropConfig::new(theme.crust, 0.55))
-            .hit_id(HitId::new(HIT_ID_MERGE_DIALOG))
-            .render(area, frame);
+            ModalDialogSpec {
+                dialog_width,
+                dialog_height,
+                title: "Merge Workspace?",
+                theme,
+                border_color: theme.peach,
+                hit_id: HIT_ID_MERGE_DIALOG,
+            },
+        );
     }
 }

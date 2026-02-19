@@ -216,6 +216,42 @@ pub(super) fn modal_wrapped_hint_rows(
     )
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ModalDialogSpec<'a> {
+    pub(super) dialog_width: u16,
+    pub(super) dialog_height: u16,
+    pub(super) title: &'a str,
+    pub(super) theme: UiTheme,
+    pub(super) border_color: PackedRgba,
+    pub(super) hit_id: u32,
+}
+
+pub(super) fn render_modal_dialog(
+    frame: &mut Frame,
+    area: Rect,
+    body: FtText,
+    spec: ModalDialogSpec<'_>,
+) {
+    let content = OverlayModalContent {
+        title: spec.title,
+        body,
+        theme: spec.theme,
+        border_color: spec.border_color,
+    };
+
+    Modal::new(content)
+        .size(
+            ModalSizeConstraints::new()
+                .min_width(spec.dialog_width)
+                .max_width(spec.dialog_width)
+                .min_height(spec.dialog_height)
+                .max_height(spec.dialog_height),
+        )
+        .backdrop(BackdropConfig::new(spec.theme.crust, 0.55))
+        .hit_id(HitId::new(spec.hit_id))
+        .render(area, frame);
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct OverlayModalContent<'a> {
     pub(super) title: &'a str,

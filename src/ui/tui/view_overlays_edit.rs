@@ -100,24 +100,18 @@ impl GroveApp {
         ));
         lines.extend(modal_wrapped_hint_rows(content_width, theme, edit_hint));
         let body = FtText::from_lines(lines);
-
-        let content = OverlayModalContent {
-            title: "Edit Workspace",
+        render_modal_dialog(
+            frame,
+            area,
             body,
-            theme,
-            border_color: theme.teal,
-        };
-
-        Modal::new(content)
-            .size(
-                ModalSizeConstraints::new()
-                    .min_width(dialog_width)
-                    .max_width(dialog_width)
-                    .min_height(dialog_height)
-                    .max_height(dialog_height),
-            )
-            .backdrop(BackdropConfig::new(theme.crust, 0.55))
-            .hit_id(HitId::new(HIT_ID_EDIT_DIALOG))
-            .render(area, frame);
+            ModalDialogSpec {
+                dialog_width,
+                dialog_height,
+                title: "Edit Workspace",
+                theme,
+                border_color: theme.teal,
+                hit_id: HIT_ID_EDIT_DIALOG,
+            },
+        );
     }
 }

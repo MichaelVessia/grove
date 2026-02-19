@@ -206,23 +206,19 @@ impl GroveApp {
             theme,
             "Tab/C-n next, S-Tab/C-p prev, j/k adjust project/branch, Space toggles auto-run or unsafe, Enter create, Esc cancel",
         ));
-        let content = OverlayModalContent {
-            title: "New Workspace",
-            body: FtText::from_lines(lines),
-            theme,
-            border_color: theme.mauve,
-        };
-
-        Modal::new(content)
-            .size(
-                ModalSizeConstraints::new()
-                    .min_width(dialog_width)
-                    .max_width(dialog_width)
-                    .min_height(dialog_height)
-                    .max_height(dialog_height),
-            )
-            .backdrop(BackdropConfig::new(theme.crust, 0.55))
-            .hit_id(HitId::new(HIT_ID_CREATE_DIALOG))
-            .render(area, frame);
+        let body = FtText::from_lines(lines);
+        render_modal_dialog(
+            frame,
+            area,
+            body,
+            ModalDialogSpec {
+                dialog_width,
+                dialog_height,
+                title: "New Workspace",
+                theme,
+                border_color: theme.mauve,
+                hit_id: HIT_ID_CREATE_DIALOG,
+            },
+        );
     }
 }

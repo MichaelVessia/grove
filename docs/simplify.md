@@ -52,13 +52,13 @@ The app struct carries 8 `Option<XDialogState>` fields but only one can be open 
 
 Six dialog render files follow identical structure. The final ~15 lines of each differ only by `dialog_width`, `dialog_height`, `title`, `border_color`, and `HIT_ID`.
 
-- [ ] Extract `render_modal_dialog(frame, area, body, width, height, title, border_color, hit_id)` helper
-- [ ] Refactor `view_overlays_workspace_launch.rs`
-- [ ] Refactor `view_overlays_workspace_delete.rs`
-- [ ] Refactor `view_overlays_workspace_merge.rs`
-- [ ] Refactor `view_overlays_workspace_update.rs`
-- [ ] Refactor `view_overlays_edit.rs`
-- [ ] Refactor `view_overlays_create.rs`
+- [x] Extract `render_modal_dialog(frame, area, body, width, height, title, border_color, hit_id)` helper
+- [x] Refactor `view_overlays_workspace_launch.rs`
+- [x] Refactor `view_overlays_workspace_delete.rs`
+- [x] Refactor `view_overlays_workspace_merge.rs`
+- [x] Refactor `view_overlays_workspace_update.rs`
+- [x] Refactor `view_overlays_edit.rs`
+- [x] Refactor `view_overlays_create.rs`
 
 ## 7. Verbose logging boilerplate
 
