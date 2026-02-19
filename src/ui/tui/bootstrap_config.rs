@@ -55,17 +55,13 @@ pub(super) fn project_display_name(path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
-pub(super) fn project_paths_equal(left: &Path, right: &Path) -> bool {
-    refer_to_same_location(left, right)
-}
-
 fn ensure_current_repo_project(config: &mut GroveConfig, config_path: &Path) -> Option<String> {
     let repo_root = current_repo_root()?;
 
     let already_present = config
         .projects
         .iter()
-        .any(|project| project_paths_equal(&project.path, &repo_root));
+        .any(|project| refer_to_same_location(&project.path, &repo_root));
     if already_present {
         return None;
     }

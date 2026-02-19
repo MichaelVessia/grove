@@ -75,11 +75,11 @@ use ansi::ansi_line_to_styled_line;
 mod bootstrap_app;
 mod bootstrap_config;
 mod bootstrap_discovery;
+use crate::infrastructure::paths::refer_to_same_location;
 #[cfg(test)]
 use bootstrap_config::AppDependencies;
 use bootstrap_config::{
-    filter_branches, load_local_branches, project_display_name, project_paths_equal,
-    read_workspace_launch_prompt,
+    filter_branches, load_local_branches, project_display_name, read_workspace_launch_prompt,
 };
 use bootstrap_discovery::bootstrap_data_for_projects;
 mod terminal;

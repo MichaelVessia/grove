@@ -69,7 +69,7 @@ impl GroveApp {
                         && workspace
                             .project_path
                             .as_ref()
-                            .is_some_and(|path| project_paths_equal(path, &project.path))
+                            .is_some_and(|path| refer_to_same_location(path, &project.path))
                 })
         {
             self.select_workspace_by_index(workspace_index);
@@ -85,7 +85,7 @@ impl GroveApp {
                     workspace
                         .project_path
                         .as_ref()
-                        .is_some_and(|path| project_paths_equal(path, &project.path))
+                        .is_some_and(|path| refer_to_same_location(path, &project.path))
                 })
         {
             self.select_workspace_by_index(workspace_index);

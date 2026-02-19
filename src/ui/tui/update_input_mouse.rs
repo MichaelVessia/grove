@@ -100,7 +100,7 @@ impl GroveApp {
                     workspace
                         .project_path
                         .as_ref()
-                        .is_some_and(|path| project_paths_equal(path, &project.path))
+                        .is_some_and(|path| refer_to_same_location(path, &project.path))
                 })
                 .map(|(index, _)| index)
                 .collect();

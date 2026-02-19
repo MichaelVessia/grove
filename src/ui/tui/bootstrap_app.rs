@@ -8,11 +8,11 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-#[cfg(test)]
-use super::bootstrap_config::project_paths_equal;
 use super::bootstrap_config::{AppDependencies, load_runtime_config, load_sidebar_width_pct};
 use super::bootstrap_discovery::bootstrap_data_for_projects;
 use super::*;
+#[cfg(test)]
+use crate::infrastructure::paths::refer_to_same_location;
 
 impl GroveApp {
     pub(super) fn new(event_log: Box<dyn EventLogger>, debug_record_start_ts: Option<u64>) -> Self {
@@ -47,7 +47,7 @@ impl GroveApp {
             });
 
             if projects.iter().any(|project: &ProjectConfig| {
-                project.name == project_name || project_paths_equal(&project.path, project_path)
+                project.name == project_name || refer_to_same_location(&project.path, project_path)
             }) {
                 continue;
             }

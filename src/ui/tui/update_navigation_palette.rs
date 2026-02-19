@@ -128,7 +128,7 @@ impl GroveApp {
                             .as_ref()
                             .is_some_and(|workspace_path| {
                                 self.projects.iter().any(|project| {
-                                    project_paths_equal(&project.path, workspace_path)
+                                    refer_to_same_location(&project.path, workspace_path)
                                 })
                             })
                     })

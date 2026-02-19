@@ -63,7 +63,7 @@ impl GroveApp {
         let Some(project_index) = self
             .projects
             .iter()
-            .position(|project| project_paths_equal(&project.path, project_path))
+            .position(|project| refer_to_same_location(&project.path, project_path))
         else {
             self.show_toast("selected project not found", true);
             return;
@@ -178,7 +178,7 @@ impl GroveApp {
         if self
             .projects
             .iter()
-            .any(|project| project_paths_equal(&project.path, &repo_root))
+            .any(|project| refer_to_same_location(&project.path, &repo_root))
         {
             self.show_toast("project already exists", true);
             return;

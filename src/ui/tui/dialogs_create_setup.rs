@@ -29,7 +29,7 @@ impl GroveApp {
         };
         self.projects
             .iter()
-            .position(|project| project_paths_equal(&project.path, workspace_project_path))
+            .position(|project| refer_to_same_location(&project.path, workspace_project_path))
             .unwrap_or(0)
     }
 
