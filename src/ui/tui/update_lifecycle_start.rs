@@ -98,9 +98,7 @@ impl GroveApp {
                 ("workspace".to_string(), Value::from(workspace_name)),
                 (
                     "prompt_len".to_string(),
-                    Value::from(
-                        u64::try_from(dialog.start_config.prompt.len()).unwrap_or(u64::MAX),
-                    ),
+                    Value::from(usize_to_u64(dialog.start_config.prompt.len())),
                 ),
                 (
                     "skip_permissions".to_string(),
@@ -108,10 +106,7 @@ impl GroveApp {
                 ),
                 (
                     "pre_launch_len".to_string(),
-                    Value::from(
-                        u64::try_from(dialog.start_config.pre_launch_command.len())
-                            .unwrap_or(u64::MAX),
-                    ),
+                    Value::from(usize_to_u64(dialog.start_config.pre_launch_command.len())),
                 ),
             ],
         );

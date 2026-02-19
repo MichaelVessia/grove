@@ -58,10 +58,7 @@ impl GroveApp {
                             "total_ms",
                             Value::from(base_total_ms.saturating_add(apply_capture_ms)),
                         )
-                        .with_data(
-                            "output_bytes",
-                            Value::from(u64::try_from(output.len()).unwrap_or(u64::MAX)),
-                        )
+                        .with_data("output_bytes", Value::from(usize_to_u64(output.len())))
                         .with_data("changed", Value::from(update.changed_cleaned))
                         .with_data(
                             "include_escape_sequences",
@@ -69,7 +66,7 @@ impl GroveApp {
                         ),
                 );
                 if update.changed_cleaned {
-                    let line_count = u64::try_from(self.preview.lines.len()).unwrap_or(u64::MAX);
+                    let line_count = usize_to_u64(self.preview.lines.len());
                     let now = Instant::now();
                     let mut output_event = LogEvent::new("preview_update", "output_changed")
                         .with_data("line_count", Value::from(line_count))
@@ -88,8 +85,7 @@ impl GroveApp {
                         let newest_tmux_to_preview_ms = Self::duration_millis(
                             now.saturating_duration_since(last_input.forwarded_at),
                         );
-                        let consumed_count =
-                            u64::try_from(consumed_inputs.len()).unwrap_or(u64::MAX);
+                        let consumed_count = usize_to_u64(consumed_inputs.len());
                         let consumed_seq_first = first_input.seq;
                         let consumed_seq_last = last_input.seq;
 

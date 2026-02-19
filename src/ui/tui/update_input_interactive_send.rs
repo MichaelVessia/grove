@@ -77,9 +77,7 @@ impl GroveApp {
                 ("tmux_send_ms".to_string(), Value::from(tmux_send_ms)),
                 (
                     "queue_depth".to_string(),
-                    Value::from(
-                        u64::try_from(self.pending_interactive_inputs.len()).unwrap_or(u64::MAX),
-                    ),
+                    Value::from(usize_to_u64(self.pending_interactive_inputs.len())),
                 ),
             ];
             if let Some(literal_chars) = literal_chars {
@@ -117,7 +115,7 @@ impl GroveApp {
         };
 
         let literal_chars = if let InteractiveAction::SendLiteral(text) = action {
-            Some(u64::try_from(text.chars().count()).unwrap_or(u64::MAX))
+            Some(usize_to_u64(text.chars().count()))
         } else {
             None
         };
@@ -159,10 +157,7 @@ impl GroveApp {
                         ("tmux_send_ms".to_string(), Value::from(send_duration_ms)),
                         (
                             "queue_depth".to_string(),
-                            Value::from(
-                                u64::try_from(self.pending_interactive_inputs.len())
-                                    .unwrap_or(u64::MAX),
-                            ),
+                            Value::from(usize_to_u64(self.pending_interactive_inputs.len())),
                         ),
                     ];
                     if let Some(literal_chars) = literal_chars {

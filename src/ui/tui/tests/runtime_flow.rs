@@ -5305,9 +5305,7 @@ fn interactive_drag_mapping_uses_rendered_frame_size_without_resize_message() {
     let expected_line = expected_visible_start.saturating_add(output_row);
     assert_eq!(
         started.data.get("line"),
-        Some(&Value::from(
-            u64::try_from(expected_line).unwrap_or(u64::MAX)
-        ))
+        Some(&Value::from(usize_to_u64(expected_line)))
     );
 }
 

@@ -9,7 +9,7 @@ impl GroveApp {
         let old_auto_scroll = self.preview.auto_scroll;
         let changed = self.preview.scroll(delta, Instant::now(), viewport_height);
         if changed {
-            let offset = u64::try_from(self.preview.offset).unwrap_or(u64::MAX);
+            let offset = usize_to_u64(self.preview.offset);
             self.event_log.log(
                 LogEvent::new("preview_update", "scrolled")
                     .with_data("delta", Value::from(i64::from(delta)))
@@ -20,14 +20,8 @@ impl GroveApp {
             self.event_log.log(
                 LogEvent::new("preview_update", "autoscroll_toggled")
                     .with_data("enabled", Value::from(self.preview.auto_scroll))
-                    .with_data(
-                        "offset",
-                        Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
-                    )
-                    .with_data(
-                        "previous_offset",
-                        Value::from(u64::try_from(old_offset).unwrap_or(u64::MAX)),
-                    ),
+                    .with_data("offset", Value::from(usize_to_u64(self.preview.offset)))
+                    .with_data("previous_offset", Value::from(usize_to_u64(old_offset))),
             );
         }
     }
@@ -40,24 +34,15 @@ impl GroveApp {
             self.event_log.log(
                 LogEvent::new("preview_update", "scrolled")
                     .with_data("delta", Value::from("jump_bottom"))
-                    .with_data(
-                        "offset",
-                        Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
-                    )
-                    .with_data(
-                        "previous_offset",
-                        Value::from(u64::try_from(old_offset).unwrap_or(u64::MAX)),
-                    ),
+                    .with_data("offset", Value::from(usize_to_u64(self.preview.offset)))
+                    .with_data("previous_offset", Value::from(usize_to_u64(old_offset))),
             );
         }
         if old_auto_scroll != self.preview.auto_scroll {
             self.event_log.log(
                 LogEvent::new("preview_update", "autoscroll_toggled")
                     .with_data("enabled", Value::from(self.preview.auto_scroll))
-                    .with_data(
-                        "offset",
-                        Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
-                    ),
+                    .with_data("offset", Value::from(usize_to_u64(self.preview.offset))),
             );
         }
     }

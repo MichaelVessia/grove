@@ -158,13 +158,10 @@ impl GroveApp {
         self.event_log.log(
             LogEvent::new("selection", "interactive_copy_payload")
                 .with_data("from_selection", Value::from(copied_from_selection))
-                .with_data(
-                    "line_count",
-                    Value::from(u64::try_from(lines.len()).unwrap_or(u64::MAX)),
-                )
+                .with_data("line_count", Value::from(usize_to_u64(lines.len())))
                 .with_data(
                     "char_count",
-                    Value::from(u64::try_from(text.chars().count()).unwrap_or(u64::MAX)),
+                    Value::from(usize_to_u64(text.chars().count())),
                 )
                 .with_data("preview", Value::from(truncate_for_log(&text, 240))),
         );

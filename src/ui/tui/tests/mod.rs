@@ -20,7 +20,7 @@ use super::{
     StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
     TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
     WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, ansi_16_color,
-    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
+    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme, usize_to_u64,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;

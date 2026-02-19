@@ -142,7 +142,7 @@ impl GroveApp {
                 ("workspace".to_string(), Value::from(workspace.name.clone())),
                 (
                     "prompt_len".to_string(),
-                    Value::from(u64::try_from(prompt.len()).unwrap_or(u64::MAX)),
+                    Value::from(usize_to_u64(prompt.len())),
                 ),
                 (
                     "skip_permissions".to_string(),

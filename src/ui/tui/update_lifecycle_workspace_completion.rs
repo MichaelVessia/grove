@@ -85,9 +85,7 @@ impl GroveApp {
                         .with_data("workspace", Value::from(completion.workspace_name.clone()))
                         .with_data(
                             "warning_count",
-                            Value::from(
-                                u64::try_from(completion.warnings.len()).unwrap_or(u64::MAX),
-                            ),
+                            Value::from(usize_to_u64(completion.warnings.len())),
                         ),
                 );
                 self.last_tmux_error = None;
@@ -141,9 +139,7 @@ impl GroveApp {
                         )
                         .with_data(
                             "warning_count",
-                            Value::from(
-                                u64::try_from(completion.warnings.len()).unwrap_or(u64::MAX),
-                            ),
+                            Value::from(usize_to_u64(completion.warnings.len())),
                         ),
                 );
                 self.last_tmux_error = None;
@@ -203,9 +199,7 @@ impl GroveApp {
                         )
                         .with_data(
                             "warning_count",
-                            Value::from(
-                                u64::try_from(completion.warnings.len()).unwrap_or(u64::MAX),
-                            ),
+                            Value::from(usize_to_u64(completion.warnings.len())),
                         ),
                 );
                 self.last_tmux_error = None;

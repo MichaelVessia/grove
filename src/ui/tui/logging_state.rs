@@ -104,7 +104,7 @@ impl GroveApp {
     pub(super) fn emit_transition_events(&mut self, before: &TransitionSnapshot) {
         let after = self.capture_transition_snapshot();
         if after.selected_index != before.selected_index {
-            let selection_index = u64::try_from(after.selected_index).unwrap_or(u64::MAX);
+            let selection_index = usize_to_u64(after.selected_index);
             let workspace_value = after
                 .selected_workspace
                 .clone()
@@ -164,10 +164,9 @@ impl GroveApp {
                             ("session".to_string(), Value::from(session.clone())),
                             (
                                 "cleared".to_string(),
-                                Value::from(
-                                    u64::try_from(pending_before.saturating_sub(pending_after))
-                                        .unwrap_or(u64::MAX),
-                                ),
+                                Value::from(usize_to_u64(
+                                    pending_before.saturating_sub(pending_after),
+                                )),
                             ),
                         ],
                     );

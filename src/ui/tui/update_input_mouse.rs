@@ -169,14 +169,8 @@ impl GroveApp {
             && let Some(point) = self.preview_text_point_at(mouse_event.x, mouse_event.y)
         {
             event = event
-                .with_data(
-                    "mapped_line",
-                    Value::from(u64::try_from(point.line).unwrap_or(u64::MAX)),
-                )
-                .with_data(
-                    "mapped_col",
-                    Value::from(u64::try_from(point.col).unwrap_or(u64::MAX)),
-                );
+                .with_data("mapped_line", Value::from(usize_to_u64(point.line)))
+                .with_data("mapped_col", Value::from(usize_to_u64(point.col)));
             event = self.add_selection_point_snapshot_fields(event, "mapped_", point);
         }
         self.event_log.log(event);

@@ -74,11 +74,11 @@ impl GroveApp {
             ("height".to_string(), Value::from(frame.buffer.height())),
             (
                 "line_count".to_string(),
-                Value::from(u64::try_from(lines.len()).unwrap_or(u64::MAX)),
+                Value::from(usize_to_u64(lines.len())),
             ),
             (
                 "non_empty_line_count".to_string(),
-                Value::from(u64::try_from(non_empty_line_count).unwrap_or(u64::MAX)),
+                Value::from(usize_to_u64(non_empty_line_count)),
             ),
             ("frame_hash".to_string(), Value::from(frame_hash)),
             (
@@ -101,7 +101,7 @@ impl GroveApp {
             ),
             (
                 "preview_offset".to_string(),
-                Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
+                Value::from(usize_to_u64(self.preview.offset)),
             ),
             (
                 "preview_auto_scroll".to_string(),
@@ -178,11 +178,11 @@ impl GroveApp {
             if let Some((visible_index, target_col, target_visible)) = cursor_target {
                 frame_fields.push((
                     "interactive_cursor_visible_index".to_string(),
-                    Value::from(u64::try_from(visible_index).unwrap_or(u64::MAX)),
+                    Value::from(usize_to_u64(visible_index)),
                 ));
                 frame_fields.push((
                     "interactive_cursor_target_col".to_string(),
-                    Value::from(u64::try_from(target_col).unwrap_or(u64::MAX)),
+                    Value::from(usize_to_u64(target_col)),
                 ));
                 frame_fields.push((
                     "interactive_cursor_target_visible".to_string(),

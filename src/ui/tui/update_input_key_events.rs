@@ -70,9 +70,7 @@ impl GroveApp {
             vec![
                 (
                     "chars".to_string(),
-                    Value::from(
-                        u64::try_from(paste_event.text.chars().count()).unwrap_or(u64::MAX),
-                    ),
+                    Value::from(usize_to_u64(paste_event.text.chars().count())),
                 ),
                 ("bracketed".to_string(), Value::from(paste_event.bracketed)),
                 ("session".to_string(), Value::from(target_session.clone())),

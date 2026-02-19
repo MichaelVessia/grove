@@ -77,10 +77,7 @@ impl GroveApp {
                     ("session".to_string(), Value::from(dropped.session)),
                     (
                         "queue_depth".to_string(),
-                        Value::from(
-                            u64::try_from(self.pending_interactive_inputs.len())
-                                .unwrap_or(u64::MAX),
-                        ),
+                        Value::from(usize_to_u64(self.pending_interactive_inputs.len())),
                     ),
                 ],
             );
@@ -117,7 +114,7 @@ impl GroveApp {
     }
 
     pub(super) fn pending_input_depth(&self) -> u64 {
-        u64::try_from(self.pending_interactive_inputs.len()).unwrap_or(u64::MAX)
+        usize_to_u64(self.pending_interactive_inputs.len())
     }
 
     pub(super) fn oldest_pending_input_age_ms(&self, now: Instant) -> u64 {
