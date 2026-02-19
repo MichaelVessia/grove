@@ -36,18 +36,8 @@ impl GroveApp {
             Msg::Resize { width, height } => {
                 self.viewport_width = width;
                 self.viewport_height = height;
-                let interactive_active = self.interactive.is_some();
-                if let Some(state) = self.interactive.as_mut() {
-                    state.update_cursor(
-                        state.cursor_row,
-                        state.cursor_col,
-                        state.cursor_visible,
-                        height,
-                        width,
-                    );
-                }
                 self.sync_interactive_session_geometry();
-                if interactive_active {
+                if self.interactive.is_some() {
                     self.poll_preview();
                 }
                 Cmd::None
