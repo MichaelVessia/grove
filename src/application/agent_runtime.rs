@@ -162,6 +162,7 @@ pub(crate) fn sanitize_workspace_name(name: &str) -> String {
     trimmed.to_string()
 }
 
+#[cfg(test)]
 pub fn session_name_for_workspace(workspace_name: &str) -> String {
     session_name_for_workspace_in_project(None, workspace_name)
 }
@@ -557,6 +558,7 @@ pub fn stop_plan(session_name: &str) -> Vec<Vec<String>> {
     ]
 }
 
+#[cfg(test)]
 pub fn execute_launch_plan(launch_plan: LaunchPlan) -> std::io::Result<()> {
     let mut executor = ProcessCommandExecutor;
     execute_launch_plan_with_executor(&launch_plan, &mut executor)
@@ -630,6 +632,7 @@ pub fn execute_launch_plan_for_mode(
     }
 }
 
+#[cfg(test)]
 pub fn execute_commands(commands: &[Vec<String>]) -> std::io::Result<()> {
     let mut executor = ProcessCommandExecutor;
     execute_commands_with_executor(commands, &mut executor)
