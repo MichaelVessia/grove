@@ -1,7 +1,11 @@
 use std::process::{Command, Output};
 
+pub(crate) fn stderr_trimmed(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stderr).trim().to_string()
+}
+
 pub(crate) fn stderr_or_status(output: &Output) -> String {
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stderr = stderr_trimmed(output);
     if !stderr.is_empty() {
         return stderr;
     }

@@ -1,3 +1,5 @@
+use crate::infrastructure::process::stderr_trimmed;
+
 use super::*;
 
 impl GroveApp {
@@ -162,7 +164,7 @@ impl GroveApp {
                 }
             }
             Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                let stderr = stderr_trimmed(&output);
                 self.show_toast(format!("not a git repository: {stderr}"), true);
                 return;
             }

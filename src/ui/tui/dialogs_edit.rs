@@ -1,3 +1,5 @@
+use crate::infrastructure::process::stderr_trimmed;
+
 use super::*;
 
 impl GroveApp {
@@ -11,7 +13,7 @@ impl GroveApp {
             return Ok(());
         }
 
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stderr = stderr_trimmed(&output);
         if stderr.is_empty() {
             return Err(format!(
                 "git switch {branch}: exit status {}",

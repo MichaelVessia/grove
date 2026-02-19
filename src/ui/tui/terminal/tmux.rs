@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use crate::infrastructure::process::{
-    execute_command as execute_process_command, stderr_or_status,
+    execute_command as execute_process_command, stderr_or_status, stderr_trimmed,
 };
 
 pub(in crate::ui::tui) trait TmuxInput {
@@ -102,7 +102,7 @@ impl CommandTmuxInput {
         let output = std::process::Command::new("tmux").args(args).output()?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let stderr = stderr_trimmed(&output);
             return Err(std::io::Error::other(format!(
                 "tmux capture-pane failed for '{target_session}': {stderr}"
             )));
@@ -127,7 +127,7 @@ impl CommandTmuxInput {
             .output()?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let stderr = stderr_trimmed(&output);
             return Err(std::io::Error::other(format!(
                 "tmux cursor metadata failed for '{target_session}': {stderr}"
             )));

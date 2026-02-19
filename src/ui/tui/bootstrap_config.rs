@@ -4,6 +4,7 @@ use std::process::Command;
 
 use crate::infrastructure::config::{GroveConfig, MultiplexerKind, ProjectConfig};
 use crate::infrastructure::paths::refer_to_same_location;
+use crate::infrastructure::process::stderr_trimmed;
 use crate::ui::mouse::clamp_sidebar_ratio;
 
 use super::*;
@@ -112,7 +113,7 @@ pub(super) fn load_local_branches(repo_root: &Path) -> Result<Vec<String>, Strin
         .output()
         .map_err(|error| format!("git branch failed: {error}"))?;
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stderr = stderr_trimmed(&output);
         return Err(format!("git branch failed: {stderr}"));
     }
 

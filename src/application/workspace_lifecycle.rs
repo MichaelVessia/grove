@@ -1,7 +1,7 @@
 use crate::application::agent_runtime::kill_workspace_session_command;
 use crate::domain::AgentType;
 use crate::infrastructure::paths::refer_to_same_location;
-use crate::infrastructure::process::execute_command;
+use crate::infrastructure::process::{execute_command, stderr_trimmed};
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -215,7 +215,7 @@ impl GitCommandRunner for CommandGitRunner {
             return Ok(());
         }
 
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stderr = stderr_trimmed(&output);
         let message = if stderr.is_empty() {
             format!("git exited with status {}", output.status)
         } else {
@@ -243,7 +243,7 @@ impl SetupScriptRunner for CommandSetupScriptRunner {
             return Ok(());
         }
 
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stderr = stderr_trimmed(&output);
         let message = if stderr.is_empty() {
             format!(
                 "setup script '{}' exited with status {}",
@@ -273,7 +273,7 @@ impl SetupCommandRunner for CommandSetupCommandRunner {
             return Ok(());
         }
 
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stderr = stderr_trimmed(&output);
         let message = if stderr.is_empty() {
             format!("setup command exited with status {}", output.status)
         } else {
@@ -695,7 +695,7 @@ fn run_git_command(repo_root: &Path, args: &[String]) -> Result<(), String> {
         return Ok(());
     }
 
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stderr = stderr_trimmed(&output);
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if stderr.is_empty() && stdout.is_empty() {
         return Err(format!(
@@ -722,7 +722,7 @@ fn ensure_git_worktree_clean(worktree_path: &Path) -> Result<(), String> {
         .map_err(|error| format!("git status --porcelain: {error}"))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stderr = stderr_trimmed(&output);
         if stderr.is_empty() {
             return Err(format!("git exited with status {}", output.status));
         }

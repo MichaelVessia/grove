@@ -3,6 +3,8 @@ use std::process::{Command, Stdio};
 
 use arboard::Clipboard;
 
+use crate::infrastructure::process::stderr_trimmed;
+
 pub(in crate::ui::tui) trait ClipboardAccess {
     fn read_text(&mut self) -> Result<String, String>;
     fn write_text(&mut self, text: &str) -> Result<(), String>;
@@ -57,7 +59,7 @@ impl SystemClipboardAccess {
             .output()
             .map_err(|error| format!("{program}: {error}"))?;
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let stderr = stderr_trimmed(&output);
             if stderr.is_empty() {
                 return Err(format!("{program}: exited with status {}", output.status));
             }
