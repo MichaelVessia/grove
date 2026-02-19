@@ -403,7 +403,10 @@ pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
         &request.workspace_name,
     );
     let agent_cmd = build_agent_command(request.agent, request.skip_permissions);
-    let pre_launch_command = normalized_pre_launch_command(request.pre_launch_command.as_deref());
+    let pre_launch_command = request
+        .pre_launch_command
+        .as_deref()
+        .and_then(trimmed_nonempty);
     let launch_agent_cmd =
         launch_command_with_pre_launch(&agent_cmd, pre_launch_command.as_deref());
     let mut plan = tmux_launch_plan(request, session_name, launch_agent_cmd);
@@ -824,10 +827,6 @@ pub(crate) fn trimmed_nonempty(value: &str) -> Option<String> {
     }
 
     Some(trimmed.to_string())
-}
-
-fn normalized_pre_launch_command(value: Option<&str>) -> Option<String> {
-    trimmed_nonempty(value?)
 }
 
 fn launch_command_with_pre_launch(agent_command: &str, pre_launch_command: Option<&str>) -> String {

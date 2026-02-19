@@ -3,7 +3,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::application::agent_runtime::{OutputDigest, evaluate_capture_change};
 
-const SCROLL_BURST_WINDOW_MS: u64 = 40;
 const CAPTURE_RING_CAPACITY: usize = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,9 +22,7 @@ pub(crate) struct PreviewState {
     pub(crate) render_lines: Vec<String>,
     pub(crate) offset: usize,
     pub(crate) auto_scroll: bool,
-    pub(crate) scroll_burst_count: u32,
     pub(crate) recent_captures: VecDeque<CaptureRecord>,
-    last_scroll_time: Option<Instant>,
     last_digest: Option<OutputDigest>,
 }
 
@@ -42,9 +39,7 @@ impl PreviewState {
             render_lines: Vec::new(),
             offset: 0,
             auto_scroll: true,
-            scroll_burst_count: 0,
             recent_captures: VecDeque::with_capacity(CAPTURE_RING_CAPACITY),
-            last_scroll_time: None,
             last_digest: None,
         }
     }
@@ -102,7 +97,7 @@ impl PreviewState {
         Self::max_scroll_offset_for(self.lines.len(), height)
     }
 
-    pub fn scroll(&mut self, delta: i32, now: Instant, viewport_height: usize) -> bool {
+    pub fn scroll(&mut self, delta: i32, _now: Instant, viewport_height: usize) -> bool {
         if delta == 0 {
             return false;
         }
@@ -113,19 +108,6 @@ impl PreviewState {
             self.auto_scroll = true;
             return false;
         }
-
-        if let Some(last_scroll_time) = self.last_scroll_time {
-            let since_last = now.saturating_duration_since(last_scroll_time);
-            if since_last < Duration::from_millis(SCROLL_BURST_WINDOW_MS) {
-                self.scroll_burst_count = self.scroll_burst_count.saturating_add(1);
-            } else {
-                self.scroll_burst_count = 1;
-            }
-        } else {
-            self.scroll_burst_count = 1;
-        }
-
-        self.last_scroll_time = Some(now);
 
         if delta < 0 {
             let delta_abs = usize::try_from(delta.unsigned_abs()).unwrap_or(usize::MAX);
@@ -139,21 +121,17 @@ impl PreviewState {
             return true;
         }
 
-        if delta > 0 {
-            let delta_positive = usize::try_from(delta).unwrap_or(usize::MAX);
-            let next_offset = self.offset.saturating_sub(delta_positive);
-            if next_offset == self.offset {
-                return false;
-            }
-
-            self.offset = next_offset;
-            if self.offset == 0 {
-                self.auto_scroll = true;
-            }
-            return true;
+        let delta_positive = usize::try_from(delta).unwrap_or(usize::MAX);
+        let next_offset = self.offset.saturating_sub(delta_positive);
+        if next_offset == self.offset {
+            return false;
         }
 
-        false
+        self.offset = next_offset;
+        if self.offset == 0 {
+            self.auto_scroll = true;
+        }
+        true
     }
 
     pub fn jump_to_bottom(&mut self) {

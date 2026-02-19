@@ -125,7 +125,6 @@ impl GroveApp {
             ("multiplexer".to_string(), Value::from("tmux")),
             ("async".to_string(), Value::from(context.async_launch)),
             ("duration_ms".to_string(), Value::from(duration_ms)),
-            ("ok".to_string(), Value::from(result.is_ok())),
         ];
         if let Some(workspace_name) = context.workspace_name {
             completion_fields.push(("workspace".to_string(), Value::from(workspace_name)));
@@ -135,10 +134,10 @@ impl GroveApp {
             Ok(()) => true,
             Err(error) => tmux_launch_error_indicates_duplicate_session(error),
         };
+        completion_fields.push(("ok".to_string(), Value::from(is_success)));
 
         if is_success {
             if let Err(error) = &result {
-                completion_fields.push(("ok".to_string(), Value::from(true)));
                 completion_fields.push(("reused_existing_session".to_string(), Value::from(true)));
                 completion_fields.push(("error".to_string(), Value::from(error.clone())));
             }
@@ -373,14 +372,15 @@ impl GroveApp {
         })
     }
 
-    pub(super) fn handle_lazygit_launch_completed(&mut self, completion: LazygitLaunchCompletion) {
-        let LazygitLaunchCompletion {
-            session_name,
-            duration_ms,
-            result,
-        } = completion;
+    fn handle_async_session_launch_completed(
+        &mut self,
+        kind: SessionKind,
+        session_name: String,
+        duration_ms: u64,
+        result: Result<(), String>,
+    ) {
         self.complete_session_launch(
-            SessionKind::Lazygit,
+            kind,
             session_name,
             duration_ms,
             result,
@@ -393,6 +393,20 @@ impl GroveApp {
         );
     }
 
+    pub(super) fn handle_lazygit_launch_completed(&mut self, completion: LazygitLaunchCompletion) {
+        let LazygitLaunchCompletion {
+            session_name,
+            duration_ms,
+            result,
+        } = completion;
+        self.handle_async_session_launch_completed(
+            SessionKind::Lazygit,
+            session_name,
+            duration_ms,
+            result,
+        );
+    }
+
     pub(super) fn handle_workspace_shell_launch_completed(
         &mut self,
         completion: WorkspaceShellLaunchCompletion,
@@ -402,17 +416,11 @@ impl GroveApp {
             duration_ms,
             result,
         } = completion;
-        self.complete_session_launch(
+        self.handle_async_session_launch_completed(
             SessionKind::WorkspaceShell,
             session_name,
             duration_ms,
             result,
-            SessionLaunchCompletionContext {
-                async_launch: true,
-                workspace_name: None,
-                log_tmux_error_on_failure: true,
-                poll_preview_on_ready: true,
-            },
         );
     }
 

@@ -94,10 +94,9 @@ fn rapid_scroll_events_are_not_dropped() {
     assert!(state.scroll(-1, base + Duration::from_millis(3), 5));
     assert!(state.scroll(-1, base + Duration::from_millis(4), 5));
     assert_eq!(state.offset, 5);
-    assert_eq!(state.scroll_burst_count, 5);
 
     assert!(state.scroll(-1, base + Duration::from_millis(100), 5));
-    assert_eq!(state.scroll_burst_count, 1);
+    assert_eq!(state.offset, 6);
 }
 
 #[test]

@@ -118,15 +118,11 @@ impl GroveApp {
             self.show_toast("cannot merge base workspace", true);
             return;
         }
-        if workspace
+        let Some(base_branch) = workspace
             .base_branch
-            .as_ref()
-            .is_none_or(|value| value.trim().is_empty())
-        {
-            self.show_toast("workspace base branch marker is missing", true);
-            return;
-        }
-        let Some(base_branch) = workspace.base_branch.clone() else {
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+        else {
             self.show_toast("workspace base branch marker is missing", true);
             return;
         };

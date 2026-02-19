@@ -83,10 +83,13 @@ impl GroveApp {
     }
 
     pub(super) fn execute_ui_command(&mut self, command: UiCommand) -> bool {
+        if matches!(&command, UiCommand::Quit) {
+            return true;
+        }
+
         match command {
             UiCommand::ToggleFocus => {
                 reduce(&mut self.state, Action::ToggleFocus);
-                false
             }
             UiCommand::ToggleSidebar => {
                 self.sidebar_hidden = !self.sidebar_hidden;
@@ -94,15 +97,12 @@ impl GroveApp {
                     self.divider_drag_active = false;
                     self.divider_drag_pointer_offset = 0;
                 }
-                false
             }
             UiCommand::OpenPreview => {
                 self.enter_preview_or_interactive();
-                false
             }
             UiCommand::EnterInteractive => {
                 self.enter_interactive(Instant::now());
-                false
             }
             UiCommand::FocusPreview => {
                 let mode_before = self.state.mode;
@@ -111,133 +111,108 @@ impl GroveApp {
                 if self.state.mode != mode_before || self.state.focus != focus_before {
                     self.poll_preview();
                 }
-                false
             }
             UiCommand::FocusList => {
                 reduce(&mut self.state, Action::EnterListMode);
-                false
             }
             UiCommand::MoveSelectionUp => {
                 self.move_selection(Action::MoveSelectionUp);
-                false
             }
             UiCommand::MoveSelectionDown => {
                 self.move_selection(Action::MoveSelectionDown);
-                false
             }
             UiCommand::ScrollUp => {
                 if self.preview_scroll_tab_is_focused() {
                     self.scroll_preview(-1);
                 }
-                false
             }
             UiCommand::ScrollDown => {
                 if self.preview_scroll_tab_is_focused() {
                     self.scroll_preview(1);
                 }
-                false
             }
             UiCommand::PageUp => {
                 if self.preview_scroll_tab_is_focused() {
                     self.scroll_preview(-self.preview_page_scroll_delta());
                 }
-                false
             }
             UiCommand::PageDown => {
                 if self.preview_scroll_tab_is_focused() {
                     self.scroll_preview(self.preview_page_scroll_delta());
                 }
-                false
             }
             UiCommand::ScrollBottom => {
                 if self.preview_scroll_tab_is_focused() {
                     self.jump_preview_to_bottom();
                 }
-                false
             }
             UiCommand::PreviousTab => {
                 reduce(&mut self.state, Action::EnterPreviewMode);
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
                     self.cycle_preview_tab(-1);
                 }
-                false
             }
             UiCommand::NextTab => {
                 reduce(&mut self.state, Action::EnterPreviewMode);
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
                     self.cycle_preview_tab(1);
                 }
-                false
             }
             UiCommand::ResizeSidebarNarrower => {
                 self.resize_sidebar_by_keyboard(-Self::SIDEBAR_KEYBOARD_RESIZE_STEP_PCT);
-                false
             }
             UiCommand::ResizeSidebarWider => {
                 self.resize_sidebar_by_keyboard(Self::SIDEBAR_KEYBOARD_RESIZE_STEP_PCT);
-                false
             }
             UiCommand::NewWorkspace => {
                 self.open_create_dialog();
-                false
             }
             UiCommand::EditWorkspace => {
                 self.open_edit_dialog();
-                false
             }
             UiCommand::StartAgent => {
                 if self.preview_agent_tab_is_focused() {
                     self.open_start_dialog();
                 }
-                false
             }
             UiCommand::StopAgent => {
                 if self.preview_agent_tab_is_focused() {
                     self.stop_selected_workspace_agent();
                 }
-                false
             }
             UiCommand::DeleteWorkspace => {
                 self.open_delete_dialog();
-                false
             }
             UiCommand::MergeWorkspace => {
                 self.open_merge_dialog();
-                false
             }
             UiCommand::UpdateFromBase => {
                 self.open_update_from_base_dialog();
-                false
             }
             UiCommand::OpenProjects => {
                 self.open_project_dialog();
-                false
             }
             UiCommand::DeleteProject => {
                 self.delete_selected_workspace_project();
-                false
             }
             UiCommand::OpenSettings => {
                 self.open_settings_dialog();
-                false
             }
             UiCommand::ToggleMouseCapture => {
                 self.toggle_mouse_capture();
-                false
             }
             UiCommand::ToggleUnsafe => {
                 self.launch_skip_permissions = !self.launch_skip_permissions;
-                false
             }
             UiCommand::OpenHelp => {
                 self.open_keybind_help();
-                false
             }
             UiCommand::OpenCommandPalette => {
                 self.open_command_palette();
-                false
             }
-            UiCommand::Quit => true,
+            UiCommand::Quit => unreachable!(),
         }
+
+        false
     }
 }
