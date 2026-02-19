@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use grove::infrastructure::event_log::now_millis;
 
 const DEBUG_RECORD_DIR: &str = ".grove";
 
@@ -37,13 +38,6 @@ fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io::Result<Cli
     }
 
     Ok(cli)
-}
-
-fn now_millis() -> u64 {
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or(Duration::ZERO);
-    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 fn debug_record_path(app_start_ts: u64) -> std::io::Result<PathBuf> {

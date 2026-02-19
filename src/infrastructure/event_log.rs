@@ -50,7 +50,7 @@ impl Event {
     }
 }
 
-fn now_millis() -> u64 {
+pub fn now_millis() -> u64 {
     let Ok(duration) = SystemTime::now().duration_since(UNIX_EPOCH) else {
         return 0;
     };
