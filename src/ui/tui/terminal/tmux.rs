@@ -1,5 +1,9 @@
 use std::io::Write;
 
+use crate::infrastructure::process::{
+    execute_command as execute_process_command, stderr_or_status,
+};
+
 pub(in crate::ui::tui) trait TmuxInput {
     fn execute(&self, command: &[String]) -> std::io::Result<()>;
     fn capture_output(
@@ -77,33 +81,8 @@ impl TmuxInput for CommandTmuxInput {
 }
 
 impl CommandTmuxInput {
-    fn stderr_or_status(output: &std::process::Output) -> String {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        if !stderr.is_empty() {
-            return stderr;
-        }
-
-        format!("exit status {}", output.status)
-    }
-
     pub(in crate::ui::tui) fn execute_command(command: &[String]) -> std::io::Result<()> {
-        if command.is_empty() {
-            return Ok(());
-        }
-
-        let output = std::process::Command::new(&command[0])
-            .args(&command[1..])
-            .output()?;
-
-        if output.status.success() {
-            return Ok(());
-        }
-
-        Err(std::io::Error::other(format!(
-            "command failed: {}; {}",
-            command.join(" "),
-            Self::stderr_or_status(&output),
-        )))
+        execute_process_command(command)
     }
 
     pub(in crate::ui::tui) fn capture_session_output(
@@ -176,7 +155,7 @@ impl CommandTmuxInput {
             .output();
         let set_manual_error = match set_manual_output {
             Ok(output) if output.status.success() => None,
-            Ok(output) => Some(Self::stderr_or_status(&output)),
+            Ok(output) => Some(stderr_or_status(&output)),
             Err(error) => Some(error.to_string()),
         };
 
@@ -247,7 +226,7 @@ impl CommandTmuxInput {
 
         Err(std::io::Error::other(format!(
             "tmux paste-buffer failed: {}",
-            Self::stderr_or_status(&paste_output),
+            stderr_or_status(&paste_output),
         )))
     }
 }

@@ -5,7 +5,6 @@ use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -696,7 +695,7 @@ pub struct ProcessCommandExecutor;
 
 impl CommandExecutor for ProcessCommandExecutor {
     fn execute(&mut self, command: &[String]) -> std::io::Result<()> {
-        execute_command(command)
+        crate::infrastructure::process::execute_command(command)
     }
 }
 
@@ -760,32 +759,6 @@ pub fn execute_launch_plan_with_executor(
 
     execute_commands_with_executor(&launch_plan.pre_launch_cmds, executor)?;
     execute_command_with(&launch_plan.launch_cmd, |command| executor.execute(command))
-}
-
-fn execute_command(command: &[String]) -> std::io::Result<()> {
-    if command.is_empty() {
-        return Ok(());
-    }
-
-    let output = Command::new(&command[0]).args(&command[1..]).output()?;
-    if output.status.success() {
-        return Ok(());
-    }
-
-    Err(std::io::Error::other(format!(
-        "command failed: {}; {}",
-        command.join(" "),
-        stderr_or_status(&output),
-    )))
-}
-
-fn stderr_or_status(output: &std::process::Output) -> String {
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if !stderr.is_empty() {
-        return stderr;
-    }
-
-    format!("exit status {}", output.status)
 }
 
 pub fn kill_workspace_session_command(

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::infrastructure::config::{GroveConfig, MultiplexerKind, ProjectConfig};
+use crate::infrastructure::paths::refer_to_same_location;
 use crate::ui::mouse::clamp_sidebar_ratio;
 
 use super::*;
@@ -65,12 +66,7 @@ pub(super) fn project_display_name(path: &Path) -> String {
 }
 
 pub(super) fn project_paths_equal(left: &Path, right: &Path) -> bool {
-    let left_canonical = left.canonicalize().ok();
-    let right_canonical = right.canonicalize().ok();
-    match (left_canonical, right_canonical) {
-        (Some(left), Some(right)) => left == right,
-        _ => left == right,
-    }
+    refer_to_same_location(left, right)
 }
 
 fn ensure_current_repo_project(config: &mut GroveConfig, config_path: &Path) -> Option<String> {

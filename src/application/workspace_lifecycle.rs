@@ -1,5 +1,7 @@
 use crate::application::agent_runtime::kill_workspace_session_command;
 use crate::domain::AgentType;
+use crate::infrastructure::paths::refer_to_same_location;
+use crate::infrastructure::process::execute_command;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -523,7 +525,7 @@ pub fn update_workspace_from_base(
     };
 
     let is_base_workspace_update = request.workspace_branch == request.base_branch
-        && paths_refer_to_same_location(&request.workspace_path, &repo_root);
+        && refer_to_same_location(&request.workspace_path, &repo_root);
 
     if request.workspace_branch == request.base_branch && !is_base_workspace_update {
         return (
@@ -631,30 +633,11 @@ fn stable_repo_path_hash(repo_root: &Path) -> String {
     format!("{hash:016x}")
 }
 
-fn paths_refer_to_same_location(left: &Path, right: &Path) -> bool {
-    match (left.canonicalize().ok(), right.canonicalize().ok()) {
-        (Some(left_canonical), Some(right_canonical)) => left_canonical == right_canonical,
-        _ => left == right,
-    }
-}
-
 fn run_command(args: &[String]) -> Result<(), String> {
-    let Some(program) = args.first() else {
+    if args.is_empty() {
         return Err("command is empty".to_string());
-    };
-    let output = Command::new(program)
-        .args(&args[1..])
-        .output()
-        .map_err(|error| format!("{}: {error}", args.join(" ")))?;
-    if output.status.success() {
-        return Ok(());
     }
-
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if stderr.is_empty() {
-        return Err(format!("{}: exit status {}", args.join(" "), output.status));
-    }
-    Err(format!("{}: {stderr}", args.join(" ")))
+    execute_command(args).map_err(|error| error.to_string())
 }
 
 fn run_delete_worktree_git(

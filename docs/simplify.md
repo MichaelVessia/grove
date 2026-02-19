@@ -15,19 +15,19 @@ Ordered by impact/effort ratio. Each item is a self-contained change that should
 
 Three near-identical command execution functions exist with slightly different error types.
 
-- [ ] Extract shared `execute_command` and `stderr_or_status` into a common module (e.g. `infrastructure::process`)
-- [ ] Replace `agent_runtime.rs:781-805` standalone version
-- [ ] Replace `ui/tui/terminal/tmux.rs:80-107` (`CommandTmuxInput` methods)
-- [ ] Replace `workspace_lifecycle.rs:658-675` (`run_command`)
-- [ ] Unify error types with a common mapping strategy
+- [x] Extract shared `execute_command` and `stderr_or_status` into a common module (e.g. `infrastructure::process`)
+- [x] Replace `agent_runtime.rs:781-805` standalone version
+- [x] Replace `ui/tui/terminal/tmux.rs:80-107` (`CommandTmuxInput` methods)
+- [x] Replace `workspace_lifecycle.rs:658-675` (`run_command`)
+- [x] Unify error types with a common mapping strategy
 
 ## 3. Consolidate duplicate path comparison functions
 
 Two identical functions with different names: `paths_refer_to_same_location` and `project_paths_equal`. Both do `match (left.canonicalize().ok(), right.canonicalize().ok())` with the same fallback.
 
-- [ ] Keep one canonical version in a shared location
-- [ ] Update `src/application/workspace_lifecycle.rs:651-656`
-- [ ] Update `src/ui/tui/bootstrap_config.rs:67-74`
+- [x] Keep one canonical version in a shared location
+- [x] Update `src/application/workspace_lifecycle.rs:651-656`
+- [x] Update `src/ui/tui/bootstrap_config.rs:67-74`
 
 ## 4. Session launch/completion deduplication (~200 lines)
 
@@ -118,15 +118,16 @@ Returns an unnamed 3-tuple `(Option<String>, Option<String>, bool)`.
 
 Leftover scaffolding function with a dedicated test that adds no value.
 
-- [ ] Inline at call site in `src/main.rs:115` or replace with version string
-- [ ] Delete `src/lib.rs:6-8`
-- [ ] Delete test in `src/lib_tests.rs`
+- [x] Inline at call site in `src/main.rs:115` or replace with version string
+- [x] Delete `src/lib.rs:6-8`
+- [x] Delete test in `src/lib_tests.rs`
 
 ## 15. Gate `missing_workspace_paths` as test-only
 
 `pub` function only called from tests.
 
 - [ ] Mark `#[cfg(test)]` or move into test module in `src/application/hardening.rs:15-24`
+- [ ] Update integration test usage in `tests/startup_reconciliation.rs:81` before gating symbol
 
 ## 16. Inline `input_for_multiplexer`
 
