@@ -157,6 +157,7 @@ fn create_workspace_new_branch_sequences_git_markers_git_exclude_and_env_copy() 
     fs::create_dir_all(&repo_root).expect("repo dir should exist");
     fs::write(repo_root.join(".env"), "A=1\n").expect(".env should be written");
     fs::write(repo_root.join(".env.local"), "B=2\n").expect(".env.local should be written");
+    fs::write(repo_root.join(".gitignore"), "/dist/\n").expect(".gitignore should be writable");
 
     let git = StubGitRunner::default();
     let setup = StubSetupRunner::default();
@@ -212,6 +213,10 @@ fn create_workspace_new_branch_sequences_git_markers_git_exclude_and_env_copy() 
     let git_exclude =
         fs::read_to_string(repo_root.join(".git/info/exclude")).expect("git exclude should exist");
     assert!(git_exclude.contains(".grove/"));
+    assert_eq!(
+        fs::read_to_string(repo_root.join(".gitignore")).expect(".gitignore should be readable"),
+        "/dist/\n"
+    );
 }
 
 #[test]
@@ -394,6 +399,24 @@ fn ensure_git_exclude_entries_is_idempotent() {
 
     ensure_grove_git_exclude_entries(&repo_root).expect("first ensure should succeed");
     ensure_grove_git_exclude_entries(&repo_root).expect("second ensure should succeed");
+
+    let git_exclude =
+        fs::read_to_string(repo_root.join(".git/info/exclude")).expect("git exclude should exist");
+    assert_eq!(count_line(&git_exclude, ".grove/"), 1);
+}
+
+#[test]
+fn ensure_git_exclude_entries_does_not_modify_gitignore() {
+    let temp = TestDir::new("gitignore-untouched");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    fs::write(repo_root.join(".gitignore"), "/dist/\n").expect(".gitignore should be writable");
+
+    ensure_grove_git_exclude_entries(&repo_root).expect("ensure should succeed");
+
+    let gitignore =
+        fs::read_to_string(repo_root.join(".gitignore")).expect(".gitignore should still exist");
+    assert_eq!(gitignore, "/dist/\n");
 
     let git_exclude =
         fs::read_to_string(repo_root.join(".git/info/exclude")).expect("git exclude should exist");

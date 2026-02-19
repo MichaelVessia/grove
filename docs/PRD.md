@@ -80,10 +80,8 @@ Decisions made during spec review, with rationale.
 - **Delete dialog**: modal showing workspace name, branch, path, warning
   about uncommitted changes, and an optional "Delete local branch"
   checkbox (off by default). Matches sidecar's delete dialog.
-- **Gitignore management**: auto-add Grove marker files to `.gitignore`
-  on worktree creation. Entries: `.grove/agent`, `.grove/base`,
-  `.grove/start.sh`, `.grove/setup.sh` (matches sidecar's approach with
-  `.sidecar-*` files).
+- **Git exclude management**: auto-add `.grove/` to `.git/info/exclude`
+  on worktree creation, avoids modifying tracked `.gitignore`.
 - **Status bar**: context-dependent keybinding hints in list/preview mode,
   `-- INSERT --` in interactive mode. Hints change based on selected
   workspace status (e.g., show `[y]approve` when agent is waiting).
@@ -235,20 +233,17 @@ setup script execution:
 Optionally load per-repo overrides from `.grove-env` (KEY=VALUE lines).
 User overrides take precedence over defaults.
 
-#### Gitignore Management
+#### Git Exclude Management
 
-On worktree creation, ensure the repo's `.gitignore` contains entries
-for Grove marker files. Check for missing entries and append them:
+On worktree creation, ensure the repo's `.git/info/exclude` contains
+`.grove/`. Check for missing entries and append them:
 
 ```
-.grove/agent
-.grove/base
-.grove/start.sh
-.grove/setup.sh
+.grove/
 ```
 
 Only append entries that are not already present. Do not rewrite or
-reorder existing `.gitignore` content.
+reorder existing `.git/info/exclude` content.
 
 #### Worktree Discovery
 
@@ -950,7 +945,7 @@ Modal overlay with fields:
    (no new branch created)
 2. Otherwise: create new branch from base branch and workspace name
 3. Write marker files (`.grove/agent`, `.grove/base`)
-4. Update `.gitignore`
+4. Update `.git/info/exclude`
 5. Copy `.env` files from main worktree
 6. Run `.grove/setup.sh` if it exists
 7. Create tmux session
@@ -2479,11 +2474,11 @@ fn local_branch_exists(repo_root: &Path, branch: &str) -> bool {
         .unwrap_or(false)
 }
 
-pub fn ensure_gitignore(repo_root: &Path) -> Result<(), io::Error> {
-    let gitignore_path = repo_root.join(".gitignore");
-    let entries = [".grove/agent", ".grove/base", ".grove/start.sh", ".grove/setup.sh"];
+pub fn ensure_git_exclude(repo_root: &Path) -> Result<(), io::Error> {
+    let git_exclude_path = repo_root.join(".git/info/exclude");
+    let entries = [".grove/"];
 
-    let existing = fs::read_to_string(&gitignore_path).unwrap_or_default();
+    let existing = fs::read_to_string(&git_exclude_path).unwrap_or_default();
     let missing: Vec<&&str> = entries.iter()
         .filter(|e| !existing.lines().any(|l| l.trim() == **e))
         .collect();
@@ -2495,7 +2490,7 @@ pub fn ensure_gitignore(repo_root: &Path) -> Result<(), io::Error> {
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&gitignore_path)?;
+        .open(&git_exclude_path)?;
 
     // Ensure newline before appending
     if !existing.is_empty() && !existing.ends_with('\n') {
@@ -2531,7 +2526,7 @@ src/
   update.rs            -- update() message handling
   workspace.rs         -- Workspace, AgentType, Status types
   tmux.rs              -- tmux session management (create, kill, capture, send-keys)
-  worktree.rs          -- git worktree operations (create, remove, list, gitignore)
+  worktree.rs          -- git worktree operations (create, remove, list, git exclude)
   setup.rs             -- workspace setup (env copy, setup script execution)
   keymap.rs            -- keybinding registry with multi-key support
   interactive.rs       -- interactive mode state, key forwarding, cursor overlay
