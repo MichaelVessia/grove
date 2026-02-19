@@ -105,9 +105,8 @@ impl GroveApp {
             return "Tab/S-Tab or C-n/C-p field, j/k adjust controls, ';' separates workspace setup cmds, Space toggles auto-run or unsafe, h/l buttons, Enter select/create, Esc cancel"
                 .to_string();
         }
-        if self.edit_dialog().is_some() {
-            let edits_main_workspace = self.edit_dialog().is_some_and(|dialog| dialog.is_main);
-            if edits_main_workspace {
+        if let Some(dialog) = self.edit_dialog() {
+            if dialog.is_main {
                 return "Tab/S-Tab or C-n/C-p field, type/backspace branch, h/l buttons, Space toggle agent, Enter save/select, Esc cancel"
                     .to_string();
             }
@@ -134,12 +133,8 @@ impl GroveApp {
             return "Tab/S-Tab or C-n/C-p field, j/k or h/l change, Enter save/select, Esc cancel"
                 .to_string();
         }
-        if self.project_dialog().is_some() {
-            if self
-                .project_dialog()
-                .and_then(|dialog| dialog.defaults_dialog.as_ref())
-                .is_some()
-            {
+        if let Some(dialog) = self.project_dialog() {
+            if dialog.defaults_dialog.is_some() {
                 return "Tab/S-Tab or C-n/C-p field, type/backspace edit defaults, Space toggle auto-run, Enter save/select, Esc close"
                     .to_string();
             }
