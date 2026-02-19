@@ -23,7 +23,6 @@ pub(super) fn bootstrap_data_for_projects(projects: &[ProjectConfig]) -> Bootstr
             repo_name: "grove".to_string(),
             workspaces: Vec::new(),
             discovery_state: DiscoveryState::Empty,
-            orphaned_sessions: Vec::new(),
         };
     }
 
@@ -32,7 +31,6 @@ pub(super) fn bootstrap_data_for_projects(projects: &[ProjectConfig]) -> Bootstr
         running_sessions: live_multiplexer.running_sessions(),
     };
     let mut workspaces = Vec::new();
-    let mut orphaned_sessions = Vec::new();
     let mut errors = Vec::new();
     for project in projects {
         let git = CommandGitAdapter::for_repo(project.path.clone());
@@ -43,7 +41,6 @@ pub(super) fn bootstrap_data_for_projects(projects: &[ProjectConfig]) -> Bootstr
         }
 
         workspaces.extend(bootstrap.workspaces);
-        orphaned_sessions.extend(bootstrap.orphaned_sessions);
     }
 
     let discovery_state = if !workspaces.is_empty() {
@@ -63,6 +60,5 @@ pub(super) fn bootstrap_data_for_projects(projects: &[ProjectConfig]) -> Bootstr
         repo_name,
         workspaces,
         discovery_state,
-        orphaned_sessions,
     }
 }

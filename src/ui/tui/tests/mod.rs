@@ -306,7 +306,6 @@ fn fixture_bootstrap(status: WorkspaceStatus) -> BootstrapData {
         repo_name: "grove".to_string(),
         workspaces: vec![main_workspace, feature_workspace],
         discovery_state: DiscoveryState::Ready,
-        orphaned_sessions: Vec::new(),
     }
 }
 

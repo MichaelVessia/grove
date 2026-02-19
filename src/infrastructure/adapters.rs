@@ -50,7 +50,6 @@ pub(crate) struct BootstrapData {
     pub repo_name: String,
     pub workspaces: Vec<Workspace>,
     pub discovery_state: DiscoveryState,
-    pub orphaned_sessions: Vec<String>,
 }
 
 pub(crate) fn bootstrap_data(
@@ -65,7 +64,6 @@ pub(crate) fn bootstrap_data(
             repo_name,
             workspaces,
             discovery_state: DiscoveryState::Empty,
-            orphaned_sessions: Vec::new(),
         },
         Ok(workspaces) => {
             let running_sessions = multiplexer.running_sessions();
@@ -76,14 +74,12 @@ pub(crate) fn bootstrap_data(
                 repo_name,
                 workspaces: reconciled.workspaces,
                 discovery_state: DiscoveryState::Ready,
-                orphaned_sessions: reconciled.orphaned_sessions,
             }
         }
         Err(error) => BootstrapData {
             repo_name,
             workspaces: Vec::new(),
             discovery_state: DiscoveryState::Error(error.message()),
-            orphaned_sessions: Vec::new(),
         },
     }
 }

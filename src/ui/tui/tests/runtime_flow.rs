@@ -5694,7 +5694,6 @@ fn shell_renders_discovery_error_state() {
             repo_name: "grove".to_string(),
             workspaces: Vec::new(),
             discovery_state: DiscoveryState::Error("fatal: not a git repository".to_string()),
-            orphaned_sessions: Vec::new(),
         },
         Box::new(RecordingTmuxInput {
             commands: Rc::new(RefCell::new(Vec::new())),
