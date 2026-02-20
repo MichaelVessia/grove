@@ -16,9 +16,6 @@ call_lefthook()
   elif lefthook -h >/dev/null 2>&1
   then
     lefthook "$@"
-  elif /nix/store/94cy3md10wmzqi8zjgmbq8bbw1aii8fv-lefthook-2.1.1/bin/lefthook -h >/dev/null 2>&1
-  then
-    /nix/store/94cy3md10wmzqi8zjgmbq8bbw1aii8fv-lefthook-2.1.1/bin/lefthook "$@"
   else
     dir="$(git rev-parse --show-toplevel)"
     osArch=$(uname | tr '[:upper:]' '[:lower:]')
