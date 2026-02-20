@@ -1338,7 +1338,7 @@ fn create_dialog_renders_action_buttons() {
 #[test]
 fn status_row_shows_keybind_hints_not_toast_state() {
     let mut app = fixture_app();
-    app.show_toast("Agent started", false);
+    app.show_success_toast("Agent started");
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
@@ -2145,7 +2145,7 @@ fn status_row_shows_interactive_reserved_key_hints() {
 #[test]
 fn toast_overlay_renders_message() {
     let mut app = fixture_app();
-    app.show_toast("Copied 2 line(s)", false);
+    app.show_success_toast("Copied 2 line(s)");
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let found = (0..frame.height())
@@ -2167,6 +2167,73 @@ fn interactive_copy_sets_success_toast_message() {
     };
     assert!(matches!(toast.config.style_variant, ToastStyle::Success));
     assert_eq!(toast.content.message, "Copied 1 line(s)");
+}
+
+#[test]
+fn info_toast_uses_info_style_and_duration() {
+    let mut app = fixture_app();
+    app.show_info_toast("mouse capture enabled");
+
+    let Some(toast) = app.notifications.visible().last() else {
+        panic!("info toast should be visible");
+    };
+    assert!(matches!(toast.config.style_variant, ToastStyle::Info));
+    assert_eq!(toast.config.duration, Some(Duration::from_secs(6)));
+    assert_eq!(toast.content.title.as_deref(), Some("Info"));
+    assert_eq!(
+        toast.content.icon,
+        Some(ftui::widgets::toast::ToastIcon::Info)
+    );
+
+    with_rendered_frame(&app, 120, 24, |frame| {
+        let Some(_message_row) =
+            find_row_containing(frame, "mouse capture enabled", 0, frame.width())
+        else {
+            panic!("info toast message row should render");
+        };
+    });
+}
+
+#[test]
+fn error_toast_uses_error_style_and_long_duration() {
+    let mut app = fixture_app();
+    app.show_error_toast("agent start failed");
+
+    let Some(toast) = app.notifications.visible().last() else {
+        panic!("error toast should be visible");
+    };
+    assert!(matches!(toast.config.style_variant, ToastStyle::Error));
+    assert_eq!(toast.config.duration, Some(Duration::from_secs(12)));
+    assert_eq!(toast.content.title.as_deref(), Some("Error"));
+    assert_eq!(
+        toast.content.icon,
+        Some(ftui::widgets::toast::ToastIcon::Error)
+    );
+
+    with_rendered_frame(&app, 120, 24, |frame| {
+        let Some(_message_row) = find_row_containing(frame, "agent start failed", 0, frame.width())
+        else {
+            panic!("error toast message row should render");
+        };
+    });
+}
+
+#[test]
+fn toast_messages_are_sanitized_and_truncated_to_fit_width() {
+    let mut app = fixture_app();
+    let long_message = format!("first line\nsecond line {}", "x".repeat(280));
+    app.show_error_toast(long_message);
+
+    let Some(toast) = app.notifications.visible().last() else {
+        panic!("toast should be visible");
+    };
+    assert!(!toast.content.message.contains('\n'));
+    assert!(!toast.content.message.contains('\r'));
+    assert!(toast.content.message.ends_with('…'));
+    let max_message_width = usize::from(toast.config.max_width)
+        .saturating_sub(8)
+        .max(16);
+    assert!(ftui::text::display_width(toast.content.message.as_str()) <= max_message_width);
 }
 
 #[test]

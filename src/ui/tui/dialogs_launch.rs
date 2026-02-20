@@ -104,24 +104,24 @@ impl GroveApp {
 
     pub(super) fn open_start_dialog(&mut self) {
         if self.start_in_flight {
-            self.show_toast("agent start already in progress", true);
+            self.show_info_toast("agent start already in progress");
             return;
         }
 
         let Some(workspace) = self.state.selected_workspace().cloned() else {
-            self.show_toast("no workspace selected", true);
+            self.show_info_toast("no workspace selected");
             return;
         };
         if !workspace.supported_agent {
-            self.show_toast("unsupported workspace agent marker", true);
+            self.show_info_toast("unsupported workspace agent marker");
             return;
         }
         if workspace.status.is_running() {
-            self.show_toast("agent already running", true);
+            self.show_info_toast("agent already running");
             return;
         }
         if !workspace_can_start_agent(Some(&workspace)) {
-            self.show_toast("workspace cannot be started", true);
+            self.show_info_toast("workspace cannot be started");
             return;
         }
 

@@ -93,7 +93,7 @@ impl GroveApp {
                 false
             }
             KeybindingAction::CancelTask => {
-                self.show_toast("cannot cancel running lifecycle task", true);
+                self.show_info_toast("cannot cancel running lifecycle task");
                 false
             }
             KeybindingAction::Quit | KeybindingAction::HardQuit => true,

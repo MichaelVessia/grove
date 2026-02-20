@@ -10,23 +10,20 @@ impl GroveApp {
             .delete_requested_workspaces
             .insert(queued_delete.workspace_path.clone())
         {
-            self.show_toast(
-                format!(
-                    "workspace '{}' delete already requested",
-                    queued_delete.workspace_name
-                ),
-                true,
-            );
+            self.show_info_toast(format!(
+                "workspace '{}' delete already requested",
+                queued_delete.workspace_name
+            ));
             return;
         }
 
         if self.delete_in_flight {
             let queued_workspace_name = queued_delete.workspace_name.clone();
             self.pending_delete_workspaces.push_back(queued_delete);
-            self.show_toast(
-                format!("workspace '{}' delete queued", queued_workspace_name),
-                false,
-            );
+            self.show_info_toast(format!(
+                "workspace '{}' delete queued",
+                queued_workspace_name
+            ));
             return;
         }
 
@@ -161,18 +158,18 @@ impl GroveApp {
         }
 
         let Some(workspace) = self.state.selected_workspace().cloned() else {
-            self.show_toast("no workspace selected", true);
+            self.show_info_toast("no workspace selected");
             return;
         };
         if workspace.is_main {
-            self.show_toast("cannot delete base workspace", true);
+            self.show_info_toast("cannot delete base workspace");
             return;
         }
         if self.workspace_delete_requested(&workspace.path) {
-            self.show_toast(
-                format!("workspace '{}' delete already requested", workspace.name),
-                true,
-            );
+            self.show_info_toast(format!(
+                "workspace '{}' delete already requested",
+                workspace.name
+            ));
             return;
         }
 

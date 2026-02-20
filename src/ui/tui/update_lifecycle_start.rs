@@ -12,11 +12,11 @@ impl GroveApp {
         }
 
         if !workspace_can_start_agent(self.state.selected_workspace()) {
-            self.show_toast("workspace cannot be started", true);
+            self.show_info_toast("workspace cannot be started");
             return;
         }
         let Some(workspace) = self.state.selected_workspace() else {
-            self.show_toast("no workspace selected", true);
+            self.show_info_toast("no workspace selected");
             return;
         };
         let (capture_cols, capture_rows) = self.capture_dimensions();
@@ -37,7 +37,7 @@ impl GroveApp {
             );
             if let Some(error) = completion.result.as_ref().err() {
                 self.last_tmux_error = Some(error.clone());
-                self.show_toast("agent start failed", true);
+                self.show_error_toast("agent start failed");
                 return;
             }
 
@@ -85,13 +85,13 @@ impl GroveApp {
                         .with_data("session", Value::from(completion.session_name)),
                 );
                 self.last_tmux_error = None;
-                self.show_toast("agent started", false);
+                self.show_success_toast("agent started");
                 self.poll_preview();
             }
             Err(error) => {
                 self.last_tmux_error = Some(error.clone());
                 self.log_tmux_error(error);
-                self.show_toast("agent start failed", true);
+                self.show_error_toast("agent start failed");
             }
         }
     }

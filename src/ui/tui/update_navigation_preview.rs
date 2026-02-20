@@ -170,7 +170,7 @@ impl GroveApp {
             self.log_tmux_error(error);
         }
         self.session_tracker_mut(kind).mark_failed(session_name);
-        self.show_toast(Self::session_launch_failure_toast(kind), true);
+        self.show_error_toast(Self::session_launch_failure_toast(kind));
         false
     }
 

@@ -68,11 +68,11 @@ impl GroveApp {
         }
 
         if let Err(error) = self.save_runtime_config() {
-            self.show_toast(format!("settings save failed: {error}"), true);
+            self.show_error_toast(format!("settings save failed: {error}"));
             return;
         }
 
         self.close_active_dialog();
-        self.show_toast("settings saved", false);
+        self.show_success_toast("settings saved");
     }
 }

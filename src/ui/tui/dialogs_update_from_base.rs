@@ -91,12 +91,12 @@ impl GroveApp {
             return;
         }
         if self.update_from_base_in_flight {
-            self.show_toast("workspace update already in progress", true);
+            self.show_info_toast("workspace update already in progress");
             return;
         }
 
         let Some(workspace) = self.state.selected_workspace().cloned() else {
-            self.show_toast("no workspace selected", true);
+            self.show_info_toast("no workspace selected");
             return;
         };
         let base_branch = if workspace.is_main {
@@ -107,11 +107,11 @@ impl GroveApp {
                 .clone()
                 .filter(|value| !value.trim().is_empty())
             else {
-                self.show_toast("workspace base branch marker is missing", true);
+                self.show_info_toast("workspace base branch marker is missing");
                 return;
             };
             if base_branch == workspace.branch {
-                self.show_toast("workspace branch already matches base branch", true);
+                self.show_info_toast("workspace branch already matches base branch");
                 return;
             }
             base_branch

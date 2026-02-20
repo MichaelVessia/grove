@@ -237,7 +237,7 @@ impl GroveApp {
                 } else {
                     self.last_tmux_error = Some(message.clone());
                     self.log_tmux_error(message);
-                    self.show_toast("preview capture failed", true);
+                    self.show_error_toast("preview capture failed");
                 }
                 self.refresh_preview_summary();
             }

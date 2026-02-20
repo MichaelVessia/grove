@@ -42,13 +42,10 @@ impl GroveApp {
                         ),
                 );
                 self.refresh_workspaces(None);
-                self.show_toast(
-                    format!(
-                        "project '{}' removed from workspace list",
-                        completion.project_name
-                    ),
-                    false,
-                );
+                self.show_success_toast(format!(
+                    "project '{}' removed from workspace list",
+                    completion.project_name
+                ));
             }
             Err(error) => {
                 self.event_log.log(
@@ -60,7 +57,7 @@ impl GroveApp {
                         )
                         .with_data("error", Value::from(error.clone())),
                 );
-                self.show_toast(format!("project delete failed: {error}"), true);
+                self.show_error_toast(format!("project delete failed: {error}"));
             }
         }
     }
@@ -91,18 +88,15 @@ impl GroveApp {
                 self.last_tmux_error = None;
                 self.refresh_workspaces(None);
                 if completion.warnings.is_empty() {
-                    self.show_toast(
-                        format!("workspace '{}' deleted", completion.workspace_name),
-                        false,
-                    );
+                    self.show_success_toast(format!(
+                        "workspace '{}' deleted",
+                        completion.workspace_name
+                    ));
                 } else if let Some(first_warning) = completion.warnings.first() {
-                    self.show_toast(
-                        format!(
-                            "workspace '{}' deleted, warning: {}",
-                            completion.workspace_name, first_warning
-                        ),
-                        true,
-                    );
+                    self.show_info_toast(format!(
+                        "workspace '{}' deleted, warning: {}",
+                        completion.workspace_name, first_warning
+                    ));
                 }
             }
             Err(error) => {
@@ -112,7 +106,7 @@ impl GroveApp {
                         .with_data("error", Value::from(error.clone())),
                 );
                 self.last_tmux_error = Some(error.clone());
-                self.show_toast(format!("workspace delete failed: {error}"), true);
+                self.show_error_toast(format!("workspace delete failed: {error}"));
             }
         }
         self.start_next_queued_delete_workspace();
@@ -145,21 +139,15 @@ impl GroveApp {
                 self.last_tmux_error = None;
                 self.refresh_workspaces(None);
                 if completion.warnings.is_empty() {
-                    self.show_toast(
-                        format!(
-                            "workspace '{}' merged into '{}'",
-                            completion.workspace_name, completion.base_branch
-                        ),
-                        false,
-                    );
+                    self.show_success_toast(format!(
+                        "workspace '{}' merged into '{}'",
+                        completion.workspace_name, completion.base_branch
+                    ));
                 } else if let Some(first_warning) = completion.warnings.first() {
-                    self.show_toast(
-                        format!(
-                            "workspace '{}' merged, warning: {}",
-                            completion.workspace_name, first_warning
-                        ),
-                        true,
-                    );
+                    self.show_info_toast(format!(
+                        "workspace '{}' merged, warning: {}",
+                        completion.workspace_name, first_warning
+                    ));
                 }
             }
             Err(error) => {
@@ -173,7 +161,7 @@ impl GroveApp {
                         .with_data("error", Value::from(error.clone())),
                 );
                 self.last_tmux_error = Some(error.clone());
-                self.show_toast(Self::summarize_merge_failure(&error), true);
+                self.show_error_toast(Self::summarize_merge_failure(&error));
             }
         }
     }
@@ -205,21 +193,15 @@ impl GroveApp {
                 self.last_tmux_error = None;
                 self.refresh_workspaces(Some(completion.workspace_path));
                 if completion.warnings.is_empty() {
-                    self.show_toast(
-                        format!(
-                            "workspace '{}' updated from '{}'",
-                            completion.workspace_name, completion.base_branch
-                        ),
-                        false,
-                    );
+                    self.show_success_toast(format!(
+                        "workspace '{}' updated from '{}'",
+                        completion.workspace_name, completion.base_branch
+                    ));
                 } else if let Some(first_warning) = completion.warnings.first() {
-                    self.show_toast(
-                        format!(
-                            "workspace '{}' updated, warning: {}",
-                            completion.workspace_name, first_warning
-                        ),
-                        true,
-                    );
+                    self.show_info_toast(format!(
+                        "workspace '{}' updated, warning: {}",
+                        completion.workspace_name, first_warning
+                    ));
                 }
             }
             Err(error) => {
@@ -233,7 +215,7 @@ impl GroveApp {
                         .with_data("error", Value::from(error.clone())),
                 );
                 self.last_tmux_error = Some(error.clone());
-                self.show_toast(format!("workspace update failed: {error}"), true);
+                self.show_error_toast(format!("workspace update failed: {error}"));
             }
         }
     }

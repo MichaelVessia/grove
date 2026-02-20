@@ -73,12 +73,9 @@ impl GroveApp {
         self.divider_drag_pointer_offset = 0;
         self.queue_cmd(Cmd::set_mouse_capture(self.mouse_capture_enabled));
         if self.mouse_capture_enabled {
-            self.show_toast("mouse capture enabled", false);
+            self.show_info_toast("mouse capture enabled");
         } else {
-            self.show_toast(
-                "mouse capture disabled, terminal URL clicks restored",
-                false,
-            );
+            self.show_info_toast("mouse capture disabled, terminal URL clicks restored");
         }
     }
 

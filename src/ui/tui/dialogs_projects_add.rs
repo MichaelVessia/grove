@@ -37,11 +37,11 @@ impl GroveApp {
 
     pub(super) fn delete_selected_project_from_dialog(&mut self) {
         if self.project_delete_in_flight {
-            self.show_toast("project delete already in progress", true);
+            self.show_info_toast("project delete already in progress");
             return;
         }
         let Some(project_index) = self.selected_project_dialog_project_index() else {
-            self.show_toast("no project selected", true);
+            self.show_info_toast("no project selected");
             return;
         };
         self.delete_project_by_index(project_index);
@@ -49,15 +49,15 @@ impl GroveApp {
 
     pub(super) fn delete_selected_workspace_project(&mut self) {
         if self.project_delete_in_flight {
-            self.show_toast("project delete already in progress", true);
+            self.show_info_toast("project delete already in progress");
             return;
         }
         let Some(workspace) = self.state.selected_workspace() else {
-            self.show_toast("no workspace selected", true);
+            self.show_info_toast("no workspace selected");
             return;
         };
         let Some(project_path) = workspace.project_path.as_ref() else {
-            self.show_toast("selected workspace has no project", true);
+            self.show_info_toast("selected workspace has no project");
             return;
         };
         let Some(project_index) = self
@@ -65,7 +65,7 @@ impl GroveApp {
             .iter()
             .position(|project| refer_to_same_location(&project.path, project_path))
         else {
-            self.show_toast("selected project not found", true);
+            self.show_info_toast("selected project not found");
             return;
         };
         self.delete_project_by_index(project_index);
@@ -73,7 +73,7 @@ impl GroveApp {
 
     fn delete_project_by_index(&mut self, project_index: usize) {
         let Some(project) = self.projects.get(project_index).cloned() else {
-            self.show_toast("project not found", true);
+            self.show_info_toast("project not found");
             return;
         };
         let mut updated_projects = self.projects.clone();
@@ -137,14 +137,14 @@ impl GroveApp {
 
         let path_input = add_dialog.path.trim();
         if path_input.is_empty() {
-            self.show_toast("project path is required", true);
+            self.show_info_toast("project path is required");
             return;
         }
         let normalized = Self::normalized_project_path(path_input);
         let canonical = match normalized.canonicalize() {
             Ok(path) => path,
             Err(error) => {
-                self.show_toast(format!("invalid project path: {error}"), true);
+                self.show_info_toast(format!("invalid project path: {error}"));
                 return;
             }
         };
@@ -165,11 +165,11 @@ impl GroveApp {
             }
             Ok(output) => {
                 let stderr = stderr_trimmed(&output);
-                self.show_toast(format!("not a git repository: {stderr}"), true);
+                self.show_info_toast(format!("not a git repository: {stderr}"));
                 return;
             }
             Err(error) => {
-                self.show_toast(format!("git check failed: {error}"), true);
+                self.show_error_toast(format!("git check failed: {error}"));
                 return;
             }
         };
@@ -180,7 +180,7 @@ impl GroveApp {
             .iter()
             .any(|project| refer_to_same_location(&project.path, &repo_root))
         {
-            self.show_toast("project already exists", true);
+            self.show_info_toast("project already exists");
             return;
         }
 
@@ -195,7 +195,7 @@ impl GroveApp {
             defaults: Default::default(),
         });
         if let Err(error) = self.save_projects_config() {
-            self.show_toast(format!("project save failed: {error}"), true);
+            self.show_error_toast(format!("project save failed: {error}"));
             return;
         }
 
@@ -204,16 +204,16 @@ impl GroveApp {
         }
         self.refresh_project_dialog_filtered();
         self.refresh_workspaces(None);
-        self.show_toast(format!("project '{}' added", project_name), false);
+        self.show_success_toast(format!("project '{}' added", project_name));
     }
 
     pub(super) fn open_selected_project_defaults_dialog(&mut self) {
         let Some(project_index) = self.selected_project_dialog_project_index() else {
-            self.show_toast("no project selected", true);
+            self.show_info_toast("no project selected");
             return;
         };
         let Some(project) = self.projects.get(project_index) else {
-            self.show_toast("project not found", true);
+            self.show_info_toast("project not found");
             return;
         };
         let base_branch = project.defaults.base_branch.clone();
@@ -240,7 +240,7 @@ impl GroveApp {
         };
         let project_name = {
             let Some(project) = self.projects.get_mut(dialog_state.project_index) else {
-                self.show_toast("project not found", true);
+                self.show_info_toast("project not found");
                 return;
             };
 
@@ -253,13 +253,13 @@ impl GroveApp {
         };
 
         if let Err(error) = self.save_projects_config() {
-            self.show_toast(format!("project defaults save failed: {error}"), true);
+            self.show_error_toast(format!("project defaults save failed: {error}"));
             return;
         }
 
         if let Some(project_dialog) = self.project_dialog_mut() {
             project_dialog.defaults_dialog = None;
         }
-        self.show_toast(format!("project '{}' defaults saved", project_name), false);
+        self.show_success_toast(format!("project '{}' defaults saved", project_name));
     }
 }

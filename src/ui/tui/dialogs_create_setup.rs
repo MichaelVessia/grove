@@ -102,7 +102,7 @@ impl GroveApp {
             return;
         }
         if self.projects.is_empty() {
-            self.show_toast("no projects configured, press p to add one", true);
+            self.show_info_toast("no projects configured, press p to add one");
             return;
         }
 

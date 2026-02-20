@@ -142,7 +142,7 @@ impl GroveApp {
         let mut lines = selected_lines.unwrap_or_else(|| self.visible_preview_output_lines());
         if lines.is_empty() {
             self.last_tmux_error = Some("no output to copy".to_string());
-            self.show_toast("No output to copy", true);
+            self.show_info_toast("No output to copy");
             return;
         }
 
@@ -151,7 +151,7 @@ impl GroveApp {
         }
         if lines.is_empty() {
             self.last_tmux_error = Some("no output to copy".to_string());
-            self.show_toast("No output to copy", true);
+            self.show_info_toast("No output to copy");
             return;
         }
         let text = lines.join("\n");
@@ -169,11 +169,11 @@ impl GroveApp {
         match self.clipboard.write_text(&text) {
             Ok(()) => {
                 self.last_tmux_error = None;
-                self.show_toast(format!("Copied {} line(s)", lines.len()), false);
+                self.show_success_toast(format!("Copied {} line(s)", lines.len()));
             }
             Err(error) => {
                 self.last_tmux_error = Some(format!("clipboard write failed: {error}"));
-                self.show_toast(format!("Copy failed: {error}"), true);
+                self.show_error_toast(format!("Copy failed: {error}"));
             }
         }
         self.clear_preview_selection();

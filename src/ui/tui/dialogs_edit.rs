@@ -146,7 +146,7 @@ impl GroveApp {
         }
 
         let Some(workspace) = self.state.selected_workspace().cloned() else {
-            self.show_toast("no workspace selected", true);
+            self.show_info_toast("no workspace selected");
             return;
         };
         let base_branch = if workspace.is_main {
@@ -199,10 +199,9 @@ impl GroveApp {
         };
         let target_branch = dialog.base_branch.trim().to_string();
         if target_branch.is_empty() {
-            self.show_toast(
-                workspace_lifecycle_error_message(&WorkspaceLifecycleError::EmptyBaseBranch),
-                true,
-            );
+            self.show_info_toast(workspace_lifecycle_error_message(
+                &WorkspaceLifecycleError::EmptyBaseBranch,
+            ));
             return;
         }
         if dialog.is_main
@@ -211,7 +210,7 @@ impl GroveApp {
                 target_branch.as_str(),
             )
         {
-            self.show_toast(format!("base workspace switch failed: {error}"), true);
+            self.show_error_toast(format!("base workspace switch failed: {error}"));
             return;
         }
 
@@ -236,24 +235,18 @@ impl GroveApp {
         if let Err(error) =
             write_workspace_base_marker(&dialog.workspace_path, target_branch.as_str())
         {
-            self.show_toast(
-                format!(
-                    "workspace edit failed: {}",
-                    workspace_lifecycle_error_message(&error)
-                ),
-                true,
-            );
+            self.show_error_toast(format!(
+                "workspace edit failed: {}",
+                workspace_lifecycle_error_message(&error)
+            ));
             return;
         }
 
         if let Err(error) = write_workspace_agent_marker(&dialog.workspace_path, dialog.agent) {
-            self.show_toast(
-                format!(
-                    "workspace edit failed: {}",
-                    workspace_lifecycle_error_message(&error)
-                ),
-                true,
-            );
+            self.show_error_toast(format!(
+                "workspace edit failed: {}",
+                workspace_lifecycle_error_message(&error)
+            ));
             return;
         }
 
@@ -274,19 +267,13 @@ impl GroveApp {
         self.close_active_dialog();
         self.last_tmux_error = None;
         if dialog.is_main && dialog.was_running {
-            self.show_toast(
-                "base workspace switched, restart agent to apply agent change",
-                false,
-            );
+            self.show_info_toast("base workspace switched, restart agent to apply agent change");
         } else if dialog.is_main {
-            self.show_toast(
-                format!("base workspace switched to '{target_branch}'"),
-                false,
-            );
+            self.show_success_toast(format!("base workspace switched to '{target_branch}'"));
         } else if dialog.was_running {
-            self.show_toast("workspace updated, restart agent to apply change", false);
+            self.show_info_toast("workspace updated, restart agent to apply change");
         } else {
-            self.show_toast("workspace updated", false);
+            self.show_success_toast("workspace updated");
         }
     }
 }

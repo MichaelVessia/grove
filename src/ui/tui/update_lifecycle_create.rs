@@ -50,7 +50,7 @@ impl GroveApp {
             ],
         );
         let Some(project) = self.projects.get(dialog.project_index).cloned() else {
-            self.show_toast("project is required", true);
+            self.show_info_toast("project is required");
             return;
         };
 
@@ -69,7 +69,7 @@ impl GroveApp {
         };
 
         if let Err(error) = request.validate() {
-            self.show_toast(workspace_lifecycle_error_message(&error), true);
+            self.show_info_toast(workspace_lifecycle_error_message(&error));
             return;
         }
 
@@ -132,25 +132,19 @@ impl GroveApp {
                 self.state.mode = UiMode::List;
                 self.state.focus = PaneFocus::WorkspaceList;
                 if result.warnings.is_empty() {
-                    self.show_toast(format!("workspace '{}' created", workspace_name), false);
+                    self.show_success_toast(format!("workspace '{}' created", workspace_name));
                 } else if let Some(first_warning) = result.warnings.first() {
-                    self.show_toast(
-                        format!(
-                            "workspace '{}' created, warning: {}",
-                            workspace_name, first_warning
-                        ),
-                        true,
-                    );
+                    self.show_info_toast(format!(
+                        "workspace '{}' created, warning: {}",
+                        workspace_name, first_warning
+                    ));
                 }
             }
             Err(error) => {
-                self.show_toast(
-                    format!(
-                        "workspace create failed: {}",
-                        workspace_lifecycle_error_message(&error)
-                    ),
-                    true,
-                );
+                self.show_error_toast(format!(
+                    "workspace create failed: {}",
+                    workspace_lifecycle_error_message(&error)
+                ));
             }
         }
     }

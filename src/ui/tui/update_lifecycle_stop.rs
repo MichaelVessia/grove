@@ -7,12 +7,12 @@ impl GroveApp {
         }
 
         if !workspace_can_stop_agent(self.state.selected_workspace()) {
-            self.show_toast("no agent running", true);
+            self.show_info_toast("no agent running");
             return;
         }
 
         let Some(workspace) = self.state.selected_workspace().cloned() else {
-            self.show_toast("no workspace selected", true);
+            self.show_info_toast("no workspace selected");
             return;
         };
 
@@ -23,7 +23,7 @@ impl GroveApp {
             );
             if let Some(error) = completion.result.as_ref().err() {
                 self.last_tmux_error = Some(error.clone());
-                self.show_toast("agent stop failed", true);
+                self.show_error_toast("agent stop failed");
                 return;
             }
 
@@ -85,13 +85,13 @@ impl GroveApp {
                         .with_data("session", Value::from(completion.session_name)),
                 );
                 self.last_tmux_error = None;
-                self.show_toast("agent stopped", false);
+                self.show_success_toast("agent stopped");
                 self.poll_preview();
             }
             Err(error) => {
                 self.last_tmux_error = Some(error.clone());
                 self.log_tmux_error(error);
-                self.show_toast("agent stop failed", true);
+                self.show_error_toast("agent stop failed");
             }
         }
     }

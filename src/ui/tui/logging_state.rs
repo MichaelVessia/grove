@@ -9,6 +9,13 @@ pub(super) struct TransitionSnapshot {
     interactive_session: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ToastSeverity {
+    Success,
+    Error,
+    Info,
+}
+
 impl GroveApp {
     pub(super) fn mode_label(&self) -> &'static str {
         if self.interactive.is_some() {
@@ -34,6 +41,24 @@ impl GroveApp {
 
     pub(super) fn duration_millis(duration: Duration) -> u64 {
         u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+    }
+
+    fn toast_max_width(&self) -> u16 {
+        self.viewport_width.saturating_sub(4).clamp(72, 180)
+    }
+
+    fn toast_message_for_width(raw: impl Into<String>, max_width: u16) -> String {
+        let normalized = raw
+            .into()
+            .split_whitespace()
+            .collect::<Vec<&str>>()
+            .join(" ");
+        if normalized.is_empty() {
+            return String::new();
+        }
+
+        let max_message_width = usize::from(max_width).saturating_sub(8).max(16);
+        truncate_to_display_width(normalized.as_str(), max_message_width)
     }
 
     pub(super) fn msg_kind(msg: &Msg) -> &'static str {
@@ -198,37 +223,78 @@ impl GroveApp {
         result
     }
 
-    pub(super) fn show_toast(&mut self, text: impl Into<String>, is_error: bool) {
-        let message = text.into();
-        let max_width = self.viewport_width.saturating_sub(6).clamp(50, 140);
+    pub(super) fn show_success_toast(&mut self, text: impl Into<String>) {
+        self.show_toast(text, ToastSeverity::Success);
+    }
+
+    pub(super) fn show_error_toast(&mut self, text: impl Into<String>) {
+        self.show_toast(text, ToastSeverity::Error);
+    }
+
+    pub(super) fn show_info_toast(&mut self, text: impl Into<String>) {
+        self.show_toast(text, ToastSeverity::Info);
+    }
+
+    pub(super) fn show_toast(&mut self, text: impl Into<String>, severity: ToastSeverity) {
+        let max_width = self.toast_max_width();
+        let message = Self::toast_message_for_width(text, max_width);
+        let is_error = matches!(severity, ToastSeverity::Error);
         self.log_event_with_fields(
             "toast",
             "toast_shown",
             [
                 ("text".to_string(), Value::from(message.clone())),
+                (
+                    "severity".to_string(),
+                    Value::from(match severity {
+                        ToastSeverity::Success => "success",
+                        ToastSeverity::Error => "error",
+                        ToastSeverity::Info => "info",
+                    }),
+                ),
                 ("is_error".to_string(), Value::from(is_error)),
             ],
         );
 
-        let toast = if is_error {
-            Toast::new(message)
-                .title("Error")
-                .icon(ToastIcon::Error)
-                .style_variant(ToastStyle::Error)
-                .max_width(max_width)
-                .duration(Duration::from_secs(8))
-        } else {
-            Toast::new(message)
-                .icon(ToastIcon::Success)
-                .style_variant(ToastStyle::Success)
-                .max_width(max_width)
-                .duration(Duration::from_secs(3))
+        let theme = ui_theme();
+        let (title, icon, style_variant, duration, priority, color) = match severity {
+            ToastSeverity::Success => (
+                "Success",
+                ToastIcon::Success,
+                ToastStyle::Success,
+                Duration::from_secs(4),
+                NotificationPriority::Normal,
+                theme.teal,
+            ),
+            ToastSeverity::Error => (
+                "Error",
+                ToastIcon::Error,
+                ToastStyle::Error,
+                Duration::from_secs(12),
+                NotificationPriority::High,
+                theme.red,
+            ),
+            ToastSeverity::Info => (
+                "Info",
+                ToastIcon::Info,
+                ToastStyle::Info,
+                Duration::from_secs(6),
+                NotificationPriority::Normal,
+                theme.blue,
+            ),
         };
-        let priority = if is_error {
-            NotificationPriority::High
-        } else {
-            NotificationPriority::Normal
-        };
+        let base_style = Style::new().bg(theme.surface0).fg(color);
+        let title_style = Style::new().bg(theme.surface0).fg(color).bold();
+        let icon_style = Style::new().bg(theme.surface0).fg(color).bold();
+        let toast = Toast::new(message)
+            .title(title)
+            .icon(icon)
+            .style_variant(style_variant)
+            .style(base_style)
+            .with_title_style(title_style)
+            .with_icon_style(icon_style)
+            .max_width(max_width)
+            .duration(duration);
         let _ = self.notifications.push(toast, priority);
         let _ = self.notifications.tick(Duration::ZERO);
     }

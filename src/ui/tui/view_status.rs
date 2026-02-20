@@ -13,10 +13,13 @@ impl GroveApp {
     #[cfg(test)]
     pub(super) fn status_bar_line(&self) -> String {
         if let Some(toast) = self.notifications.visible().last() {
-            if matches!(toast.config.style_variant, ToastStyle::Error) {
-                return format!("Status: error: {}", toast.content.message);
-            }
-            return format!("Status: {}", toast.content.message);
+            return match toast.config.style_variant {
+                ToastStyle::Error => format!("Status: error: {}", toast.content.message),
+                ToastStyle::Success => format!("Status: success: {}", toast.content.message),
+                ToastStyle::Info => format!("Status: info: {}", toast.content.message),
+                ToastStyle::Warning => format!("Status: warning: {}", toast.content.message),
+                ToastStyle::Neutral => format!("Status: {}", toast.content.message),
+            };
         }
 
         match &self.discovery_state {
