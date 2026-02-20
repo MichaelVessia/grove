@@ -406,11 +406,14 @@ pub fn delete_workspace(request: DeleteWorkspaceRequest) -> (Result<(), String>,
 }
 
 pub fn merge_workspace(request: MergeWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
+    merge_workspace_with_session_stopper(request, stop_workspace_sessions)
+}
+
+fn merge_workspace_with_session_stopper(
+    request: MergeWorkspaceRequest,
+    stop_sessions: impl Fn(Option<&str>, &str),
+) -> (Result<(), String>, Vec<String>) {
     let mut warnings = Vec::new();
-    stop_workspace_sessions(
-        request.project_name.as_deref(),
-        request.workspace_name.as_str(),
-    );
 
     if request.workspace_name.trim().is_empty() {
         return (Err("workspace name is required".to_string()), warnings);
@@ -479,10 +482,14 @@ pub fn merge_workspace(request: MergeWorkspaceRequest) -> (Result<(), String>, V
         return (Err(format!("git merge failed: {error}")), warnings);
     }
 
-    if request.cleanup_workspace
-        && let Err(error) = run_delete_worktree_git(&repo_root, &request.workspace_path, false)
-    {
-        warnings.push(format!("workspace cleanup: {error}"));
+    if request.cleanup_workspace {
+        stop_sessions(
+            request.project_name.as_deref(),
+            request.workspace_name.as_str(),
+        );
+        if let Err(error) = run_delete_worktree_git(&repo_root, &request.workspace_path, false) {
+            warnings.push(format!("workspace cleanup: {error}"));
+        }
     }
 
     if request.cleanup_local_branch
@@ -497,11 +504,14 @@ pub fn merge_workspace(request: MergeWorkspaceRequest) -> (Result<(), String>, V
 pub fn update_workspace_from_base(
     request: UpdateWorkspaceFromBaseRequest,
 ) -> (Result<(), String>, Vec<String>) {
+    update_workspace_from_base_with_session_stopper(request, stop_workspace_sessions)
+}
+
+fn update_workspace_from_base_with_session_stopper(
+    request: UpdateWorkspaceFromBaseRequest,
+    _stop_sessions: impl Fn(Option<&str>, &str),
+) -> (Result<(), String>, Vec<String>) {
     let warnings = Vec::new();
-    stop_workspace_sessions(
-        request.project_name.as_deref(),
-        request.workspace_name.as_str(),
-    );
 
     if request.workspace_name.trim().is_empty() {
         return (Err("workspace name is required".to_string()), warnings);

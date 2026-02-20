@@ -4,9 +4,10 @@ use super::{
     SetupScriptRunner, UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
     WorkspaceMarkerError, WorkspaceSetupTemplate, copy_env_files, create_workspace,
     create_workspace_with_template, delete_workspace, ensure_grove_git_exclude_entries,
-    merge_workspace, read_workspace_agent_marker, read_workspace_markers,
-    update_workspace_from_base, workspace_directory_path, workspace_lifecycle_error_message,
-    write_workspace_agent_marker, write_workspace_base_marker,
+    merge_workspace, merge_workspace_with_session_stopper, read_workspace_agent_marker,
+    read_workspace_markers, update_workspace_from_base,
+    update_workspace_from_base_with_session_stopper, workspace_directory_path,
+    workspace_lifecycle_error_message, write_workspace_agent_marker, write_workspace_base_marker,
 };
 use crate::domain::AgentType;
 use std::cell::RefCell;
@@ -760,6 +761,165 @@ fn merge_workspace_requires_clean_base_and_workspace_worktrees() {
     assert!(
         base_error.contains("base worktree has uncommitted changes"),
         "unexpected base error: {base_error}"
+    );
+}
+
+#[test]
+fn merge_workspace_failure_does_not_stop_sessions() {
+    let temp = TestDir::new("merge-failure-no-session-stop");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    init_git_repo(&repo_root);
+
+    let base_branch = current_branch(&repo_root);
+    let workspace_path = temp.path.join("grove-feature-no-stop");
+    run_git(
+        &repo_root,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feature-no-stop",
+            workspace_path.to_string_lossy().as_ref(),
+            "HEAD",
+        ],
+    );
+    fs::write(workspace_path.join("dirty.txt"), "dirty\n").expect("dirty file should exist");
+
+    let stop_calls: RefCell<Vec<(Option<String>, String)>> = RefCell::new(Vec::new());
+    let request = MergeWorkspaceRequest {
+        project_name: Some("grove-project".to_string()),
+        project_path: Some(repo_root),
+        workspace_name: "feature-no-stop".to_string(),
+        workspace_branch: "feature-no-stop".to_string(),
+        workspace_path,
+        base_branch,
+        cleanup_workspace: true,
+        cleanup_local_branch: false,
+    };
+
+    let (result, warnings) = merge_workspace_with_session_stopper(request, |project, workspace| {
+        stop_calls
+            .borrow_mut()
+            .push((project.map(ToOwned::to_owned), workspace.to_string()));
+    });
+
+    assert!(warnings.is_empty());
+    let error = result.expect_err("dirty workspace should block merge");
+    assert!(
+        error.contains("workspace worktree has uncommitted changes"),
+        "unexpected error: {error}"
+    );
+    assert!(
+        stop_calls.borrow().is_empty(),
+        "merge failure should not stop sessions"
+    );
+}
+
+#[test]
+fn merge_workspace_cleanup_stops_sessions_after_success() {
+    let temp = TestDir::new("merge-cleanup-session-stop");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    init_git_repo(&repo_root);
+
+    let base_branch = current_branch(&repo_root);
+    let workspace_path = temp.path.join("grove-feature-cleanup-stop");
+    run_git(
+        &repo_root,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feature-cleanup-stop",
+            workspace_path.to_string_lossy().as_ref(),
+            "HEAD",
+        ],
+    );
+    fs::write(workspace_path.join("feature.txt"), "merged\n").expect("feature file should exist");
+    run_git(&workspace_path, &["add", "feature.txt"]);
+    run_git(&workspace_path, &["commit", "-m", "add feature"]);
+
+    let stop_calls: RefCell<Vec<(Option<String>, String)>> = RefCell::new(Vec::new());
+    let request = MergeWorkspaceRequest {
+        project_name: Some("grove-project".to_string()),
+        project_path: Some(repo_root),
+        workspace_name: "feature-cleanup-stop".to_string(),
+        workspace_branch: "feature-cleanup-stop".to_string(),
+        workspace_path: workspace_path.clone(),
+        base_branch,
+        cleanup_workspace: true,
+        cleanup_local_branch: false,
+    };
+
+    let (result, warnings) = merge_workspace_with_session_stopper(request, |project, workspace| {
+        stop_calls
+            .borrow_mut()
+            .push((project.map(ToOwned::to_owned), workspace.to_string()));
+    });
+
+    assert_eq!(result, Ok(()));
+    assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    assert!(
+        !workspace_path.exists(),
+        "workspace path should be removed after cleanup"
+    );
+    assert_eq!(
+        *stop_calls.borrow(),
+        vec![(
+            Some("grove-project".to_string()),
+            "feature-cleanup-stop".to_string()
+        )]
+    );
+}
+
+#[test]
+fn update_workspace_from_base_never_stops_sessions() {
+    let temp = TestDir::new("update-no-session-stop");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    init_git_repo(&repo_root);
+
+    let base_branch = current_branch(&repo_root);
+    let workspace_path = temp.path.join("grove-feature-update-no-stop");
+    run_git(
+        &repo_root,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feature-update-no-stop",
+            workspace_path.to_string_lossy().as_ref(),
+            "HEAD",
+        ],
+    );
+    fs::write(workspace_path.join("dirty.txt"), "dirty\n").expect("dirty file should exist");
+
+    let stop_calls: RefCell<Vec<(Option<String>, String)>> = RefCell::new(Vec::new());
+    let request = UpdateWorkspaceFromBaseRequest {
+        project_name: Some("grove-project".to_string()),
+        project_path: Some(repo_root),
+        workspace_name: "feature-update-no-stop".to_string(),
+        workspace_branch: "feature-update-no-stop".to_string(),
+        workspace_path,
+        base_branch,
+    };
+
+    let (result, warnings) =
+        update_workspace_from_base_with_session_stopper(request, |project, workspace| {
+            stop_calls
+                .borrow_mut()
+                .push((project.map(ToOwned::to_owned), workspace.to_string()));
+        });
+    assert!(warnings.is_empty());
+    let error = result.expect_err("dirty workspace should block update");
+    assert!(
+        error.contains("workspace worktree has uncommitted changes"),
+        "unexpected error: {error}"
+    );
+    assert!(
+        stop_calls.borrow().is_empty(),
+        "workspace update should never stop sessions"
     );
 }
 
