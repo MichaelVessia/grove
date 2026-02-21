@@ -10,7 +10,7 @@ Primary success criterion:
 ## Kickoff Snapshot (2026-02-21)
 
 - Current execution state: `in progress` (`Phase 0a` and `Phase 0` completed).
-- Immediate focus: Phase 1 (`in-process command service`).
+- Immediate focus: Phase 1 (`migrate existing lifecycle call sites to command service internals`).
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
@@ -496,7 +496,7 @@ Remote mapping (Phase 4.5+):
 
 - [x] 1. Add Phase 0a module boundaries (`interface::cli`, `interface::tui`, `application::commands` stubs).
 - [x] 2. Add envelope + error code mapping module.
-- [ ] 3. Add command service trait + in-process implementation.
+- [x] 3. Add command service trait + in-process implementation.
 - [ ] 4. Migrate existing lifecycle code paths to service internally.
 - [ ] 5. Build CLI root + lifecycle subcommands.
 - [ ] 6. Add CLI integration and golden JSON tests.
