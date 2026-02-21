@@ -6,7 +6,7 @@ TUNNEL_KEY = $(subst /,-,$(subst :,-,$(subst @,-,$(REMOTE_USER)-$(REMOTE_HOST)))
 LOCAL_SOCKET ?= $(HOME)/.grove/groved-$(TUNNEL_KEY).sock
 SSH_CONTROL_PATH ?= $(HOME)/.grove/ssh-groved-$(TUNNEL_KEY).ctl
 
-.PHONY: fmt clippy test ci tui groved tui-daemon root tunnel-up tunnel-down tunnel-status
+.PHONY: fmt clippy test ci tui debug-tui groved tui-daemon root tunnel-up tunnel-down tunnel-status
 
 fmt:
 	cargo fmt --check
@@ -21,6 +21,9 @@ ci: fmt clippy test
 
 tui:
 	cargo run --bin grove -- tui
+
+debug-tui:
+	RUST_BACKTRACE=1 cargo run --bin grove -- tui --debug-record
 
 groved:
 	cargo run --bin groved -- --socket "$(SOCKET)"
