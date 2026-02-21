@@ -232,6 +232,62 @@ impl GroveApp {
             ],
         );
 
+        if let Some(daemon_socket_path) = self.daemon_socket_path.as_deref() {
+            let repo_root = self
+                .state
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.path == dialog.workspace_path)
+                .and_then(|workspace| workspace.project_path.clone());
+            let Some(repo_root) = repo_root else {
+                self.show_error_toast("workspace edit failed: workspace project root unavailable");
+                return;
+            };
+            let payload = DaemonWorkspaceEditPayload {
+                repo_root: repo_root.display().to_string(),
+                workspace: Some(dialog.workspace_name.clone()),
+                workspace_path: Some(dialog.workspace_path.display().to_string()),
+                agent: Some(dialog.agent.label().to_ascii_lowercase()),
+                base_branch: Some(target_branch.clone()),
+            };
+            let response = workspace_edit_via_socket(daemon_socket_path, payload);
+            let result = match response {
+                Ok(Ok(result)) => result,
+                Ok(Err(error)) => {
+                    self.show_error_toast(format!("workspace edit failed: {}", error.message));
+                    return;
+                }
+                Err(error) => {
+                    self.show_error_toast(format!(
+                        "workspace edit failed: daemon request failed: {error}"
+                    ));
+                    return;
+                }
+            };
+
+            if let Some(workspace) = self
+                .state
+                .workspaces
+                .iter_mut()
+                .find(|workspace| workspace.path == dialog.workspace_path)
+            {
+                workspace.agent =
+                    parse_daemon_agent_label(&result.workspace.agent).unwrap_or(dialog.agent);
+                workspace.base_branch = result.workspace.base_branch;
+                workspace.branch = result.workspace.branch;
+                workspace.supported_agent = result.workspace.supported_agent;
+            }
+
+            self.close_active_dialog();
+            self.last_tmux_error = None;
+            if dialog.was_running {
+                self.show_info_toast("workspace updated, restart agent to apply change");
+            } else {
+                self.show_success_toast("workspace updated");
+            }
+            return;
+        }
+
         if let Err(error) =
             write_workspace_base_marker(&dialog.workspace_path, target_branch.as_str())
         {
@@ -275,5 +331,13 @@ impl GroveApp {
         } else {
             self.show_success_toast("workspace updated");
         }
+    }
+}
+
+fn parse_daemon_agent_label(label: &str) -> Option<AgentType> {
+    match label.trim().to_ascii_lowercase().as_str() {
+        "claude" => Some(AgentType::Claude),
+        "codex" => Some(AgentType::Codex),
+        _ => None,
     }
 }

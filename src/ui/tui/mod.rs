@@ -70,9 +70,10 @@ use crate::infrastructure::config::{
 use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
 use crate::interface::daemon::{
     DaemonAgentStartPayload, DaemonAgentStopPayload, DaemonWorkspaceCreatePayload,
-    DaemonWorkspaceDeletePayload, DaemonWorkspaceMergePayload, DaemonWorkspaceUpdatePayload,
-    agent_start_via_socket, agent_stop_via_socket, workspace_create_via_socket,
-    workspace_delete_via_socket, workspace_merge_via_socket, workspace_update_via_socket,
+    DaemonWorkspaceDeletePayload, DaemonWorkspaceEditPayload, DaemonWorkspaceMergePayload,
+    DaemonWorkspaceUpdatePayload, agent_start_via_socket, agent_stop_via_socket,
+    workspace_create_via_socket, workspace_delete_via_socket, workspace_edit_via_socket,
+    workspace_merge_via_socket, workspace_update_via_socket,
 };
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};

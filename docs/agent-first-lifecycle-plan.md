@@ -27,6 +27,7 @@ Primary success criterion:
 - Phase 4 progress: `groved` Unix socket daemon skeleton now supports JSON `ping`, stale socket recovery, and all lifecycle requests (`workspace list/create/edit/delete/merge/update`, `agent start/stop`).
 - Phase 4 progress: `grove tui --socket <path>` is now accepted, and TUI lifecycle mutations route through daemon transport (`workspace create/delete/merge/update`, `agent start/stop`).
 - Phase 4 progress: in socket mode, TUI startup + refresh inventory loading now routes through daemon `workspace list`.
+- Phase 4 progress: in socket mode, TUI `workspace edit` now routes through daemon transport.
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
