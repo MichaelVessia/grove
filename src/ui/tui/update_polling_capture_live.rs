@@ -30,16 +30,19 @@ impl GroveApp {
                     .filter(|workspace| session_name_for_workspace_ref(workspace) == session_name)
                     .map(|_| self.state.selected_index);
                 if let Some(index) = selected_workspace_index {
-                    let supported_agent = self.state.workspaces[index].supported_agent;
                     let workspace_path = self.state.workspaces[index].path.clone();
                     let workspace_agent = self.state.workspaces[index].agent;
                     let workspace_is_main = self.state.workspaces[index].is_main;
+                    let supported_agent = self.state.workspaces[index].supported_agent;
                     let previous_status = self.state.workspaces[index].status;
                     let previous_orphaned = self.state.workspaces[index].is_orphaned;
-                    let (_, cleaned_output) = self
-                        .capture_changed_cleaned_for_workspace(&workspace_path, output.as_str());
+                    let key = Self::workspace_status_tracking_key(&workspace_path);
+                    self.workspace_status_digests
+                        .insert(key.clone(), update.digest.clone());
+                    self.workspace_output_changing
+                        .insert(key, update.changed_cleaned);
                     let resolved_status = detect_status_with_session_override(
-                        cleaned_output.as_str(),
+                        &update.cleaned_output,
                         SessionActivity::Active,
                         workspace_is_main,
                         true,

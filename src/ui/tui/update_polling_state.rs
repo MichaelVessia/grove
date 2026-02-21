@@ -195,21 +195,6 @@ impl GroveApp {
         self.workspace_output_changing.clear();
     }
 
-    pub(super) fn capture_changed_cleaned_for_workspace(
-        &mut self,
-        workspace_path: &Path,
-        output: &str,
-    ) -> (bool, String) {
-        let key = Self::workspace_status_tracking_key(workspace_path);
-        let previous_digest = self.workspace_status_digests.get(&key);
-        let change = evaluate_capture_change(previous_digest, output);
-        self.workspace_status_digests
-            .insert(key.clone(), change.digest);
-        self.workspace_output_changing
-            .insert(key, change.changed_cleaned);
-        (change.changed_cleaned, change.cleaned_output)
-    }
-
     fn workspace_output_changing(&self, workspace_path: &Path) -> bool {
         let key = Self::workspace_status_tracking_key(workspace_path);
         self.workspace_output_changing

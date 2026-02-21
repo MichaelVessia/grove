@@ -30,6 +30,8 @@ pub(crate) struct PreviewState {
 pub(crate) struct CaptureUpdate {
     pub changed_raw: bool,
     pub changed_cleaned: bool,
+    pub cleaned_output: String,
+    pub digest: OutputDigest,
 }
 
 impl PreviewState {
@@ -46,6 +48,7 @@ impl PreviewState {
 
     pub fn apply_capture(&mut self, raw_output: &str) -> CaptureUpdate {
         let change = evaluate_capture_change(self.last_digest.as_ref(), raw_output);
+        let return_digest = change.digest.clone();
 
         let record = CaptureRecord {
             ts: SystemTime::now()
@@ -82,6 +85,8 @@ impl PreviewState {
         CaptureUpdate {
             changed_raw: change.changed_raw,
             changed_cleaned: change.changed_cleaned,
+            cleaned_output: change.cleaned_output,
+            digest: return_digest,
         }
     }
 
