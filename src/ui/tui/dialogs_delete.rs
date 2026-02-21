@@ -37,7 +37,7 @@ impl GroveApp {
         self.delete_in_flight = true;
         self.delete_in_flight_workspace = Some(workspace_path.clone());
         self.queue_cmd(Cmd::task(move || {
-            let (result, warnings) = delete_workspace(request);
+            let (result, warnings) = execute_workspace_delete(request);
             Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
                 workspace_name,
                 workspace_path,
@@ -233,18 +233,27 @@ impl GroveApp {
 
         let workspace_name = dialog.workspace_name.clone();
         let workspace_path = dialog.path.clone();
-        let request = DeleteWorkspaceRequest {
-            project_name: dialog.project_name,
-            project_path: dialog.project_path,
-            workspace_name: dialog.workspace_name,
-            branch: dialog.branch,
-            workspace_path: dialog.path,
-            is_missing: dialog.is_missing,
-            delete_local_branch: dialog.delete_local_branch,
-            kill_tmux_sessions: dialog.kill_tmux_sessions,
+        let Some(repo_root) = dialog.project_path else {
+            self.apply_delete_workspace_completion(DeleteWorkspaceCompletion {
+                workspace_name,
+                workspace_path,
+                result: Err("workspace project root unavailable".to_string()),
+                warnings: Vec::new(),
+            });
+            return;
+        };
+        let request = WorkspaceDeleteRequest {
+            context: RepoContext { repo_root },
+            selector: WorkspaceSelector::NameAndPath {
+                name: dialog.workspace_name,
+                path: dialog.path,
+            },
+            delete_branch: dialog.delete_local_branch,
+            force_stop: dialog.kill_tmux_sessions,
+            dry_run: false,
         };
         if !self.tmux_input.supports_background_launch() {
-            let (result, warnings) = delete_workspace(request);
+            let (result, warnings) = execute_workspace_delete(request);
             self.apply_delete_workspace_completion(DeleteWorkspaceCompletion {
                 workspace_name,
                 workspace_path,
@@ -259,5 +268,13 @@ impl GroveApp {
             workspace_name,
             workspace_path,
         });
+    }
+}
+
+fn execute_workspace_delete(request: WorkspaceDeleteRequest) -> (Result<(), String>, Vec<String>) {
+    let service = InProcessLifecycleCommandService::new();
+    match service.workspace_delete(request) {
+        Ok(response) => (Ok(()), response.warnings),
+        Err(error) => (Err(error.message), Vec::new()),
     }
 }

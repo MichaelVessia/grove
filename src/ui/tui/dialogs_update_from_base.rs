@@ -187,17 +187,28 @@ impl GroveApp {
         let workspace_path = dialog.workspace_path.clone();
         let workspace_branch = dialog.workspace_branch.clone();
         let base_branch = dialog.base_branch.clone();
-        let request = UpdateWorkspaceFromBaseRequest {
-            project_name: dialog.project_name,
-            project_path: dialog.project_path,
-            workspace_name: dialog.workspace_name,
-            workspace_branch: dialog.workspace_branch,
-            workspace_path: dialog.workspace_path,
-            base_branch: dialog.base_branch,
+        let Some(repo_root) = dialog.project_path else {
+            self.apply_update_from_base_completion(UpdateWorkspaceFromBaseCompletion {
+                workspace_name,
+                workspace_path,
+                workspace_branch,
+                base_branch,
+                result: Err("workspace project root unavailable".to_string()),
+                warnings: Vec::new(),
+            });
+            return;
+        };
+        let request = WorkspaceUpdateRequest {
+            context: RepoContext { repo_root },
+            selector: WorkspaceSelector::NameAndPath {
+                name: dialog.workspace_name,
+                path: dialog.workspace_path,
+            },
+            dry_run: false,
         };
 
         if !self.tmux_input.supports_background_launch() {
-            let (result, warnings) = update_workspace_from_base(request);
+            let (result, warnings) = execute_workspace_update(request);
             self.apply_update_from_base_completion(UpdateWorkspaceFromBaseCompletion {
                 workspace_name,
                 workspace_path,
@@ -211,7 +222,7 @@ impl GroveApp {
 
         self.update_from_base_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let (result, warnings) = update_workspace_from_base(request);
+            let (result, warnings) = execute_workspace_update(request);
             Msg::UpdateWorkspaceFromBaseCompleted(UpdateWorkspaceFromBaseCompletion {
                 workspace_name,
                 workspace_path,
@@ -221,5 +232,13 @@ impl GroveApp {
                 warnings,
             })
         }));
+    }
+}
+
+fn execute_workspace_update(request: WorkspaceUpdateRequest) -> (Result<(), String>, Vec<String>) {
+    let service = InProcessLifecycleCommandService::new();
+    match service.workspace_update(request) {
+        Ok(response) => (Ok(()), response.warnings),
+        Err(error) => (Err(error.message), Vec::new()),
     }
 }
