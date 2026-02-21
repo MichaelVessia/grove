@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::application::commands::{
     ErrorCode as CommandErrorCode, InProcessLifecycleCommandService, LifecycleCommandService,
-    RepoContext, WorkspaceListRequest,
+    RepoContext, WorkspaceCreateRequest, WorkspaceListRequest,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
@@ -25,21 +25,55 @@ pub struct DaemonArgs {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DaemonRequest {
     Ping,
-    WorkspaceList { repo_root: String },
+    WorkspaceList {
+        repo_root: String,
+    },
+    WorkspaceCreate {
+        payload: DaemonWorkspaceCreatePayload,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DaemonResponse {
-    Pong { protocol_version: u32 },
-    WorkspaceListOk { result: DaemonWorkspaceListResult },
-    WorkspaceListErr { error: DaemonCommandError },
+    Pong {
+        protocol_version: u32,
+    },
+    WorkspaceListOk {
+        result: DaemonWorkspaceListResult,
+    },
+    WorkspaceListErr {
+        error: DaemonCommandError,
+    },
+    WorkspaceCreateOk {
+        result: DaemonWorkspaceMutationResult,
+    },
+    WorkspaceCreateErr {
+        error: DaemonCommandError,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DaemonWorkspaceListResult {
     pub repo_root: String,
     pub workspaces: Vec<DaemonWorkspaceView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonWorkspaceMutationResult {
+    pub workspace: DaemonWorkspaceView,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonWorkspaceCreatePayload {
+    pub repo_root: String,
+    pub name: String,
+    pub base_branch: Option<String>,
+    pub existing_branch: Option<String>,
+    pub agent: Option<String>,
+    pub start: bool,
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,9 +145,30 @@ pub fn workspace_list_via_socket(
     match response {
         DaemonResponse::WorkspaceListOk { result } => Ok(Ok(result)),
         DaemonResponse::WorkspaceListErr { error } => Ok(Err(error)),
-        DaemonResponse::Pong { .. } => Err(std::io::Error::new(
+        DaemonResponse::Pong { .. }
+        | DaemonResponse::WorkspaceCreateOk { .. }
+        | DaemonResponse::WorkspaceCreateErr { .. } => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "unexpected daemon response for workspace list",
+        )),
+    }
+}
+
+pub fn workspace_create_via_socket(
+    socket_path: &Path,
+    payload: DaemonWorkspaceCreatePayload,
+) -> std::io::Result<Result<DaemonWorkspaceMutationResult, DaemonCommandError>> {
+    let request = DaemonRequest::WorkspaceCreate { payload };
+    let response = send_request(socket_path, &request)?;
+
+    match response {
+        DaemonResponse::WorkspaceCreateOk { result } => Ok(Ok(result)),
+        DaemonResponse::WorkspaceCreateErr { error } => Ok(Err(error)),
+        DaemonResponse::Pong { .. }
+        | DaemonResponse::WorkspaceListOk { .. }
+        | DaemonResponse::WorkspaceListErr { .. } => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for workspace create",
         )),
     }
 }
@@ -272,6 +327,9 @@ fn handle_connection(
         DaemonRequest::WorkspaceList { repo_root } => {
             handle_workspace_list_request(service, PathBuf::from(repo_root))
         }
+        DaemonRequest::WorkspaceCreate { payload } => {
+            handle_workspace_create_request(service, payload)
+        }
     };
 
     let payload = serde_json::to_string(&response)
@@ -305,6 +363,62 @@ fn handle_workspace_list_request(
         Err(error) => DaemonResponse::WorkspaceListErr {
             error: DaemonCommandError::from_command_error(error.code, error.message),
         },
+    }
+}
+
+fn handle_workspace_create_request(
+    service: &impl LifecycleCommandService,
+    payload: DaemonWorkspaceCreatePayload,
+) -> DaemonResponse {
+    let parsed_agent = match parse_agent_from_request(payload.agent) {
+        Ok(agent) => agent,
+        Err(error) => {
+            return DaemonResponse::WorkspaceCreateErr { error };
+        }
+    };
+
+    let request = WorkspaceCreateRequest {
+        context: RepoContext {
+            repo_root: PathBuf::from(payload.repo_root),
+        },
+        name: payload.name,
+        base_branch: payload.base_branch,
+        existing_branch: payload.existing_branch,
+        agent: parsed_agent,
+        start: payload.start,
+        dry_run: payload.dry_run,
+        setup_template: None,
+    };
+
+    match service.workspace_create(request) {
+        Ok(response) => DaemonResponse::WorkspaceCreateOk {
+            result: DaemonWorkspaceMutationResult {
+                workspace: DaemonWorkspaceView::from_workspace(response.workspace),
+                warnings: response.warnings,
+            },
+        },
+        Err(error) => DaemonResponse::WorkspaceCreateErr {
+            error: DaemonCommandError::from_command_error(error.code, error.message),
+        },
+    }
+}
+
+fn parse_agent_from_request(
+    agent: Option<String>,
+) -> Result<Option<AgentType>, DaemonCommandError> {
+    match agent {
+        None => Ok(None),
+        Some(value) => {
+            let normalized = value.trim().to_ascii_lowercase();
+            match normalized.as_str() {
+                "claude" => Ok(Some(AgentType::Claude)),
+                "codex" => Ok(Some(AgentType::Codex)),
+                _ => Err(DaemonCommandError {
+                    code: command_error_code_label(CommandErrorCode::InvalidArgument).to_string(),
+                    message: "--agent must be one of: claude, codex".to_string(),
+                }),
+            }
+        }
     }
 }
 

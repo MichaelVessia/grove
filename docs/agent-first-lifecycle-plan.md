@@ -24,7 +24,7 @@ Primary success criterion:
 - Phase 2 progress: golden-style CLI contract tests now cover envelope shape, deterministic error codes, and `cwd` repo default behavior.
 - Phase 2 progress: lifecycle CLI command surface is complete (`workspace list/create/edit/delete/merge/update`, `agent start/stop`).
 - Phase 3 progress: periodic refresh cadence and external mutation reflection coverage are complete.
-- Phase 4 progress: `groved` Unix socket daemon skeleton now supports JSON `ping`, stale socket recovery, and `workspace list` request handling.
+- Phase 4 progress: `groved` Unix socket daemon skeleton now supports JSON `ping`, stale socket recovery, and `workspace list`/`workspace create` request handling.
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
