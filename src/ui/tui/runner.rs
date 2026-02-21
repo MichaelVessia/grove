@@ -65,7 +65,7 @@ fn program_config() -> ProgramConfig {
                 ..DiffStrategyConfig::default()
             },
         ))
-        .with_budget(FrameBudgetConfig::strict(Duration::from_millis(250)))
+        .with_budget(FrameBudgetConfig::strict(Duration::from_secs(1)))
         .with_widget_refresh(WidgetRefreshConfig {
             enabled: false,
             ..WidgetRefreshConfig::default()
