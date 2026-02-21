@@ -537,12 +537,17 @@ fn handle_connection(
         }
     }
 
-    let request: DaemonRequest = serde_json::from_str(request_line.trim()).map_err(|error| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("invalid request: {error}"),
-        )
-    })?;
+    let request_payload = request_line.trim();
+    let request: DaemonRequest = match serde_json::from_str(request_payload) {
+        Ok(request) => request,
+        Err(error) => {
+            eprintln!(
+                "groved: dropped invalid request ({error}): {}",
+                truncate_for_log(request_payload, 160)
+            );
+            return Ok(true);
+        }
+    };
 
     let response = match request {
         DaemonRequest::Ping => DaemonResponse::Pong {
@@ -574,6 +579,15 @@ fn handle_connection(
     stream.write_all(b"\n")?;
     stream.flush()?;
     Ok(true)
+}
+
+fn truncate_for_log(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+
+    let truncated: String = value.chars().take(max_chars).collect();
+    format!("{truncated}...")
 }
 
 fn handle_workspace_list_request(
@@ -926,6 +940,8 @@ fn workspace_status_label(status: WorkspaceStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
+    use std::net::Shutdown;
     use std::process;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -980,5 +996,60 @@ mod tests {
 
         drop(active_listener);
         remove_socket_if_exists(&socket_path).expect("socket file cleanup should succeed");
+    }
+
+    #[test]
+    fn handle_connection_ping_request_writes_pong_response() {
+        let (mut client, server) = UnixStream::pair().expect("unix stream pair should create");
+        client
+            .write_all(br#"{"type":"ping"}"#)
+            .expect("request should write");
+        client
+            .write_all(b"\n")
+            .expect("request newline should write");
+        client
+            .shutdown(Shutdown::Write)
+            .expect("shutdown write should succeed");
+
+        let service = InProcessLifecycleCommandService::new();
+        let handled = handle_connection(server, &service).expect("request should be handled");
+        assert!(handled);
+
+        let mut response = String::new();
+        client
+            .read_to_string(&mut response)
+            .expect("response should read");
+        assert!(
+            response.contains(r#""type":"pong""#),
+            "expected pong response, got: {response}"
+        );
+    }
+
+    #[test]
+    fn handle_connection_invalid_request_is_non_fatal() {
+        let (mut client, server) = UnixStream::pair().expect("unix stream pair should create");
+        client
+            .write_all(br#"{"type":"ping"}x"#)
+            .expect("invalid request should write");
+        client
+            .write_all(b"\n")
+            .expect("request newline should write");
+        client
+            .shutdown(Shutdown::Write)
+            .expect("shutdown write should succeed");
+
+        let service = InProcessLifecycleCommandService::new();
+        let handled = handle_connection(server, &service)
+            .expect("invalid request should not fail the daemon");
+        assert!(handled);
+
+        let mut response = String::new();
+        client
+            .read_to_string(&mut response)
+            .expect("response read should succeed");
+        assert!(
+            response.is_empty(),
+            "invalid request should not get a response, got: {response}"
+        );
     }
 }
