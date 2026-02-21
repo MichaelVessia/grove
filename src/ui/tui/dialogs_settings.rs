@@ -174,6 +174,9 @@ impl GroveApp {
         if control_path.exists() {
             let _ = std::fs::remove_file(control_path.as_path());
         }
+        if local_socket_path.exists() {
+            let _ = std::fs::remove_file(local_socket_path);
+        }
 
         let target = Self::tunnel_target(profile);
         let local_socket = local_socket_path.to_string_lossy();
