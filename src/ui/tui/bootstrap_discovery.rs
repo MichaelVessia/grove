@@ -6,7 +6,7 @@ use crate::infrastructure::adapters::{
     BootstrapData, CommandGitAdapter, CommandMultiplexerAdapter, CommandSystemAdapter,
     DiscoveryState, MultiplexerAdapter, bootstrap_data,
 };
-use crate::infrastructure::config::ProjectConfig;
+use crate::infrastructure::config::{ProjectConfig, ProjectTarget, RemoteProfileConfig};
 use crate::interface::daemon::{DaemonWorkspaceView, workspace_list_via_socket};
 
 #[derive(Debug, Clone)]
@@ -23,6 +23,7 @@ impl MultiplexerAdapter for StaticMultiplexerAdapter {
 pub(super) fn bootstrap_data_for_projects_with_transport(
     projects: &[ProjectConfig],
     daemon_socket_path: Option<&Path>,
+    remote_profiles: &[RemoteProfileConfig],
 ) -> BootstrapData {
     if projects.is_empty() {
         return BootstrapData {
@@ -32,19 +33,32 @@ pub(super) fn bootstrap_data_for_projects_with_transport(
         };
     }
 
-    let static_multiplexer = daemon_socket_path.map(|_| StaticMultiplexerAdapter {
-        running_sessions: HashSet::new(),
-    });
-    let static_multiplexer = static_multiplexer.unwrap_or_else(|| {
+    let local_in_process_discovery = daemon_socket_path.is_none()
+        && projects
+            .iter()
+            .any(|project| matches!(project.target, ProjectTarget::Local));
+    let static_multiplexer = if local_in_process_discovery {
         let live_multiplexer = CommandMultiplexerAdapter;
         StaticMultiplexerAdapter {
             running_sessions: live_multiplexer.running_sessions(),
         }
-    });
+    } else {
+        StaticMultiplexerAdapter {
+            running_sessions: HashSet::new(),
+        }
+    };
     let mut workspaces = Vec::new();
     let mut errors = Vec::new();
     for project in projects {
-        if let Some(socket_path) = daemon_socket_path {
+        let socket_path =
+            match socket_path_for_project(project, daemon_socket_path, remote_profiles) {
+                Ok(path) => path,
+                Err(error) => {
+                    errors.push(format!("{}: {error}", project.name));
+                    continue;
+                }
+            };
+        if let Some(socket_path) = socket_path.as_deref() {
             match list_workspaces_for_project_via_socket(socket_path, project) {
                 Ok(project_workspaces) => workspaces.extend(project_workspaces),
                 Err(error) => errors.push(format!("{}: {error}", project.name)),
@@ -79,6 +93,37 @@ pub(super) fn bootstrap_data_for_projects_with_transport(
         workspaces,
         discovery_state,
     }
+}
+
+fn socket_path_for_project(
+    project: &ProjectConfig,
+    local_daemon_socket_path: Option<&Path>,
+    remote_profiles: &[RemoteProfileConfig],
+) -> Result<Option<PathBuf>, String> {
+    match &project.target {
+        ProjectTarget::Local => Ok(local_daemon_socket_path.map(Path::to_path_buf)),
+        ProjectTarget::Remote { profile } => {
+            let Some(configured_profile) = remote_profiles
+                .iter()
+                .find(|candidate| candidate.name == *profile)
+            else {
+                return Err(format!("remote profile '{profile}' not found"));
+            };
+            Ok(Some(normalized_socket_path(
+                configured_profile.remote_socket_path.as_str(),
+            )))
+        }
+    }
+}
+
+fn normalized_socket_path(raw: &str) -> PathBuf {
+    if let Some(stripped) = raw.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(stripped);
+    }
+
+    PathBuf::from(raw)
 }
 
 fn list_workspaces_for_project_via_socket(

@@ -64,12 +64,14 @@ impl GroveApp {
 
         let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
         let projects = self.projects.clone();
+        let remote_profiles = self.remote_profiles.clone();
         let daemon_socket_path = self.daemon_socket_path.clone();
         self.refresh_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let bootstrap = bootstrap_data_for_projects_with_transport(
                 &projects,
                 daemon_socket_path.as_deref(),
+                &remote_profiles,
             );
             Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
                 preferred_workspace_path: target_path,
@@ -85,6 +87,7 @@ impl GroveApp {
         let bootstrap = bootstrap_data_for_projects_with_transport(
             &self.projects,
             self.daemon_socket_path.as_deref(),
+            &self.remote_profiles,
         );
 
         self.repo_name = bootstrap.repo_name;

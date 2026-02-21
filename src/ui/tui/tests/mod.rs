@@ -2204,6 +2204,133 @@ fn remote_unavailable_does_not_block_local_workspace_dialogs() {
 }
 
 #[test]
+fn project_transport_socket_resolution_uses_target_specific_transport() {
+    let mut app = fixture_app();
+    app.daemon_socket_path = Some(PathBuf::from("/tmp/local-grove.sock"));
+    app.remote_profiles.push(RemoteProfileConfig {
+        name: "prod".to_string(),
+        host: "build.example.com".to_string(),
+        user: "michael".to_string(),
+        remote_socket_path: "/tmp/remote-grove.sock".to_string(),
+        default_repo_path: None,
+    });
+
+    let local_project = app.projects[0].clone();
+    let remote_project = ProjectConfig {
+        name: "remote-repo".to_string(),
+        path: PathBuf::from("/repos/remote"),
+        target: ProjectTarget::Remote {
+            profile: "prod".to_string(),
+        },
+        defaults: Default::default(),
+    };
+    let missing_profile_project = ProjectConfig {
+        name: "unknown-remote".to_string(),
+        path: PathBuf::from("/repos/unknown"),
+        target: ProjectTarget::Remote {
+            profile: "missing".to_string(),
+        },
+        defaults: Default::default(),
+    };
+
+    assert_eq!(
+        app.daemon_socket_path_for_project(&local_project),
+        Some(PathBuf::from("/tmp/local-grove.sock"))
+    );
+    assert_eq!(
+        app.daemon_socket_path_for_project(&remote_project),
+        Some(PathBuf::from("/tmp/remote-grove.sock"))
+    );
+    assert_eq!(
+        app.daemon_socket_path_for_project(&missing_profile_project),
+        None
+    );
+}
+
+#[test]
+fn remote_unavailable_blocks_create_for_remote_project() {
+    let mut app = fixture_app();
+    app.remote_profiles.push(RemoteProfileConfig {
+        name: "prod".to_string(),
+        host: "build.example.com".to_string(),
+        user: "michael".to_string(),
+        remote_socket_path: "/tmp/missing.sock".to_string(),
+        default_repo_path: None,
+    });
+    app.active_remote_profile = Some("prod".to_string());
+    app.remote_connection_state
+        .insert("prod".to_string(), RemoteConnectionState::Offline);
+    app.projects.push(ProjectConfig {
+        name: "remote-repo".to_string(),
+        path: PathBuf::from("/repos/remote"),
+        target: ProjectTarget::Remote {
+            profile: "prod".to_string(),
+        },
+        defaults: Default::default(),
+    });
+    app.open_create_dialog();
+    {
+        let dialog = app
+            .create_dialog_mut()
+            .expect("create dialog should be open");
+        dialog.workspace_name = "feature-remote".to_string();
+        dialog.project_index = 1;
+    }
+
+    app.confirm_create_dialog();
+
+    assert!(
+        app.last_tmux_error
+            .as_deref()
+            .is_some_and(|error| error.contains("REMOTE_UNAVAILABLE"))
+    );
+}
+
+#[test]
+fn create_uses_remote_profile_socket_for_remote_project() {
+    let mut app = fixture_app();
+    let missing_socket = unique_socket_path("remote-create-socket");
+    let _ = fs::remove_file(&missing_socket);
+    app.remote_profiles.push(RemoteProfileConfig {
+        name: "prod".to_string(),
+        host: "build.example.com".to_string(),
+        user: "michael".to_string(),
+        remote_socket_path: missing_socket.display().to_string(),
+        default_repo_path: None,
+    });
+    app.active_remote_profile = Some("prod".to_string());
+    app.remote_connection_state
+        .insert("prod".to_string(), RemoteConnectionState::Connected);
+    app.projects.push(ProjectConfig {
+        name: "remote-repo".to_string(),
+        path: PathBuf::from("/repos/remote"),
+        target: ProjectTarget::Remote {
+            profile: "prod".to_string(),
+        },
+        defaults: Default::default(),
+    });
+    app.open_create_dialog();
+    {
+        let dialog = app
+            .create_dialog_mut()
+            .expect("create dialog should be open");
+        dialog.workspace_name = "feature-remote".to_string();
+        dialog.project_index = 1;
+    }
+
+    app.confirm_create_dialog();
+
+    let Some(toast) = app.notifications.visible().last() else {
+        panic!("error toast should be visible");
+    };
+    assert!(
+        toast.content.message.contains("daemon request failed"),
+        "expected daemon transport error, got: {}",
+        toast.content.message
+    );
+}
+
+#[test]
 fn command_tmux_input_uses_background_send_mode() {
     let input = CommandTmuxInput;
     assert!(input.supports_background_send());

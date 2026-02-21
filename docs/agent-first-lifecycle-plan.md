@@ -31,6 +31,7 @@ Primary success criterion:
 - Phase 4.5 progress: project config now includes explicit target (`local` or `remote:<profile>`), and project list chrome displays target badges (`L`, `R:<profile>`).
 - Phase 4.5 progress: settings now includes remote profile management (`name`, `host`, `user`, `remote_socket_path`, optional `default_repo_path`) with `connect`/`disconnect`/`test`, and active remote state renders in status chrome.
 - Phase 4.5 progress: remote backend isolation now blocks remote-target dialogs when profile is unavailable while local-target dialogs keep working, with reconnect coverage via degraded -> connected profile transition tests.
+- Phase 4.5 progress: lifecycle routing and discovery refresh now resolve transport per project target (local per local backend, remote per profile socket) so one TUI session can mix local and remote projects without a separate remote mode.
 - Phase 5 progress: remote operational runbook added at `docs/remote-operations.md` (remote `systemd --user` service, SSH Unix-socket tunnel, CLI/TUI verification path, troubleshooting).
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
@@ -538,3 +539,4 @@ Remote mapping (Phase 4.5+):
 - [x] 10. Add remote profiles + connect/disconnect/test flows in settings.
 - [x] 11. Add reconnect handling and backend isolation tests.
 - [x] 12. Add remote operational docs (SSH and systemd user service).
+- [x] 13. Route discovery and lifecycle transport per project target inside one TUI session.

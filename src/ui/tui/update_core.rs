@@ -1,11 +1,87 @@
 use super::*;
 
 impl GroveApp {
+    fn project_for_repo_root(&self, repo_root: &std::path::Path) -> Option<&ProjectConfig> {
+        self.projects
+            .iter()
+            .find(|project| refer_to_same_location(project.path.as_path(), repo_root))
+    }
+
     fn project_for_workspace(&self, workspace: &Workspace) -> Option<&ProjectConfig> {
         let workspace_project_path = workspace.project_path.as_ref()?;
-        self.projects.iter().find(|project| {
-            refer_to_same_location(project.path.as_path(), workspace_project_path.as_path())
-        })
+        self.project_for_repo_root(workspace_project_path.as_path())
+    }
+
+    fn remote_socket_path_for_profile(&self, profile_name: &str) -> Option<PathBuf> {
+        let profile = self
+            .remote_profiles
+            .iter()
+            .find(|candidate| candidate.name == profile_name)?;
+        Some(normalized_socket_path(profile.remote_socket_path.as_str()))
+    }
+
+    pub(super) fn daemon_socket_path_for_project(
+        &self,
+        project: &ProjectConfig,
+    ) -> Option<PathBuf> {
+        match &project.target {
+            ProjectTarget::Local => self.daemon_socket_path.clone(),
+            ProjectTarget::Remote { profile } => {
+                self.remote_socket_path_for_profile(profile.as_str())
+            }
+        }
+    }
+
+    pub(super) fn daemon_socket_path_for_workspace(
+        &self,
+        workspace: &Workspace,
+    ) -> Option<PathBuf> {
+        if let Some(project) = self.project_for_workspace(workspace) {
+            return self.daemon_socket_path_for_project(project);
+        }
+
+        self.daemon_socket_path.clone()
+    }
+
+    pub(super) fn daemon_socket_path_for_repo_root(
+        &self,
+        repo_root: &std::path::Path,
+    ) -> Option<PathBuf> {
+        if let Some(project) = self.project_for_repo_root(repo_root) {
+            return self.daemon_socket_path_for_project(project);
+        }
+
+        self.daemon_socket_path.clone()
+    }
+
+    fn ensure_remote_profile_available(&mut self, profile: &str, operation: &str) -> bool {
+        let status = self.remote_status_for(profile);
+        let active_matches = self.active_remote_profile.as_deref() == Some(profile);
+        if active_matches && status == RemoteConnectionState::Connected {
+            return true;
+        }
+
+        self.last_tmux_error = Some(format!(
+            "REMOTE_UNAVAILABLE: profile '{profile}' is {}",
+            status.label()
+        ));
+        self.show_error_toast(format!(
+            "{operation} failed: REMOTE_UNAVAILABLE ({profile})"
+        ));
+        false
+    }
+
+    pub(super) fn ensure_project_backend_available(
+        &mut self,
+        project: &ProjectConfig,
+        operation: &str,
+    ) -> bool {
+        let profile = match &project.target {
+            ProjectTarget::Remote { profile } => profile.as_str(),
+            ProjectTarget::Local => return true,
+        };
+
+        self.ensure_remote_profile_available(profile, operation)
     }
 
     pub(super) fn ensure_workspace_backend_available(
@@ -21,20 +97,7 @@ impl GroveApp {
             _ => return true,
         };
 
-        let status = self.remote_status_for(profile.as_str());
-        let active_matches = self.active_remote_profile.as_deref() == Some(profile.as_str());
-        if active_matches && status == RemoteConnectionState::Connected {
-            return true;
-        }
-
-        self.last_tmux_error = Some(format!(
-            "REMOTE_UNAVAILABLE: profile '{profile}' is {}",
-            status.label()
-        ));
-        self.show_error_toast(format!(
-            "{operation} failed: REMOTE_UNAVAILABLE ({profile})"
-        ));
-        false
+        self.ensure_remote_profile_available(profile.as_str(), operation)
     }
 
     pub(super) fn selected_workspace_name(&self) -> Option<String> {
@@ -92,4 +155,14 @@ impl GroveApp {
         ]);
         self.merge_deferred_cmds(init_cmd)
     }
+}
+
+fn normalized_socket_path(raw: &str) -> PathBuf {
+    if let Some(stripped) = raw.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(stripped);
+    }
+
+    PathBuf::from(raw)
 }

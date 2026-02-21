@@ -24,6 +24,7 @@ impl GroveApp {
         let bootstrap = bootstrap_data_for_projects_with_transport(
             &config.projects,
             daemon_socket_path.as_deref(),
+            &config.remote_profiles,
         );
         Self::from_parts_with_clipboard_and_projects(
             bootstrap,

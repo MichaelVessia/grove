@@ -30,6 +30,7 @@ impl GroveApp {
         let workspace_name = workspace.name.clone();
         let workspace_path = workspace.path.clone();
         let session_name = session_name_for_workspace_ref(&workspace);
+        let daemon_socket_path = self.daemon_socket_path_for_workspace(&workspace);
 
         let request = AgentStartRequest {
             context: RepoContext { repo_root },
@@ -47,7 +48,7 @@ impl GroveApp {
         };
 
         if !self.tmux_input.supports_background_launch() {
-            if let Some(daemon_socket_path) = self.daemon_socket_path.clone() {
+            if let Some(daemon_socket_path) = daemon_socket_path.clone() {
                 let completion = execute_start_agent(
                     request,
                     workspace_name,
@@ -87,7 +88,6 @@ impl GroveApp {
             return;
         }
 
-        let daemon_socket_path = self.daemon_socket_path.clone();
         self.start_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             Msg::StartAgentCompleted(execute_start_agent(

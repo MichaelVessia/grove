@@ -234,10 +234,10 @@ impl GroveApp {
             cleanup_branch: dialog.cleanup_local_branch,
             dry_run: false,
         };
+        let daemon_socket_path = self.daemon_socket_path_for_repo_root(&request.context.repo_root);
 
         if !self.tmux_input.supports_background_launch() {
-            let (result, warnings) =
-                execute_workspace_merge(request, self.daemon_socket_path.clone());
+            let (result, warnings) = execute_workspace_merge(request, daemon_socket_path);
             self.apply_merge_workspace_completion(MergeWorkspaceCompletion {
                 workspace_name,
                 workspace_path,
@@ -249,7 +249,6 @@ impl GroveApp {
             return;
         }
 
-        let daemon_socket_path = self.daemon_socket_path.clone();
         self.merge_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let (result, warnings) = execute_workspace_merge(request, daemon_socket_path);

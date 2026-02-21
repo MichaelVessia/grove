@@ -53,8 +53,12 @@ impl GroveApp {
             self.show_info_toast("project is required");
             return;
         };
+        if !self.ensure_project_backend_available(&project, "workspace create") {
+            return;
+        }
 
         let workspace_name = dialog.workspace_name.trim().to_string();
+        let daemon_socket_path = self.daemon_socket_path_for_project(&project);
         self.pending_create_start_config = Some(dialog.start_config.clone());
         let request = WorkspaceCreateRequest {
             context: RepoContext {
@@ -74,12 +78,11 @@ impl GroveApp {
         if !self.tmux_input.supports_background_launch() {
             self.apply_create_workspace_completion(execute_workspace_create(
                 request,
-                self.daemon_socket_path.clone(),
+                daemon_socket_path,
             ));
             return;
         }
 
-        let daemon_socket_path = self.daemon_socket_path.clone();
         self.create_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             Msg::CreateWorkspaceCompleted(execute_workspace_create(request, daemon_socket_path))

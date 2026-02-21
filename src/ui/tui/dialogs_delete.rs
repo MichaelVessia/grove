@@ -34,7 +34,7 @@ impl GroveApp {
         let request = queued_delete.request;
         let workspace_name = queued_delete.workspace_name;
         let workspace_path = queued_delete.workspace_path;
-        let daemon_socket_path = self.daemon_socket_path.clone();
+        let daemon_socket_path = self.daemon_socket_path_for_repo_root(&request.context.repo_root);
         self.delete_in_flight = true;
         self.delete_in_flight_workspace = Some(workspace_path.clone());
         self.queue_cmd(Cmd::task(move || {
@@ -256,9 +256,9 @@ impl GroveApp {
             force_stop: dialog.kill_tmux_sessions,
             dry_run: false,
         };
+        let daemon_socket_path = self.daemon_socket_path_for_repo_root(&request.context.repo_root);
         if !self.tmux_input.supports_background_launch() {
-            let (result, warnings) =
-                execute_workspace_delete(request, self.daemon_socket_path.clone());
+            let (result, warnings) = execute_workspace_delete(request, daemon_socket_path);
             self.apply_delete_workspace_completion(DeleteWorkspaceCompletion {
                 workspace_name,
                 workspace_path,

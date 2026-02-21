@@ -3,7 +3,7 @@
 This runbook documents the supported Phase 5 transport path:
 - `groved` on a remote Linux host (Unix socket only)
 - SSH tunnel from client machine to remote socket
-- Grove CLI/TUI targeting tunneled socket
+- one Grove TUI session with mixed local + remote projects
 
 ## 0. Local run shortcuts (Makefile)
 
@@ -17,10 +17,12 @@ make root
 ```
 
 Meaning:
-- `make tui`: launches Grove TUI in normal local mode (no daemon socket).
+- `make tui`: primary mode, one TUI that can show both local and remote projects.
 - `make groved`: runs daemon process (`groved`) on a Unix socket.
-- `make tui-daemon`: launches Grove TUI but routes lifecycle calls through daemon socket transport.
+- `make tui-daemon`: optional, routes local-target lifecycle calls through a daemon socket.
 - `make root`: prints root JSON command tree.
+
+`tui-daemon` is not a separate "remote TUI". Remote projects are selected per project target/profile inside the same TUI.
 
 Default socket path:
 
@@ -108,6 +110,14 @@ grove workspace list --socket ~/.grove/groved-prod.sock
 ```
 
 Expected: JSON envelope response from remote daemon.
+
+TUI verification:
+
+```bash
+make tui
+```
+
+Then in `Settings`, connect the remote profile and open projects/workspaces. Local and remote entries should coexist in one list.
 
 ## 4. TUI profile fields
 

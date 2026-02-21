@@ -235,17 +235,18 @@ impl GroveApp {
             ],
         );
 
-        if let Some(daemon_socket_path) = self.daemon_socket_path.as_deref() {
-            let repo_root = self
-                .state
-                .workspaces
-                .iter()
-                .find(|workspace| workspace.path == dialog.workspace_path)
-                .and_then(|workspace| workspace.project_path.clone());
-            let Some(repo_root) = repo_root else {
-                self.show_error_toast("workspace edit failed: workspace project root unavailable");
-                return;
-            };
+        let repo_root = self
+            .state
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.path == dialog.workspace_path)
+            .and_then(|workspace| workspace.project_path.clone());
+        let Some(repo_root) = repo_root else {
+            self.show_error_toast("workspace edit failed: workspace project root unavailable");
+            return;
+        };
+        let daemon_socket_path = self.daemon_socket_path_for_repo_root(repo_root.as_path());
+        if let Some(daemon_socket_path) = daemon_socket_path.as_deref() {
             let payload = DaemonWorkspaceEditPayload {
                 repo_root: repo_root.display().to_string(),
                 workspace: Some(dialog.workspace_name.clone()),
