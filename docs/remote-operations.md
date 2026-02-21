@@ -5,6 +5,36 @@ This runbook documents the supported Phase 5 transport path:
 - SSH tunnel from client machine to remote socket
 - Grove CLI/TUI targeting tunneled socket
 
+## 0. Local run shortcuts (Makefile)
+
+Use these from repo root:
+
+```bash
+make tui
+make groved
+make tui-daemon
+make root
+```
+
+Meaning:
+- `make tui`: launches Grove TUI in normal local mode (no daemon socket).
+- `make groved`: runs daemon process (`groved`) on a Unix socket.
+- `make tui-daemon`: launches Grove TUI but routes lifecycle calls through daemon socket transport.
+- `make root`: prints root JSON command tree.
+
+Default socket path:
+
+```bash
+$(HOME)/.grove/groved.sock
+```
+
+Override socket:
+
+```bash
+make groved SOCKET=/tmp/groved.sock
+make tui-daemon SOCKET=/tmp/groved.sock
+```
+
 ## 1. Remote host setup
 
 Prerequisites:
