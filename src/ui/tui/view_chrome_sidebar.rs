@@ -69,10 +69,7 @@ impl GroveApp {
                     .iter()
                     .enumerate()
                     .filter(|(_, workspace)| {
-                        workspace
-                            .project_path
-                            .as_ref()
-                            .is_some_and(|path| refer_to_same_location(path, &project.path))
+                        workspace.project_path.as_deref() == Some(project.path.as_path())
                     })
                     .collect();
 
