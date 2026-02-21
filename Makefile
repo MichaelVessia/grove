@@ -1,10 +1,10 @@
 SOCKET ?= $(HOME)/.grove/groved.sock
-PROFILE ?= prod
 REMOTE_USER ?= $(USER)
 REMOTE_HOST ?=
 REMOTE_SOCKET ?= /home/$(REMOTE_USER)/.grove/groved.sock
-LOCAL_SOCKET ?= $(HOME)/.grove/groved-$(PROFILE).sock
-SSH_CONTROL_PATH ?= $(HOME)/.grove/ssh-groved-$(PROFILE).ctl
+TUNNEL_KEY = $(subst /,-,$(subst :,-,$(subst @,-,$(REMOTE_USER)-$(REMOTE_HOST))))
+LOCAL_SOCKET ?= $(HOME)/.grove/groved-$(TUNNEL_KEY).sock
+SSH_CONTROL_PATH ?= $(HOME)/.grove/ssh-groved-$(TUNNEL_KEY).ctl
 
 .PHONY: fmt clippy test ci tui groved tui-daemon root tunnel-up tunnel-down tunnel-status
 
@@ -47,13 +47,13 @@ tunnel-down:
 	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required (example: make tunnel-down REMOTE_HOST=build.example.com)"; exit 2)
 	@ssh -S "$(SSH_CONTROL_PATH)" -O exit "$(REMOTE_USER)@$(REMOTE_HOST)" >/dev/null 2>&1 || true
 	@rm -f "$(SSH_CONTROL_PATH)"
-	@echo "tunnel down: $(PROFILE)"
+	@echo "tunnel down: $(REMOTE_USER)@$(REMOTE_HOST)"
 
 tunnel-status:
 	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required (example: make tunnel-status REMOTE_HOST=build.example.com)"; exit 2)
 	@if ssh -S "$(SSH_CONTROL_PATH)" -O check "$(REMOTE_USER)@$(REMOTE_HOST)" >/dev/null 2>&1; then \
-		echo "tunnel status: up ($(PROFILE), $(LOCAL_SOCKET))"; \
+		echo "tunnel status: up ($(REMOTE_USER)@$(REMOTE_HOST), $(LOCAL_SOCKET))"; \
 	else \
-		echo "tunnel status: down ($(PROFILE))"; \
+		echo "tunnel status: down ($(REMOTE_USER)@$(REMOTE_HOST))"; \
 		exit 1; \
 	fi

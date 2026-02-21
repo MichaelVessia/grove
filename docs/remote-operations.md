@@ -46,11 +46,10 @@ make tui-daemon SOCKET=/tmp/groved.sock
 Tunnel variables:
 
 ```bash
-PROFILE=prod                               # used in local socket/control names
 REMOTE_HOST=build.example.com              # required
 REMOTE_USER=michael                        # defaults to local $USER
 REMOTE_SOCKET=/home/michael/.grove/groved.sock
-LOCAL_SOCKET=~/.grove/groved-prod.sock
+LOCAL_SOCKET=~/.grove/groved-michael-build.example.com.sock
 ```
 
 ## 1. Remote host setup
@@ -95,20 +94,20 @@ loginctl enable-linger "$USER"
 Recommended (Makefile wrapper):
 
 ```bash
-make tunnel-up REMOTE_HOST=<remote-host> REMOTE_USER=<remote-user> PROFILE=prod
-make tunnel-status REMOTE_HOST=<remote-host> REMOTE_USER=<remote-user> PROFILE=prod
+make tunnel-up REMOTE_HOST=<remote-host> REMOTE_USER=<remote-user>
+make tunnel-status REMOTE_HOST=<remote-host> REMOTE_USER=<remote-user>
 ```
 
 This creates/uses local socket:
 
 ```bash
-~/.grove/groved-<profile>.sock
+~/.grove/groved-<remote-user>-<remote-host>.sock
 ```
 
 Stop tunnel:
 
 ```bash
-make tunnel-down REMOTE_HOST=<remote-host> REMOTE_USER=<remote-user> PROFILE=prod
+make tunnel-down REMOTE_HOST=<remote-host> REMOTE_USER=<remote-user>
 ```
 
 Manual SSH is still valid if you prefer:
@@ -118,7 +117,7 @@ ssh -fN \
   -o ExitOnForwardFailure=yes \
   -o ServerAliveInterval=30 \
   -o ServerAliveCountMax=3 \
-  -L ~/.grove/groved-prod.sock:/home/<remote-user>/.grove/groved.sock \
+  -L ~/.grove/groved-<remote-user>-<remote-host>.sock:/home/<remote-user>/.grove/groved.sock \
   <remote-user>@<remote-host>
 ```
 
@@ -127,7 +126,7 @@ ssh -fN \
 CLI smoke:
 
 ```bash
-grove workspace list --socket ~/.grove/groved-prod.sock
+grove workspace list --socket ~/.grove/groved-<remote-user>-<remote-host>.sock
 ```
 
 Expected: JSON envelope response from remote daemon.
@@ -146,7 +145,7 @@ In `Settings` remote profile, use:
 - `name`: profile name, e.g. `prod`
 - `host`: SSH host
 - `user`: SSH user
-- `remote_socket_path`: local tunneled socket path, e.g. `~/.grove/groved-prod.sock`
+- `remote_socket_path`: local tunneled socket path, e.g. `~/.grove/groved-<remote-user>-<remote-host>.sock`
 - `default_repo_path` (optional): default remote repo root
 
 Then use `Test`, `Connect`, `Disconnect` actions in Settings.
@@ -155,7 +154,7 @@ Then use `Test`, `Connect`, `Disconnect` actions in Settings.
 
 - Tunnel socket missing:
   - Check SSH command still running.
-  - Confirm `~/.grove/groved-prod.sock` exists locally.
+  - Confirm `~/.grove/groved-<remote-user>-<remote-host>.sock` exists locally.
 - `REMOTE_UNAVAILABLE` in TUI:
   - Re-run `Test` or `Connect` in Settings.
   - Verify tunnel path matches profile `remote_socket_path`.
