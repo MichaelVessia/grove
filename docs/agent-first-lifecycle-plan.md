@@ -9,10 +9,10 @@ Primary success criterion:
 
 ## Kickoff Snapshot (2026-02-21)
 
-- Current execution state: `not started`.
-- Immediate focus: Phase 0a + Phase 0 (`module boundaries`, then `contract + types`).
+- Current execution state: `in progress`.
+- Immediate focus: Phase 0 (`contract + types`).
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
-- Scope guard for kickoff: no daemon/remote code until Phase 0a-3 are complete.
+- Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
 ## Resolved Decisions (2026-02-21)
 
@@ -230,9 +230,9 @@ Exit criteria:
 - New CLI implementation can be developed under `interface::cli` without touching TUI runtime code.
 
 Phase 0a implementation slices (PR-sized):
-- [ ] P0a.1 Add `interface` module with `cli` and `tui` submodules, move current entry wiring.
-- [ ] P0a.2 Add `application::commands` trait + request/response stubs.
-- [ ] P0a.3 Remove/avoid new cross-layer dependencies and lock with compile-time checks/tests.
+- [x] P0a.1 Add `interface` module with `cli` and `tui` submodules, move current entry wiring.
+- [x] P0a.2 Add `application::commands` trait + request/response stubs.
+- [x] P0a.3 Remove/avoid new cross-layer dependencies and lock with compile-time checks/tests.
 
 ## Phase 0, Contract + Types
 
@@ -494,7 +494,7 @@ Remote mapping (Phase 4.5+):
 
 ## Implementation Order (concrete)
 
-- [ ] 1. Add Phase 0a module boundaries (`interface::cli`, `interface::tui`, `application::commands` stubs).
+- [x] 1. Add Phase 0a module boundaries (`interface::cli`, `interface::tui`, `application::commands` stubs).
 - [ ] 2. Add envelope + error code mapping module.
 - [ ] 3. Add command service trait + in-process implementation.
 - [ ] 4. Migrate existing lifecycle code paths to service internally.
