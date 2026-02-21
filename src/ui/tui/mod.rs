@@ -90,7 +90,7 @@ use bootstrap_config::AppDependencies;
 use bootstrap_config::{
     filter_branches, load_local_branches, project_display_name, read_workspace_launch_prompt,
 };
-use bootstrap_discovery::bootstrap_data_for_projects;
+use bootstrap_discovery::bootstrap_data_for_projects_with_transport;
 mod terminal;
 use terminal::{
     ClipboardAccess, CommandTmuxInput, SystemClipboardAccess, TmuxInput, parse_cursor_metadata,

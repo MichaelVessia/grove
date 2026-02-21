@@ -8,7 +8,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use super::bootstrap_config::{AppDependencies, load_runtime_config};
-use super::bootstrap_discovery::bootstrap_data_for_projects;
+use super::bootstrap_discovery::bootstrap_data_for_projects_with_transport;
 use super::*;
 #[cfg(test)]
 use crate::infrastructure::paths::refer_to_same_location;
@@ -21,7 +21,10 @@ impl GroveApp {
         daemon_socket_path: Option<PathBuf>,
     ) -> Self {
         let (config, config_path, _config_error) = load_runtime_config();
-        let bootstrap = bootstrap_data_for_projects(&config.projects);
+        let bootstrap = bootstrap_data_for_projects_with_transport(
+            &config.projects,
+            daemon_socket_path.as_deref(),
+        );
         Self::from_parts_with_clipboard_and_projects(
             bootstrap,
             config.projects,
