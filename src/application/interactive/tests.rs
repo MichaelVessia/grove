@@ -359,6 +359,7 @@ fn pipeline_send_keys_writes_json_newline_to_stream() {
             "grove-ws-auth".to_string(),
             "Enter".to_string(),
         ],
+        fire_and_forget: false,
     };
     state
         .pipeline_send_keys(payload)
@@ -410,6 +411,7 @@ fn pipeline_send_keys_returns_error_when_no_stream() {
 
     let payload = DaemonSessionSendKeysPayload {
         command: vec!["tmux".to_string(), "send-keys".to_string()],
+        fire_and_forget: false,
     };
     let result = state.pipeline_send_keys(payload);
     assert!(result.is_err());

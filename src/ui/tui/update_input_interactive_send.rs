@@ -21,6 +21,7 @@ impl GroveApp {
             let execution = if let Some(socket_path) = daemon_socket_path {
                 let payload = DaemonSessionSendKeysPayload {
                     command: command.clone(),
+                    fire_and_forget: false,
                 };
                 match session_send_keys_via_socket(&socket_path, payload) {
                     Ok(Ok(())) => Ok(()),
@@ -137,6 +138,7 @@ impl GroveApp {
         {
             let payload = DaemonSessionSendKeysPayload {
                 command: command.clone(),
+                fire_and_forget: true,
             };
             match state.pipeline_send_keys(payload) {
                 Ok(()) => {
@@ -197,6 +199,7 @@ impl GroveApp {
         let sync_result = if let Some(socket_path) = &self.interactive_daemon_socket_path() {
             let payload = DaemonSessionSendKeysPayload {
                 command: command.clone(),
+                fire_and_forget: false,
             };
             match session_send_keys_via_socket(socket_path, payload) {
                 Ok(Ok(())) => Ok(()),

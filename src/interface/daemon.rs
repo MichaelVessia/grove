@@ -267,6 +267,8 @@ pub struct DaemonSessionResizePayload {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DaemonSessionSendKeysPayload {
     pub command: Vec<String>,
+    #[serde(default)]
+    pub fire_and_forget: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -714,43 +716,163 @@ fn remove_socket_if_exists(socket_path: &Path) -> std::io::Result<()> {
     }
 }
 
+/// Returns `(session, text)` for a literal send-keys command (6-element vec
+/// with `-l` at index 2). Returns `None` for named keys or malformed commands.
+fn parse_literal_send_keys(command: &[String]) -> Option<(&str, &str)> {
+    if command.len() == 6
+        && command[0] == "tmux"
+        && command[1] == "send-keys"
+        && command[2] == "-l"
+        && command[3] == "-t"
+    {
+        Some((&command[4], &command[5]))
+    } else {
+        None
+    }
+}
+
+fn write_response(writer: &mut UnixStream, response: &DaemonResponse) -> std::io::Result<()> {
+    let payload = serde_json::to_string(response)
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+    writer.write_all(payload.as_bytes())?;
+    writer.write_all(b"\n")?;
+    writer.flush()
+}
+
+/// Reads buffered lines from `reader` while they are literal send-keys to the
+/// same `session`, appending text to `combined_text`. Returns the first
+/// non-coalescable request as overflow (or `None` if the buffer is exhausted).
+fn drain_coalescable_literals(
+    session: &str,
+    combined_text: &mut String,
+    reader: &mut BufReader<UnixStream>,
+    line_buf: &mut String,
+) -> std::io::Result<Option<DaemonRequest>> {
+    while reader.buffer().contains(&b'\n') {
+        line_buf.clear();
+        let bytes_read = reader.read_line(line_buf)?;
+        if bytes_read == 0 {
+            break;
+        }
+        let trimmed = line_buf.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(request) = serde_json::from_str::<DaemonRequest>(trimmed) else {
+            eprintln!(
+                "groved: dropped invalid request during coalesce: {}",
+                truncate_for_log(trimmed, 160)
+            );
+            continue;
+        };
+        if let DaemonRequest::SessionSendKeys { payload } = &request
+            && let Some((sess, text)) = parse_literal_send_keys(&payload.command)
+            && sess == session
+        {
+            combined_text.push_str(text);
+            continue;
+        }
+        return Ok(Some(request));
+    }
+    Ok(None)
+}
+
+/// Attempts to coalesce a send-keys payload with subsequent buffered literals.
+/// Returns the response and an optional overflow request that was read ahead
+/// but could not be coalesced.
+fn coalesce_send_keys(
+    payload: DaemonSessionSendKeysPayload,
+    reader: &mut BufReader<UnixStream>,
+    line_buf: &mut String,
+    service: &impl LifecycleCommandService,
+) -> std::io::Result<(DaemonResponse, Option<DaemonRequest>)> {
+    if let Some((session, text)) = parse_literal_send_keys(&payload.command) {
+        let session_owned = session.to_string();
+        let mut combined_text = text.to_string();
+        let overflow =
+            drain_coalescable_literals(&session_owned, &mut combined_text, reader, line_buf)?;
+        let coalesced_command = vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-l".to_string(),
+            "-t".to_string(),
+            session_owned,
+            combined_text,
+        ];
+        let coalesced_payload = DaemonSessionSendKeysPayload {
+            command: coalesced_command,
+            fire_and_forget: payload.fire_and_forget,
+        };
+        let response = dispatch_request(
+            DaemonRequest::SessionSendKeys {
+                payload: coalesced_payload,
+            },
+            service,
+        );
+        Ok((response, overflow))
+    } else {
+        let response = dispatch_request(DaemonRequest::SessionSendKeys { payload }, service);
+        Ok((response, None))
+    }
+}
+
 fn handle_connection(
     stream: UnixStream,
     service: &impl LifecycleCommandService,
 ) -> std::io::Result<bool> {
     let mut writer = stream.try_clone()?;
-    let reader = BufReader::new(stream);
+    let mut reader = BufReader::new(stream);
     let mut handled_any = false;
+    let mut line_buf = String::new();
+    let mut pending_request: Option<DaemonRequest> = None;
 
-    for line_result in reader.lines() {
-        let request_line = line_result?;
-        if request_line.trim().is_empty() {
-            continue;
-        }
-        handled_any = true;
-
-        let request: DaemonRequest = match serde_json::from_str(request_line.trim()) {
-            Ok(request) => request,
-            Err(error) => {
-                eprintln!(
-                    "groved: dropped invalid request ({error}): {}",
-                    truncate_for_log(request_line.trim(), 160)
-                );
+    loop {
+        let request = if let Some(overflow) = pending_request.take() {
+            overflow
+        } else {
+            line_buf.clear();
+            let bytes_read = reader.read_line(&mut line_buf)?;
+            if bytes_read == 0 {
+                break;
+            }
+            let trimmed = line_buf.trim();
+            if trimmed.is_empty() {
                 continue;
+            }
+            handled_any = true;
+            match serde_json::from_str::<DaemonRequest>(trimmed) {
+                Ok(request) => request,
+                Err(error) => {
+                    eprintln!(
+                        "groved: dropped invalid request ({error}): {}",
+                        truncate_for_log(trimmed, 160)
+                    );
+                    continue;
+                }
             }
         };
 
-        let response = dispatch_request(request, service);
-        let payload = serde_json::to_string(&response)
-            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        handled_any = true;
 
-        if let Err(write_error) = writer
-            .write_all(payload.as_bytes())
-            .and_then(|()| writer.write_all(b"\n"))
-            .and_then(|()| writer.flush())
-        {
-            eprintln!("groved: write error on persistent connection: {write_error}");
-            break;
+        match request {
+            DaemonRequest::SessionSendKeys { payload } => {
+                let fire_and_forget = payload.fire_and_forget;
+                let (response, overflow) =
+                    coalesce_send_keys(payload, &mut reader, &mut line_buf, service)?;
+                pending_request = overflow;
+                if !fire_and_forget && let Err(write_error) = write_response(&mut writer, &response)
+                {
+                    eprintln!("groved: write error on persistent connection: {write_error}");
+                    break;
+                }
+            }
+            other => {
+                let response = dispatch_request(other, service);
+                if let Err(write_error) = write_response(&mut writer, &response) {
+                    eprintln!("groved: write error on persistent connection: {write_error}");
+                    break;
+                }
+            }
         }
     }
 
@@ -1449,5 +1571,265 @@ mod tests {
             "expected pong, got: {}",
             lines[0]
         );
+    }
+
+    #[test]
+    fn parse_literal_send_keys_identifies_literal_form() {
+        let command = vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-l".to_string(),
+            "-t".to_string(),
+            "grove-ws-auth".to_string(),
+            "a".to_string(),
+        ];
+        let result = parse_literal_send_keys(&command);
+        assert_eq!(result, Some(("grove-ws-auth", "a")));
+    }
+
+    #[test]
+    fn parse_literal_send_keys_returns_none_for_named_keys() {
+        let command = vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-t".to_string(),
+            "grove-ws-auth".to_string(),
+            "Enter".to_string(),
+        ];
+        assert_eq!(parse_literal_send_keys(&command), None);
+    }
+
+    #[test]
+    fn parse_literal_send_keys_rejects_wrong_structure() {
+        assert_eq!(parse_literal_send_keys(&[]), None);
+
+        let wrong_binary = vec![
+            "notmux".to_string(),
+            "send-keys".to_string(),
+            "-l".to_string(),
+            "-t".to_string(),
+            "sess".to_string(),
+            "x".to_string(),
+        ];
+        assert_eq!(parse_literal_send_keys(&wrong_binary), None);
+
+        let too_short = vec!["tmux".to_string(), "send-keys".to_string()];
+        assert_eq!(parse_literal_send_keys(&too_short), None);
+    }
+
+    #[test]
+    fn drain_coalescable_literals_merges_same_session() {
+        let (client, server) = UnixStream::pair().expect("unix stream pair should create");
+
+        let req_a = make_literal_send_keys_json("sess1", "a");
+        let req_b = make_literal_send_keys_json("sess1", "b");
+        let req_c = make_literal_send_keys_json("sess1", "c");
+        let mut writer = client;
+        writer
+            .write_all(format!("{req_a}\n{req_b}\n{req_c}\n").as_bytes())
+            .expect("write should succeed");
+        writer
+            .shutdown(Shutdown::Write)
+            .expect("shutdown should succeed");
+
+        let mut reader = BufReader::new(server);
+        // Prime the BufReader (reads a chunk into its internal buffer)
+        let mut prime = String::new();
+        reader
+            .read_line(&mut prime)
+            .expect("prime read should succeed");
+
+        let mut combined = "a".to_string();
+        let mut line_buf = String::new();
+        let overflow =
+            drain_coalescable_literals("sess1", &mut combined, &mut reader, &mut line_buf)
+                .expect("drain should succeed");
+
+        assert_eq!(combined, "abc");
+        assert!(overflow.is_none());
+    }
+
+    #[test]
+    fn drain_coalescable_literals_stops_at_named_key() {
+        let (client, server) = UnixStream::pair().expect("unix stream pair should create");
+
+        let req_a = make_literal_send_keys_json("sess1", "a");
+        let req_b = make_literal_send_keys_json("sess1", "b");
+        let enter = make_named_send_keys_json("sess1", "Enter");
+        let mut writer = client;
+        writer
+            .write_all(format!("{req_a}\n{req_b}\n{enter}\n").as_bytes())
+            .expect("write should succeed");
+        writer
+            .shutdown(Shutdown::Write)
+            .expect("shutdown should succeed");
+
+        let mut reader = BufReader::new(server);
+        let mut prime = String::new();
+        reader
+            .read_line(&mut prime)
+            .expect("prime read should succeed");
+
+        let mut combined = "a".to_string();
+        let mut line_buf = String::new();
+        let overflow =
+            drain_coalescable_literals("sess1", &mut combined, &mut reader, &mut line_buf)
+                .expect("drain should succeed");
+
+        assert_eq!(combined, "ab");
+        assert!(
+            overflow.is_some(),
+            "named key should be returned as overflow"
+        );
+    }
+
+    #[test]
+    fn drain_coalescable_literals_stops_at_different_session() {
+        let (client, server) = UnixStream::pair().expect("unix stream pair should create");
+
+        let req_a = make_literal_send_keys_json("sess1", "a");
+        let req_b = make_literal_send_keys_json("sess1", "b");
+        let req_other = make_literal_send_keys_json("sess2", "x");
+        let mut writer = client;
+        writer
+            .write_all(format!("{req_a}\n{req_b}\n{req_other}\n").as_bytes())
+            .expect("write should succeed");
+        writer
+            .shutdown(Shutdown::Write)
+            .expect("shutdown should succeed");
+
+        let mut reader = BufReader::new(server);
+        let mut prime = String::new();
+        reader
+            .read_line(&mut prime)
+            .expect("prime read should succeed");
+
+        let mut combined = "a".to_string();
+        let mut line_buf = String::new();
+        let overflow =
+            drain_coalescable_literals("sess1", &mut combined, &mut reader, &mut line_buf)
+                .expect("drain should succeed");
+
+        assert_eq!(combined, "ab");
+        assert!(
+            overflow.is_some(),
+            "different session should be returned as overflow"
+        );
+    }
+
+    #[test]
+    fn handle_connection_fire_and_forget_suppresses_response() {
+        let (mut client, server) = UnixStream::pair().expect("unix stream pair should create");
+        let send_keys = make_literal_send_keys_json_with_faf("sess1", "a", true);
+        let ping = r#"{"type":"ping"}"#;
+        client
+            .write_all(format!("{send_keys}\n{ping}\n").as_bytes())
+            .expect("requests should write");
+        client
+            .shutdown(Shutdown::Write)
+            .expect("shutdown should succeed");
+
+        let service = InProcessLifecycleCommandService::new();
+        let handled = handle_connection(server, &service).expect("should handle");
+        assert!(handled);
+
+        let mut response = String::new();
+        client
+            .read_to_string(&mut response)
+            .expect("response should read");
+        let lines: Vec<&str> = response.trim().split('\n').collect();
+        assert_eq!(
+            lines.len(),
+            1,
+            "expected only pong (send-keys response suppressed), got: {response}"
+        );
+        assert!(lines[0].contains(r#""type":"pong""#));
+    }
+
+    #[test]
+    fn handle_connection_backward_compat_missing_fire_and_forget() {
+        let (mut client, server) = UnixStream::pair().expect("unix stream pair should create");
+        // JSON without fire_and_forget field (backward compat: defaults to false)
+        let send_keys = make_literal_send_keys_json("sess1", "a");
+        client
+            .write_all(format!("{send_keys}\n").as_bytes())
+            .expect("requests should write");
+        client
+            .shutdown(Shutdown::Write)
+            .expect("shutdown should succeed");
+
+        let service = InProcessLifecycleCommandService::new();
+        let handled = handle_connection(server, &service).expect("should handle");
+        assert!(handled);
+
+        let mut response = String::new();
+        client
+            .read_to_string(&mut response)
+            .expect("response should read");
+        let lines: Vec<&str> = response.trim().split('\n').collect();
+        assert_eq!(
+            lines.len(),
+            1,
+            "expected one response (fire_and_forget defaults false), got: {response}"
+        );
+        assert!(
+            lines[0].contains(r#""type":"session_send_keys"#),
+            "expected send_keys response, got: {}",
+            lines[0]
+        );
+    }
+
+    fn make_literal_send_keys_json(session: &str, text: &str) -> String {
+        serde_json::to_string(&DaemonRequest::SessionSendKeys {
+            payload: DaemonSessionSendKeysPayload {
+                command: vec![
+                    "tmux".to_string(),
+                    "send-keys".to_string(),
+                    "-l".to_string(),
+                    "-t".to_string(),
+                    session.to_string(),
+                    text.to_string(),
+                ],
+                fire_and_forget: false,
+            },
+        })
+        .expect("serialization should succeed")
+    }
+
+    fn make_literal_send_keys_json_with_faf(
+        session: &str,
+        text: &str,
+        fire_and_forget: bool,
+    ) -> String {
+        serde_json::to_string(&DaemonRequest::SessionSendKeys {
+            payload: DaemonSessionSendKeysPayload {
+                command: vec![
+                    "tmux".to_string(),
+                    "send-keys".to_string(),
+                    "-l".to_string(),
+                    "-t".to_string(),
+                    session.to_string(),
+                    text.to_string(),
+                ],
+                fire_and_forget,
+            },
+        })
+        .expect("serialization should succeed")
+    }
+
+    fn make_named_send_keys_json(session: &str, key_name: &str) -> String {
+        serde_json::to_string(&DaemonRequest::SessionSendKeys {
+            payload: DaemonSessionSendKeysPayload {
+                command: vec![
+                    "tmux".to_string(),
+                    "send-keys".to_string(),
+                    "-t".to_string(),
+                    session.to_string(),
+                    key_name.to_string(),
+                ],
+                fire_and_forget: false,
+            },
+        })
+        .expect("serialization should succeed")
     }
 }
