@@ -9,8 +9,8 @@ Primary success criterion:
 
 ## Kickoff Snapshot (2026-02-21)
 
-- Current execution state: `in progress`.
-- Immediate focus: Phase 0 (`P0.5 dry-run response schema + validation failure tests`).
+- Current execution state: `in progress` (`Phase 0a` and `Phase 0` completed).
+- Immediate focus: Phase 1 (`in-process command service`).
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
@@ -266,7 +266,7 @@ Phase 0 implementation slices (PR-sized):
 - [x] P0.2 Add error code enum + classifier mapping table tests.
 - [x] P0.3 Add `next_actions` builder helpers + shape tests.
 - [x] P0.4 Add root command-tree schema (with compact usage templates) + completeness tests.
-- [ ] P0.5 Add dry-run response schema (`step_id` + `index`) + validation failure tests.
+- [x] P0.5 Add dry-run response schema (`step_id` + `index`) + validation failure tests.
 
 ## Phase 1, In-Process Command Service
 
