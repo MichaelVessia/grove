@@ -14,6 +14,9 @@ make tui
 make groved
 make tui-daemon
 make root
+make tunnel-up REMOTE_HOST=<remote-host>
+make tunnel-status REMOTE_HOST=<remote-host>
+make tunnel-down REMOTE_HOST=<remote-host>
 ```
 
 Meaning:
@@ -21,6 +24,9 @@ Meaning:
 - `make groved`: runs daemon process (`groved`) on a Unix socket.
 - `make tui-daemon`: optional, routes local-target lifecycle calls through a daemon socket.
 - `make root`: prints root JSON command tree.
+- `make tunnel-up`: opens background SSH tunnel for remote daemon socket.
+- `make tunnel-status`: checks tunnel control socket.
+- `make tunnel-down`: closes background SSH tunnel.
 
 `tui-daemon` is not a separate "remote TUI". Remote projects are selected per project target/profile inside the same TUI.
 
@@ -35,6 +41,16 @@ Override socket:
 ```bash
 make groved SOCKET=/tmp/groved.sock
 make tui-daemon SOCKET=/tmp/groved.sock
+```
+
+Tunnel variables:
+
+```bash
+PROFILE=prod                               # used in local socket/control names
+REMOTE_HOST=build.example.com              # required
+REMOTE_USER=michael                        # defaults to local $USER
+REMOTE_SOCKET=/home/michael/.grove/groved.sock
+LOCAL_SOCKET=~/.grove/groved-prod.sock
 ```
 
 ## 1. Remote host setup
@@ -76,21 +92,26 @@ loginctl enable-linger "$USER"
 
 ## 2. Client tunnel setup
 
-Create local socket dir:
+Recommended (Makefile wrapper):
 
 ```bash
-mkdir -p ~/.grove
+make tunnel-up REMOTE_HOST=<remote-host> REMOTE_USER=<remote-user> PROFILE=prod
+make tunnel-status REMOTE_HOST=<remote-host> REMOTE_USER=<remote-user> PROFILE=prod
 ```
 
-Start tunnel (foreground):
+This creates/uses local socket:
 
 ```bash
-ssh -N \
-  -L ~/.grove/groved-prod.sock:/home/<remote-user>/.grove/groved.sock \
-  <remote-user>@<remote-host>
+~/.grove/groved-<profile>.sock
 ```
 
-Background tunnel with keepalives:
+Stop tunnel:
+
+```bash
+make tunnel-down REMOTE_HOST=<remote-host> REMOTE_USER=<remote-user> PROFILE=prod
+```
+
+Manual SSH is still valid if you prefer:
 
 ```bash
 ssh -fN \

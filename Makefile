@@ -1,6 +1,12 @@
 SOCKET ?= $(HOME)/.grove/groved.sock
+PROFILE ?= prod
+REMOTE_USER ?= $(USER)
+REMOTE_HOST ?=
+REMOTE_SOCKET ?= /home/$(REMOTE_USER)/.grove/groved.sock
+LOCAL_SOCKET ?= $(HOME)/.grove/groved-$(PROFILE).sock
+SSH_CONTROL_PATH ?= $(HOME)/.grove/ssh-groved-$(PROFILE).ctl
 
-.PHONY: fmt clippy test ci tui groved tui-daemon root
+.PHONY: fmt clippy test ci tui groved tui-daemon root tunnel-up tunnel-down tunnel-status
 
 fmt:
 	cargo fmt --check
@@ -24,3 +30,30 @@ tui-daemon:
 
 root:
 	cargo run --bin grove --
+
+tunnel-up:
+	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required (example: make tunnel-up REMOTE_HOST=build.example.com)"; exit 2)
+	@mkdir -p "$(HOME)/.grove"
+	@ssh -fN \
+		-M -S "$(SSH_CONTROL_PATH)" \
+		-o ExitOnForwardFailure=yes \
+		-o ServerAliveInterval=30 \
+		-o ServerAliveCountMax=3 \
+		-L "$(LOCAL_SOCKET):$(REMOTE_SOCKET)" \
+		"$(REMOTE_USER)@$(REMOTE_HOST)"
+	@echo "tunnel up: $(LOCAL_SOCKET) -> $(REMOTE_USER)@$(REMOTE_HOST):$(REMOTE_SOCKET)"
+
+tunnel-down:
+	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required (example: make tunnel-down REMOTE_HOST=build.example.com)"; exit 2)
+	@ssh -S "$(SSH_CONTROL_PATH)" -O exit "$(REMOTE_USER)@$(REMOTE_HOST)" >/dev/null 2>&1 || true
+	@rm -f "$(SSH_CONTROL_PATH)"
+	@echo "tunnel down: $(PROFILE)"
+
+tunnel-status:
+	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required (example: make tunnel-status REMOTE_HOST=build.example.com)"; exit 2)
+	@if ssh -S "$(SSH_CONTROL_PATH)" -O check "$(REMOTE_USER)@$(REMOTE_HOST)" >/dev/null 2>&1; then \
+		echo "tunnel status: up ($(PROFILE), $(LOCAL_SOCKET))"; \
+	else \
+		echo "tunnel status: down ($(PROFILE))"; \
+		exit 1; \
+	fi
