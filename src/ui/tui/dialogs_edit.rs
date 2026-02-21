@@ -245,7 +245,7 @@ impl GroveApp {
             self.show_error_toast("workspace edit failed: workspace project root unavailable");
             return;
         };
-        let daemon_socket_path = self.daemon_socket_path_for_repo_root(repo_root.as_path());
+        let daemon_socket_path = self.daemon_socket_path_for_workspace_path(&dialog.workspace_path);
         if let Some(daemon_socket_path) = daemon_socket_path.as_deref() {
             let payload = DaemonWorkspaceEditPayload {
                 repo_root: repo_root.display().to_string(),

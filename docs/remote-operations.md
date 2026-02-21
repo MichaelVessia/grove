@@ -141,6 +141,10 @@ make tui
 
 Then in `Settings`, connect the remote profile and open projects/workspaces. Local and remote entries should coexist in one list.
 
+Project list badges:
+- `[L]` means project target is local.
+- `[R:<profile>]` means project target is remote via that profile.
+
 ## 4. TUI profile fields
 
 In `Settings` remote profile, use:
@@ -151,6 +155,23 @@ In `Settings` remote profile, use:
 - `default_repo_path` (optional): default remote repo root
 
 Then use `Connect` / `Disconnect` actions in Settings (connect starts tunnel, disconnect stops it).
+
+## 4.1 Add remote projects in TUI
+
+Remote projects are explicit, they are not auto-discovered from the remote host in this phase.
+
+From the TUI:
+1. Open `Projects` view.
+2. Choose `Add`.
+3. Set `Target` to `remote`.
+4. Set `RemoteProfile` to your connected profile name.
+5. Enter `Path` as the repo path on the remote host (for example `/home/michael/src/grove`).
+6. Optional: set `Name`, if blank Grove derives one from repo directory (remote defaults to `(<profile>)` suffix).
+
+Collision rules:
+- Local and remote may use the same repo path string, this is allowed because identity is `target + path`.
+- Two remote entries with same `profile + path` are rejected as duplicates.
+- Project names are still unique in config, use a distinct name when local and remote repos share the same basename.
 
 ## 5. Troubleshooting
 

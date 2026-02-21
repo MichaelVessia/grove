@@ -4,6 +4,46 @@ use crate::infrastructure::process::stderr_trimmed;
 use super::*;
 
 impl GroveApp {
+    fn project_identity_matches(
+        existing: &ProjectConfig,
+        target: &ProjectTarget,
+        path: &Path,
+    ) -> bool {
+        match (&existing.target, target) {
+            (ProjectTarget::Local, ProjectTarget::Local) => {
+                refer_to_same_location(existing.path.as_path(), path)
+            }
+            (
+                ProjectTarget::Remote {
+                    profile: existing_profile,
+                },
+                ProjectTarget::Remote { profile },
+            ) => existing_profile == profile && existing.path == path,
+            _ => false,
+        }
+    }
+
+    fn project_name_for_target(
+        name_input: &str,
+        repo_root: &Path,
+        target: &ProjectTarget,
+    ) -> String {
+        if !name_input.trim().is_empty() {
+            return name_input.trim().to_string();
+        }
+
+        let base = project_display_name(repo_root);
+        match target {
+            ProjectTarget::Local => base,
+            ProjectTarget::Remote { profile } => format!("{base} ({profile})"),
+        }
+    }
+
+    fn project_for_workspace_index(&self, workspace_index: usize) -> Option<usize> {
+        let workspace = self.state.workspaces.get(workspace_index)?;
+        self.project_index_for_workspace(workspace)
+    }
+
     fn normalized_project_path(raw: &str) -> PathBuf {
         if let Some(stripped) = raw.strip_prefix("~/")
             && let Some(home) = dirs::home_dir()
@@ -59,19 +99,16 @@ impl GroveApp {
             self.show_info_toast("project delete already in progress");
             return;
         }
-        let Some(workspace) = self.state.selected_workspace() else {
+        let Some(workspace_index) = self.state.selected_workspace().and_then(|workspace| {
+            self.state
+                .workspaces
+                .iter()
+                .position(|candidate| candidate.path == workspace.path)
+        }) else {
             self.show_info_toast("no workspace selected");
             return;
         };
-        let Some(project_path) = workspace.project_path.as_ref() else {
-            self.show_info_toast("selected workspace has no project");
-            return;
-        };
-        let Some(project_index) = self
-            .projects
-            .iter()
-            .position(|project| refer_to_same_location(&project.path, project_path))
-        else {
+        let Some(project_index) = self.project_for_workspace_index(workspace_index) else {
             self.show_info_toast("selected project not found");
             return;
         };
@@ -153,59 +190,87 @@ impl GroveApp {
             self.show_info_toast("project path is required");
             return;
         }
-        let normalized = Self::normalized_project_path(path_input);
-        let canonical = match normalized.canonicalize() {
-            Ok(path) => path,
-            Err(error) => {
-                self.show_info_toast(format!("invalid project path: {error}"));
+        let target = if add_dialog.target_is_remote {
+            let Some(profile) = trimmed_nonempty(&add_dialog.remote_profile) else {
+                self.show_info_toast("remote profile is required");
+                return;
+            };
+            if !self
+                .remote_profiles
+                .iter()
+                .any(|remote_profile| remote_profile.name == profile)
+            {
+                self.show_info_toast("remote profile not found");
                 return;
             }
+            ProjectTarget::Remote { profile }
+        } else {
+            ProjectTarget::Local
         };
 
-        let repo_root_output = Command::new("git")
-            .current_dir(&canonical)
-            .args(["rev-parse", "--show-toplevel"])
-            .output();
-        let repo_root = match repo_root_output {
-            Ok(output) if output.status.success() => {
-                let raw = String::from_utf8(output.stdout).unwrap_or_default();
-                let trimmed = raw.trim();
-                if trimmed.is_empty() {
-                    canonical.clone()
-                } else {
-                    PathBuf::from(trimmed)
-                }
+        let repo_root = match &target {
+            ProjectTarget::Local => {
+                let normalized = Self::normalized_project_path(path_input);
+                let canonical = match normalized.canonicalize() {
+                    Ok(path) => path,
+                    Err(error) => {
+                        self.show_info_toast(format!("invalid project path: {error}"));
+                        return;
+                    }
+                };
+
+                let repo_root_output = Command::new("git")
+                    .current_dir(&canonical)
+                    .args(["rev-parse", "--show-toplevel"])
+                    .output();
+                let repo_root = match repo_root_output {
+                    Ok(output) if output.status.success() => {
+                        let raw = String::from_utf8(output.stdout).unwrap_or_default();
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            canonical.clone()
+                        } else {
+                            PathBuf::from(trimmed)
+                        }
+                    }
+                    Ok(output) => {
+                        let stderr = stderr_trimmed(&output);
+                        self.show_info_toast(format!("not a git repository: {stderr}"));
+                        return;
+                    }
+                    Err(error) => {
+                        self.show_error_toast(format!("git check failed: {error}"));
+                        return;
+                    }
+                };
+                repo_root.canonicalize().unwrap_or(repo_root)
             }
-            Ok(output) => {
-                let stderr = stderr_trimmed(&output);
-                self.show_info_toast(format!("not a git repository: {stderr}"));
-                return;
-            }
-            Err(error) => {
-                self.show_error_toast(format!("git check failed: {error}"));
-                return;
-            }
+            ProjectTarget::Remote { .. } => PathBuf::from(path_input),
         };
-        let repo_root = repo_root.canonicalize().unwrap_or(repo_root);
 
         if self
             .projects
             .iter()
-            .any(|project| refer_to_same_location(&project.path, &repo_root))
+            .any(|project| Self::project_identity_matches(project, &target, repo_root.as_path()))
         {
             self.show_info_toast("project already exists");
             return;
         }
 
-        let project_name = if add_dialog.name.trim().is_empty() {
-            project_display_name(&repo_root)
-        } else {
-            add_dialog.name.trim().to_string()
-        };
+        let project_name =
+            Self::project_name_for_target(add_dialog.name.as_str(), &repo_root, &target);
+        if self
+            .projects
+            .iter()
+            .any(|project| project.name == project_name)
+        {
+            self.show_info_toast("project name already exists");
+            return;
+        }
         self.projects.push(ProjectConfig {
             name: project_name.clone(),
             path: repo_root.clone(),
-            target: crate::infrastructure::config::ProjectTarget::Local,
+            target,
             defaults: Default::default(),
         });
         if let Err(error) = self.save_projects_config() {

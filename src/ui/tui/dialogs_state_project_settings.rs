@@ -11,6 +11,8 @@ pub(super) struct ProjectDialogState {
 pub(super) struct ProjectAddDialogState {
     pub(super) name: String,
     pub(super) path: String,
+    pub(super) target_is_remote: bool,
+    pub(super) remote_profile: String,
     pub(super) focused_field: ProjectAddDialogField,
 }
 
@@ -27,6 +29,8 @@ pub(super) struct ProjectDefaultsDialogState {
 pub(super) enum ProjectAddDialogField {
     Name,
     Path,
+    Target,
+    RemoteProfile,
     AddButton,
     CancelButton,
 }
@@ -41,7 +45,7 @@ pub(super) enum ProjectDefaultsDialogField {
 }
 
 cyclic_field_nav!(pub(super) ProjectAddDialogField {
-    Name, Path, AddButton, CancelButton,
+    Name, Path, Target, RemoteProfile, AddButton, CancelButton,
 });
 
 cyclic_field_nav!(pub(super) ProjectDefaultsDialogField {

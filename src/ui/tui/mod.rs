@@ -194,6 +194,7 @@ struct QueuedDeleteWorkspace {
     request: WorkspaceDeleteRequest,
     workspace_name: String,
     workspace_path: PathBuf,
+    daemon_socket_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

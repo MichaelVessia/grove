@@ -1,15 +1,44 @@
 use super::*;
 
 impl GroveApp {
-    fn project_for_repo_root(&self, repo_root: &std::path::Path) -> Option<&ProjectConfig> {
-        self.projects
+    pub(super) fn project_index_for_workspace(&self, workspace: &Workspace) -> Option<usize> {
+        let workspace_project_path = workspace.project_path.as_ref()?;
+        let mut matching_indexes = self
+            .projects
             .iter()
-            .find(|project| refer_to_same_location(project.path.as_path(), repo_root))
+            .enumerate()
+            .filter_map(|(index, project)| {
+                if refer_to_same_location(project.path.as_path(), workspace_project_path.as_path())
+                {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<usize>>();
+        if matching_indexes.is_empty() {
+            return None;
+        }
+        if matching_indexes.len() == 1 {
+            return matching_indexes.pop();
+        }
+
+        if let Some(workspace_project_name) = workspace.project_name.as_deref()
+            && let Some(index) = matching_indexes.iter().copied().find(|index| {
+                self.projects
+                    .get(*index)
+                    .is_some_and(|project| project.name == workspace_project_name)
+            })
+        {
+            return Some(index);
+        }
+
+        matching_indexes.first().copied()
     }
 
     fn project_for_workspace(&self, workspace: &Workspace) -> Option<&ProjectConfig> {
-        let workspace_project_path = workspace.project_path.as_ref()?;
-        self.project_for_repo_root(workspace_project_path.as_path())
+        let project_index = self.project_index_for_workspace(workspace)?;
+        self.projects.get(project_index)
     }
 
     fn remote_socket_path_for_profile(&self, profile_name: &str) -> Option<PathBuf> {
@@ -43,12 +72,17 @@ impl GroveApp {
         self.daemon_socket_path.clone()
     }
 
-    pub(super) fn daemon_socket_path_for_repo_root(
+    pub(super) fn daemon_socket_path_for_workspace_path(
         &self,
-        repo_root: &std::path::Path,
+        workspace_path: &std::path::Path,
     ) -> Option<PathBuf> {
-        if let Some(project) = self.project_for_repo_root(repo_root) {
-            return self.daemon_socket_path_for_project(project);
+        if let Some(workspace) = self
+            .state
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.path == workspace_path)
+        {
+            return self.daemon_socket_path_for_workspace(workspace);
         }
 
         self.daemon_socket_path.clone()

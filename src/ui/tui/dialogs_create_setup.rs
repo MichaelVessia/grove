@@ -24,13 +24,7 @@ impl GroveApp {
         let Some(workspace) = self.state.selected_workspace() else {
             return 0;
         };
-        let Some(workspace_project_path) = workspace.project_path.as_ref() else {
-            return 0;
-        };
-        self.projects
-            .iter()
-            .position(|project| refer_to_same_location(&project.path, workspace_project_path))
-            .unwrap_or(0)
+        self.project_index_for_workspace(workspace).unwrap_or(0)
     }
 
     fn create_dialog_selected_project(&self) -> Option<&ProjectConfig> {

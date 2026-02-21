@@ -209,7 +209,7 @@ impl GroveApp {
             },
             dry_run: false,
         };
-        let daemon_socket_path = self.daemon_socket_path_for_repo_root(&request.context.repo_root);
+        let daemon_socket_path = self.daemon_socket_path_for_workspace_path(&workspace_path);
 
         if !self.tmux_input.supports_background_launch() {
             let (result, warnings) = execute_workspace_update(request, daemon_socket_path);

@@ -143,7 +143,13 @@ impl GroveApp {
             KeyCode::Enter => match add_dialog.focused_field {
                 ProjectAddDialogField::AddButton => self.add_project_from_dialog(),
                 ProjectAddDialogField::CancelButton => project_dialog.add_dialog = None,
-                ProjectAddDialogField::Name | ProjectAddDialogField::Path => {
+                ProjectAddDialogField::Target => {
+                    add_dialog.target_is_remote = !add_dialog.target_is_remote;
+                    add_dialog.focused_field = add_dialog.focused_field.next();
+                }
+                ProjectAddDialogField::Name
+                | ProjectAddDialogField::Path
+                | ProjectAddDialogField::RemoteProfile => {
                     add_dialog.focused_field = add_dialog.focused_field.next();
                 }
             },
@@ -154,12 +160,25 @@ impl GroveApp {
                 ProjectAddDialogField::Path => {
                     add_dialog.path.pop();
                 }
-                ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton => {}
+                ProjectAddDialogField::RemoteProfile => {
+                    add_dialog.remote_profile.pop();
+                }
+                ProjectAddDialogField::Target
+                | ProjectAddDialogField::AddButton
+                | ProjectAddDialogField::CancelButton => {}
             },
             KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
                 match add_dialog.focused_field {
                     ProjectAddDialogField::Name => add_dialog.name.push(character),
                     ProjectAddDialogField::Path => add_dialog.path.push(character),
+                    ProjectAddDialogField::Target => {
+                        if character == 'j' || character == 'k' || character == ' ' {
+                            add_dialog.target_is_remote = !add_dialog.target_is_remote;
+                        }
+                    }
+                    ProjectAddDialogField::RemoteProfile => {
+                        add_dialog.remote_profile.push(character);
+                    }
                     ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton => {}
                 }
             }

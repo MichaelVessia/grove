@@ -16,6 +16,11 @@ impl GroveApp {
         if let Some(add_dialog) = dialog.add_dialog.as_ref() {
             let dialog_height = 12u16;
             let focused = |field| add_dialog.focused_field == field;
+            let target_value = if add_dialog.target_is_remote {
+                "remote"
+            } else {
+                "local"
+            };
             let mut lines = vec![
                 modal_labeled_input_row(
                     content_width,
@@ -33,6 +38,23 @@ impl GroveApp {
                     "Absolute path or ~/path to repo root",
                     focused(ProjectAddDialogField::Path),
                 ),
+                modal_focus_badged_row(
+                    content_width,
+                    theme,
+                    "Target",
+                    target_value,
+                    focused(ProjectAddDialogField::Target),
+                    theme.peach,
+                    theme.text,
+                ),
+                modal_labeled_input_row(
+                    content_width,
+                    theme,
+                    "RemoteProfile",
+                    add_dialog.remote_profile.as_str(),
+                    "Used when Target=remote",
+                    focused(ProjectAddDialogField::RemoteProfile),
+                ),
                 FtLine::raw(""),
                 modal_actions_row(
                     content_width,
@@ -46,7 +68,7 @@ impl GroveApp {
             lines.extend(modal_wrapped_hint_rows(
                 content_width,
                 theme,
-                "Tab/C-n next, S-Tab/C-p prev, Enter confirm, Esc back",
+                "Tab/C-n next, S-Tab/C-p prev, Enter confirm, Space toggles target, Esc back",
             ));
             let body = FtText::from_lines(lines);
             let content = OverlayModalContent {
@@ -61,8 +83,8 @@ impl GroveApp {
                     ModalSizeConstraints::new()
                         .min_width(dialog_width)
                         .max_width(dialog_width)
-                        .min_height(dialog_height)
-                        .max_height(dialog_height),
+                        .min_height(dialog_height.saturating_add(4))
+                        .max_height(dialog_height.saturating_add(4)),
                 )
                 .backdrop(BackdropConfig::new(theme.crust, 0.55))
                 .hit_id(HitId::new(HIT_ID_PROJECT_ADD_DIALOG))

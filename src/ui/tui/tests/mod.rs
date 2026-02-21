@@ -2187,6 +2187,125 @@ fn settings_dialog_connect_can_recover_from_degraded_state() {
 }
 
 #[test]
+fn add_project_dialog_can_add_remote_project_target() {
+    let mut app = fixture_app();
+    app.remote_profiles.push(RemoteProfileConfig {
+        name: "lan".to_string(),
+        host: "lanbox".to_string(),
+        user: "michael".to_string(),
+        remote_socket_path: "/tmp/lan.sock".to_string(),
+        default_repo_path: None,
+    });
+    app.open_project_dialog();
+    app.open_project_add_dialog();
+    {
+        let dialog = app
+            .project_dialog_mut()
+            .and_then(|dialog| dialog.add_dialog.as_mut())
+            .expect("project add dialog should be open");
+        dialog.name = "grove-remote".to_string();
+        dialog.path = "/repos/grove".to_string();
+        dialog.target_is_remote = true;
+        dialog.remote_profile = "lan".to_string();
+    }
+
+    app.add_project_from_dialog();
+
+    assert!(
+        app.projects.iter().any(|project| {
+            project.name == "grove-remote"
+                && project.path == std::path::Path::new("/repos/grove")
+                && matches!(
+                    project.target,
+                    ProjectTarget::Remote { ref profile } if profile == "lan"
+                )
+        }),
+        "remote project should be added"
+    );
+}
+
+#[test]
+fn add_project_dialog_allows_same_path_for_local_and_remote_targets() {
+    let mut app = fixture_app();
+    app.remote_profiles.push(RemoteProfileConfig {
+        name: "lan".to_string(),
+        host: "lanbox".to_string(),
+        user: "michael".to_string(),
+        remote_socket_path: "/tmp/lan.sock".to_string(),
+        default_repo_path: None,
+    });
+    app.open_project_dialog();
+    app.open_project_add_dialog();
+    {
+        let dialog = app
+            .project_dialog_mut()
+            .and_then(|dialog| dialog.add_dialog.as_mut())
+            .expect("project add dialog should be open");
+        dialog.name = "grove-remote".to_string();
+        dialog.path = "/repos/grove".to_string();
+        dialog.target_is_remote = true;
+        dialog.remote_profile = "lan".to_string();
+    }
+
+    app.add_project_from_dialog();
+
+    assert_eq!(app.projects.len(), 2);
+}
+
+#[test]
+fn add_project_dialog_blocks_duplicate_remote_target_path_for_same_profile() {
+    let mut app = fixture_app();
+    app.remote_profiles.push(RemoteProfileConfig {
+        name: "lan".to_string(),
+        host: "lanbox".to_string(),
+        user: "michael".to_string(),
+        remote_socket_path: "/tmp/lan.sock".to_string(),
+        default_repo_path: None,
+    });
+    app.projects.push(ProjectConfig {
+        name: "grove-remote".to_string(),
+        path: PathBuf::from("/repos/grove"),
+        target: ProjectTarget::Remote {
+            profile: "lan".to_string(),
+        },
+        defaults: Default::default(),
+    });
+    app.open_project_dialog();
+    app.open_project_add_dialog();
+    {
+        let dialog = app
+            .project_dialog_mut()
+            .and_then(|dialog| dialog.add_dialog.as_mut())
+            .expect("project add dialog should be open");
+        dialog.name = "grove-remote-dup".to_string();
+        dialog.path = "/repos/grove".to_string();
+        dialog.target_is_remote = true;
+        dialog.remote_profile = "lan".to_string();
+    }
+
+    app.add_project_from_dialog();
+
+    assert_eq!(app.projects.len(), 2);
+}
+
+#[test]
+fn selected_project_index_uses_workspace_project_name_when_paths_collide() {
+    let mut app = fixture_app();
+    app.projects.push(ProjectConfig {
+        name: "grove-remote".to_string(),
+        path: PathBuf::from("/repos/grove"),
+        target: ProjectTarget::Remote {
+            profile: "lan".to_string(),
+        },
+        defaults: Default::default(),
+    });
+    app.state.workspaces[0].project_name = Some("grove-remote".to_string());
+    app.state.selected_index = 0;
+
+    assert_eq!(app.selected_project_index(), 1);
+}
+
+#[test]
 fn remote_unavailable_does_not_block_local_workspace_dialogs() {
     let mut app = fixture_app();
     app.remote_profiles.push(RemoteProfileConfig {

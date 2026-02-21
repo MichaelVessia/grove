@@ -67,6 +67,30 @@ impl GroveApp {
                 .find(|(_, workspace)| {
                     workspace.is_main
                         && workspace
+                            .project_name
+                            .as_deref()
+                            .is_some_and(|name| name == project.name)
+                        && workspace
+                            .project_path
+                            .as_ref()
+                            .is_some_and(|path| refer_to_same_location(path, &project.path))
+                })
+        {
+            self.select_workspace_by_index(workspace_index);
+            return;
+        }
+
+        if let Some((workspace_index, _)) =
+            self.state
+                .workspaces
+                .iter()
+                .enumerate()
+                .find(|(_, workspace)| {
+                    workspace
+                        .project_name
+                        .as_deref()
+                        .is_some_and(|name| name == project.name)
+                        && workspace
                             .project_path
                             .as_ref()
                             .is_some_and(|path| refer_to_same_location(path, &project.path))
@@ -113,12 +137,23 @@ impl GroveApp {
     }
 
     pub(super) fn open_project_add_dialog(&mut self) {
+        let remote_profile = self
+            .active_remote_profile
+            .clone()
+            .or_else(|| {
+                self.remote_profiles
+                    .first()
+                    .map(|profile| profile.name.clone())
+            })
+            .unwrap_or_default();
         let Some(project_dialog) = self.project_dialog_mut() else {
             return;
         };
         project_dialog.add_dialog = Some(ProjectAddDialogState {
             name: String::new(),
             path: String::new(),
+            target_is_remote: false,
+            remote_profile,
             focused_field: ProjectAddDialogField::Name,
         });
     }
