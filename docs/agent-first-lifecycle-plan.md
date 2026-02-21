@@ -9,8 +9,8 @@ Primary success criterion:
 
 ## Kickoff Snapshot (2026-02-21)
 
-- Current execution state: `in progress` (`Phase 0a` and `Phase 0` completed).
-- Immediate focus: Phase 3 (`TUI integration and external change reflection`).
+- Current execution state: `in progress` (`Phase 0a`, `Phase 0`, `Phase 1`, `Phase 2`, and `Phase 3` completed).
+- Immediate focus: Phase 4 (`Daemon + Unix socket transport`).
 - Phase 1 progress: create/delete/merge/update/start/stop TUI paths now route through `InProcessLifecycleCommandService`.
 - Phase 2 progress: root `grove` now emits JSON command-tree envelope, `grove tui` launches TUI explicitly.
 - Phase 2 progress: `grove workspace list` now executes via command service and returns JSON envelope.
@@ -23,7 +23,7 @@ Primary success criterion:
 - Phase 2 progress: `grove agent stop` now executes via command service and returns JSON envelope.
 - Phase 2 progress: golden-style CLI contract tests now cover envelope shape, deterministic error codes, and `cwd` repo default behavior.
 - Phase 2 progress: lifecycle CLI command surface is complete (`workspace list/create/edit/delete/merge/update`, `agent start/stop`).
-- Phase 3 progress: TUI tick loop now schedules periodic workspace inventory refresh at 2s cadence.
+- Phase 3 progress: periodic refresh cadence and external mutation reflection coverage are complete.
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
@@ -524,7 +524,7 @@ Remote mapping (Phase 4.5+):
 - [x] 5b.2 Complete remaining lifecycle CLI subcommands over command service.
 - [x] 6. Add CLI integration and golden JSON tests.
 - [x] 7a. Add periodic 2s TUI inventory refresh scheduling.
-- [ ] 7b. Add integration proof that external CLI mutation reflects in TUI refresh cycle.
+- [x] 7b. Add integration proof that external CLI mutation reflects in TUI refresh cycle.
 - [ ] 8. Add daemon binary + socket adapter.
 - [ ] 9. Add mixed local/remote project target model + indicator UI.
 - [ ] 10. Add remote profiles + connect/disconnect/test flows in settings.

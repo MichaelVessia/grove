@@ -4933,6 +4933,49 @@ fn tick_due_workspace_refresh_queues_inventory_refresh() {
 }
 
 #[test]
+fn periodic_refresh_completion_applies_external_workspace_changes() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+    app.state.selected_index = 1;
+    app.next_workspace_refresh_due_at = Some(Instant::now() - Duration::from_secs(1));
+    force_tick_due(&mut app);
+
+    let tick_cmd = ftui::Model::update(&mut app, Msg::Tick);
+    assert!(cmd_contains_task(&tick_cmd));
+    assert!(app.refresh_in_flight);
+
+    let mut refreshed = fixture_bootstrap(WorkspaceStatus::Idle);
+    let mut new_workspace = Workspace::try_new(
+        "feature-b".to_string(),
+        PathBuf::from("/repos/grove-feature-b"),
+        "feature-b".to_string(),
+        Some(1_700_000_050),
+        AgentType::Codex,
+        WorkspaceStatus::Idle,
+        false,
+    )
+    .expect("workspace should be valid");
+    new_workspace.project_path = Some(PathBuf::from("/repos/grove"));
+    new_workspace.base_branch = Some("main".to_string());
+    refreshed.workspaces.push(new_workspace);
+
+    let _ = ftui::Model::update(
+        &mut app,
+        Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
+            preferred_workspace_path: Some(PathBuf::from("/repos/grove-feature-a")),
+            bootstrap: refreshed,
+        }),
+    );
+
+    assert_eq!(app.state.workspaces.len(), 3);
+    assert!(
+        app.state
+            .workspaces
+            .iter()
+            .any(|workspace| workspace.name == "feature-b")
+    );
+}
+
+#[test]
 fn in_flight_preview_poll_schedules_short_tick_for_task_results() {
     let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 1;
