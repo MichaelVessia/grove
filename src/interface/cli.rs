@@ -5,7 +5,8 @@ use serde::Serialize;
 
 use crate::application::commands::{
     ErrorCode as CommandErrorCode, InProcessLifecycleCommandService, LifecycleCommandService,
-    RepoContext, WorkspaceCreateRequest, WorkspaceListRequest,
+    RepoContext, WorkspaceCreateRequest, WorkspaceEditRequest, WorkspaceListRequest,
+    WorkspaceSelector,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::event_log::{FileEventLogger, now_millis};
@@ -42,6 +43,15 @@ struct WorkspaceCreateArgs {
     agent: Option<AgentType>,
     start: bool,
     dry_run: bool,
+    repo: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct WorkspaceEditArgs {
+    workspace: Option<String>,
+    workspace_path: Option<PathBuf>,
+    agent: Option<AgentType>,
+    base_branch: Option<String>,
     repo: Option<PathBuf>,
 }
 
@@ -252,6 +262,86 @@ fn parse_workspace_create_args(
     Ok(parsed)
 }
 
+fn parse_workspace_edit_args(
+    args: impl IntoIterator<Item = String>,
+) -> std::io::Result<WorkspaceEditArgs> {
+    let mut parsed = WorkspaceEditArgs::default();
+    let mut args = args.into_iter();
+
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--workspace" => {
+                let Some(name) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--workspace requires a value",
+                    ));
+                };
+                parsed.workspace = Some(name);
+            }
+            "--workspace-path" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--workspace-path requires a path",
+                    ));
+                };
+                parsed.workspace_path = Some(PathBuf::from(path));
+            }
+            "--agent" => {
+                let Some(value) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--agent requires a value",
+                    ));
+                };
+                parsed.agent = Some(parse_agent(&value)?);
+            }
+            "--base" => {
+                let Some(branch) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--base requires a value",
+                    ));
+                };
+                parsed.base_branch = Some(branch);
+            }
+            "--repo" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--repo requires a path",
+                    ));
+                };
+                parsed.repo = Some(PathBuf::from(path));
+            }
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("unknown argument for 'workspace edit': {argument}"),
+                ));
+            }
+        }
+    }
+
+    Ok(parsed)
+}
+
+fn workspace_selector(
+    workspace_name: Option<String>,
+    workspace_path: Option<PathBuf>,
+) -> std::io::Result<WorkspaceSelector> {
+    match (workspace_name, workspace_path) {
+        (Some(name), Some(path)) => Ok(WorkspaceSelector::NameAndPath { name, path }),
+        (Some(name), None) => Ok(WorkspaceSelector::Name(name)),
+        (None, Some(path)) => Ok(WorkspaceSelector::Path(path)),
+        (None, None) => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "workspace selector is required (--workspace or --workspace-path)",
+        )),
+    }
+}
+
 fn parse_agent(value: &str) -> std::io::Result<AgentType> {
     match value.trim().to_ascii_lowercase().as_str() {
         "claude" => Ok(AgentType::Claude),
@@ -323,6 +413,21 @@ fn workspace_list_next_actions() -> Vec<NextAction> {
             "Create a workspace",
         )
         .push("grove", "Show root command tree")
+        .build()
+}
+
+fn workspace_edit_next_actions(workspace_name: &str) -> Vec<NextAction> {
+    let selector = format!("--workspace {workspace_name}");
+    NextActionsBuilder::new()
+        .push("workspace list", "Inspect workspace inventory")
+        .push(
+            format!("workspace update {selector}"),
+            "Update workspace from base branch",
+        )
+        .push(
+            format!("agent start {selector}"),
+            "Start agent with updated workspace settings",
+        )
         .build()
 }
 
@@ -451,6 +556,57 @@ fn run_workspace_create(parsed: WorkspaceCreateArgs) -> std::io::Result<()> {
     }
 }
 
+fn run_workspace_edit(parsed: WorkspaceEditArgs) -> std::io::Result<()> {
+    let command = "grove workspace edit";
+    let selector = match workspace_selector(parsed.workspace, parsed.workspace_path) {
+        Ok(selector) => selector,
+        Err(error) => {
+            return emit_error(
+                command,
+                CliErrorCode::InvalidArgument,
+                error.to_string(),
+                "Retry with '--workspace <name>' or '--workspace-path <path>' plus edit flags",
+            );
+        }
+    };
+    let repo_root = if let Some(path) = parsed.repo {
+        path
+    } else {
+        std::env::current_dir()?
+    };
+    let request = WorkspaceEditRequest {
+        context: RepoContext {
+            repo_root: repo_root.clone(),
+        },
+        selector,
+        agent: parsed.agent,
+        base_branch: parsed.base_branch,
+    };
+    let service = InProcessLifecycleCommandService::new();
+    let response = service.workspace_edit(request);
+    match response {
+        Ok(result) => {
+            let workspace_name = result.workspace.name.clone();
+            let payload = WorkspaceMutationResult {
+                workspace: WorkspaceView::from_workspace(result.workspace),
+                dry_run: false,
+            };
+            emit_json(&CommandEnvelope::success(
+                command,
+                payload,
+                result.warnings,
+                workspace_edit_next_actions(&workspace_name),
+            ))
+        }
+        Err(error) => emit_error(
+            command,
+            command_error_code(error.code, &error.message),
+            error.message,
+            "Adjust selector and edit flags, then retry",
+        ),
+    }
+}
+
 fn agent_label(agent: AgentType) -> &'static str {
     match agent {
         AgentType::Claude => "claude",
@@ -535,6 +691,17 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
                 ),
             };
         }
+        if workspace_command == "edit" {
+            return match parse_workspace_edit_args(workspace_args.iter().cloned()) {
+                Ok(parsed) => run_workspace_edit(parsed),
+                Err(error) => emit_error(
+                    "grove workspace edit",
+                    CliErrorCode::InvalidArgument,
+                    error.to_string(),
+                    "Retry with '--workspace <name>' or '--workspace-path <path>' plus edit flags",
+                ),
+            };
+        }
     }
 
     let cli = parse_cli_args(args)?;
@@ -569,9 +736,11 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
 mod tests {
     use super::{
         CliArgs, TuiArgs, debug_record_path, ensure_event_log_parent_directory, parse_cli_args,
-        parse_tui_args, parse_workspace_create_args, parse_workspace_list_args,
-        resolve_event_log_path, root_command_envelope,
+        parse_tui_args, parse_workspace_create_args, parse_workspace_edit_args,
+        parse_workspace_list_args, resolve_event_log_path, root_command_envelope,
+        workspace_selector,
     };
+    use crate::application::commands::WorkspaceSelector;
     use crate::domain::AgentType;
     use serde_json::Value;
     use std::path::PathBuf;
@@ -767,5 +936,59 @@ mod tests {
         let error =
             parse_workspace_create_args(vec!["--wat".to_string()]).expect_err("unknown arg");
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn workspace_edit_parser_reads_expected_flags() {
+        let parsed = parse_workspace_edit_args(vec![
+            "--workspace".to_string(),
+            "feature-auth".to_string(),
+            "--agent".to_string(),
+            "codex".to_string(),
+            "--base".to_string(),
+            "main".to_string(),
+            "--repo".to_string(),
+            "/repos/grove".to_string(),
+        ])
+        .expect("workspace edit args should parse");
+
+        assert_eq!(
+            parsed,
+            super::WorkspaceEditArgs {
+                workspace: Some("feature-auth".to_string()),
+                workspace_path: None,
+                agent: Some(AgentType::Codex),
+                base_branch: Some("main".to_string()),
+                repo: Some(PathBuf::from("/repos/grove")),
+            }
+        );
+    }
+
+    #[test]
+    fn workspace_edit_parser_rejects_unknown_flag() {
+        let error = parse_workspace_edit_args(vec!["--wat".to_string()]).expect_err("unknown arg");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn workspace_selector_requires_name_or_path() {
+        let error = workspace_selector(None, None).expect_err("selector required");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn workspace_selector_accepts_name_and_path() {
+        let selector = workspace_selector(
+            Some("feature-auth".to_string()),
+            Some(PathBuf::from("/tmp/grove-feature-auth")),
+        )
+        .expect("selector should parse");
+        assert_eq!(
+            selector,
+            WorkspaceSelector::NameAndPath {
+                name: "feature-auth".to_string(),
+                path: PathBuf::from("/tmp/grove-feature-auth"),
+            }
+        );
     }
 }

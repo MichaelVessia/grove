@@ -54,6 +54,7 @@ pub fn classify_error_message(message: &str) -> CliErrorCode {
             "existing branch is required",
             "workspace branch matches base branch",
             "workspace create requires --base or --existing-branch",
+            "workspace edit requires --agent and/or --base",
             "invalid argument",
             "selector mismatch",
             "missing selector",
@@ -189,6 +190,10 @@ mod tests {
         );
         assert_eq!(
             classify_error_message("workspace create requires --base or --existing-branch"),
+            CliErrorCode::InvalidArgument
+        );
+        assert_eq!(
+            classify_error_message("workspace edit requires --agent and/or --base"),
             CliErrorCode::InvalidArgument
         );
         assert_eq!(
