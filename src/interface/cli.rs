@@ -1,8 +1,16 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+
+use crate::application::commands::{
+    ErrorCode as CommandErrorCode, InProcessLifecycleCommandService, LifecycleCommandService,
+    RepoContext, WorkspaceListRequest,
+};
+use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::event_log::{FileEventLogger, now_millis};
-use crate::interface::cli_contract::{CommandEnvelope, NextAction};
+use crate::interface::cli_contract::{CommandEnvelope, ErrorDetail, NextAction};
+use crate::interface::cli_errors::CliErrorCode;
 use crate::interface::next_actions::NextActionsBuilder;
 use crate::interface::root_command_tree::{RootCommandTree, root_command_tree};
 
@@ -19,6 +27,54 @@ struct CliArgs {
 struct TuiArgs {
     event_log_path: Option<PathBuf>,
     debug_record: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct WorkspaceListArgs {
+    repo: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct WorkspaceListResult {
+    repo_root: String,
+    workspaces: Vec<WorkspaceView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct WorkspaceView {
+    name: String,
+    path: String,
+    project_name: Option<String>,
+    project_path: Option<String>,
+    branch: String,
+    base_branch: Option<String>,
+    last_activity_unix_secs: Option<i64>,
+    agent: String,
+    status: String,
+    is_main: bool,
+    is_orphaned: bool,
+    supported_agent: bool,
+}
+
+impl WorkspaceView {
+    fn from_workspace(workspace: Workspace) -> Self {
+        Self {
+            name: workspace.name,
+            path: workspace.path.display().to_string(),
+            project_name: workspace.project_name,
+            project_path: workspace
+                .project_path
+                .map(|path| path.display().to_string()),
+            branch: workspace.branch,
+            base_branch: workspace.base_branch,
+            last_activity_unix_secs: workspace.last_activity_unix_secs,
+            agent: agent_label(workspace.agent).to_string(),
+            status: workspace_status_label(workspace.status).to_string(),
+            is_main: workspace.is_main,
+            is_orphaned: workspace.is_orphaned,
+            supported_agent: workspace.supported_agent,
+        }
+    }
 }
 
 fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io::Result<CliArgs> {
@@ -79,6 +135,35 @@ fn parse_tui_args(args: impl IntoIterator<Item = String>) -> std::io::Result<Tui
     Ok(cli)
 }
 
+fn parse_workspace_list_args(
+    args: impl IntoIterator<Item = String>,
+) -> std::io::Result<WorkspaceListArgs> {
+    let mut parsed = WorkspaceListArgs::default();
+    let mut args = args.into_iter();
+
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--repo" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--repo requires a path",
+                    ));
+                };
+                parsed.repo = Some(PathBuf::from(path));
+            }
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("unknown argument for 'workspace list': {argument}"),
+                ));
+            }
+        }
+    }
+
+    Ok(parsed)
+}
+
 fn debug_record_path(app_start_ts: u64) -> std::io::Result<PathBuf> {
     let dir = PathBuf::from(DEBUG_RECORD_DIR);
     fs::create_dir_all(&dir)?;
@@ -132,6 +217,16 @@ fn root_next_actions() -> Vec<NextAction> {
         .build()
 }
 
+fn workspace_list_next_actions() -> Vec<NextAction> {
+    NextActionsBuilder::new()
+        .push(
+            "grove workspace create --name <name> --base <branch>",
+            "Create a workspace",
+        )
+        .push("grove", "Show root command tree")
+        .build()
+}
+
 fn root_command_envelope() -> CommandEnvelope<RootCommandTree> {
     CommandEnvelope::success(
         "grove",
@@ -146,6 +241,98 @@ fn emit_json<T: serde::Serialize>(payload: &T) -> std::io::Result<()> {
         serde_json::to_string(payload).map_err(|error| std::io::Error::other(error.to_string()))?;
     println!("{json}");
     Ok(())
+}
+
+fn emit_error(
+    command: &str,
+    code: CliErrorCode,
+    message: String,
+    fix: &str,
+) -> std::io::Result<()> {
+    emit_json(&CommandEnvelope::<serde_json::Value>::error(
+        command,
+        ErrorDetail::from_code(code, message),
+        fix.to_string(),
+        Vec::new(),
+        vec![NextAction::new("grove", "Show root command tree")],
+    ))
+}
+
+fn command_error_code(error: CommandErrorCode, message: &str) -> CliErrorCode {
+    match error {
+        CommandErrorCode::InvalidArgument => {
+            if message.contains("[A-Za-z0-9_-]") {
+                CliErrorCode::WorkspaceInvalidName
+            } else {
+                CliErrorCode::InvalidArgument
+            }
+        }
+        CommandErrorCode::NotFound => CliErrorCode::RepoNotFound,
+        CommandErrorCode::Conflict => CliErrorCode::Conflict,
+        CommandErrorCode::RuntimeFailure => CliErrorCode::Internal,
+        CommandErrorCode::Internal => CliErrorCode::Internal,
+    }
+}
+
+fn run_workspace_list(parsed: WorkspaceListArgs) -> std::io::Result<()> {
+    let repo_root = if let Some(path) = parsed.repo {
+        path
+    } else {
+        std::env::current_dir()?
+    };
+    let command = "grove workspace list";
+    let request = WorkspaceListRequest {
+        context: RepoContext {
+            repo_root: repo_root.clone(),
+        },
+    };
+    let service = InProcessLifecycleCommandService::new();
+    let response = service.workspace_list(request);
+    match response {
+        Ok(result) => {
+            let payload = WorkspaceListResult {
+                repo_root: repo_root.display().to_string(),
+                workspaces: result
+                    .workspaces
+                    .into_iter()
+                    .map(WorkspaceView::from_workspace)
+                    .collect(),
+            };
+            emit_json(&CommandEnvelope::success(
+                command,
+                payload,
+                Vec::new(),
+                workspace_list_next_actions(),
+            ))
+        }
+        Err(error) => emit_error(
+            command,
+            command_error_code(error.code, &error.message),
+            error.message,
+            "Verify repository path and retry",
+        ),
+    }
+}
+
+fn agent_label(agent: AgentType) -> &'static str {
+    match agent {
+        AgentType::Claude => "claude",
+        AgentType::Codex => "codex",
+    }
+}
+
+fn workspace_status_label(status: WorkspaceStatus) -> &'static str {
+    match status {
+        WorkspaceStatus::Main => "main",
+        WorkspaceStatus::Idle => "idle",
+        WorkspaceStatus::Active => "active",
+        WorkspaceStatus::Thinking => "thinking",
+        WorkspaceStatus::Waiting => "waiting",
+        WorkspaceStatus::Done => "done",
+        WorkspaceStatus::Error => "error",
+        WorkspaceStatus::Unknown => "unknown",
+        WorkspaceStatus::Unsupported => "unsupported",
+    }
 }
 
 fn run_tui(cli: TuiArgs) -> std::io::Result<()> {
@@ -180,6 +367,27 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
     if first == "tui" {
         return run_tui(parse_tui_args(remaining.iter().cloned())?);
     }
+    if first == "workspace" {
+        let Some((workspace_command, workspace_args)) = remaining.split_first() else {
+            return emit_error(
+                "grove workspace",
+                CliErrorCode::InvalidArgument,
+                "workspace subcommand is required".to_string(),
+                "Use 'grove workspace list' to inspect workspaces",
+            );
+        };
+        if workspace_command == "list" {
+            return match parse_workspace_list_args(workspace_args.iter().cloned()) {
+                Ok(parsed) => run_workspace_list(parsed),
+                Err(error) => emit_error(
+                    "grove workspace list",
+                    CliErrorCode::InvalidArgument,
+                    error.to_string(),
+                    "Retry with '--repo <path>' or omit '--repo' to use current directory",
+                ),
+            };
+        }
+    }
 
     let cli = parse_cli_args(args)?;
     if cli.print_hello {
@@ -201,17 +409,19 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         return Ok(());
     }
 
-    Err(std::io::Error::new(
-        std::io::ErrorKind::InvalidInput,
-        "unknown command, run 'grove' for command tree",
-    ))
+    emit_error(
+        "grove",
+        CliErrorCode::InvalidArgument,
+        "unknown command".to_string(),
+        "Run 'grove' to view command tree and usage",
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         CliArgs, TuiArgs, debug_record_path, ensure_event_log_parent_directory, parse_cli_args,
-        parse_tui_args, resolve_event_log_path, root_command_envelope,
+        parse_tui_args, parse_workspace_list_args, resolve_event_log_path, root_command_envelope,
     };
     use serde_json::Value;
     use std::path::PathBuf;
@@ -337,5 +547,24 @@ mod tests {
         assert_eq!(value["command"], Value::from("grove"));
         assert_eq!(value["result"]["command"], Value::from("grove"));
         assert!(value["result"]["commands"].is_array());
+    }
+
+    #[test]
+    fn workspace_list_parser_reads_repo_path() {
+        let parsed =
+            parse_workspace_list_args(vec!["--repo".to_string(), "/repos/grove".to_string()])
+                .expect("workspace list args should parse");
+        assert_eq!(
+            parsed,
+            super::WorkspaceListArgs {
+                repo: Some(PathBuf::from("/repos/grove")),
+            }
+        );
+    }
+
+    #[test]
+    fn workspace_list_parser_rejects_unknown_flag() {
+        let error = parse_workspace_list_args(vec!["--wat".to_string()]).expect_err("unknown arg");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     }
 }
