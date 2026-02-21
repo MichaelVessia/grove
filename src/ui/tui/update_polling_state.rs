@@ -48,6 +48,8 @@ impl GroveApp {
         GroveConfig {
             sidebar_width_pct: self.sidebar_width_pct,
             projects: self.projects.clone(),
+            remote_profiles: self.remote_profiles.clone(),
+            active_remote_profile: self.active_remote_profile.clone(),
             attention_acks: self.workspace_attention_acks_for_config(),
         }
     }

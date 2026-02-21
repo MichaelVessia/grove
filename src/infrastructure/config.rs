@@ -10,6 +10,10 @@ pub struct GroveConfig {
     #[serde(default)]
     pub projects: Vec<ProjectConfig>,
     #[serde(default)]
+    pub remote_profiles: Vec<RemoteProfileConfig>,
+    #[serde(default)]
+    pub active_remote_profile: Option<String>,
+    #[serde(default)]
     pub attention_acks: Vec<WorkspaceAttentionAckConfig>,
 }
 
@@ -22,6 +26,8 @@ impl Default for GroveConfig {
         Self {
             sidebar_width_pct: default_sidebar_width_pct(),
             projects: Vec::new(),
+            remote_profiles: Vec::new(),
+            active_remote_profile: None,
             attention_acks: Vec::new(),
         }
     }
@@ -41,6 +47,16 @@ pub struct ProjectConfig {
     pub target: ProjectTarget,
     #[serde(default)]
     pub defaults: ProjectDefaults,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteProfileConfig {
+    pub name: String,
+    pub host: String,
+    pub user: String,
+    pub remote_socket_path: String,
+    #[serde(default)]
+    pub default_repo_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

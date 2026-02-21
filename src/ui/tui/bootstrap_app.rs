@@ -107,6 +107,25 @@ impl GroveApp {
         let persisted_config = crate::infrastructure::config::load_from_path(&config_path)
             .unwrap_or_else(|_| GroveConfig::default());
         let sidebar_width_pct = clamp_sidebar_ratio(persisted_config.sidebar_width_pct);
+        let remote_profiles = persisted_config.remote_profiles.clone();
+        let active_remote_profile =
+            persisted_config
+                .active_remote_profile
+                .as_ref()
+                .and_then(|name| {
+                    if remote_profiles.iter().any(|profile| profile.name == *name) {
+                        Some(name.clone())
+                    } else {
+                        None
+                    }
+                });
+        let mut remote_connection_state = remote_profiles
+            .iter()
+            .map(|profile| (profile.name.clone(), RemoteConnectionState::Offline))
+            .collect::<HashMap<String, RemoteConnectionState>>();
+        if let Some(active_name) = active_remote_profile.as_ref() {
+            remote_connection_state.insert(active_name.clone(), RemoteConnectionState::Degraded);
+        }
         let workspace_attention_ack_markers = persisted_config
             .attention_acks
             .into_iter()
@@ -123,6 +142,9 @@ impl GroveApp {
         let mut app = Self {
             repo_name: bootstrap.repo_name,
             projects,
+            remote_profiles,
+            active_remote_profile,
+            remote_connection_state,
             state: AppState::new(bootstrap.workspaces),
             discovery_state: bootstrap.discovery_state,
             preview_tab: PreviewTab::Agent,

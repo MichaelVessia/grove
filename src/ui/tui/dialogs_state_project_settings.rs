@@ -51,14 +51,40 @@ cyclic_field_nav!(pub(super) ProjectDefaultsDialogField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SettingsDialogState {
     pub(super) focused_field: SettingsDialogField,
+    pub(super) remote_name: String,
+    pub(super) remote_host: String,
+    pub(super) remote_user: String,
+    pub(super) remote_socket_path: String,
+    pub(super) remote_default_repo_path: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsDialogField {
+    RemoteName,
+    RemoteHost,
+    RemoteUser,
+    RemoteSocketPath,
+    RemoteDefaultRepoPath,
+    SaveProfileButton,
+    DeleteProfileButton,
+    TestProfileButton,
+    ConnectProfileButton,
+    DisconnectProfileButton,
     SaveButton,
     CancelButton,
 }
 
 cyclic_field_nav!(pub(super) SettingsDialogField {
-    SaveButton, CancelButton,
+    RemoteName,
+    RemoteHost,
+    RemoteUser,
+    RemoteSocketPath,
+    RemoteDefaultRepoPath,
+    SaveProfileButton,
+    DeleteProfileButton,
+    TestProfileButton,
+    ConnectProfileButton,
+    DisconnectProfileButton,
+    SaveButton,
+    CancelButton,
 });

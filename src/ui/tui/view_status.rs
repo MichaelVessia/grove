@@ -137,8 +137,7 @@ impl GroveApp {
                 .to_string();
         }
         if self.settings_dialog().is_some() {
-            return "Tab/S-Tab or C-n/C-p field, j/k or h/l change, Enter save/select, Esc cancel"
-                .to_string();
+            return "Tab/S-Tab or C-n/C-p field, Enter apply/save, Esc cancel".to_string();
         }
         if let Some(dialog) = self.project_dialog() {
             if dialog.defaults_dialog.is_some() {
@@ -189,14 +188,25 @@ impl GroveApp {
             key_style,
             sep_style,
         ));
+        let mut right: Vec<FtSpan> = Vec::new();
+        if let Some(active_remote) = self.active_remote_profile.as_ref() {
+            let status = self.remote_status_for(active_remote.as_str());
+            let status_color = match status {
+                RemoteConnectionState::Connected => theme.teal,
+                RemoteConnectionState::Degraded => theme.peach,
+                RemoteConnectionState::Offline => theme.overlay0,
+            };
+            right.push(FtSpan::styled(
+                format!(" Remote {} ", active_remote),
+                Style::new().bg(theme.surface0).fg(theme.mauve).bold(),
+            ));
+            right.push(FtSpan::styled(
+                format!(" {} ", status.label()),
+                Style::new().bg(theme.mantle).fg(status_color).bold(),
+            ));
+        }
 
-        let line = chrome_bar_line(
-            usize::from(area.width),
-            base_style,
-            left,
-            Vec::new(),
-            Vec::new(),
-        );
+        let line = chrome_bar_line(usize::from(area.width), base_style, left, Vec::new(), right);
         Paragraph::new(FtText::from_line(line)).render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_STATUS));
     }

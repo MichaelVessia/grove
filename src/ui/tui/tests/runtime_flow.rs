@@ -3006,7 +3006,7 @@ fn settings_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
 
     assert_eq!(
         app.settings_dialog().map(|dialog| dialog.focused_field),
-        Some(SettingsDialogField::SaveButton)
+        Some(SettingsDialogField::RemoteName)
     );
     ftui::Model::update(
         &mut app,
@@ -3018,7 +3018,7 @@ fn settings_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     );
     assert_eq!(
         app.settings_dialog().map(|dialog| dialog.focused_field),
-        Some(SettingsDialogField::CancelButton)
+        Some(SettingsDialogField::RemoteHost)
     );
     ftui::Model::update(
         &mut app,
@@ -3030,7 +3030,7 @@ fn settings_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     );
     assert_eq!(
         app.settings_dialog().map(|dialog| dialog.focused_field),
-        Some(SettingsDialogField::SaveButton)
+        Some(SettingsDialogField::RemoteName)
     );
 }
 

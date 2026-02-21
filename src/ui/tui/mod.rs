@@ -65,13 +65,13 @@ use crate::application::workspace_lifecycle::{
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
 use crate::infrastructure::config::{
-    GroveConfig, ProjectConfig, ProjectDefaults, WorkspaceAttentionAckConfig,
+    GroveConfig, ProjectConfig, ProjectDefaults, RemoteProfileConfig, WorkspaceAttentionAckConfig,
 };
 use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
 use crate::interface::daemon::{
     DaemonAgentStartPayload, DaemonAgentStopPayload, DaemonWorkspaceCreatePayload,
     DaemonWorkspaceDeletePayload, DaemonWorkspaceEditPayload, DaemonWorkspaceMergePayload,
-    DaemonWorkspaceUpdatePayload, agent_start_via_socket, agent_stop_via_socket,
+    DaemonWorkspaceUpdatePayload, agent_start_via_socket, agent_stop_via_socket, ping_via_socket,
     workspace_create_via_socket, workspace_delete_via_socket, workspace_edit_via_socket,
     workspace_merge_via_socket, workspace_update_via_socket,
 };
@@ -270,9 +270,29 @@ enum ActiveDialog {
     Settings(SettingsDialogState),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RemoteConnectionState {
+    Connected,
+    Degraded,
+    Offline,
+}
+
+impl RemoteConnectionState {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Connected => "connected",
+            Self::Degraded => "degraded",
+            Self::Offline => "offline",
+        }
+    }
+}
+
 struct GroveApp {
     repo_name: String,
     projects: Vec<ProjectConfig>,
+    remote_profiles: Vec<RemoteProfileConfig>,
+    active_remote_profile: Option<String>,
+    remote_connection_state: HashMap<String, RemoteConnectionState>,
     state: AppState,
     discovery_state: DiscoveryState,
     preview_tab: PreviewTab,

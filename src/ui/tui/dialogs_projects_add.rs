@@ -1,3 +1,4 @@
+use crate::infrastructure::config::RemoteProfileConfig;
 use crate::infrastructure::process::stderr_trimmed;
 
 use super::*;
@@ -16,11 +17,15 @@ impl GroveApp {
         config_path: &Path,
         sidebar_width_pct: u16,
         projects: &[ProjectConfig],
+        remote_profiles: &[RemoteProfileConfig],
+        active_remote_profile: &Option<String>,
         attention_acks: &[WorkspaceAttentionAckConfig],
     ) -> Result<(), String> {
         let config = GroveConfig {
             sidebar_width_pct,
             projects: projects.to_vec(),
+            remote_profiles: remote_profiles.to_vec(),
+            active_remote_profile: active_remote_profile.clone(),
             attention_acks: attention_acks.to_vec(),
         };
         crate::infrastructure::config::save_to_path(config_path, &config)
@@ -31,6 +36,8 @@ impl GroveApp {
             &self.config_path,
             self.sidebar_width_pct,
             &self.projects,
+            &self.remote_profiles,
+            &self.active_remote_profile,
             &self.workspace_attention_acks_for_config(),
         )
     }
@@ -96,6 +103,8 @@ impl GroveApp {
                 &self.config_path,
                 self.sidebar_width_pct,
                 &updated_projects,
+                &self.remote_profiles,
+                &self.active_remote_profile,
                 &self.workspace_attention_acks_for_config(),
             );
             self.apply_delete_project_completion(DeleteProjectCompletion {
@@ -109,6 +118,8 @@ impl GroveApp {
 
         let config_path = self.config_path.clone();
         let sidebar_width_pct = self.sidebar_width_pct;
+        let remote_profiles = self.remote_profiles.clone();
+        let active_remote_profile = self.active_remote_profile.clone();
         let attention_acks = self.workspace_attention_acks_for_config();
         self.project_delete_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
@@ -116,6 +127,8 @@ impl GroveApp {
                 &config_path,
                 sidebar_width_pct,
                 &updated_projects,
+                &remote_profiles,
+                &active_remote_profile,
                 &attention_acks,
             );
             Msg::DeleteProjectCompleted(DeleteProjectCompletion {

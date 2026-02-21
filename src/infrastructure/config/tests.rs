@@ -1,5 +1,6 @@
 use super::{
-    GroveConfig, ProjectConfig, ProjectDefaults, ProjectTarget, load_from_path, save_to_path,
+    GroveConfig, ProjectConfig, ProjectDefaults, ProjectTarget, RemoteProfileConfig,
+    load_from_path, save_to_path,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -23,6 +24,8 @@ fn missing_config_uses_defaults() {
         GroveConfig {
             sidebar_width_pct: 33,
             projects: Vec::new(),
+            remote_profiles: Vec::new(),
+            active_remote_profile: None,
             attention_acks: Vec::new(),
         }
     );
@@ -46,6 +49,14 @@ fn save_and_load_round_trip() {
                 auto_run_setup_commands: true,
             },
         }],
+        remote_profiles: vec![RemoteProfileConfig {
+            name: "prod".to_string(),
+            host: "build.example.com".to_string(),
+            user: "michael".to_string(),
+            remote_socket_path: "/tmp/groved-tunnel.sock".to_string(),
+            default_repo_path: Some("/repos/grove".to_string()),
+        }],
+        active_remote_profile: Some("prod".to_string()),
         attention_acks: Vec::new(),
     };
     save_to_path(&path, &config).expect("config should save");
@@ -64,6 +75,8 @@ fn load_old_config_without_projects_defaults_to_empty_projects() {
     let loaded = load_from_path(&path).expect("legacy config should load");
     assert_eq!(loaded.sidebar_width_pct, 33);
     assert_eq!(loaded.projects, Vec::<ProjectConfig>::new());
+    assert_eq!(loaded.remote_profiles, Vec::<RemoteProfileConfig>::new());
+    assert_eq!(loaded.active_remote_profile, None);
 
     let _ = fs::remove_file(path);
 }
@@ -81,6 +94,8 @@ fn load_project_without_defaults_uses_project_defaults_fallback() {
     assert_eq!(loaded.projects.len(), 1);
     assert_eq!(loaded.sidebar_width_pct, 33);
     assert_eq!(loaded.attention_acks, Vec::new());
+    assert_eq!(loaded.remote_profiles, Vec::<RemoteProfileConfig>::new());
+    assert_eq!(loaded.active_remote_profile, None);
     assert_eq!(loaded.projects[0].target, ProjectTarget::Local);
     assert_eq!(loaded.projects[0].defaults.base_branch, "");
     assert_eq!(

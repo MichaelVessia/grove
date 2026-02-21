@@ -16,19 +16,20 @@ use super::{
     LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField,
     MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS, PendingAutoStartWorkspace,
     PendingResizeVerification, PreviewPollCompletion, PreviewTab, ProjectAddDialogField,
-    ProjectDefaultsDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
-    StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
-    StopDialogField, TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField,
-    WORKSPACE_ITEM_HEIGHT, WorkspaceAttention, WorkspaceShellLaunchCompletion,
-    WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
-    ui_theme, usize_to_u64,
+    ProjectDefaultsDialogField, RefreshWorkspacesCompletion, RemoteConnectionState,
+    SettingsDialogField, StartAgentCompletion, StartAgentConfigField, StartAgentConfigState,
+    StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput, UiCommand,
+    UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
+    WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, ansi_16_color,
+    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme, usize_to_u64,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
-use crate::infrastructure::config::ProjectConfig;
+use crate::infrastructure::config::{ProjectConfig, RemoteProfileConfig};
 use crate::infrastructure::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
+use crate::interface::daemon::{DaemonArgs, serve};
 use crate::ui::state::{PaneFocus, UiMode};
 use ftui::core::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -46,6 +47,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 type RecordedCommands = Rc<RefCell<Vec<Vec<String>>>>;
@@ -461,6 +463,27 @@ fn unique_temp_workspace_dir(label: &str) -> PathBuf {
     ));
     fs::create_dir_all(&path).expect("temp workspace directory should exist");
     path
+}
+
+fn unique_socket_path(label: &str) -> PathBuf {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::from_secs(0))
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "grove-test-daemon-{label}-{}-{timestamp}.sock",
+        std::process::id()
+    ))
+}
+
+fn spawn_once_daemon(socket_path: PathBuf) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        serve(DaemonArgs {
+            socket_path,
+            once: true,
+        })
+        .expect("one-shot daemon should serve a single request");
+    })
 }
 
 fn fixture_app_with_tmux(
@@ -1951,6 +1974,9 @@ fn settings_dialog_save_persists_config() {
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
     assert!(app.settings_dialog().is_some());
+    if let Some(dialog) = app.settings_dialog_mut() {
+        dialog.focused_field = SettingsDialogField::SaveButton;
+    }
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
 
@@ -1958,6 +1984,127 @@ fn settings_dialog_save_persists_config() {
     let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
         .expect("config should load");
     assert_eq!(loaded.sidebar_width_pct, 33);
+}
+
+#[test]
+fn settings_dialog_save_profile_persists_remote_profile() {
+    let mut app = fixture_app();
+    app.open_settings_dialog();
+    let socket_path = unique_socket_path("save-profile");
+    {
+        let dialog = app
+            .settings_dialog_mut()
+            .expect("settings dialog should be open");
+        dialog.remote_name = "prod".to_string();
+        dialog.remote_host = "build.example.com".to_string();
+        dialog.remote_user = "michael".to_string();
+        dialog.remote_socket_path = socket_path.display().to_string();
+        dialog.remote_default_repo_path = "/repos/grove".to_string();
+    }
+
+    app.apply_settings_profile_save();
+
+    let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
+        .expect("config should load");
+    assert_eq!(
+        loaded.remote_profiles,
+        vec![RemoteProfileConfig {
+            name: "prod".to_string(),
+            host: "build.example.com".to_string(),
+            user: "michael".to_string(),
+            remote_socket_path: socket_path.display().to_string(),
+            default_repo_path: Some("/repos/grove".to_string()),
+        }]
+    );
+    assert_eq!(loaded.active_remote_profile, None);
+}
+
+#[test]
+fn settings_dialog_delete_profile_removes_persisted_remote() {
+    let mut app = fixture_app();
+    app.open_settings_dialog();
+    {
+        let dialog = app
+            .settings_dialog_mut()
+            .expect("settings dialog should be open");
+        dialog.remote_name = "staging".to_string();
+        dialog.remote_host = "staging.example.com".to_string();
+        dialog.remote_user = "michael".to_string();
+        dialog.remote_socket_path = "/tmp/staging.sock".to_string();
+    }
+    app.apply_settings_profile_save();
+    app.apply_settings_profile_delete();
+
+    let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
+        .expect("config should load");
+    assert!(loaded.remote_profiles.is_empty());
+}
+
+#[test]
+fn settings_dialog_connect_disconnect_updates_status_bar() {
+    let mut app = fixture_app();
+    let socket_path = unique_socket_path("connect");
+    let daemon = spawn_once_daemon(socket_path.clone());
+    for _ in 0..40 {
+        if socket_path.exists() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    app.open_settings_dialog();
+    {
+        let dialog = app
+            .settings_dialog_mut()
+            .expect("settings dialog should be open");
+        dialog.remote_name = "prod".to_string();
+        dialog.remote_host = "build.example.com".to_string();
+        dialog.remote_user = "michael".to_string();
+        dialog.remote_socket_path = socket_path.display().to_string();
+    }
+    app.apply_settings_profile_save();
+    app.apply_settings_profile_connect();
+
+    daemon.join().expect("daemon thread should exit");
+    assert_eq!(app.active_remote_profile, Some("prod".to_string()));
+    assert_eq!(
+        app.remote_connection_state.get("prod"),
+        Some(&RemoteConnectionState::Connected)
+    );
+
+    with_rendered_frame(&app, 160, 24, |frame| {
+        let status = row_text(frame, frame.height().saturating_sub(1), 0, frame.width());
+        assert!(status.contains("Remote prod"), "{status}");
+        assert!(status.contains("connected"), "{status}");
+    });
+
+    app.apply_settings_profile_disconnect();
+    assert_eq!(app.active_remote_profile, None);
+    assert_eq!(
+        app.remote_connection_state.get("prod"),
+        Some(&RemoteConnectionState::Offline)
+    );
+}
+
+#[test]
+fn settings_dialog_test_profile_marks_offline_when_socket_unavailable() {
+    let mut app = fixture_app();
+    app.open_settings_dialog();
+    {
+        let dialog = app
+            .settings_dialog_mut()
+            .expect("settings dialog should be open");
+        dialog.remote_name = "prod".to_string();
+        dialog.remote_host = "build.example.com".to_string();
+        dialog.remote_user = "michael".to_string();
+        dialog.remote_socket_path = "/tmp/does-not-exist-grove.sock".to_string();
+    }
+
+    app.apply_settings_profile_test();
+    assert_eq!(
+        app.remote_connection_state.get("prod"),
+        Some(&RemoteConnectionState::Offline)
+    );
 }
 
 #[test]

@@ -266,6 +266,18 @@ pub fn workspace_list_via_socket(
     }
 }
 
+pub fn ping_via_socket(socket_path: &Path) -> std::io::Result<u32> {
+    let response = send_request(socket_path, &DaemonRequest::Ping)?;
+
+    match response {
+        DaemonResponse::Pong { protocol_version } => Ok(protocol_version),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for ping",
+        )),
+    }
+}
+
 pub fn workspace_create_via_socket(
     socket_path: &Path,
     payload: DaemonWorkspaceCreatePayload,
