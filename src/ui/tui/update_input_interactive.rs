@@ -197,6 +197,9 @@ impl GroveApp {
             self.viewport_width,
             daemon_socket_path,
         ));
+        if let Some(state) = self.interactive.as_mut() {
+            state.open_daemon_stream();
+        }
         self.interactive_poll_due_at = None;
         self.last_tmux_error = None;
         self.state.mode = UiMode::Preview;

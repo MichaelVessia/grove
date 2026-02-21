@@ -1,4 +1,8 @@
+use std::io::{BufRead, BufReader, BufWriter};
+use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
+
+use crate::interface::daemon::DaemonSessionSendKeysPayload;
 
 use super::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload, is_paste_event,
@@ -330,4 +334,84 @@ fn alt_copy_and_paste_map_to_special_actions() {
         state.handle_key(InteractiveKey::AltV, now),
         InteractiveAction::PasteClipboard
     );
+}
+
+#[test]
+fn pipeline_send_keys_writes_json_newline_to_stream() {
+    let (reader_stream, writer_stream) =
+        UnixStream::pair().expect("unix stream pair should create");
+    let now = Instant::now();
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
+    state.daemon_stream = Some(BufWriter::new(writer_stream));
+
+    let payload = DaemonSessionSendKeysPayload {
+        command: vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-t".to_string(),
+            "grove-ws-auth".to_string(),
+            "Enter".to_string(),
+        ],
+    };
+    state
+        .pipeline_send_keys(payload)
+        .expect("pipeline send should succeed");
+
+    drop(state);
+
+    let mut reader = BufReader::new(reader_stream);
+    let mut line = String::new();
+    reader
+        .read_line(&mut line)
+        .expect("should read pipeline output");
+    let parsed: serde_json::Value =
+        serde_json::from_str(line.trim()).expect("pipeline output should be valid JSON");
+    assert_eq!(parsed["type"], "session_send_keys");
+}
+
+#[test]
+fn close_daemon_stream_clears_field() {
+    let (_reader_stream, writer_stream) =
+        UnixStream::pair().expect("unix stream pair should create");
+    let now = Instant::now();
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
+    state.daemon_stream = Some(BufWriter::new(writer_stream));
+    assert!(state.daemon_stream.is_some());
+
+    state.close_daemon_stream();
+    assert!(state.daemon_stream.is_none());
+}
+
+#[test]
+fn pipeline_send_keys_returns_error_when_no_stream() {
+    let now = Instant::now();
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
+
+    let payload = DaemonSessionSendKeysPayload {
+        command: vec!["tmux".to_string(), "send-keys".to_string()],
+    };
+    let result = state.pipeline_send_keys(payload);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotConnected);
 }

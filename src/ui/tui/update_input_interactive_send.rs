@@ -132,6 +132,57 @@ impl GroveApp {
             None
         };
 
+        if let Some(state) = self.interactive.as_mut()
+            && state.daemon_stream.is_some()
+        {
+            let payload = DaemonSessionSendKeysPayload {
+                command: command.clone(),
+            };
+            match state.pipeline_send_keys(payload) {
+                Ok(()) => {
+                    self.last_tmux_error = None;
+                    if let Some(trace_context) = trace_context {
+                        let forwarded_at = Instant::now();
+                        self.track_pending_interactive_input(
+                            trace_context,
+                            target_session,
+                            forwarded_at,
+                        );
+                        let mut fields = vec![
+                            (
+                                "session".to_string(),
+                                Value::from(target_session.to_string()),
+                            ),
+                            (
+                                "action".to_string(),
+                                Value::from(Self::interactive_action_kind(action)),
+                            ),
+                            ("pipeline".to_string(), Value::from(true)),
+                            (
+                                "queue_depth".to_string(),
+                                Value::from(usize_to_u64(self.pending_interactive_inputs.len())),
+                            ),
+                        ];
+                        if let Some(literal_chars) = literal_chars {
+                            fields.push(("literal_chars".to_string(), Value::from(literal_chars)));
+                        }
+                        self.log_input_event_with_fields(
+                            "interactive_forwarded",
+                            trace_context.seq,
+                            fields,
+                        );
+                    }
+                    return Cmd::None;
+                }
+                Err(error) => {
+                    eprintln!("grove: pipeline send failed, falling back: {error}");
+                    if let Some(state) = self.interactive.as_mut() {
+                        state.close_daemon_stream();
+                    }
+                }
+            }
+        }
+
         if self.tmux_input.supports_background_send() {
             return self.queue_interactive_send(QueuedInteractiveSend {
                 command,

@@ -1,11 +1,15 @@
+use std::io::{BufWriter, Write};
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+
+use crate::interface::daemon::{DaemonRequest, DaemonSessionSendKeysPayload};
 
 const DOUBLE_ESCAPE_WINDOW_MS: u64 = 150;
 const SPLIT_MOUSE_FRAGMENT_START_WINDOW_MS: u64 = 10;
 const SPLIT_MOUSE_FRAGMENT_MAX_AGE_MS: u64 = 50;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct InteractiveState {
     pub active: bool,
     pub target_pane: String,
@@ -18,6 +22,7 @@ pub struct InteractiveState {
     pub pane_width: u16,
     pub bracketed_paste: bool,
     pub daemon_socket_path: Option<PathBuf>,
+    pub daemon_stream: Option<BufWriter<UnixStream>>,
     last_mouse_event_time: Option<Instant>,
     mouse_fragment_started_at: Option<Instant>,
     last_escape_time: Option<Instant>,
@@ -79,10 +84,47 @@ impl InteractiveState {
             pane_width,
             bracketed_paste: false,
             daemon_socket_path,
+            daemon_stream: None,
             last_mouse_event_time: None,
             mouse_fragment_started_at: None,
             last_escape_time: None,
         }
+    }
+
+    pub fn open_daemon_stream(&mut self) {
+        let Some(socket_path) = &self.daemon_socket_path else {
+            return;
+        };
+        match UnixStream::connect(socket_path) {
+            Ok(stream) => {
+                self.daemon_stream = Some(BufWriter::new(stream));
+            }
+            Err(error) => {
+                eprintln!("grove: failed to open persistent daemon connection: {error}");
+            }
+        }
+    }
+
+    pub fn pipeline_send_keys(
+        &mut self,
+        payload: DaemonSessionSendKeysPayload,
+    ) -> std::io::Result<()> {
+        let Some(writer) = self.daemon_stream.as_mut() else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "no persistent daemon stream",
+            ));
+        };
+        let request = DaemonRequest::SessionSendKeys { payload };
+        let json = serde_json::to_string(&request)
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        writer.write_all(json.as_bytes())?;
+        writer.write_all(b"\n")?;
+        writer.flush()
+    }
+
+    pub fn close_daemon_stream(&mut self) {
+        self.daemon_stream = None;
     }
 
     pub fn handle_key(&mut self, key: InteractiveKey, now: Instant) -> InteractiveAction {

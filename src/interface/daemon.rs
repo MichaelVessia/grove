@@ -638,18 +638,27 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> std::io::Result<DaemonA
 pub fn serve(args: DaemonArgs) -> std::io::Result<()> {
     ensure_socket_parent(&args.socket_path)?;
     let listener = bind_listener(&args.socket_path)?;
-    let service = InProcessLifecycleCommandService::new();
-
-    for stream in listener.incoming() {
-        let stream = stream?;
-        let handled_request = handle_connection(stream, &service)?;
-        if args.once && handled_request {
-            break;
-        }
-    }
 
     if args.once {
+        let service = InProcessLifecycleCommandService::new();
+        for stream in listener.incoming() {
+            let stream = stream?;
+            let handled_request = handle_connection(stream, &service)?;
+            if handled_request {
+                break;
+            }
+        }
         remove_socket_if_exists(&args.socket_path)?;
+    } else {
+        for stream in listener.incoming() {
+            let stream = stream?;
+            std::thread::spawn(move || {
+                let service = InProcessLifecycleCommandService::new();
+                if let Err(error) = handle_connection(stream, &service) {
+                    eprintln!("groved: connection handler error: {error}");
+                }
+            });
+        }
     }
 
     Ok(())
@@ -706,31 +715,53 @@ fn remove_socket_if_exists(socket_path: &Path) -> std::io::Result<()> {
 }
 
 fn handle_connection(
-    mut stream: UnixStream,
+    stream: UnixStream,
     service: &impl LifecycleCommandService,
 ) -> std::io::Result<bool> {
-    let mut request_line = String::new();
-    {
-        let mut reader = BufReader::new(stream.try_clone()?);
-        let bytes_read = reader.read_line(&mut request_line)?;
-        if bytes_read == 0 {
-            return Ok(false);
+    let mut writer = stream.try_clone()?;
+    let reader = BufReader::new(stream);
+    let mut handled_any = false;
+
+    for line_result in reader.lines() {
+        let request_line = line_result?;
+        if request_line.trim().is_empty() {
+            continue;
+        }
+        handled_any = true;
+
+        let request: DaemonRequest = match serde_json::from_str(request_line.trim()) {
+            Ok(request) => request,
+            Err(error) => {
+                eprintln!(
+                    "groved: dropped invalid request ({error}): {}",
+                    truncate_for_log(request_line.trim(), 160)
+                );
+                continue;
+            }
+        };
+
+        let response = dispatch_request(request, service);
+        let payload = serde_json::to_string(&response)
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+
+        if let Err(write_error) = writer
+            .write_all(payload.as_bytes())
+            .and_then(|()| writer.write_all(b"\n"))
+            .and_then(|()| writer.flush())
+        {
+            eprintln!("groved: write error on persistent connection: {write_error}");
+            break;
         }
     }
 
-    let request_payload = request_line.trim();
-    let request: DaemonRequest = match serde_json::from_str(request_payload) {
-        Ok(request) => request,
-        Err(error) => {
-            eprintln!(
-                "groved: dropped invalid request ({error}): {}",
-                truncate_for_log(request_payload, 160)
-            );
-            return Ok(true);
-        }
-    };
+    Ok(handled_any)
+}
 
-    let response = match request {
+fn dispatch_request(
+    request: DaemonRequest,
+    service: &impl LifecycleCommandService,
+) -> DaemonResponse {
+    match request {
         DaemonRequest::Ping => DaemonResponse::Pong {
             protocol_version: PROTOCOL_VERSION,
         },
@@ -762,14 +793,7 @@ fn handle_connection(
         DaemonRequest::SessionPasteBuffer { payload } => {
             handle_session_paste_buffer_request(payload)
         }
-    };
-
-    let payload = serde_json::to_string(&response)
-        .map_err(|error| std::io::Error::other(error.to_string()))?;
-    stream.write_all(payload.as_bytes())?;
-    stream.write_all(b"\n")?;
-    stream.flush()?;
-    Ok(true)
+    }
 }
 
 fn truncate_for_log(value: &str, max_chars: usize) -> String {
@@ -1334,6 +1358,96 @@ mod tests {
         assert!(
             response.is_empty(),
             "invalid request should not get a response, got: {response}"
+        );
+    }
+
+    #[test]
+    fn handle_connection_multiple_requests_on_one_stream() {
+        let (mut client, server) = UnixStream::pair().expect("unix stream pair should create");
+        client
+            .write_all(b"{\"type\":\"ping\"}\n{\"type\":\"ping\"}\n")
+            .expect("requests should write");
+        client
+            .shutdown(Shutdown::Write)
+            .expect("shutdown write should succeed");
+
+        let service = InProcessLifecycleCommandService::new();
+        let handled = handle_connection(server, &service).expect("requests should be handled");
+        assert!(handled);
+
+        let mut response = String::new();
+        client
+            .read_to_string(&mut response)
+            .expect("response should read");
+        let lines: Vec<&str> = response.trim().split('\n').collect();
+        assert_eq!(
+            lines.len(),
+            2,
+            "expected two response lines, got: {response}"
+        );
+        for line in &lines {
+            assert!(
+                line.contains(r#""type":"pong""#),
+                "expected pong response, got: {line}"
+            );
+        }
+    }
+
+    #[test]
+    fn handle_connection_invalid_then_valid_request() {
+        let (mut client, server) = UnixStream::pair().expect("unix stream pair should create");
+        client
+            .write_all(b"not-valid-json\n{\"type\":\"ping\"}\n")
+            .expect("requests should write");
+        client
+            .shutdown(Shutdown::Write)
+            .expect("shutdown write should succeed");
+
+        let service = InProcessLifecycleCommandService::new();
+        let handled = handle_connection(server, &service).expect("requests should be handled");
+        assert!(handled);
+
+        let mut response = String::new();
+        client
+            .read_to_string(&mut response)
+            .expect("response should read");
+        let lines: Vec<&str> = response.trim().split('\n').collect();
+        assert_eq!(
+            lines.len(),
+            1,
+            "expected one response line (invalid request gets no response), got: {response}"
+        );
+        assert!(
+            lines[0].contains(r#""type":"pong""#),
+            "expected pong response, got: {}",
+            lines[0]
+        );
+    }
+
+    #[test]
+    fn handle_connection_empty_lines_are_skipped() {
+        let (mut client, server) = UnixStream::pair().expect("unix stream pair should create");
+        client
+            .write_all(b"\n\n{\"type\":\"ping\"}\n\n")
+            .expect("requests should write");
+        client
+            .shutdown(Shutdown::Write)
+            .expect("shutdown write should succeed");
+
+        let service = InProcessLifecycleCommandService::new();
+        let handled = handle_connection(server, &service).expect("requests should be handled");
+        assert!(handled);
+
+        let mut response = String::new();
+        client
+            .read_to_string(&mut response)
+            .expect("response should read");
+        let lines: Vec<&str> = response.trim().split('\n').collect();
+        assert_eq!(lines.len(), 1, "expected one response, got: {response}");
+        assert!(
+            lines[0].contains(r#""type":"pong""#),
+            "expected pong, got: {}",
+            lines[0]
         );
     }
 }
