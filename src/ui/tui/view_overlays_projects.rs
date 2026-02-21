@@ -16,10 +16,18 @@ impl GroveApp {
         if let Some(add_dialog) = dialog.add_dialog.as_ref() {
             let dialog_height = 12u16;
             let focused = |field| add_dialog.focused_field == field;
-            let target_value = if add_dialog.target_is_remote {
-                "remote"
+            let (target_value, path_hint, remote_profile_hint) = if add_dialog.target_is_remote {
+                (
+                    "remote host",
+                    "Path on remote server to repo root",
+                    "Remote profile (host/user/socket) used for commands",
+                )
             } else {
-                "local"
+                (
+                    "local machine",
+                    "Path on this machine to repo root",
+                    "Ignored for local target",
+                )
             };
             let mut lines = vec![
                 modal_labeled_input_row(
@@ -33,15 +41,15 @@ impl GroveApp {
                 modal_labeled_input_row(
                     content_width,
                     theme,
-                    "Path",
+                    "RepoPath",
                     add_dialog.path.as_str(),
-                    "Absolute path or ~/path to repo root",
+                    path_hint,
                     focused(ProjectAddDialogField::Path),
                 ),
                 modal_focus_badged_row(
                     content_width,
                     theme,
-                    "Target",
+                    "RunsOn",
                     target_value,
                     focused(ProjectAddDialogField::Target),
                     theme.peach,
@@ -52,7 +60,7 @@ impl GroveApp {
                     theme,
                     "RemoteProfile",
                     add_dialog.remote_profile.as_str(),
-                    "Used when Target=remote",
+                    remote_profile_hint,
                     focused(ProjectAddDialogField::RemoteProfile),
                 ),
                 FtLine::raw(""),
@@ -68,7 +76,7 @@ impl GroveApp {
             lines.extend(modal_wrapped_hint_rows(
                 content_width,
                 theme,
-                "Tab/C-n next, S-Tab/C-p prev, Enter confirm, Space toggles target, Esc back",
+                "Tab/C-n next, S-Tab/C-p prev, Enter confirm, Space toggles RunsOn, path follows RunsOn machine, Esc back",
             ));
             let body = FtText::from_lines(lines);
             let content = OverlayModalContent {
@@ -200,6 +208,13 @@ impl GroveApp {
         lines.push(FtLine::from_spans(vec![FtSpan::styled(
             pad_or_truncate_to_display_width(
                 format!("{} projects", self.projects.len()).as_str(),
+                content_width,
+            ),
+            Style::new().fg(theme.overlay0),
+        )]));
+        lines.push(FtLine::from_spans(vec![FtSpan::styled(
+            pad_or_truncate_to_display_width(
+                "Legend: [L]=local machine, [R:<profile>]=remote host",
                 content_width,
             ),
             Style::new().fg(theme.overlay0),

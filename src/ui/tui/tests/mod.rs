@@ -743,6 +743,54 @@ fn projects_dialog_shows_target_badges() {
 
     with_rendered_frame(&app, 160, 24, |frame| {
         assert!(find_row_containing(frame, "[L] grove", 0, frame.width()).is_some());
+        assert!(
+            find_row_containing(frame, "Legend: [L]=local machine", 0, frame.width()).is_some()
+        );
+    });
+}
+
+#[test]
+fn add_project_dialog_path_scope_copy_tracks_target() {
+    let mut app = fixture_app();
+    app.open_project_dialog();
+    app.open_project_add_dialog();
+
+    with_rendered_frame(&app, 180, 28, |frame| {
+        assert!(find_row_containing(frame, "RunsOn", 0, frame.width()).is_some());
+        assert!(
+            find_row_containing(frame, "Path on this machine to repo root", 0, frame.width())
+                .is_some()
+        );
+        assert!(find_row_containing(frame, "Ignored for local target", 0, frame.width()).is_some());
+    });
+
+    {
+        let dialog = app
+            .project_dialog_mut()
+            .and_then(|dialog| dialog.add_dialog.as_mut())
+            .expect("project add dialog should be open");
+        dialog.target_is_remote = true;
+    }
+
+    with_rendered_frame(&app, 180, 28, |frame| {
+        assert!(
+            find_row_containing(
+                frame,
+                "Path on remote server to repo root",
+                0,
+                frame.width()
+            )
+            .is_some()
+        );
+        assert!(
+            find_row_containing(
+                frame,
+                "Remote profile (host/user/socket) used for commands",
+                0,
+                frame.width()
+            )
+            .is_some()
+        );
     });
 }
 
