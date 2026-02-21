@@ -95,7 +95,7 @@ impl GroveApp {
                 theme,
                 "DefaultRepo",
                 dialog.remote_default_repo_path.as_str(),
-                "Optional default repo path on remote",
+                "Default /home/<user>/, override if repos live elsewhere",
                 focused(SettingsDialogField::RemoteDefaultRepoPath),
             ),
             FtLine::raw(""),

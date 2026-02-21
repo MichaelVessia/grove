@@ -152,7 +152,7 @@ In `Settings` remote profile, use:
 - `host`: SSH host
 - `user`: SSH user
 - `remote_socket_path`: optional local tunneled socket path. Blank auto-infers `~/.grove/groved-<remote-user>-<remote-host>.sock`
-- `default_repo_path` (optional): default remote repo root
+- `default_repo_path`: defaults to `/home/<user>/`, override if your repos live elsewhere
 
 Then use `Connect` / `Disconnect` actions in Settings (connect starts tunnel, disconnect stops it).
 

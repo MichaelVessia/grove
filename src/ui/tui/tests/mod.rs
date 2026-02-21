@@ -2097,6 +2097,67 @@ fn settings_dialog_save_profile_infers_socket_path_when_blank() {
         "unexpected inferred socket path: {}",
         profile.remote_socket_path
     );
+    assert_eq!(
+        profile.default_repo_path,
+        Some("/home/michael/".to_string()),
+        "default remote repo path should be inferred from remote user"
+    );
+}
+
+#[test]
+fn settings_dialog_open_uses_home_default_repo_path_for_profile_without_override() {
+    let mut app = fixture_app();
+    app.remote_profiles.push(RemoteProfileConfig {
+        name: "lan".to_string(),
+        host: "lanbox.local".to_string(),
+        user: "michael".to_string(),
+        remote_socket_path: "/tmp/lan.sock".to_string(),
+        default_repo_path: None,
+    });
+    app.active_remote_profile = Some("lan".to_string());
+
+    app.open_settings_dialog();
+
+    let dialog = app
+        .settings_dialog()
+        .expect("settings dialog should be open");
+    assert_eq!(dialog.remote_default_repo_path, "/home/michael/");
+}
+
+#[test]
+fn settings_dialog_remote_user_updates_default_repo_path_only_when_auto() {
+    let mut app = fixture_app();
+    app.open_settings_dialog();
+    {
+        let dialog = app
+            .settings_dialog_mut()
+            .expect("settings dialog should be open");
+        dialog.focused_field = SettingsDialogField::RemoteUser;
+    }
+    for character in "michael".chars() {
+        let _ =
+            app.handle_key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press));
+    }
+    assert_eq!(
+        app.settings_dialog()
+            .expect("settings dialog should be open")
+            .remote_default_repo_path,
+        "/home/michael/"
+    );
+
+    {
+        let dialog = app
+            .settings_dialog_mut()
+            .expect("settings dialog should be open");
+        dialog.remote_default_repo_path = "/srv/repos".to_string();
+    }
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press));
+    assert_eq!(
+        app.settings_dialog()
+            .expect("settings dialog should be open")
+            .remote_default_repo_path,
+        "/srv/repos"
+    );
 }
 
 #[test]

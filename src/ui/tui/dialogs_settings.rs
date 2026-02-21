@@ -2,6 +2,38 @@ use super::*;
 use crate::infrastructure::process::stderr_or_status;
 
 impl GroveApp {
+    fn default_remote_repo_path_for_user(user: &str) -> Option<String> {
+        let user = user.trim();
+        if user.is_empty() {
+            return None;
+        }
+        Some(format!("/home/{user}/"))
+    }
+
+    fn remote_default_repo_path(profile: &RemoteProfileConfig) -> Option<String> {
+        trimmed_nonempty(profile.default_repo_path.as_deref().unwrap_or(""))
+            .or_else(|| Self::default_remote_repo_path_for_user(profile.user.as_str()))
+    }
+
+    fn sync_default_repo_path_with_remote_user(
+        dialog: &mut SettingsDialogState,
+        previous_user: &str,
+    ) {
+        let current_value = dialog.remote_default_repo_path.trim();
+        let previous_auto_value = Self::default_remote_repo_path_for_user(previous_user);
+        let should_update = current_value.is_empty()
+            || previous_auto_value
+                .as_deref()
+                .is_some_and(|value| current_value == value);
+        if !should_update {
+            return;
+        }
+
+        dialog.remote_default_repo_path =
+            Self::default_remote_repo_path_for_user(dialog.remote_user.as_str())
+                .unwrap_or_default();
+    }
+
     fn normalized_socket_path(raw: &str) -> PathBuf {
         if let Some(stripped) = raw.strip_prefix("~/")
             && let Some(home) = dirs::home_dir()
@@ -30,13 +62,15 @@ impl GroveApp {
                     .display()
                     .to_string()
             });
+        let default_repo_path = trimmed_nonempty(&dialog.remote_default_repo_path)
+            .or_else(|| Self::default_remote_repo_path_for_user(user.as_str()));
 
         Ok(RemoteProfileConfig {
             name,
             host,
             user,
             remote_socket_path,
-            default_repo_path: trimmed_nonempty(&dialog.remote_default_repo_path),
+            default_repo_path,
         })
     }
 
@@ -227,6 +261,7 @@ impl GroveApp {
 
         let profile_name = profile.name.clone();
         let saved_socket_path = profile.remote_socket_path.clone();
+        let saved_default_repo_path = profile.default_repo_path.clone().unwrap_or_default();
         if let Some(existing) = self
             .remote_profiles
             .iter_mut()
@@ -250,6 +285,11 @@ impl GroveApp {
             && dialog.remote_socket_path.trim().is_empty()
         {
             dialog.remote_socket_path = saved_socket_path;
+        }
+        if let Some(dialog) = self.settings_dialog_mut()
+            && dialog.remote_default_repo_path.trim().is_empty()
+        {
+            dialog.remote_default_repo_path = saved_default_repo_path;
         }
 
         self.show_success_toast(format!("remote profile '{}' saved", profile_name));
@@ -458,7 +498,9 @@ impl GroveApp {
                     dialog.remote_host.pop();
                 }
                 SettingsDialogField::RemoteUser => {
+                    let previous_user = dialog.remote_user.clone();
                     dialog.remote_user.pop();
+                    Self::sync_default_repo_path_with_remote_user(dialog, previous_user.as_str());
                 }
                 SettingsDialogField::RemoteSocketPath => {
                     dialog.remote_socket_path.pop();
@@ -483,7 +525,12 @@ impl GroveApp {
                         dialog.remote_host.push(character);
                     }
                     SettingsDialogField::RemoteUser => {
+                        let previous_user = dialog.remote_user.clone();
                         dialog.remote_user.push(character);
+                        Self::sync_default_repo_path_with_remote_user(
+                            dialog,
+                            previous_user.as_str(),
+                        );
                     }
                     SettingsDialogField::RemoteSocketPath => {
                         dialog.remote_socket_path.push(character);
@@ -552,7 +599,7 @@ impl GroveApp {
                 .unwrap_or_default(),
             remote_default_repo_path: selected_profile
                 .as_ref()
-                .and_then(|profile| profile.default_repo_path.clone())
+                .and_then(Self::remote_default_repo_path)
                 .unwrap_or_default(),
         });
     }
