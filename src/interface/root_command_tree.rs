@@ -30,7 +30,7 @@ pub fn root_command_tree() -> RootCommandTree {
         capabilities: CapabilitySnapshot {
             local_lifecycle: true,
             in_process_service: true,
-            daemon_transport: false,
+            daemon_transport: true,
             remote_transport: false,
         },
         commands: vec![
@@ -136,7 +136,7 @@ mod tests {
             json!({
                 "local_lifecycle": true,
                 "in_process_service": true,
-                "daemon_transport": false,
+                "daemon_transport": true,
                 "remote_transport": false
             })
         );

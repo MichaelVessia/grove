@@ -529,7 +529,7 @@ Remote mapping (Phase 4.5+):
 - [x] 6. Add CLI integration and golden JSON tests.
 - [x] 7a. Add periodic 2s TUI inventory refresh scheduling.
 - [x] 7b. Add integration proof that external CLI mutation reflects in TUI refresh cycle.
-- [ ] 8. Add daemon binary + socket adapter.
+- [x] 8. Add daemon binary + socket adapter.
 - [ ] 9. Add mixed local/remote project target model + indicator UI.
 - [ ] 10. Add remote profiles + connect/disconnect/test flows in settings.
 - [ ] 11. Add reconnect handling and backend isolation tests.
