@@ -10,7 +10,7 @@ Primary success criterion:
 ## Kickoff Snapshot (2026-02-21)
 
 - Current execution state: `in progress`.
-- Immediate focus: Phase 0 (`contract + types`).
+- Immediate focus: Phase 0 (`P0.2 error code taxonomy + classifier mapping`).
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
@@ -262,7 +262,7 @@ Exit criteria:
 - JSON contract frozen for Phase 1 and Phase 2.
 
 Phase 0 implementation slices (PR-sized):
-- [ ] P0.1 Add envelope types + serializer tests.
+- [x] P0.1 Add envelope types + serializer tests.
 - [ ] P0.2 Add error code enum + classifier mapping table tests.
 - [ ] P0.3 Add `next_actions` builder helpers + shape tests.
 - [ ] P0.4 Add root command-tree schema (with compact usage templates) + completeness tests.
