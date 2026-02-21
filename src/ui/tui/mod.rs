@@ -48,8 +48,9 @@ use crate::application::agent_runtime::{
     workspace_can_stop_agent, workspace_status_targets_for_polling_with_live_preview,
 };
 use crate::application::commands::{
-    InProcessLifecycleCommandService, LifecycleCommandService, RepoContext, WorkspaceDeleteRequest,
-    WorkspaceMergeRequest, WorkspaceSelector, WorkspaceUpdateRequest,
+    InProcessLifecycleCommandService, LifecycleCommandService, RepoContext, WorkspaceCreateRequest,
+    WorkspaceCreateSetupTemplate, WorkspaceDeleteRequest, WorkspaceMergeRequest, WorkspaceSelector,
+    WorkspaceUpdateRequest,
 };
 #[cfg(test)]
 use crate::application::interactive::render_cursor_overlay;
@@ -59,10 +60,8 @@ use crate::application::interactive::{
 };
 use crate::application::preview::PreviewState;
 use crate::application::workspace_lifecycle::{
-    BranchMode, CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner,
-    CreateWorkspaceRequest, CreateWorkspaceResult, WorkspaceLifecycleError, WorkspaceSetupTemplate,
-    create_workspace_with_template, workspace_lifecycle_error_message,
-    write_workspace_agent_marker, write_workspace_base_marker,
+    WorkspaceLifecycleError, workspace_lifecycle_error_message, write_workspace_agent_marker,
+    write_workspace_base_marker,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};

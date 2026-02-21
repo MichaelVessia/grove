@@ -115,8 +115,10 @@ pub(super) struct UpdateWorkspaceFromBaseCompletion {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CreateWorkspaceCompletion {
-    pub(super) request: CreateWorkspaceRequest,
-    pub(super) result: Result<CreateWorkspaceResult, WorkspaceLifecycleError>,
+    pub(super) workspace_name: String,
+    pub(super) workspace_path: PathBuf,
+    pub(super) result: Result<(), String>,
+    pub(super) warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

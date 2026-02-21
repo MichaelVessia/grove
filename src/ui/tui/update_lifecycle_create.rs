@@ -55,56 +55,30 @@ impl GroveApp {
         };
 
         let workspace_name = dialog.workspace_name.trim().to_string();
-        let branch_mode = BranchMode::NewBranch {
-            base_branch: dialog.base_branch.trim().to_string(),
-        };
-        let setup_template = WorkspaceSetupTemplate {
-            auto_run_setup_commands: dialog.auto_run_setup_commands,
-            commands: parse_setup_commands(&dialog.setup_commands),
-        };
-        let request = CreateWorkspaceRequest {
-            workspace_name: workspace_name.clone(),
-            branch_mode,
-            agent: dialog.agent,
-        };
-
-        if let Err(error) = request.validate() {
-            self.show_info_toast(workspace_lifecycle_error_message(&error));
-            return;
-        }
-
         self.pending_create_start_config = Some(dialog.start_config.clone());
-        let repo_root = project.path;
+        let request = WorkspaceCreateRequest {
+            context: RepoContext {
+                repo_root: project.path,
+            },
+            name: workspace_name.clone(),
+            base_branch: Some(dialog.base_branch.trim().to_string()),
+            existing_branch: None,
+            agent: Some(dialog.agent),
+            start: false,
+            dry_run: false,
+            setup_template: Some(WorkspaceCreateSetupTemplate {
+                auto_run_setup_commands: dialog.auto_run_setup_commands,
+                commands: parse_setup_commands(&dialog.setup_commands),
+            }),
+        };
         if !self.tmux_input.supports_background_launch() {
-            let git = CommandGitRunner;
-            let setup = CommandSetupScriptRunner;
-            let setup_command = CommandSetupCommandRunner;
-            let result = create_workspace_with_template(
-                &repo_root,
-                &request,
-                Some(&setup_template),
-                &git,
-                &setup,
-                &setup_command,
-            );
-            self.apply_create_workspace_completion(CreateWorkspaceCompletion { request, result });
+            self.apply_create_workspace_completion(execute_workspace_create(request));
             return;
         }
 
         self.create_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let git = CommandGitRunner;
-            let setup = CommandSetupScriptRunner;
-            let setup_command = CommandSetupCommandRunner;
-            let result = create_workspace_with_template(
-                &repo_root,
-                &request,
-                Some(&setup_template),
-                &git,
-                &setup,
-                &setup_command,
-            );
-            Msg::CreateWorkspaceCompleted(CreateWorkspaceCompletion { request, result })
+            Msg::CreateWorkspaceCompleted(execute_workspace_create(request))
         }));
     }
 
@@ -117,23 +91,24 @@ impl GroveApp {
         let start_config = self.pending_create_start_config.take().unwrap_or_else(|| {
             StartAgentConfigState::new(String::new(), String::new(), fallback_skip_permissions)
         });
-        let workspace_name = completion.request.workspace_name;
+        let workspace_name = completion.workspace_name;
         match completion.result {
-            Ok(result) => {
+            Ok(()) => {
                 self.close_active_dialog();
                 self.clear_create_branch_picker();
+                let workspace_path = completion.workspace_path;
                 self.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
-                    workspace_path: result.workspace_path.clone(),
+                    workspace_path: workspace_path.clone(),
                     start_config: start_config.clone(),
                 });
                 self.launch_skip_permissions = start_config.skip_permissions;
-                self.pending_auto_launch_shell_workspace_path = Some(result.workspace_path.clone());
-                self.refresh_workspaces(Some(result.workspace_path));
+                self.pending_auto_launch_shell_workspace_path = Some(workspace_path.clone());
+                self.refresh_workspaces(Some(workspace_path));
                 self.state.mode = UiMode::List;
                 self.state.focus = PaneFocus::WorkspaceList;
-                if result.warnings.is_empty() {
+                if completion.warnings.is_empty() {
                     self.show_success_toast(format!("workspace '{}' created", workspace_name));
-                } else if let Some(first_warning) = result.warnings.first() {
+                } else if let Some(first_warning) = completion.warnings.first() {
                     self.show_info_toast(format!(
                         "workspace '{}' created, warning: {}",
                         workspace_name, first_warning
@@ -141,11 +116,28 @@ impl GroveApp {
                 }
             }
             Err(error) => {
-                self.show_error_toast(format!(
-                    "workspace create failed: {}",
-                    workspace_lifecycle_error_message(&error)
-                ));
+                self.show_error_toast(format!("workspace create failed: {error}"));
             }
         }
+    }
+}
+
+fn execute_workspace_create(request: WorkspaceCreateRequest) -> CreateWorkspaceCompletion {
+    let workspace_name = request.name.clone();
+    let workspace_path = request.context.repo_root.join(workspace_name.as_str());
+    let service = InProcessLifecycleCommandService::new();
+    match service.workspace_create(request) {
+        Ok(response) => CreateWorkspaceCompletion {
+            workspace_name,
+            workspace_path: response.workspace.path,
+            result: Ok(()),
+            warnings: response.warnings,
+        },
+        Err(error) => CreateWorkspaceCompletion {
+            workspace_name,
+            workspace_path,
+            result: Err(error.message),
+            warnings: Vec::new(),
+        },
     }
 }

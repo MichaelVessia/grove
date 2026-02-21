@@ -7,7 +7,7 @@ use crate::application::agent_runtime::{
 };
 use crate::application::workspace_lifecycle::{
     self, BranchMode, CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner,
-    WorkspaceLifecycleError, WorkspaceMarkerError, read_workspace_markers,
+    WorkspaceLifecycleError, WorkspaceMarkerError, WorkspaceSetupTemplate, read_workspace_markers,
     workspace_lifecycle_error_message, write_workspace_agent_marker, write_workspace_base_marker,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -62,6 +62,13 @@ pub struct WorkspaceCreateRequest {
     pub agent: Option<AgentType>,
     pub start: bool,
     pub dry_run: bool,
+    pub setup_template: Option<WorkspaceCreateSetupTemplate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceCreateSetupTemplate {
+    pub auto_run_setup_commands: bool,
+    pub commands: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,6 +218,14 @@ impl LifecycleCommandService for InProcessLifecycleCommandService {
         &self,
         request: WorkspaceCreateRequest,
     ) -> CommandResult<WorkspaceMutationResponse> {
+        let setup_template =
+            request
+                .setup_template
+                .as_ref()
+                .map(|template| WorkspaceSetupTemplate {
+                    auto_run_setup_commands: template.auto_run_setup_commands,
+                    commands: template.commands.clone(),
+                });
         let branch_mode = create_branch_mode(
             request.base_branch.as_deref(),
             request.existing_branch.as_deref(),
@@ -242,7 +257,7 @@ impl LifecycleCommandService for InProcessLifecycleCommandService {
         let create_result = workspace_lifecycle::create_workspace_with_template(
             &request.context.repo_root,
             &lifecycle_request,
-            None,
+            setup_template.as_ref(),
             &git_runner,
             &setup_script_runner,
             &setup_command_runner,

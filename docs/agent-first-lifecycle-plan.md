@@ -11,7 +11,7 @@ Primary success criterion:
 
 - Current execution state: `in progress` (`Phase 0a` and `Phase 0` completed).
 - Immediate focus: Phase 1 (`migrate remaining lifecycle call sites to command service internals`).
-- Phase 1 progress: delete/merge/update TUI paths now route through `InProcessLifecycleCommandService`.
+- Phase 1 progress: create/delete/merge/update TUI paths now route through `InProcessLifecycleCommandService`.
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
@@ -499,7 +499,7 @@ Remote mapping (Phase 4.5+):
 - [x] 2. Add envelope + error code mapping module.
 - [x] 3. Add command service trait + in-process implementation.
 - [x] 4a. Migrate workspace delete/merge/update code paths to service internally.
-- [ ] 4b. Migrate remaining create/start/stop code paths to service internally.
+- [ ] 4b. Migrate remaining start/stop code paths to service internally.
 - [ ] 5. Build CLI root + lifecycle subcommands.
 - [ ] 6. Add CLI integration and golden JSON tests.
 - [ ] 7. Rewire TUI lifecycle actions to service, add 2s inventory refresh.

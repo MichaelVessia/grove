@@ -1297,24 +1297,14 @@ fn new_workspace_dialog_prefills_from_project_defaults() {
 #[test]
 fn create_workspace_completed_success_queues_refresh_task_in_background_mode() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
-    let request = CreateWorkspaceRequest {
-        workspace_name: "feature-x".to_string(),
-        branch_mode: BranchMode::NewBranch {
-            base_branch: "main".to_string(),
-        },
-        agent: AgentType::Claude,
-    };
-    let result = CreateWorkspaceResult {
-        workspace_path: PathBuf::from("/repos/grove-feature-x"),
-        branch: "feature-x".to_string(),
-        warnings: Vec::new(),
-    };
 
     let cmd = ftui::Model::update(
         &mut app,
         Msg::CreateWorkspaceCompleted(CreateWorkspaceCompletion {
-            request,
-            result: Ok(result),
+            workspace_name: "feature-x".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-feature-x"),
+            result: Ok(()),
+            warnings: Vec::new(),
         }),
     );
 
