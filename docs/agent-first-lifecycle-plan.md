@@ -10,9 +10,9 @@ Primary success criterion:
 ## Kickoff Snapshot (2026-02-21)
 
 - Current execution state: `not started`.
-- Immediate focus: Phase 0 only (`contract + types`).
+- Immediate focus: Phase 0a + Phase 0 (`module boundaries`, then `contract + types`).
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
-- Scope guard for kickoff: no daemon/remote code until Phase 0-3 are complete.
+- Scope guard for kickoff: no daemon/remote code until Phase 0a-3 are complete.
 
 ## Resolved Decisions (2026-02-21)
 
@@ -38,6 +38,8 @@ Primary success criterion:
 - Remote profile management should live in Grove UI settings (after initial manual phase).
 - Remote outages must not block local project workflows.
 - Root command cutover: `grove` returns JSON command tree, `grove tui` launches UI.
+- Structure strategy: no big-bang prework restructure, do incremental boundary extraction inside this plan.
+- Packaging strategy: keep one crate for v1, add module boundaries now, evaluate separate crates only after service boundary stabilizes.
 
 ## Defaults Assumed (from recommendations accepted)
 
@@ -203,6 +205,34 @@ Per-phase completion gate:
 Refactor safety rule:
 - Do not batch multiple unchecked slices.
 - Land or validate each slice before starting the next one.
+
+## Phase 0a, Module Boundary Guardrails
+
+Deliverables:
+- Add `interface::cli` module boundary for CLI argument parsing + JSON output wiring.
+- Add `interface::tui` module boundary for TUI startup/wiring.
+- Introduce `application::commands` service surface (trait + DTO stubs only, no behavior migration yet).
+- Remove new cross-layer references that violate target direction:
+  - `interface -> application -> domain`
+  - `infrastructure` must not depend on `interface`.
+
+Implementation notes:
+- Keep behavior unchanged in this phase, this is structural extraction only.
+- Keep existing files where practical, move minimally and re-export to avoid churn.
+- Do not split into multiple crates in v1.
+
+Tests:
+- Compile + existing targeted regression tests for startup/CLI smoke still pass.
+- Add module visibility/import tests as needed to enforce boundary compile checks.
+
+Exit criteria:
+- Phase 1 can add command service logic without reworking entrypoint structure.
+- New CLI implementation can be developed under `interface::cli` without touching TUI runtime code.
+
+Phase 0a implementation slices (PR-sized):
+- [ ] P0a.1 Add `interface` module with `cli` and `tui` submodules, move current entry wiring.
+- [ ] P0a.2 Add `application::commands` trait + request/response stubs.
+- [ ] P0a.3 Remove/avoid new cross-layer dependencies and lock with compile-time checks/tests.
 
 ## Phase 0, Contract + Types
 
@@ -464,14 +494,15 @@ Remote mapping (Phase 4.5+):
 
 ## Implementation Order (concrete)
 
-- [ ] 1. Add envelope + error code mapping module.
-- [ ] 2. Add command service trait + in-process implementation.
-- [ ] 3. Migrate existing lifecycle code paths to service internally.
-- [ ] 4. Build CLI root + lifecycle subcommands.
-- [ ] 5. Add CLI integration and golden JSON tests.
-- [ ] 6. Rewire TUI lifecycle actions to service, add 2s inventory refresh.
-- [ ] 7. Add daemon binary + socket adapter.
-- [ ] 8. Add mixed local/remote project target model + indicator UI.
-- [ ] 9. Add remote profiles + connect/disconnect/test flows in settings.
-- [ ] 10. Add reconnect handling and backend isolation tests.
-- [ ] 11. Add remote operational docs (SSH and systemd user service).
+- [ ] 1. Add Phase 0a module boundaries (`interface::cli`, `interface::tui`, `application::commands` stubs).
+- [ ] 2. Add envelope + error code mapping module.
+- [ ] 3. Add command service trait + in-process implementation.
+- [ ] 4. Migrate existing lifecycle code paths to service internally.
+- [ ] 5. Build CLI root + lifecycle subcommands.
+- [ ] 6. Add CLI integration and golden JSON tests.
+- [ ] 7. Rewire TUI lifecycle actions to service, add 2s inventory refresh.
+- [ ] 8. Add daemon binary + socket adapter.
+- [ ] 9. Add mixed local/remote project target model + indicator UI.
+- [ ] 10. Add remote profiles + connect/disconnect/test flows in settings.
+- [ ] 11. Add reconnect handling and backend isolation tests.
+- [ ] 12. Add remote operational docs (SSH and systemd user service).
