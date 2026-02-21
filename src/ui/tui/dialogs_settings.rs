@@ -1,4 +1,5 @@
 use super::*;
+use crate::infrastructure::process::stderr_or_status;
 
 impl GroveApp {
     fn normalized_socket_path(raw: &str) -> PathBuf {
@@ -23,9 +24,12 @@ impl GroveApp {
         let Some(user) = trimmed_nonempty(&dialog.remote_user) else {
             return Err("remote user is required".to_string());
         };
-        let Some(remote_socket_path) = trimmed_nonempty(&dialog.remote_socket_path) else {
-            return Err("remote socket path is required".to_string());
-        };
+        let remote_socket_path =
+            trimmed_nonempty(&dialog.remote_socket_path).unwrap_or_else(|| {
+                Self::default_local_tunnel_socket_path_for_user_host(user.as_str(), host.as_str())
+                    .display()
+                    .to_string()
+            });
 
         Ok(RemoteProfileConfig {
             name,
@@ -46,6 +50,158 @@ impl GroveApp {
             .iter()
             .find(|profile| profile.name == name)
             .cloned()
+    }
+
+    fn tunnel_target(profile: &RemoteProfileConfig) -> String {
+        format!("{}@{}", profile.user, profile.host)
+    }
+
+    fn tunnel_key_for_user_host(user: &str, host: &str) -> String {
+        format!("{user}-{host}")
+            .replace('/', "-")
+            .replace([':', '@'], "-")
+    }
+
+    fn tunnel_key(profile: &RemoteProfileConfig) -> String {
+        Self::tunnel_key_for_user_host(profile.user.as_str(), profile.host.as_str())
+    }
+
+    fn default_local_tunnel_socket_path_for_user_host(user: &str, host: &str) -> PathBuf {
+        let file_name = format!("groved-{}.sock", Self::tunnel_key_for_user_host(user, host));
+        if let Some(home) = dirs::home_dir() {
+            return home.join(".grove").join(file_name);
+        }
+
+        std::env::temp_dir().join(file_name)
+    }
+
+    fn local_tunnel_socket_path(profile: &RemoteProfileConfig) -> PathBuf {
+        if let Some(socket_path) = trimmed_nonempty(profile.remote_socket_path.as_str()) {
+            return Self::normalized_socket_path(socket_path.as_str());
+        }
+
+        Self::default_local_tunnel_socket_path_for_user_host(
+            profile.user.as_str(),
+            profile.host.as_str(),
+        )
+    }
+
+    fn tunnel_control_path(profile: &RemoteProfileConfig) -> PathBuf {
+        if let Some(home) = dirs::home_dir() {
+            return home
+                .join(".grove")
+                .join(format!("ssh-groved-{}.ctl", Self::tunnel_key(profile)));
+        }
+
+        std::env::temp_dir().join(format!("ssh-groved-{}.ctl", Self::tunnel_key(profile)))
+    }
+
+    fn remote_daemon_socket_path(profile: &RemoteProfileConfig) -> String {
+        format!("/home/{}/.grove/groved.sock", profile.user)
+    }
+
+    fn tunnel_is_up(profile: &RemoteProfileConfig, control_path: &Path) -> bool {
+        if !control_path.exists() {
+            return false;
+        }
+
+        let target = Self::tunnel_target(profile);
+        let output = Command::new("ssh")
+            .args([
+                "-S",
+                control_path.to_string_lossy().as_ref(),
+                "-O",
+                "check",
+                target.as_str(),
+            ])
+            .output();
+        output.is_ok_and(|output| output.status.success())
+    }
+
+    fn ensure_profile_tunnel(
+        &self,
+        profile: &RemoteProfileConfig,
+        local_socket_path: &Path,
+    ) -> Result<(), String> {
+        let control_path = Self::tunnel_control_path(profile);
+        if Self::tunnel_is_up(profile, control_path.as_path()) {
+            return Ok(());
+        }
+
+        if let Some(parent) = local_socket_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("local tunnel socket dir create failed: {error}"))?;
+        }
+        if let Some(parent) = control_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("ssh control dir create failed: {error}"))?;
+        }
+
+        if control_path.exists() {
+            let _ = std::fs::remove_file(control_path.as_path());
+        }
+
+        let target = Self::tunnel_target(profile);
+        let local_socket = local_socket_path.to_string_lossy();
+        let remote_socket = Self::remote_daemon_socket_path(profile);
+        let forward = format!("{local_socket}:{remote_socket}");
+        let output = Command::new("ssh")
+            .args([
+                "-fN",
+                "-M",
+                "-S",
+                control_path.to_string_lossy().as_ref(),
+                "-o",
+                "ExitOnForwardFailure=yes",
+                "-o",
+                "ServerAliveInterval=30",
+                "-o",
+                "ServerAliveCountMax=3",
+                "-o",
+                "ConnectTimeout=2",
+                "-o",
+                "ConnectionAttempts=1",
+                "-o",
+                "BatchMode=yes",
+                "-L",
+                forward.as_str(),
+                target.as_str(),
+            ])
+            .output()
+            .map_err(|error| format!("tunnel start failed: {error}"))?;
+        if output.status.success() {
+            return Ok(());
+        }
+
+        Err(format!(
+            "tunnel start failed: {}",
+            stderr_or_status(&output)
+        ))
+    }
+
+    fn stop_profile_tunnel(&self, profile: &RemoteProfileConfig) -> Result<(), String> {
+        let control_path = Self::tunnel_control_path(profile);
+        if !control_path.exists() {
+            return Ok(());
+        }
+
+        let target = Self::tunnel_target(profile);
+        let output = Command::new("ssh")
+            .args([
+                "-S",
+                control_path.to_string_lossy().as_ref(),
+                "-O",
+                "exit",
+                target.as_str(),
+            ])
+            .output()
+            .map_err(|error| format!("tunnel stop failed: {error}"))?;
+        let _ = std::fs::remove_file(control_path.as_path());
+        if output.status.success() {
+            return Ok(());
+        }
+
+        Err(format!("tunnel stop failed: {}", stderr_or_status(&output)))
     }
 
     fn set_remote_status(&mut self, profile_name: &str, status: RemoteConnectionState) {
@@ -70,6 +226,7 @@ impl GroveApp {
         };
 
         let profile_name = profile.name.clone();
+        let saved_socket_path = profile.remote_socket_path.clone();
         if let Some(existing) = self
             .remote_profiles
             .iter_mut()
@@ -88,6 +245,11 @@ impl GroveApp {
         if let Err(error) = self.save_runtime_config() {
             self.show_error_toast(format!("remote profile save failed: {error}"));
             return;
+        }
+        if let Some(dialog) = self.settings_dialog_mut()
+            && dialog.remote_socket_path.trim().is_empty()
+        {
+            dialog.remote_socket_path = saved_socket_path;
         }
 
         self.show_success_toast(format!("remote profile '{}' saved", profile_name));
@@ -132,7 +294,7 @@ impl GroveApp {
                 return;
             }
         };
-        let socket_path = Self::normalized_socket_path(profile.remote_socket_path.as_str());
+        let socket_path = Self::local_tunnel_socket_path(&profile);
 
         match ping_via_socket(socket_path.as_path()) {
             Ok(_protocol_version) => {
@@ -163,9 +325,22 @@ impl GroveApp {
             self.show_info_toast("save remote profile before connect");
             return;
         };
-        let socket_path = Self::normalized_socket_path(profile.remote_socket_path.as_str());
+        let socket_path = Self::local_tunnel_socket_path(&profile);
 
-        match ping_via_socket(socket_path.as_path()) {
+        let ping_result = match ping_via_socket(socket_path.as_path()) {
+            Ok(protocol_version) => Ok(protocol_version),
+            Err(first_error) => {
+                let tunnel_result = self.ensure_profile_tunnel(&profile, socket_path.as_path());
+                if let Err(tunnel_error) = tunnel_result {
+                    Err(format!("{first_error}; {tunnel_error}"))
+                } else {
+                    ping_via_socket(socket_path.as_path())
+                        .map_err(|second_error| format!("{first_error}; {second_error}"))
+                }
+            }
+        };
+
+        match ping_result {
             Ok(_protocol_version) => {
                 self.active_remote_profile = Some(profile_name.clone());
                 self.set_remote_status(profile_name.as_str(), RemoteConnectionState::Connected);
@@ -198,6 +373,9 @@ impl GroveApp {
 
         if self.active_remote_profile.as_deref() == Some(profile_name.as_str()) {
             self.active_remote_profile = None;
+        }
+        if let Some(profile) = self.remote_profile_by_name(profile_name.as_str()) {
+            let _ = self.stop_profile_tunnel(&profile);
         }
         self.set_remote_status(profile_name.as_str(), RemoteConnectionState::Offline);
 
@@ -366,7 +544,11 @@ impl GroveApp {
                 .unwrap_or_default(),
             remote_socket_path: selected_profile
                 .as_ref()
-                .map(|profile| profile.remote_socket_path.clone())
+                .map(|profile| {
+                    Self::local_tunnel_socket_path(profile)
+                        .display()
+                        .to_string()
+                })
                 .unwrap_or_default(),
             remote_default_repo_path: selected_profile
                 .as_ref()

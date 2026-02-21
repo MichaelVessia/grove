@@ -2020,6 +2020,38 @@ fn settings_dialog_save_profile_persists_remote_profile() {
 }
 
 #[test]
+fn settings_dialog_save_profile_infers_socket_path_when_blank() {
+    let mut app = fixture_app();
+    app.open_settings_dialog();
+    {
+        let dialog = app
+            .settings_dialog_mut()
+            .expect("settings dialog should be open");
+        dialog.remote_name = "lan".to_string();
+        dialog.remote_host = "lanbox.local".to_string();
+        dialog.remote_user = "michael".to_string();
+        dialog.remote_socket_path = String::new();
+    }
+
+    app.apply_settings_profile_save();
+
+    let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
+        .expect("config should load");
+    let profile = loaded
+        .remote_profiles
+        .iter()
+        .find(|profile| profile.name == "lan")
+        .expect("profile should be saved");
+    assert!(
+        profile
+            .remote_socket_path
+            .contains("groved-michael-lanbox.local.sock"),
+        "unexpected inferred socket path: {}",
+        profile.remote_socket_path
+    );
+}
+
+#[test]
 fn settings_dialog_delete_profile_removes_persisted_remote() {
     let mut app = fixture_app();
     app.open_settings_dialog();

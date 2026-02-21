@@ -91,6 +91,8 @@ loginctl enable-linger "$USER"
 
 ## 2. Client tunnel setup
 
+Preferred: just use TUI `Connect` in Settings. It now auto-starts the SSH tunnel from saved `host` + `user`.
+
 Recommended (Makefile wrapper):
 
 ```bash
@@ -145,10 +147,10 @@ In `Settings` remote profile, use:
 - `name`: profile name, e.g. `prod`
 - `host`: SSH host
 - `user`: SSH user
-- `remote_socket_path`: local tunneled socket path, e.g. `~/.grove/groved-<remote-user>-<remote-host>.sock`
+- `remote_socket_path`: optional local tunneled socket path. Blank auto-infers `~/.grove/groved-<remote-user>-<remote-host>.sock`
 - `default_repo_path` (optional): default remote repo root
 
-Then use `Test`, `Connect`, `Disconnect` actions in Settings.
+Then use `Connect` / `Disconnect` actions in Settings (connect starts tunnel, disconnect stops it).
 
 ## 5. Troubleshooting
 

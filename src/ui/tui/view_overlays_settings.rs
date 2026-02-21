@@ -87,7 +87,7 @@ impl GroveApp {
                 theme,
                 "SocketPath",
                 dialog.remote_socket_path.as_str(),
-                "Local tunnel socket path, e.g. /tmp/groved.sock",
+                "Optional local tunnel socket path, blank = infer from user/host",
                 focused(SettingsDialogField::RemoteSocketPath),
             ),
             modal_labeled_input_row(
