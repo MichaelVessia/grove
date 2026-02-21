@@ -2,12 +2,21 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::infrastructure::event_log::{FileEventLogger, now_millis};
+use crate::interface::cli_contract::{CommandEnvelope, NextAction};
+use crate::interface::next_actions::NextActionsBuilder;
+use crate::interface::root_command_tree::{RootCommandTree, root_command_tree};
 
 const DEBUG_RECORD_DIR: &str = ".grove";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct CliArgs {
     print_hello: bool,
+    event_log_path: Option<PathBuf>,
+    debug_record: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct TuiArgs {
     event_log_path: Option<PathBuf>,
     debug_record: bool,
 }
@@ -34,6 +43,36 @@ fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io::Result<Cli
                 cli.debug_record = true;
             }
             _ => {}
+        }
+    }
+
+    Ok(cli)
+}
+
+fn parse_tui_args(args: impl IntoIterator<Item = String>) -> std::io::Result<TuiArgs> {
+    let mut cli = TuiArgs::default();
+    let mut args = args.into_iter();
+
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--event-log" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--event-log requires a file path",
+                    ));
+                };
+                cli.event_log_path = Some(PathBuf::from(path));
+            }
+            "--debug-record" => {
+                cli.debug_record = true;
+            }
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("unknown argument for 'tui': {argument}"),
+                ));
+            }
         }
     }
 
@@ -86,8 +125,30 @@ fn ensure_event_log_parent_directory(path: &Path) -> std::io::Result<()> {
     fs::create_dir_all(parent)
 }
 
-pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
-    let cli = parse_cli_args(args)?;
+fn root_next_actions() -> Vec<NextAction> {
+    NextActionsBuilder::new()
+        .push("grove tui", "Launch Grove TUI")
+        .push("grove workspace list", "List repository workspaces")
+        .build()
+}
+
+fn root_command_envelope() -> CommandEnvelope<RootCommandTree> {
+    CommandEnvelope::success(
+        "grove",
+        root_command_tree(),
+        Vec::new(),
+        root_next_actions(),
+    )
+}
+
+fn emit_json<T: serde::Serialize>(payload: &T) -> std::io::Result<()> {
+    let json =
+        serde_json::to_string(payload).map_err(|error| std::io::Error::other(error.to_string()))?;
+    println!("{json}");
+    Ok(())
+}
+
+fn run_tui(cli: TuiArgs) -> std::io::Result<()> {
     let app_start_ts = now_millis();
     let debug_record_path = if cli.debug_record {
         Some(debug_record_path(app_start_ts)?)
@@ -102,14 +163,6 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         ensure_event_log_parent_directory(path)?;
     }
 
-    if cli.print_hello {
-        if let Some(event_log_path) = event_log_path.as_ref() {
-            let _ = FileEventLogger::open(event_log_path)?;
-        }
-        println!("Hello from grove.");
-        return Ok(());
-    }
-
     if cli.debug_record
         && let Some(path) = event_log_path
     {
@@ -119,12 +172,48 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
     crate::interface::tui::run_with_event_log(event_log_path)
 }
 
+pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
+    let args = args.into_iter().collect::<Vec<String>>();
+    let Some((first, remaining)) = args.split_first() else {
+        return emit_json(&root_command_envelope());
+    };
+    if first == "tui" {
+        return run_tui(parse_tui_args(remaining.iter().cloned())?);
+    }
+
+    let cli = parse_cli_args(args)?;
+    if cli.print_hello {
+        let app_start_ts = now_millis();
+        let debug_record_path = if cli.debug_record {
+            Some(debug_record_path(app_start_ts)?)
+        } else {
+            None
+        };
+        if let Some(path) = debug_record_path.as_ref() {
+            eprintln!("grove debug record: {}", path.display());
+        }
+        let event_log_path = debug_record_path.or(cli.event_log_path.map(resolve_event_log_path));
+        if let Some(path) = event_log_path.as_ref() {
+            ensure_event_log_parent_directory(path)?;
+            let _ = FileEventLogger::open(path)?;
+        }
+        println!("Hello from grove.");
+        return Ok(());
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "unknown command, run 'grove' for command tree",
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        CliArgs, debug_record_path, ensure_event_log_parent_directory, parse_cli_args,
-        resolve_event_log_path,
+        CliArgs, TuiArgs, debug_record_path, ensure_event_log_parent_directory, parse_cli_args,
+        parse_tui_args, resolve_event_log_path, root_command_envelope,
     };
+    use serde_json::Value;
     use std::path::PathBuf;
 
     #[test]
@@ -216,5 +305,37 @@ mod tests {
         assert!(root.join(".grove/nested").exists());
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn tui_parser_rejects_unknown_flags() {
+        let error = parse_tui_args(vec!["--wat".to_string()]).expect_err("unknown flag");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn tui_parser_reads_event_log_and_debug_record() {
+        let parsed = parse_tui_args(vec![
+            "--event-log".to_string(),
+            ".grove/events.jsonl".to_string(),
+            "--debug-record".to_string(),
+        ])
+        .expect("tui args should parse");
+        assert_eq!(
+            parsed,
+            TuiArgs {
+                event_log_path: Some(PathBuf::from(".grove/events.jsonl")),
+                debug_record: true,
+            }
+        );
+    }
+
+    #[test]
+    fn root_envelope_serializes_command_tree() {
+        let value = serde_json::to_value(root_command_envelope()).expect("serialize root envelope");
+        assert_eq!(value["ok"], Value::from(true));
+        assert_eq!(value["command"], Value::from("grove"));
+        assert_eq!(value["result"]["command"], Value::from("grove"));
+        assert!(value["result"]["commands"].is_array());
     }
 }

@@ -10,8 +10,9 @@ Primary success criterion:
 ## Kickoff Snapshot (2026-02-21)
 
 - Current execution state: `in progress` (`Phase 0a` and `Phase 0` completed).
-- Immediate focus: Phase 2 (`build CLI root and lifecycle subcommands`).
+- Immediate focus: Phase 2 (`implement lifecycle subcommands over command service`).
 - Phase 1 progress: create/delete/merge/update/start/stop TUI paths now route through `InProcessLifecycleCommandService`.
+- Phase 2 progress: root `grove` now emits JSON command-tree envelope, `grove tui` launches TUI explicitly.
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
@@ -500,7 +501,8 @@ Remote mapping (Phase 4.5+):
 - [x] 3. Add command service trait + in-process implementation.
 - [x] 4a. Migrate workspace delete/merge/update code paths to service internally.
 - [x] 4b. Migrate remaining start/stop code paths to service internally.
-- [ ] 5. Build CLI root + lifecycle subcommands.
+- [x] 5a. Build CLI root command-tree response and explicit `grove tui` launch path.
+- [ ] 5b. Build lifecycle subcommands over command service.
 - [ ] 6. Add CLI integration and golden JSON tests.
 - [ ] 7. Rewire TUI lifecycle actions to service, add 2s inventory refresh.
 - [ ] 8. Add daemon binary + socket adapter.
