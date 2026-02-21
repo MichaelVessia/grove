@@ -471,9 +471,16 @@ fn unique_socket_path(label: &str) -> PathBuf {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or(Duration::from_secs(0))
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "grove-test-daemon-{label}-{}-{timestamp}.sock",
+        .as_millis();
+    // Use /tmp on unix to stay under SUN_LEN (104 bytes on macOS).
+    // std::env::temp_dir() can return long paths that exceed the limit.
+    let base = if cfg!(unix) {
+        PathBuf::from("/tmp")
+    } else {
+        std::env::temp_dir()
+    };
+    base.join(format!(
+        "gd-{label}-{}-{timestamp}.sock",
         std::process::id()
     ))
 }
