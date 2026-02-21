@@ -10,7 +10,7 @@ Primary success criterion:
 ## Kickoff Snapshot (2026-02-21)
 
 - Current execution state: `in progress`.
-- Immediate focus: Phase 0 (`P0.2 error code taxonomy + classifier mapping`).
+- Immediate focus: Phase 0 (`P0.3 next_actions builders + shape tests`).
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
@@ -263,7 +263,7 @@ Exit criteria:
 
 Phase 0 implementation slices (PR-sized):
 - [x] P0.1 Add envelope types + serializer tests.
-- [ ] P0.2 Add error code enum + classifier mapping table tests.
+- [x] P0.2 Add error code enum + classifier mapping table tests.
 - [ ] P0.3 Add `next_actions` builder helpers + shape tests.
 - [ ] P0.4 Add root command-tree schema (with compact usage templates) + completeness tests.
 - [ ] P0.5 Add dry-run response schema (`step_id` + `index`) + validation failure tests.
@@ -495,7 +495,7 @@ Remote mapping (Phase 4.5+):
 ## Implementation Order (concrete)
 
 - [x] 1. Add Phase 0a module boundaries (`interface::cli`, `interface::tui`, `application::commands` stubs).
-- [ ] 2. Add envelope + error code mapping module.
+- [x] 2. Add envelope + error code mapping module.
 - [ ] 3. Add command service trait + in-process implementation.
 - [ ] 4. Migrate existing lifecycle code paths to service internally.
 - [ ] 5. Build CLI root + lifecycle subcommands.

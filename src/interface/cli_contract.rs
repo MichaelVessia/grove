@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::interface::cli_errors::CliErrorCode;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NextAction {
     pub command: String,
@@ -25,6 +27,13 @@ impl ErrorDetail {
     pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             code: code.into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn from_code(code: CliErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code: code.to_string(),
             message: message.into(),
         }
     }
@@ -129,6 +138,7 @@ impl<T: Serialize> CommandEnvelope<T> {
 #[cfg(test)]
 mod tests {
     use super::{CommandEnvelope, ErrorDetail, NextAction};
+    use crate::interface::cli_errors::CliErrorCode;
     use serde::Serialize;
     use serde_json::json;
 
@@ -273,5 +283,11 @@ mod tests {
                 ]
             })
         );
+    }
+
+    #[test]
+    fn error_detail_from_code_uses_stable_error_code_value() {
+        let detail = ErrorDetail::from_code(CliErrorCode::InvalidArgument, "bad selector");
+        assert_eq!(detail.code, "INVALID_ARGUMENT");
     }
 }
