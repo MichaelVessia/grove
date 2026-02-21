@@ -21,6 +21,7 @@ Primary success criterion:
 - Phase 2 progress: `grove workspace update` now executes via command service and returns JSON envelope.
 - Phase 2 progress: `grove agent start` now executes via command service and returns JSON envelope.
 - Phase 2 progress: `grove agent stop` now executes via command service and returns JSON envelope.
+- Phase 2 progress: golden-style CLI contract tests now cover envelope shape, deterministic error codes, and `cwd` repo default behavior.
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
@@ -519,7 +520,7 @@ Remote mapping (Phase 4.5+):
 - [x] 5b.2b.2b.2b.1 Build `agent start` CLI subcommand over command service.
 - [x] 5b.2b.2b.2b.2 Build `agent stop` CLI subcommand over command service.
 - [x] 5b.2 Complete remaining lifecycle CLI subcommands over command service.
-- [ ] 6. Add CLI integration and golden JSON tests.
+- [x] 6. Add CLI integration and golden JSON tests.
 - [ ] 7. Rewire TUI lifecycle actions to service, add 2s inventory refresh.
 - [ ] 8. Add daemon binary + socket adapter.
 - [ ] 9. Add mixed local/remote project target model + indicator UI.
