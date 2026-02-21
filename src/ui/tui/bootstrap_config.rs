@@ -14,6 +14,7 @@ pub(super) struct AppDependencies {
     pub(super) config_path: PathBuf,
     pub(super) event_log: Box<dyn EventLogger>,
     pub(super) debug_record_start_ts: Option<u64>,
+    pub(super) daemon_socket_path: Option<PathBuf>,
 }
 
 fn default_config_path() -> PathBuf {

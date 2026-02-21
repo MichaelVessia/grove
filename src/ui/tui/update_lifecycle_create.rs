@@ -72,13 +72,17 @@ impl GroveApp {
             }),
         };
         if !self.tmux_input.supports_background_launch() {
-            self.apply_create_workspace_completion(execute_workspace_create(request));
+            self.apply_create_workspace_completion(execute_workspace_create(
+                request,
+                self.daemon_socket_path.clone(),
+            ));
             return;
         }
 
+        let daemon_socket_path = self.daemon_socket_path.clone();
         self.create_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            Msg::CreateWorkspaceCompleted(execute_workspace_create(request))
+            Msg::CreateWorkspaceCompleted(execute_workspace_create(request, daemon_socket_path))
         }));
     }
 
@@ -122,9 +126,46 @@ impl GroveApp {
     }
 }
 
-fn execute_workspace_create(request: WorkspaceCreateRequest) -> CreateWorkspaceCompletion {
+fn execute_workspace_create(
+    request: WorkspaceCreateRequest,
+    daemon_socket_path: Option<PathBuf>,
+) -> CreateWorkspaceCompletion {
     let workspace_name = request.name.clone();
     let workspace_path = request.context.repo_root.join(workspace_name.as_str());
+    if let Some(socket_path) = daemon_socket_path.as_deref() {
+        let payload = DaemonWorkspaceCreatePayload {
+            repo_root: request.context.repo_root.display().to_string(),
+            name: request.name,
+            base_branch: request.base_branch,
+            existing_branch: request.existing_branch,
+            agent: request
+                .agent
+                .map(|agent| agent.label().to_ascii_lowercase()),
+            start: request.start,
+            dry_run: request.dry_run,
+        };
+        return match workspace_create_via_socket(socket_path, payload) {
+            Ok(Ok(response)) => CreateWorkspaceCompletion {
+                workspace_name,
+                workspace_path: PathBuf::from(response.workspace.path),
+                result: Ok(()),
+                warnings: response.warnings,
+            },
+            Ok(Err(error)) => CreateWorkspaceCompletion {
+                workspace_name,
+                workspace_path,
+                result: Err(error.message),
+                warnings: Vec::new(),
+            },
+            Err(error) => CreateWorkspaceCompletion {
+                workspace_name,
+                workspace_path,
+                result: Err(format!("daemon request failed: {error}")),
+                warnings: Vec::new(),
+            },
+        };
+    }
+
     let service = InProcessLifecycleCommandService::new();
     match service.workspace_create(request) {
         Ok(response) => CreateWorkspaceCompletion {

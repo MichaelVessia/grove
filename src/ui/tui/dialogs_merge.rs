@@ -233,7 +233,8 @@ impl GroveApp {
         };
 
         if !self.tmux_input.supports_background_launch() {
-            let (result, warnings) = execute_workspace_merge(request);
+            let (result, warnings) =
+                execute_workspace_merge(request, self.daemon_socket_path.clone());
             self.apply_merge_workspace_completion(MergeWorkspaceCompletion {
                 workspace_name,
                 workspace_path,
@@ -245,9 +246,10 @@ impl GroveApp {
             return;
         }
 
+        let daemon_socket_path = self.daemon_socket_path.clone();
         self.merge_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let (result, warnings) = execute_workspace_merge(request);
+            let (result, warnings) = execute_workspace_merge(request, daemon_socket_path);
             Msg::MergeWorkspaceCompleted(MergeWorkspaceCompletion {
                 workspace_name,
                 workspace_path,
@@ -260,7 +262,27 @@ impl GroveApp {
     }
 }
 
-fn execute_workspace_merge(request: WorkspaceMergeRequest) -> (Result<(), String>, Vec<String>) {
+fn execute_workspace_merge(
+    request: WorkspaceMergeRequest,
+    daemon_socket_path: Option<PathBuf>,
+) -> (Result<(), String>, Vec<String>) {
+    if let Some(socket_path) = daemon_socket_path.as_deref() {
+        let (workspace, workspace_path) = daemon_selector_parts(&request.selector);
+        let payload = DaemonWorkspaceMergePayload {
+            repo_root: request.context.repo_root.display().to_string(),
+            workspace,
+            workspace_path,
+            cleanup_workspace: request.cleanup_workspace,
+            cleanup_branch: request.cleanup_branch,
+            dry_run: request.dry_run,
+        };
+        return match workspace_merge_via_socket(socket_path, payload) {
+            Ok(Ok(response)) => (Ok(()), response.warnings),
+            Ok(Err(error)) => (Err(error.message), Vec::new()),
+            Err(error) => (Err(format!("daemon request failed: {error}")), Vec::new()),
+        };
+    }
+
     let service = InProcessLifecycleCommandService::new();
     match service.workspace_merge(request) {
         Ok(response) => (Ok(()), response.warnings),

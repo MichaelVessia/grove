@@ -34,10 +34,11 @@ impl GroveApp {
         let request = queued_delete.request;
         let workspace_name = queued_delete.workspace_name;
         let workspace_path = queued_delete.workspace_path;
+        let daemon_socket_path = self.daemon_socket_path.clone();
         self.delete_in_flight = true;
         self.delete_in_flight_workspace = Some(workspace_path.clone());
         self.queue_cmd(Cmd::task(move || {
-            let (result, warnings) = execute_workspace_delete(request);
+            let (result, warnings) = execute_workspace_delete(request, daemon_socket_path);
             Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
                 workspace_name,
                 workspace_path,
@@ -253,7 +254,8 @@ impl GroveApp {
             dry_run: false,
         };
         if !self.tmux_input.supports_background_launch() {
-            let (result, warnings) = execute_workspace_delete(request);
+            let (result, warnings) =
+                execute_workspace_delete(request, self.daemon_socket_path.clone());
             self.apply_delete_workspace_completion(DeleteWorkspaceCompletion {
                 workspace_name,
                 workspace_path,
@@ -271,7 +273,27 @@ impl GroveApp {
     }
 }
 
-fn execute_workspace_delete(request: WorkspaceDeleteRequest) -> (Result<(), String>, Vec<String>) {
+fn execute_workspace_delete(
+    request: WorkspaceDeleteRequest,
+    daemon_socket_path: Option<PathBuf>,
+) -> (Result<(), String>, Vec<String>) {
+    if let Some(socket_path) = daemon_socket_path.as_deref() {
+        let (workspace, workspace_path) = daemon_selector_parts(&request.selector);
+        let payload = DaemonWorkspaceDeletePayload {
+            repo_root: request.context.repo_root.display().to_string(),
+            workspace,
+            workspace_path,
+            delete_branch: request.delete_branch,
+            force_stop: request.force_stop,
+            dry_run: request.dry_run,
+        };
+        return match workspace_delete_via_socket(socket_path, payload) {
+            Ok(Ok(response)) => (Ok(()), response.warnings),
+            Ok(Err(error)) => (Err(error.message), Vec::new()),
+            Err(error) => (Err(format!("daemon request failed: {error}")), Vec::new()),
+        };
+    }
+
     let service = InProcessLifecycleCommandService::new();
     match service.workspace_delete(request) {
         Ok(response) => (Ok(()), response.warnings),

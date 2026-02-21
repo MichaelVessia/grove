@@ -332,6 +332,7 @@ fn fixture_app() -> GroveApp {
 
             event_log: Box::new(NullEventLogger),
             debug_record_start_ts: None,
+            daemon_socket_path: None,
         },
     )
 }
@@ -499,6 +500,7 @@ fn fixture_app_with_tmux_and_config_path(
 
                 event_log: Box::new(NullEventLogger),
                 debug_record_start_ts: None,
+                daemon_socket_path: None,
             },
         ),
         commands,
@@ -535,6 +537,7 @@ fn fixture_app_with_tmux_and_calls(
 
                 event_log: Box::new(NullEventLogger),
                 debug_record_start_ts: None,
+                daemon_socket_path: None,
             },
         ),
         commands,
@@ -575,6 +578,7 @@ fn fixture_app_with_tmux_and_events(
 
                 event_log: Box::new(event_log),
                 debug_record_start_ts: None,
+                daemon_socket_path: None,
             },
         ),
         commands,
@@ -595,6 +599,7 @@ fn fixture_background_app(status: WorkspaceStatus) -> GroveApp {
 
             event_log: Box::new(NullEventLogger),
             debug_record_start_ts: None,
+            daemon_socket_path: None,
         },
     )
 }

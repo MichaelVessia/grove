@@ -13,17 +13,25 @@ use crate::infrastructure::event_log::{
 
 use super::GroveApp;
 
-pub fn run_with_event_log(event_log_path: Option<PathBuf>) -> std::io::Result<()> {
-    run_with_logger(event_log_path, None)
+pub fn run_with_event_log(
+    event_log_path: Option<PathBuf>,
+    daemon_socket_path: Option<PathBuf>,
+) -> std::io::Result<()> {
+    run_with_logger(event_log_path, None, daemon_socket_path)
 }
 
-pub fn run_with_debug_record(event_log_path: PathBuf, app_start_ts: u64) -> std::io::Result<()> {
-    run_with_logger(Some(event_log_path), Some(app_start_ts))
+pub fn run_with_debug_record(
+    event_log_path: PathBuf,
+    app_start_ts: u64,
+    daemon_socket_path: Option<PathBuf>,
+) -> std::io::Result<()> {
+    run_with_logger(Some(event_log_path), Some(app_start_ts), daemon_socket_path)
 }
 
 fn run_with_logger(
     event_log_path: Option<PathBuf>,
     debug_record_start_ts: Option<u64>,
+    daemon_socket_path: Option<PathBuf>,
 ) -> std::io::Result<()> {
     ensure_tmux_extended_keys();
 
@@ -40,7 +48,7 @@ fn run_with_logger(
         );
     }
 
-    let app = GroveApp::new(event_log, debug_record_start_ts);
+    let app = GroveApp::new(event_log, debug_record_start_ts, daemon_socket_path);
 
     let config = program_config();
     Program::with_config(app, config)?.run()

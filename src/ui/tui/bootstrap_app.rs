@@ -15,7 +15,11 @@ use crate::infrastructure::paths::refer_to_same_location;
 use crate::ui::mouse::clamp_sidebar_ratio;
 
 impl GroveApp {
-    pub(super) fn new(event_log: Box<dyn EventLogger>, debug_record_start_ts: Option<u64>) -> Self {
+    pub(super) fn new(
+        event_log: Box<dyn EventLogger>,
+        debug_record_start_ts: Option<u64>,
+        daemon_socket_path: Option<PathBuf>,
+    ) -> Self {
         let (config, config_path, _config_error) = load_runtime_config();
         let bootstrap = bootstrap_data_for_projects(&config.projects);
         Self::from_parts_with_clipboard_and_projects(
@@ -27,6 +31,7 @@ impl GroveApp {
                 config_path,
                 event_log,
                 debug_record_start_ts,
+                daemon_socket_path,
             },
         )
     }
@@ -77,6 +82,7 @@ impl GroveApp {
                 config_path,
                 event_log,
                 debug_record_start_ts,
+                daemon_socket_path: None,
             },
         )
     }
@@ -92,6 +98,7 @@ impl GroveApp {
             config_path,
             event_log,
             debug_record_start_ts,
+            daemon_socket_path,
         } = dependencies;
         let persisted_config = crate::infrastructure::config::load_from_path(&config_path)
             .unwrap_or_else(|_| GroveConfig::default());
@@ -133,6 +140,7 @@ impl GroveApp {
             create_branch_filtered: Vec::new(),
             create_branch_index: 0,
             tmux_input,
+            daemon_socket_path,
             config_path,
             clipboard,
             last_tmux_error: None,

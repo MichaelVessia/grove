@@ -68,6 +68,12 @@ use crate::infrastructure::config::{
     GroveConfig, ProjectConfig, ProjectDefaults, WorkspaceAttentionAckConfig,
 };
 use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
+use crate::interface::daemon::{
+    DaemonAgentStartPayload, DaemonAgentStopPayload, DaemonWorkspaceCreatePayload,
+    DaemonWorkspaceDeletePayload, DaemonWorkspaceMergePayload, DaemonWorkspaceUpdatePayload,
+    agent_start_via_socket, agent_stop_via_socket, workspace_create_via_socket,
+    workspace_delete_via_socket, workspace_merge_via_socket, workspace_update_via_socket,
+};
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
 
@@ -280,6 +286,7 @@ struct GroveApp {
     create_branch_filtered: Vec<String>,
     create_branch_index: usize,
     tmux_input: Box<dyn TmuxInput>,
+    daemon_socket_path: Option<PathBuf>,
     config_path: PathBuf,
     clipboard: Box<dyn ClipboardAccess>,
     last_tmux_error: Option<String>,
@@ -352,6 +359,16 @@ impl Model for GroveApp {
 
     fn view(&self, frame: &mut Frame) {
         self.render_model(frame);
+    }
+}
+
+fn daemon_selector_parts(selector: &WorkspaceSelector) -> (Option<String>, Option<String>) {
+    match selector {
+        WorkspaceSelector::Name(name) => (Some(name.clone()), None),
+        WorkspaceSelector::Path(path) => (None, Some(path.display().to_string())),
+        WorkspaceSelector::NameAndPath { name, path } => {
+            (Some(name.clone()), Some(path.display().to_string()))
+        }
     }
 }
 

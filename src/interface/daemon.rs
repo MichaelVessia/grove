@@ -178,6 +178,8 @@ pub struct DaemonAgentStartPayload {
     pub pre_launch_command: Option<String>,
     pub skip_permissions: bool,
     pub dry_run: bool,
+    pub capture_cols: Option<u16>,
+    pub capture_rows: Option<u16>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -789,8 +791,8 @@ fn handle_agent_start_request(
         prompt: payload.prompt,
         pre_launch_command: payload.pre_launch_command,
         skip_permissions: payload.skip_permissions,
-        capture_cols: None,
-        capture_rows: None,
+        capture_cols: payload.capture_cols,
+        capture_rows: payload.capture_rows,
         dry_run: payload.dry_run,
     };
 

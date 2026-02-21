@@ -208,7 +208,8 @@ impl GroveApp {
         };
 
         if !self.tmux_input.supports_background_launch() {
-            let (result, warnings) = execute_workspace_update(request);
+            let (result, warnings) =
+                execute_workspace_update(request, self.daemon_socket_path.clone());
             self.apply_update_from_base_completion(UpdateWorkspaceFromBaseCompletion {
                 workspace_name,
                 workspace_path,
@@ -220,9 +221,10 @@ impl GroveApp {
             return;
         }
 
+        let daemon_socket_path = self.daemon_socket_path.clone();
         self.update_from_base_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let (result, warnings) = execute_workspace_update(request);
+            let (result, warnings) = execute_workspace_update(request, daemon_socket_path);
             Msg::UpdateWorkspaceFromBaseCompleted(UpdateWorkspaceFromBaseCompletion {
                 workspace_name,
                 workspace_path,
@@ -235,7 +237,25 @@ impl GroveApp {
     }
 }
 
-fn execute_workspace_update(request: WorkspaceUpdateRequest) -> (Result<(), String>, Vec<String>) {
+fn execute_workspace_update(
+    request: WorkspaceUpdateRequest,
+    daemon_socket_path: Option<PathBuf>,
+) -> (Result<(), String>, Vec<String>) {
+    if let Some(socket_path) = daemon_socket_path.as_deref() {
+        let (workspace, workspace_path) = daemon_selector_parts(&request.selector);
+        let payload = DaemonWorkspaceUpdatePayload {
+            repo_root: request.context.repo_root.display().to_string(),
+            workspace,
+            workspace_path,
+            dry_run: request.dry_run,
+        };
+        return match workspace_update_via_socket(socket_path, payload) {
+            Ok(Ok(response)) => (Ok(()), response.warnings),
+            Ok(Err(error)) => (Err(error.message), Vec::new()),
+            Err(error) => (Err(format!("daemon request failed: {error}")), Vec::new()),
+        };
+    }
+
     let service = InProcessLifecycleCommandService::new();
     match service.workspace_update(request) {
         Ok(response) => (Ok(()), response.warnings),

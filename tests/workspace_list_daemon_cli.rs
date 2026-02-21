@@ -68,7 +68,7 @@ fn socket_transport_rejects_unsupported_commands_for_now() {
     let output = Command::new(env!("CARGO_BIN_EXE_grove"))
         .arg("--socket")
         .arg("/tmp/non-existent-groved.sock")
-        .arg("tui")
+        .arg("bogus")
         .output()
         .expect("grove should run");
 

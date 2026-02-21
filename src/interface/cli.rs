@@ -1467,6 +1467,8 @@ fn run_agent_start(parsed: AgentStartArgs, daemon_socket: Option<&Path>) -> std:
                 pre_launch_command: parsed.pre_launch_command,
                 skip_permissions: parsed.skip_permissions,
                 dry_run: parsed.dry_run,
+                capture_cols: None,
+                capture_rows: None,
             },
         ) {
             Ok(Ok(result)) => {
@@ -1647,7 +1649,7 @@ fn daemon_workspace_status_is_running(status: &str) -> bool {
     matches!(status, "active" | "thinking" | "waiting")
 }
 
-fn run_tui(cli: TuiArgs) -> std::io::Result<()> {
+fn run_tui(cli: TuiArgs, daemon_socket_path: Option<&Path>) -> std::io::Result<()> {
     let app_start_ts = now_millis();
     let debug_record_path = if cli.debug_record {
         Some(debug_record_path(app_start_ts)?)
@@ -1665,10 +1667,17 @@ fn run_tui(cli: TuiArgs) -> std::io::Result<()> {
     if cli.debug_record
         && let Some(path) = event_log_path
     {
-        return crate::interface::tui::run_with_debug_record(path, app_start_ts);
+        return crate::interface::tui::run_with_debug_record(
+            path,
+            app_start_ts,
+            daemon_socket_path.map(Path::to_path_buf),
+        );
     }
 
-    crate::interface::tui::run_with_event_log(event_log_path)
+    crate::interface::tui::run_with_event_log(
+        event_log_path,
+        daemon_socket_path.map(Path::to_path_buf),
+    )
 }
 
 pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
@@ -1680,15 +1689,10 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
     let daemon_socket_path = daemon_socket.as_deref();
 
     if first == "tui" {
-        if daemon_socket_path.is_some() {
-            return emit_error(
-                "grove tui",
-                CliErrorCode::InvalidArgument,
-                "--socket is not supported for 'grove tui' yet".to_string(),
-                "Retry without '--socket' for TUI, or use '--socket' with 'grove workspace list'",
-            );
-        }
-        return run_tui(parse_tui_args(remaining.iter().cloned())?);
+        return run_tui(
+            parse_tui_args(remaining.iter().cloned())?,
+            daemon_socket_path,
+        );
     }
     if first == "workspace" {
         let Some((workspace_command, workspace_args)) = remaining.split_first() else {
@@ -1803,8 +1807,8 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         return emit_error(
             "grove",
             CliErrorCode::InvalidArgument,
-            "--socket currently supports lifecycle commands only".to_string(),
-            "Retry with 'grove --socket <path> workspace|agent ...' lifecycle commands",
+            "--socket currently supports lifecycle and tui commands only".to_string(),
+            "Retry with 'grove --socket <path> tui' or '--socket <path> workspace|agent ...'",
         );
     }
 

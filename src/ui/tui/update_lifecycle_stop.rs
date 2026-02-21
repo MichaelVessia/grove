@@ -28,6 +28,24 @@ impl GroveApp {
         };
 
         if !self.tmux_input.supports_background_launch() {
+            if let Some(daemon_socket_path) = self.daemon_socket_path.clone() {
+                let completion = execute_stop_agent(
+                    request,
+                    workspace_name,
+                    workspace_path,
+                    session_name,
+                    Some(daemon_socket_path),
+                );
+                if let Some(error) = completion.result.as_ref().err() {
+                    self.last_tmux_error = Some(error.clone());
+                    self.show_error_toast("agent stop failed");
+                    return;
+                }
+
+                self.apply_stop_agent_completion(completion);
+                return;
+            }
+
             let service = InProcessLifecycleCommandService::new();
             let completion = stop_agent_completion_from_service_result(
                 service.agent_stop_for_mode(
@@ -50,6 +68,7 @@ impl GroveApp {
             return;
         }
 
+        let daemon_socket_path = self.daemon_socket_path.clone();
         self.stop_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             Msg::StopAgentCompleted(execute_stop_agent(
@@ -57,6 +76,7 @@ impl GroveApp {
                 workspace_name,
                 workspace_path,
                 session_name,
+                daemon_socket_path,
             ))
         }));
     }
@@ -125,7 +145,24 @@ fn execute_stop_agent(
     fallback_workspace_name: String,
     fallback_workspace_path: PathBuf,
     fallback_session_name: String,
+    daemon_socket_path: Option<PathBuf>,
 ) -> StopAgentCompletion {
+    if let Some(socket_path) = daemon_socket_path.as_deref() {
+        let (workspace, workspace_path) = daemon_selector_parts(&request.selector);
+        let payload = DaemonAgentStopPayload {
+            repo_root: request.context.repo_root.display().to_string(),
+            workspace,
+            workspace_path,
+            dry_run: request.dry_run,
+        };
+        return stop_agent_completion_from_daemon_result(
+            agent_stop_via_socket(socket_path, payload),
+            fallback_workspace_name,
+            fallback_workspace_path,
+            fallback_session_name,
+        );
+    }
+
     let service = InProcessLifecycleCommandService::new();
     stop_agent_completion_from_service_result(
         service.agent_stop(request),
@@ -153,6 +190,39 @@ fn stop_agent_completion_from_service_result(
             workspace_path: fallback_workspace_path,
             session_name: fallback_session_name,
             result: Err(error.message),
+        },
+    }
+}
+
+fn stop_agent_completion_from_daemon_result(
+    result: std::io::Result<
+        Result<
+            crate::interface::daemon::DaemonWorkspaceMutationResult,
+            crate::interface::daemon::DaemonCommandError,
+        >,
+    >,
+    fallback_workspace_name: String,
+    fallback_workspace_path: PathBuf,
+    fallback_session_name: String,
+) -> StopAgentCompletion {
+    match result {
+        Ok(Ok(response)) => StopAgentCompletion {
+            workspace_name: response.workspace.name,
+            workspace_path: PathBuf::from(response.workspace.path),
+            session_name: fallback_session_name,
+            result: Ok(()),
+        },
+        Ok(Err(error)) => StopAgentCompletion {
+            workspace_name: fallback_workspace_name,
+            workspace_path: fallback_workspace_path,
+            session_name: fallback_session_name,
+            result: Err(error.message),
+        },
+        Err(error) => StopAgentCompletion {
+            workspace_name: fallback_workspace_name,
+            workspace_path: fallback_workspace_path,
+            session_name: fallback_session_name,
+            result: Err(format!("daemon request failed: {error}")),
         },
     }
 }
