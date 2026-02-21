@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::application::agent_runtime::{OutputDigest, evaluate_capture_change};
+use crate::application::agent_runtime::{CaptureChange, OutputDigest, evaluate_capture_change};
 
 const CAPTURE_RING_CAPACITY: usize = 10;
 
@@ -88,6 +88,57 @@ impl PreviewState {
             cleaned_output: change.cleaned_output,
             digest: return_digest,
         }
+    }
+
+    pub fn apply_precomputed_capture(
+        &mut self,
+        raw_output: String,
+        change: CaptureChange,
+    ) -> CaptureUpdate {
+        let return_digest = change.digest.clone();
+
+        let record = CaptureRecord {
+            ts: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::ZERO)
+                .as_millis()
+                .try_into()
+                .unwrap_or(u64::MAX),
+            raw_output,
+            cleaned_output: change.cleaned_output.clone(),
+            render_output: change.render_output.clone(),
+            digest: change.digest.clone(),
+            changed_raw: change.changed_raw,
+            changed_cleaned: change.changed_cleaned,
+        };
+        if self.recent_captures.len() >= CAPTURE_RING_CAPACITY {
+            self.recent_captures.pop_front();
+        }
+        self.recent_captures.push_back(record);
+
+        self.last_digest = Some(change.digest);
+
+        if change.changed_cleaned {
+            self.lines = split_output_lines(&change.cleaned_output);
+            self.offset = self.offset.min(self.lines.len());
+            if self.auto_scroll {
+                self.offset = 0;
+            }
+        }
+        if change.changed_raw {
+            self.render_lines = split_output_lines(&change.render_output);
+        }
+
+        CaptureUpdate {
+            changed_raw: change.changed_raw,
+            changed_cleaned: change.changed_cleaned,
+            cleaned_output: change.cleaned_output,
+            digest: return_digest,
+        }
+    }
+
+    pub fn last_digest(&self) -> Option<&OutputDigest> {
+        self.last_digest.as_ref()
     }
 
     fn max_scroll_offset_for(total_lines: usize, height: usize) -> usize {

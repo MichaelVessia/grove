@@ -7,12 +7,15 @@ impl GroveApp {
         include_escape_sequences: bool,
         capture_ms: u64,
         base_total_ms: u64,
-        result: Result<String, String>,
+        result: Result<LivePreviewCaptureOutput, String>,
     ) {
         match result {
             Ok(output) => {
                 let apply_started_at = Instant::now();
-                let update = self.preview.apply_capture(&output);
+                let raw_len = output.raw_output.len();
+                let update = self
+                    .preview
+                    .apply_precomputed_capture(output.raw_output, output.change);
                 let apply_capture_ms = Self::duration_millis(
                     Instant::now().saturating_duration_since(apply_started_at),
                 );
@@ -71,7 +74,7 @@ impl GroveApp {
                             "total_ms",
                             Value::from(base_total_ms.saturating_add(apply_capture_ms)),
                         )
-                        .with_data("output_bytes", Value::from(usize_to_u64(output.len())))
+                        .with_data("output_bytes", Value::from(usize_to_u64(raw_len)))
                         .with_data("changed", Value::from(update.changed_cleaned))
                         .with_data(
                             "include_escape_sequences",

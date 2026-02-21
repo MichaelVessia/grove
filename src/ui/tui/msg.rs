@@ -1,5 +1,5 @@
 use super::*;
-use crate::application::agent_runtime::{OutputDigest, SessionExecutionResult};
+use crate::application::agent_runtime::{CaptureChange, OutputDigest, SessionExecutionResult};
 use crate::domain::WorkspaceStatus;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,7 +38,13 @@ pub(super) struct LivePreviewCapture {
     pub(super) include_escape_sequences: bool,
     pub(super) capture_ms: u64,
     pub(super) total_ms: u64,
-    pub(super) result: Result<String, String>,
+    pub(super) result: Result<LivePreviewCaptureOutput, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct LivePreviewCaptureOutput {
+    pub(super) raw_output: String,
+    pub(super) change: CaptureChange,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

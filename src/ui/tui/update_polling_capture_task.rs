@@ -11,8 +11,9 @@ impl GroveApp {
         );
 
         if let Some(live_preview_target) = live_preview {
+            let previous_digest = self.preview.last_digest().cloned();
             let capture_started_at = Instant::now();
-            let result = if let Some(socket_path) = &live_preview_target.daemon_socket_path {
+            let raw_result = if let Some(socket_path) = &live_preview_target.daemon_socket_path {
                 let payload = DaemonSessionCapturePayload {
                     session_name: live_preview_target.session_name.clone(),
                     scrollback_lines: 600,
@@ -34,6 +35,13 @@ impl GroveApp {
             };
             let capture_ms =
                 Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
+            let result = match raw_result {
+                Ok(raw_output) => {
+                    let change = evaluate_capture_change(previous_digest.as_ref(), &raw_output);
+                    Ok(LivePreviewCaptureOutput { raw_output, change })
+                }
+                Err(e) => Err(e),
+            };
             self.apply_live_preview_capture(
                 &live_preview_target.session_name,
                 live_preview_target.include_escape_sequences,
@@ -96,6 +104,7 @@ impl GroveApp {
         &self,
         generation: u64,
         live_preview: Option<LivePreviewTarget>,
+        previous_live_digest: Option<OutputDigest>,
         cursor_session: Option<String>,
         cursor_daemon_socket_path: Option<PathBuf>,
         status_poll_targets: Vec<WorkspaceStatusTarget>,
@@ -103,7 +112,7 @@ impl GroveApp {
         Cmd::task(move || {
             let live_capture = live_preview.map(|target| {
                 let capture_started_at = Instant::now();
-                let result = if let Some(socket_path) = &target.daemon_socket_path {
+                let raw_result = if let Some(socket_path) = &target.daemon_socket_path {
                     let payload = DaemonSessionCapturePayload {
                         session_name: target.session_name.clone(),
                         scrollback_lines: 600,
@@ -125,6 +134,14 @@ impl GroveApp {
                 let capture_ms = GroveApp::duration_millis(
                     Instant::now().saturating_duration_since(capture_started_at),
                 );
+                let result = match raw_result {
+                    Ok(raw_output) => {
+                        let change =
+                            evaluate_capture_change(previous_live_digest.as_ref(), &raw_output);
+                        Ok(LivePreviewCaptureOutput { raw_output, change })
+                    }
+                    Err(e) => Err(e),
+                };
                 LivePreviewCapture {
                     session: target.session_name,
                     include_escape_sequences: target.include_escape_sequences,

@@ -13,18 +13,18 @@ use super::{
     CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
     DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
     HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
-    LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField,
-    MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS, PendingAutoStartWorkspace,
-    PendingResizeVerification, PreviewPollCompletion, PreviewTab, ProjectAddDialogField,
-    ProjectDefaultsDialogField, RefreshWorkspacesCompletion, RemoteConnectionState,
-    SettingsDialogField, StartAgentCompletion, StartAgentConfigField, StartAgentConfigState,
-    StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput, UiCommand,
-    UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
+    LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, LivePreviewCaptureOutput,
+    MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
+    PendingAutoStartWorkspace, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
+    ProjectAddDialogField, ProjectDefaultsDialogField, RefreshWorkspacesCompletion,
+    RemoteConnectionState, SettingsDialogField, StartAgentCompletion, StartAgentConfigField,
+    StartAgentConfigState, StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput,
+    UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
     WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceStatusCaptureOutput,
     ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata, ui_theme, usize_to_u64,
 };
 use crate::application::agent_runtime::{
-    SessionActivity, detect_status_with_session_override, evaluate_capture_change,
+    OutputDigest, SessionActivity, detect_status_with_session_override, evaluate_capture_change,
     workspace_status_targets_for_polling_with_live_preview,
 };
 use crate::application::interactive::InteractiveState;
@@ -79,6 +79,21 @@ fn workspace_status_capture_output(
         cleaned_output: change.cleaned_output,
         digest: change.digest,
         resolved_status,
+    }
+}
+
+fn live_preview_capture_output(raw_output: &str) -> LivePreviewCaptureOutput {
+    live_preview_capture_output_with(raw_output, None)
+}
+
+fn live_preview_capture_output_with(
+    raw_output: &str,
+    previous_digest: Option<&OutputDigest>,
+) -> LivePreviewCaptureOutput {
+    let change = evaluate_capture_change(previous_digest, raw_output);
+    LivePreviewCaptureOutput {
+        raw_output: raw_output.to_owned(),
+        change,
     }
 }
 

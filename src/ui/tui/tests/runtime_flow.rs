@@ -223,7 +223,7 @@ fn switching_workspace_drops_in_flight_capture_for_previous_session() {
                 include_escape_sequences: false,
                 capture_ms: 1,
                 total_ms: 1,
-                result: Ok("stale-output\n".to_string()),
+                result: Ok(live_preview_capture_output("stale-output\n")),
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
@@ -250,7 +250,7 @@ fn switching_workspace_drops_in_flight_capture_for_previous_session() {
                 include_escape_sequences: false,
                 capture_ms: 1,
                 total_ms: 1,
-                result: Ok("fresh-main-output\n".to_string()),
+                result: Ok(live_preview_capture_output("fresh-main-output\n")),
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
@@ -326,7 +326,7 @@ fn stale_preview_poll_result_is_dropped_by_generation() {
                 include_escape_sequences: false,
                 capture_ms: 1,
                 total_ms: 1,
-                result: Ok("stale-output\n".to_string()),
+                result: Ok(live_preview_capture_output("stale-output\n")),
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
@@ -348,7 +348,7 @@ fn stale_preview_poll_result_is_dropped_by_generation() {
                 include_escape_sequences: false,
                 capture_ms: 1,
                 total_ms: 1,
-                result: Ok("fresh-output\n".to_string()),
+                result: Ok(live_preview_capture_output("fresh-output\n")),
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
@@ -371,7 +371,9 @@ fn preview_poll_uses_cleaned_change_for_status_lane() {
                 include_escape_sequences: true,
                 capture_ms: 1,
                 total_ms: 1,
-                result: Ok("hello\u{1b}[?1000h\u{1b}[<35;192;47M".to_string()),
+                result: Ok(live_preview_capture_output(
+                    "hello\u{1b}[?1000h\u{1b}[<35;192;47M",
+                )),
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
@@ -379,6 +381,7 @@ fn preview_poll_uses_cleaned_change_for_status_lane() {
     );
     assert!(app.output_changing);
 
+    let prev_digest = app.preview.last_digest().cloned();
     ftui::Model::update(
         &mut app,
         Msg::PreviewPollCompleted(PreviewPollCompletion {
@@ -388,7 +391,10 @@ fn preview_poll_uses_cleaned_change_for_status_lane() {
                 include_escape_sequences: true,
                 capture_ms: 1,
                 total_ms: 1,
-                result: Ok("hello\u{1b}[?1000l".to_string()),
+                result: Ok(live_preview_capture_output_with(
+                    "hello\u{1b}[?1000l",
+                    prev_digest.as_ref(),
+                )),
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
@@ -422,7 +428,7 @@ fn preview_poll_waiting_prompt_sets_waiting_status() {
                 include_escape_sequences: true,
                 capture_ms: 1,
                 total_ms: 1,
-                result: Ok("Approve command? [y/n]".to_string()),
+                result: Ok(live_preview_capture_output("Approve command? [y/n]")),
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
@@ -458,7 +464,9 @@ fn preview_poll_ignores_done_pattern_embedded_in_control_sequence() {
                 include_escape_sequences: true,
                 capture_ms: 1,
                 total_ms: 1,
-                result: Ok("still working\n\u{1b}]0;task completed\u{7}\n".to_string()),
+                result: Ok(live_preview_capture_output(
+                    "still working\n\u{1b}]0;task completed\u{7}\n",
+                )),
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
@@ -602,7 +610,7 @@ fn entering_interactive_clears_attention_for_selected_workspace() {
                 include_escape_sequences: true,
                 capture_ms: 1,
                 total_ms: 1,
-                result: Ok("Approve command? [y/n]".to_string()),
+                result: Ok(live_preview_capture_output("Approve command? [y/n]")),
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),

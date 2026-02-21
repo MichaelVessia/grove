@@ -66,12 +66,18 @@ impl GroveApp {
             return;
         }
 
+        let previous_live_digest = if live_preview.is_some() {
+            self.preview.last_digest().cloned()
+        } else {
+            None
+        };
         self.poll_generation = self.poll_generation.saturating_add(1);
         self.preview_poll_in_flight = true;
         self.preview_poll_requested = false;
         self.queue_cmd(self.schedule_async_preview_poll(
             self.poll_generation,
             live_preview,
+            previous_live_digest,
             cursor_session,
             cursor_daemon_socket_path,
             status_poll_targets,
@@ -109,11 +115,17 @@ impl GroveApp {
             return;
         }
 
+        let previous_live_digest = if live_preview.is_some() {
+            self.preview.last_digest().cloned()
+        } else {
+            None
+        };
         self.poll_generation = self.poll_generation.saturating_add(1);
         self.preview_poll_requested = false;
         self.queue_cmd(self.schedule_async_preview_poll(
             self.poll_generation,
             live_preview,
+            previous_live_digest,
             cursor_session,
             cursor_daemon_socket_path,
             status_poll_targets,
