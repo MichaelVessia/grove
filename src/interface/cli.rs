@@ -14,8 +14,9 @@ use crate::infrastructure::event_log::{FileEventLogger, now_millis};
 use crate::interface::cli_contract::{CommandEnvelope, ErrorDetail, NextAction};
 use crate::interface::cli_errors::{CliErrorCode, classify_error_message};
 use crate::interface::daemon::{
-    DaemonCommandError, DaemonWorkspaceCreatePayload, DaemonWorkspaceView,
-    workspace_create_via_socket, workspace_list_via_socket,
+    DaemonCommandError, DaemonWorkspaceCreatePayload, DaemonWorkspaceEditPayload,
+    DaemonWorkspaceView, workspace_create_via_socket, workspace_edit_via_socket,
+    workspace_list_via_socket,
 };
 use crate::interface::next_actions::{
     NextActionsBuilder, after_agent_stop, after_workspace_create, after_workspace_merge,
@@ -1058,8 +1059,13 @@ fn run_workspace_create(
     }
 }
 
-fn run_workspace_edit(parsed: WorkspaceEditArgs) -> std::io::Result<()> {
+fn run_workspace_edit(
+    parsed: WorkspaceEditArgs,
+    daemon_socket: Option<&Path>,
+) -> std::io::Result<()> {
     let command = "grove workspace edit";
+    let workspace_name = parsed.workspace.clone();
+    let workspace_path = parsed.workspace_path.clone();
     let selector = match workspace_selector(parsed.workspace, parsed.workspace_path) {
         Ok(selector) => selector,
         Err(error) => {
@@ -1076,6 +1082,45 @@ fn run_workspace_edit(parsed: WorkspaceEditArgs) -> std::io::Result<()> {
     } else {
         std::env::current_dir()?
     };
+    if let Some(socket_path) = daemon_socket {
+        return match workspace_edit_via_socket(
+            socket_path,
+            DaemonWorkspaceEditPayload {
+                repo_root: repo_root.display().to_string(),
+                workspace: workspace_name,
+                workspace_path: workspace_path.map(|path| path.display().to_string()),
+                agent: parsed.agent.map(|agent| agent_label(agent).to_string()),
+                base_branch: parsed.base_branch,
+            },
+        ) {
+            Ok(Ok(result)) => {
+                let workspace_name = result.workspace.name.clone();
+                let payload = WorkspaceMutationResult {
+                    workspace: workspace_view_from_daemon(result.workspace),
+                    dry_run: false,
+                };
+                emit_json(&CommandEnvelope::success(
+                    command,
+                    payload,
+                    result.warnings,
+                    workspace_edit_next_actions(&workspace_name),
+                ))
+            }
+            Ok(Err(error)) => emit_error(
+                command,
+                daemon_command_error_to_cli_code(&error),
+                error.message,
+                "Adjust selector and edit flags, then retry",
+            ),
+            Err(error) => emit_error(
+                command,
+                CliErrorCode::IoError,
+                format!("daemon request failed: {error}"),
+                "Verify daemon socket path and daemon availability, then retry",
+            ),
+        };
+    }
+
     let request = WorkspaceEditRequest {
         context: RepoContext {
             repo_root: repo_root.clone(),
@@ -1458,18 +1503,18 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
                 ),
             };
         }
-        if daemon_socket_path.is_some() {
+        if daemon_socket_path.is_some() && workspace_command != "edit" {
             return emit_error(
                 "grove workspace",
                 CliErrorCode::InvalidArgument,
-                "--socket currently supports only 'grove workspace list' and 'grove workspace create'"
+                "--socket currently supports only 'grove workspace list', 'grove workspace create', and 'grove workspace edit'"
                     .to_string(),
-                "Retry with 'grove --socket <path> workspace list [--repo <path>]' or 'grove --socket <path> workspace create ...'",
+                "Retry with 'grove --socket <path> workspace list [--repo <path>]', 'grove --socket <path> workspace create ...', or 'grove --socket <path> workspace edit ...'",
             );
         }
         if workspace_command == "edit" {
             return match parse_workspace_edit_args(workspace_args.iter().cloned()) {
-                Ok(parsed) => run_workspace_edit(parsed),
+                Ok(parsed) => run_workspace_edit(parsed, daemon_socket_path),
                 Err(error) => emit_error(
                     "grove workspace edit",
                     CliErrorCode::InvalidArgument,
@@ -1517,8 +1562,8 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
             return emit_error(
                 "grove agent",
                 CliErrorCode::InvalidArgument,
-                "--socket currently supports only workspace list/create for now".to_string(),
-                "Retry with 'grove --socket <path> workspace list [--repo <path>]' or 'grove --socket <path> workspace create ...'",
+                "--socket currently supports only workspace list/create/edit for now".to_string(),
+                "Retry with 'grove --socket <path> workspace list [--repo <path>]', 'grove --socket <path> workspace create ...', or 'grove --socket <path> workspace edit ...'",
             );
         }
         let Some((agent_command, agent_args)) = remaining.split_first() else {
@@ -1557,8 +1602,8 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         return emit_error(
             "grove",
             CliErrorCode::InvalidArgument,
-            "--socket currently supports only workspace list/create for now".to_string(),
-            "Retry with 'grove --socket <path> workspace list [--repo <path>]' or 'grove --socket <path> workspace create ...'",
+            "--socket currently supports only workspace list/create/edit for now".to_string(),
+            "Retry with 'grove --socket <path> workspace list [--repo <path>]', 'grove --socket <path> workspace create ...', or 'grove --socket <path> workspace edit ...'",
         );
     }
 

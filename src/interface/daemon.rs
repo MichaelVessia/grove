@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::application::commands::{
     ErrorCode as CommandErrorCode, InProcessLifecycleCommandService, LifecycleCommandService,
-    RepoContext, WorkspaceCreateRequest, WorkspaceListRequest,
+    RepoContext, WorkspaceCreateRequest, WorkspaceEditRequest, WorkspaceListRequest,
+    WorkspaceSelector,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
@@ -31,6 +32,9 @@ pub enum DaemonRequest {
     WorkspaceCreate {
         payload: DaemonWorkspaceCreatePayload,
     },
+    WorkspaceEdit {
+        payload: DaemonWorkspaceEditPayload,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +53,12 @@ pub enum DaemonResponse {
         result: DaemonWorkspaceMutationResult,
     },
     WorkspaceCreateErr {
+        error: DaemonCommandError,
+    },
+    WorkspaceEditOk {
+        result: DaemonWorkspaceMutationResult,
+    },
+    WorkspaceEditErr {
         error: DaemonCommandError,
     },
 }
@@ -74,6 +84,15 @@ pub struct DaemonWorkspaceCreatePayload {
     pub agent: Option<String>,
     pub start: bool,
     pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonWorkspaceEditPayload {
+    pub repo_root: String,
+    pub workspace: Option<String>,
+    pub workspace_path: Option<String>,
+    pub agent: Option<String>,
+    pub base_branch: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -147,7 +166,9 @@ pub fn workspace_list_via_socket(
         DaemonResponse::WorkspaceListErr { error } => Ok(Err(error)),
         DaemonResponse::Pong { .. }
         | DaemonResponse::WorkspaceCreateOk { .. }
-        | DaemonResponse::WorkspaceCreateErr { .. } => Err(std::io::Error::new(
+        | DaemonResponse::WorkspaceCreateErr { .. }
+        | DaemonResponse::WorkspaceEditOk { .. }
+        | DaemonResponse::WorkspaceEditErr { .. } => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "unexpected daemon response for workspace list",
         )),
@@ -166,9 +187,32 @@ pub fn workspace_create_via_socket(
         DaemonResponse::WorkspaceCreateErr { error } => Ok(Err(error)),
         DaemonResponse::Pong { .. }
         | DaemonResponse::WorkspaceListOk { .. }
-        | DaemonResponse::WorkspaceListErr { .. } => Err(std::io::Error::new(
+        | DaemonResponse::WorkspaceListErr { .. }
+        | DaemonResponse::WorkspaceEditOk { .. }
+        | DaemonResponse::WorkspaceEditErr { .. } => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "unexpected daemon response for workspace create",
+        )),
+    }
+}
+
+pub fn workspace_edit_via_socket(
+    socket_path: &Path,
+    payload: DaemonWorkspaceEditPayload,
+) -> std::io::Result<Result<DaemonWorkspaceMutationResult, DaemonCommandError>> {
+    let request = DaemonRequest::WorkspaceEdit { payload };
+    let response = send_request(socket_path, &request)?;
+
+    match response {
+        DaemonResponse::WorkspaceEditOk { result } => Ok(Ok(result)),
+        DaemonResponse::WorkspaceEditErr { error } => Ok(Err(error)),
+        DaemonResponse::Pong { .. }
+        | DaemonResponse::WorkspaceListOk { .. }
+        | DaemonResponse::WorkspaceListErr { .. }
+        | DaemonResponse::WorkspaceCreateOk { .. }
+        | DaemonResponse::WorkspaceCreateErr { .. } => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for workspace edit",
         )),
     }
 }
@@ -330,6 +374,7 @@ fn handle_connection(
         DaemonRequest::WorkspaceCreate { payload } => {
             handle_workspace_create_request(service, payload)
         }
+        DaemonRequest::WorkspaceEdit { payload } => handle_workspace_edit_request(service, payload),
     };
 
     let payload = serde_json::to_string(&response)
@@ -403,6 +448,46 @@ fn handle_workspace_create_request(
     }
 }
 
+fn handle_workspace_edit_request(
+    service: &impl LifecycleCommandService,
+    payload: DaemonWorkspaceEditPayload,
+) -> DaemonResponse {
+    let parsed_agent = match parse_agent_from_request(payload.agent) {
+        Ok(agent) => agent,
+        Err(error) => {
+            return DaemonResponse::WorkspaceEditErr { error };
+        }
+    };
+    let selector =
+        match parse_workspace_selector_from_request(payload.workspace, payload.workspace_path) {
+            Ok(selector) => selector,
+            Err(error) => {
+                return DaemonResponse::WorkspaceEditErr { error };
+            }
+        };
+
+    let request = WorkspaceEditRequest {
+        context: RepoContext {
+            repo_root: PathBuf::from(payload.repo_root),
+        },
+        selector,
+        agent: parsed_agent,
+        base_branch: payload.base_branch,
+    };
+
+    match service.workspace_edit(request) {
+        Ok(response) => DaemonResponse::WorkspaceEditOk {
+            result: DaemonWorkspaceMutationResult {
+                workspace: DaemonWorkspaceView::from_workspace(response.workspace),
+                warnings: response.warnings,
+            },
+        },
+        Err(error) => DaemonResponse::WorkspaceEditErr {
+            error: DaemonCommandError::from_command_error(error.code, error.message),
+        },
+    }
+}
+
 fn parse_agent_from_request(
     agent: Option<String>,
 ) -> Result<Option<AgentType>, DaemonCommandError> {
@@ -419,6 +504,24 @@ fn parse_agent_from_request(
                 }),
             }
         }
+    }
+}
+
+fn parse_workspace_selector_from_request(
+    workspace_name: Option<String>,
+    workspace_path: Option<String>,
+) -> Result<WorkspaceSelector, DaemonCommandError> {
+    match (workspace_name, workspace_path) {
+        (Some(name), Some(path)) => Ok(WorkspaceSelector::NameAndPath {
+            name,
+            path: PathBuf::from(path),
+        }),
+        (Some(name), None) => Ok(WorkspaceSelector::Name(name)),
+        (None, Some(path)) => Ok(WorkspaceSelector::Path(PathBuf::from(path))),
+        (None, None) => Err(DaemonCommandError {
+            code: command_error_code_label(CommandErrorCode::InvalidArgument).to_string(),
+            message: "workspace selector is required (--workspace or --workspace-path)".to_string(),
+        }),
     }
 }
 
