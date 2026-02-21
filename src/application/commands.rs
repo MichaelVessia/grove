@@ -1,9 +1,11 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::application::agent_runtime::{
     CommandExecutionMode, execute_launch_request_with_result_for_mode,
     execute_stop_workspace_with_result_for_mode, launch_request_for_workspace,
-    tmux_capture_error_indicates_missing_session, tmux_launch_error_indicates_duplicate_session,
+    reconcile_with_sessions, tmux_capture_error_indicates_missing_session,
+    tmux_launch_error_indicates_duplicate_session,
 };
 use crate::application::workspace_lifecycle::{
     self, BranchMode, CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner,
@@ -11,7 +13,9 @@ use crate::application::workspace_lifecycle::{
     workspace_lifecycle_error_message, write_workspace_agent_marker, write_workspace_base_marker,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
-use crate::infrastructure::adapters::{CommandGitAdapter, GitAdapter, GitAdapterError};
+use crate::infrastructure::adapters::{
+    CommandGitAdapter, CommandMultiplexerAdapter, GitAdapter, GitAdapterError, MultiplexerAdapter,
+};
 use crate::infrastructure::paths::refer_to_same_location;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -351,7 +355,11 @@ impl LifecycleCommandService for InProcessLifecycleCommandService {
         request: WorkspaceListRequest,
     ) -> CommandResult<WorkspaceListResponse> {
         let workspaces = self.list_workspaces_in_repo(&request.context.repo_root)?;
-        Ok(WorkspaceListResponse { workspaces })
+        let running_sessions = CommandMultiplexerAdapter.running_sessions();
+        let reconciled = reconcile_with_sessions(&workspaces, &running_sessions, &HashSet::new());
+        Ok(WorkspaceListResponse {
+            workspaces: reconciled.workspaces,
+        })
     }
 
     fn workspace_create(
