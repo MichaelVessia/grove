@@ -155,6 +155,7 @@ mod tests {
         let project = ProjectConfig {
             name: "grove".to_string(),
             path: PathBuf::from("/repos/grove"),
+            target: crate::infrastructure::config::ProjectTarget::Local,
             defaults: Default::default(),
         };
         let workspace = DaemonWorkspaceView {

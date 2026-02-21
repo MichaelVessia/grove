@@ -28,6 +28,7 @@ Primary success criterion:
 - Phase 4 progress: `grove tui --socket <path>` is now accepted, and TUI lifecycle mutations route through daemon transport (`workspace create/delete/merge/update`, `agent start/stop`).
 - Phase 4 progress: in socket mode, TUI startup + refresh inventory loading now routes through daemon `workspace list`.
 - Phase 4 progress: in socket mode, TUI `workspace edit` now routes through daemon transport.
+- Phase 4.5 progress: project config now includes explicit target (`local` or `remote:<profile>`), and project list chrome displays target badges (`L`, `R:<profile>`).
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
@@ -530,7 +531,7 @@ Remote mapping (Phase 4.5+):
 - [x] 7a. Add periodic 2s TUI inventory refresh scheduling.
 - [x] 7b. Add integration proof that external CLI mutation reflects in TUI refresh cycle.
 - [x] 8. Add daemon binary + socket adapter.
-- [ ] 9. Add mixed local/remote project target model + indicator UI.
+- [x] 9. Add mixed local/remote project target model + indicator UI.
 - [ ] 10. Add remote profiles + connect/disconnect/test flows in settings.
 - [ ] 11. Add reconnect handling and backend isolation tests.
 - [ ] 12. Add remote operational docs (SSH and systemd user service).

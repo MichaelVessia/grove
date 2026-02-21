@@ -1,4 +1,6 @@
-use super::{GroveConfig, ProjectConfig, ProjectDefaults, load_from_path, save_to_path};
+use super::{
+    GroveConfig, ProjectConfig, ProjectDefaults, ProjectTarget, load_from_path, save_to_path,
+};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -34,6 +36,7 @@ fn save_and_load_round_trip() {
         projects: vec![ProjectConfig {
             name: "grove".to_string(),
             path: PathBuf::from("/repos/grove"),
+            target: ProjectTarget::Local,
             defaults: ProjectDefaults {
                 base_branch: "develop".to_string(),
                 setup_commands: vec![
@@ -78,6 +81,7 @@ fn load_project_without_defaults_uses_project_defaults_fallback() {
     assert_eq!(loaded.projects.len(), 1);
     assert_eq!(loaded.sidebar_width_pct, 33);
     assert_eq!(loaded.attention_acks, Vec::new());
+    assert_eq!(loaded.projects[0].target, ProjectTarget::Local);
     assert_eq!(loaded.projects[0].defaults.base_branch, "");
     assert_eq!(
         loaded.projects[0].defaults.setup_commands,

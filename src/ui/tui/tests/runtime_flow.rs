@@ -902,6 +902,7 @@ fn project_dialog_tab_and_shift_tab_navigate_selection() {
     app.projects.push(ProjectConfig {
         name: "site".to_string(),
         path: PathBuf::from("/repos/site"),
+        target: crate::infrastructure::config::ProjectTarget::Local,
         defaults: Default::default(),
     });
 
@@ -943,6 +944,7 @@ fn project_dialog_ctrl_n_and_ctrl_p_match_tab_navigation() {
     app.projects.push(ProjectConfig {
         name: "site".to_string(),
         path: PathBuf::from("/repos/site"),
+        target: crate::infrastructure::config::ProjectTarget::Local,
         defaults: Default::default(),
     });
 
@@ -1039,6 +1041,7 @@ fn project_dialog_ctrl_x_removes_selected_project() {
     app.projects.push(ProjectConfig {
         name: "site".to_string(),
         path: PathBuf::from("/repos/site"),
+        target: crate::infrastructure::config::ProjectTarget::Local,
         defaults: Default::default(),
     });
 
@@ -1073,6 +1076,7 @@ fn project_dialog_ctrl_x_queues_background_project_delete() {
     app.projects.push(ProjectConfig {
         name: "site".to_string(),
         path: PathBuf::from("/repos/site"),
+        target: crate::infrastructure::config::ProjectTarget::Local,
         defaults: Default::default(),
     });
 
@@ -1104,6 +1108,7 @@ fn project_delete_completion_clears_in_flight_and_applies_projects() {
     let kept = ProjectConfig {
         name: "grove".to_string(),
         path: PathBuf::from("/repos/grove"),
+        target: crate::infrastructure::config::ProjectTarget::Local,
         defaults: Default::default(),
     };
 

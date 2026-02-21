@@ -59,7 +59,7 @@ impl GroveApp {
                     break;
                 }
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                    format!("▾ {}", project.name),
+                    format!("▾ [{}] {}", project.target.badge_label(), project.name),
                     Style::new().fg(theme.overlay0).bold(),
                 )]));
 

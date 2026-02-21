@@ -61,6 +61,7 @@ impl GroveApp {
             projects.push(ProjectConfig {
                 name: project_name,
                 path: project_path.clone(),
+                target: crate::infrastructure::config::ProjectTarget::Local,
                 defaults: Default::default(),
             });
         }

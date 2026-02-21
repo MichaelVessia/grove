@@ -38,7 +38,28 @@ pub struct ProjectConfig {
     pub name: String,
     pub path: PathBuf,
     #[serde(default)]
+    pub target: ProjectTarget,
+    #[serde(default)]
     pub defaults: ProjectDefaults,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectTarget {
+    #[default]
+    Local,
+    Remote {
+        profile: String,
+    },
+}
+
+impl ProjectTarget {
+    pub fn badge_label(&self) -> String {
+        match self {
+            Self::Local => "L".to_string(),
+            Self::Remote { profile } => format!("R:{profile}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -75,7 +75,7 @@ impl GroveApp {
             let project_label = self
                 .projects
                 .get(defaults_dialog.project_index)
-                .map(|project| project.name.clone())
+                .map(|project| format!("[{}] {}", project.target.badge_label(), project.name))
                 .unwrap_or_else(|| "(missing project)".to_string());
             let project_path = self
                 .projects
@@ -204,7 +204,11 @@ impl GroveApp {
                     Style::new().fg(theme.text)
                 };
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                    format!("{marker} {}", project.name),
+                    format!(
+                        "{marker} [{}] {}",
+                        project.target.badge_label(),
+                        project.name
+                    ),
                     name_style,
                 )]));
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(

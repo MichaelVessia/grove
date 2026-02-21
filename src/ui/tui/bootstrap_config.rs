@@ -62,6 +62,7 @@ fn ensure_current_repo_project(config: &mut GroveConfig, config_path: &Path) -> 
     config.projects.push(ProjectConfig {
         name: project_display_name(&repo_root),
         path: repo_root,
+        target: crate::infrastructure::config::ProjectTarget::Local,
         defaults: Default::default(),
     });
     crate::infrastructure::config::save_to_path(config_path, config).err()

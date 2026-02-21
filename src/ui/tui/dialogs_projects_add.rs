@@ -192,6 +192,7 @@ impl GroveApp {
         self.projects.push(ProjectConfig {
             name: project_name.clone(),
             path: repo_root.clone(),
+            target: crate::infrastructure::config::ProjectTarget::Local,
             defaults: Default::default(),
         });
         if let Err(error) = self.save_projects_config() {

@@ -311,6 +311,7 @@ fn fixture_projects() -> Vec<ProjectConfig> {
     vec![ProjectConfig {
         name: "grove".to_string(),
         path: PathBuf::from("/repos/grove"),
+        target: crate::infrastructure::config::ProjectTarget::Local,
         defaults: Default::default(),
     }]
 }
@@ -703,8 +704,22 @@ fn sidebar_shows_workspace_names() {
     let x_end = layout.sidebar.right().saturating_sub(1);
 
     with_rendered_frame(&app, 160, 24, |frame| {
+        assert!(find_row_containing(frame, "[L] grove", x_start, x_end).is_some());
         assert!(find_row_containing(frame, "grove", x_start, x_end).is_some());
         assert!(find_row_containing(frame, "feature-a", x_start, x_end).is_some());
+    });
+}
+
+#[test]
+fn projects_dialog_shows_target_badges() {
+    let mut app = fixture_app();
+    let _ = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+    );
+
+    with_rendered_frame(&app, 160, 24, |frame| {
+        assert!(find_row_containing(frame, "[L] grove", 0, frame.width()).is_some());
     });
 }
 
