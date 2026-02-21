@@ -14,10 +14,14 @@ impl GroveApp {
             self.sidebar_hidden,
         );
 
+        let t0 = Instant::now();
         self.render_header(frame, layout.header);
+        let t1 = Instant::now();
         self.render_sidebar(frame, layout.sidebar);
+        let t2 = Instant::now();
         self.render_divider(frame, layout.divider);
         self.render_preview_pane(frame, layout.preview);
+        let t3 = Instant::now();
         self.render_status_line(frame, layout.status);
         self.render_create_dialog_overlay(frame, area);
         self.render_edit_dialog_overlay(frame, area);
@@ -38,6 +42,24 @@ impl GroveApp {
         let view_completed_at = Instant::now();
         self.event_log.log(
             LogEvent::new("frame", "timing")
+                .with_data(
+                    "header_ms",
+                    Value::from(Self::duration_millis(t1.saturating_duration_since(t0))),
+                )
+                .with_data(
+                    "sidebar_ms",
+                    Value::from(Self::duration_millis(t2.saturating_duration_since(t1))),
+                )
+                .with_data(
+                    "preview_ms",
+                    Value::from(Self::duration_millis(t3.saturating_duration_since(t2))),
+                )
+                .with_data(
+                    "rest_ms",
+                    Value::from(Self::duration_millis(
+                        draw_completed_at.saturating_duration_since(t3),
+                    )),
+                )
                 .with_data(
                     "draw_ms",
                     Value::from(Self::duration_millis(

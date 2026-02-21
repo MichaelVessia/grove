@@ -62,7 +62,6 @@ impl GroveApp {
             return;
         }
 
-        let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
         let projects = self.projects.clone();
         let remote_profiles = self.remote_profiles.clone();
         let daemon_socket_path = self.daemon_socket_path.clone();
@@ -74,7 +73,7 @@ impl GroveApp {
                 &remote_profiles,
             );
             Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
-                preferred_workspace_path: target_path,
+                preferred_workspace_path,
                 bootstrap,
             })
         }));
@@ -120,11 +119,14 @@ impl GroveApp {
     ) {
         let previous_mode = self.state.mode;
         let previous_focus = self.state.focus;
+        let current_selection = completion
+            .preferred_workspace_path
+            .or_else(|| self.selected_workspace_path());
 
         self.repo_name = completion.bootstrap.repo_name;
         self.discovery_state = completion.bootstrap.discovery_state;
         self.state = AppState::new(completion.bootstrap.workspaces);
-        if let Some(path) = completion.preferred_workspace_path
+        if let Some(path) = current_selection
             && let Some(index) = self
                 .state
                 .workspaces

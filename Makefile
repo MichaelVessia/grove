@@ -20,16 +20,16 @@ test:
 ci: fmt clippy test
 
 tui:
-	cargo run --bin grove -- tui
+	cargo run --release --bin grove -- tui
 
 debug-tui:
-	RUST_BACKTRACE=1 cargo run --bin grove -- tui --debug-record
+	RUST_BACKTRACE=1 cargo run --release --bin grove -- tui --debug-record
 
 groved:
 	cargo run --bin groved -- --socket "$(SOCKET)"
 
 tui-daemon:
-	cargo run --bin grove -- --socket "$(SOCKET)" tui
+	cargo run --release --bin grove -- --socket "$(SOCKET)" tui
 
 root:
 	cargo run --bin grove --
