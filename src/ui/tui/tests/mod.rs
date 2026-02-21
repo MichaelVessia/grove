@@ -27,7 +27,9 @@ use crate::application::agent_runtime::workspace_status_targets_for_polling_with
 use crate::application::interactive::InteractiveState;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
-use crate::infrastructure::config::{ProjectConfig, ProjectTarget, RemoteProfileConfig};
+use crate::infrastructure::config::{
+    GroveConfig, ProjectConfig, ProjectTarget, RemoteProfileConfig,
+};
 use crate::infrastructure::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
 use crate::interface::daemon::{DaemonArgs, serve};
 use crate::ui::state::{PaneFocus, UiMode};
@@ -2292,6 +2294,104 @@ fn settings_dialog_connect_can_recover_from_degraded_state() {
     assert_eq!(
         app.remote_connection_state.get("prod"),
         Some(&RemoteConnectionState::Connected)
+    );
+}
+
+#[test]
+fn startup_reconnects_active_profile_and_shows_success_toast() {
+    let config_path = unique_config_path("startup-reconnect-success");
+    let socket_path = unique_socket_path("startup-reconnect-success");
+    let daemon = spawn_once_daemon(socket_path.clone());
+    for _ in 0..40 {
+        if socket_path.exists() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    crate::infrastructure::config::save_to_path(
+        &config_path,
+        &GroveConfig {
+            sidebar_width_pct: 33,
+            projects: Vec::new(),
+            remote_profiles: vec![RemoteProfileConfig {
+                name: "prod".to_string(),
+                host: "build.example.com".to_string(),
+                user: "michael".to_string(),
+                remote_socket_path: socket_path.display().to_string(),
+                default_repo_path: None,
+            }],
+            active_remote_profile: Some("prod".to_string()),
+            attention_acks: Vec::new(),
+        },
+    )
+    .expect("config should save");
+
+    let (mut app, _, _, _) = fixture_app_with_tmux_and_config_path(
+        WorkspaceStatus::Idle,
+        Vec::new(),
+        Vec::new(),
+        config_path,
+    );
+    let _ = ftui::Model::init(&mut app);
+    daemon.join().expect("daemon thread should exit");
+
+    assert_eq!(app.active_remote_profile, Some("prod".to_string()));
+    assert_eq!(
+        app.remote_connection_state.get("prod"),
+        Some(&RemoteConnectionState::Connected)
+    );
+    let Some(toast) = app.notifications.visible().last() else {
+        panic!("startup reconnect should emit toast");
+    };
+    assert!(matches!(toast.config.style_variant, ToastStyle::Success));
+    assert_eq!(toast.content.message, "remote 'prod' connected");
+}
+
+#[test]
+fn startup_reconnect_failure_keeps_profile_degraded_and_shows_error_toast() {
+    let config_path = unique_config_path("startup-reconnect-failure");
+    let offline_socket_path = unique_socket_path("startup-reconnect-offline");
+    crate::infrastructure::config::save_to_path(
+        &config_path,
+        &GroveConfig {
+            sidebar_width_pct: 33,
+            projects: Vec::new(),
+            remote_profiles: vec![RemoteProfileConfig {
+                name: "prod".to_string(),
+                host: String::new(),
+                user: String::new(),
+                remote_socket_path: offline_socket_path.display().to_string(),
+                default_repo_path: None,
+            }],
+            active_remote_profile: Some("prod".to_string()),
+            attention_acks: Vec::new(),
+        },
+    )
+    .expect("config should save");
+
+    let (mut app, _, _, _) = fixture_app_with_tmux_and_config_path(
+        WorkspaceStatus::Idle,
+        Vec::new(),
+        Vec::new(),
+        config_path,
+    );
+    let _ = ftui::Model::init(&mut app);
+
+    assert_eq!(app.active_remote_profile, Some("prod".to_string()));
+    assert_eq!(
+        app.remote_connection_state.get("prod"),
+        Some(&RemoteConnectionState::Degraded)
+    );
+    let Some(toast) = app.notifications.visible().last() else {
+        panic!("startup reconnect failure should emit toast");
+    };
+    assert!(matches!(toast.config.style_variant, ToastStyle::Error));
+    assert!(
+        toast
+            .content
+            .message
+            .starts_with("remote 'prod' reconnect failed:")
     );
 }
 

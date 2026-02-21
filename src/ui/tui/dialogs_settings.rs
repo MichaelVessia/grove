@@ -356,17 +356,11 @@ impl GroveApp {
         }
     }
 
-    pub(super) fn apply_settings_profile_connect(&mut self) {
-        let Some(profile_name) = self.settings_selected_remote_profile_name() else {
-            self.show_info_toast("remote profile name is required");
-            return;
-        };
-        let Some(profile) = self.remote_profile_by_name(profile_name.as_str()) else {
-            self.show_info_toast("save remote profile before connect");
-            return;
+    fn connect_profile_runtime_state(&mut self, profile_name: &str) -> Result<(), String> {
+        let Some(profile) = self.remote_profile_by_name(profile_name) else {
+            return Err("save remote profile before connect".to_string());
         };
         let socket_path = Self::local_tunnel_socket_path(&profile);
-
         let ping_result = match ping_via_socket(socket_path.as_path()) {
             Ok(protocol_version) => Ok(protocol_version),
             Err(first_error) => {
@@ -382,21 +376,57 @@ impl GroveApp {
 
         match ping_result {
             Ok(_protocol_version) => {
-                self.active_remote_profile = Some(profile_name.clone());
-                self.set_remote_status(profile_name.as_str(), RemoteConnectionState::Connected);
-                if let Err(error) = self.save_runtime_config() {
-                    self.show_error_toast(format!("remote connect persist failed: {error}"));
-                    return;
-                }
+                self.active_remote_profile = Some(profile_name.to_string());
+                self.set_remote_status(profile_name, RemoteConnectionState::Connected);
+                Ok(())
+            }
+            Err(error) => {
+                self.active_remote_profile = Some(profile_name.to_string());
+                self.set_remote_status(profile_name, RemoteConnectionState::Degraded);
+                Err(error)
+            }
+        }
+    }
+
+    pub(super) fn reconnect_active_profile_on_startup(&mut self) {
+        let Some(profile_name) = self.active_remote_profile.clone() else {
+            return;
+        };
+
+        match self.connect_profile_runtime_state(profile_name.as_str()) {
+            Ok(()) => {
+                self.show_success_toast(format!("remote '{}' connected", profile_name));
+                self.refresh_workspaces(None);
+            }
+            Err(error) => {
+                self.show_error_toast(format!(
+                    "remote '{}' reconnect failed: {error}",
+                    profile_name
+                ));
+            }
+        }
+    }
+
+    pub(super) fn apply_settings_profile_connect(&mut self) {
+        let Some(profile_name) = self.settings_selected_remote_profile_name() else {
+            self.show_info_toast("remote profile name is required");
+            return;
+        };
+        if self.remote_profile_by_name(profile_name.as_str()).is_none() {
+            self.show_info_toast("save remote profile before connect");
+            return;
+        }
+
+        let connect_result = self.connect_profile_runtime_state(profile_name.as_str());
+        if let Err(error) = self.save_runtime_config() {
+            self.show_error_toast(format!("remote connect persist failed: {error}"));
+            return;
+        }
+        match connect_result {
+            Ok(()) => {
                 self.show_success_toast(format!("remote '{}' connected", profile_name));
             }
             Err(error) => {
-                self.active_remote_profile = Some(profile_name.clone());
-                self.set_remote_status(profile_name.as_str(), RemoteConnectionState::Degraded);
-                if let Err(save_error) = self.save_runtime_config() {
-                    self.show_error_toast(format!("remote connect persist failed: {save_error}"));
-                    return;
-                }
                 self.show_error_toast(format!("remote '{}' connect failed: {error}", profile_name));
             }
         }
