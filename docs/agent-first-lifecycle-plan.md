@@ -17,6 +17,7 @@ Primary success criterion:
 - Phase 2 progress: `grove workspace create` now executes via command service and returns JSON envelope.
 - Phase 2 progress: `grove workspace edit` now executes via command service and returns JSON envelope.
 - Phase 2 progress: `grove workspace delete` now executes via command service and returns JSON envelope.
+- Phase 2 progress: `grove workspace merge` now executes via command service and returns JSON envelope.
 - Tracking rule: a phase is complete only when deliverables, tests, and exit criteria all pass.
 - Scope guard for kickoff: satisfied, no daemon/remote code started before Phase 0a-3 completion.
 
@@ -510,7 +511,8 @@ Remote mapping (Phase 4.5+):
 - [x] 5b.2a Build `workspace create` CLI subcommand over command service.
 - [x] 5b.2b.1 Build `workspace edit` CLI subcommand over command service.
 - [x] 5b.2b.2a Build `workspace delete` CLI subcommand over command service.
-- [ ] 5b.2b.2b Build remaining lifecycle CLI subcommands over command service.
+- [x] 5b.2b.2b.1 Build `workspace merge` CLI subcommand over command service.
+- [ ] 5b.2b.2b.2 Build remaining lifecycle CLI subcommands over command service.
 - [ ] 6. Add CLI integration and golden JSON tests.
 - [ ] 7. Rewire TUI lifecycle actions to service, add 2s inventory refresh.
 - [ ] 8. Add daemon binary + socket adapter.

@@ -55,6 +55,7 @@ pub fn classify_error_message(message: &str) -> CliErrorCode {
             "workspace branch matches base branch",
             "workspace create requires --base or --existing-branch",
             "workspace edit requires --agent and/or --base",
+            "workspace name/path selectors resolved to different workspaces",
             "invalid argument",
             "selector mismatch",
             "missing selector",
@@ -80,6 +81,10 @@ pub fn classify_error_message(message: &str) -> CliErrorCode {
         &[
             "workspace path does not exist on disk",
             "workspace not found",
+            "was not found",
+            "workspace selector did not match any workspace",
+            "workspace base marker is missing",
+            "workspace agent marker is missing",
         ],
     ) {
         return CliErrorCode::WorkspaceNotFound;
@@ -197,6 +202,12 @@ mod tests {
             CliErrorCode::InvalidArgument
         );
         assert_eq!(
+            classify_error_message(
+                "workspace name/path selectors resolved to different workspaces"
+            ),
+            CliErrorCode::InvalidArgument
+        );
+        assert_eq!(
             classify_error_message("workspace name must be [A-Za-z0-9_-]"),
             CliErrorCode::WorkspaceInvalidName
         );
@@ -210,6 +221,10 @@ mod tests {
         );
         assert_eq!(
             classify_error_message("workspace path does not exist on disk"),
+            CliErrorCode::WorkspaceNotFound
+        );
+        assert_eq!(
+            classify_error_message("workspace 'feature-auth' was not found"),
             CliErrorCode::WorkspaceNotFound
         );
         assert_eq!(
