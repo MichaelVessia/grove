@@ -3,10 +3,20 @@ use super::*;
 impl GroveApp {
     pub(super) fn poll_interactive_cursor_sync(&mut self, target_session: &str) {
         let started_at = Instant::now();
-        let result = self
-            .tmux_input
-            .capture_cursor_metadata(target_session)
-            .map_err(|error| error.to_string());
+        let result = if let Some(socket_path) = &self.interactive_daemon_socket_path() {
+            let payload = DaemonSessionCursorMetadataPayload {
+                session_name: target_session.to_string(),
+            };
+            match session_cursor_metadata_via_socket(socket_path, payload) {
+                Ok(Ok(metadata)) => Ok(metadata),
+                Ok(Err(daemon_error)) => Err(daemon_error.message),
+                Err(io_error) => Err(io_error.to_string()),
+            }
+        } else {
+            self.tmux_input
+                .capture_cursor_metadata(target_session)
+                .map_err(|error| error.to_string())
+        };
         let capture_ms =
             Self::duration_millis(Instant::now().saturating_duration_since(started_at));
         self.apply_cursor_capture_result(CursorCapture {
@@ -41,10 +51,22 @@ impl GroveApp {
             );
         }
 
-        if let Err(error) = self
-            .tmux_input
-            .resize_session(&target_session, pane_width, pane_height)
-        {
+        let resize_result = if let Some(socket_path) = &self.interactive_daemon_socket_path() {
+            let payload = DaemonSessionResizePayload {
+                session_name: target_session.clone(),
+                width: pane_width,
+                height: pane_height,
+            };
+            match session_resize_via_socket(socket_path, payload) {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(daemon_error)) => Err(std::io::Error::other(daemon_error.message)),
+                Err(io_error) => Err(io_error),
+            }
+        } else {
+            self.tmux_input
+                .resize_session(&target_session, pane_width, pane_height)
+        };
+        if let Err(error) = resize_result {
             let message = error.to_string();
             self.last_tmux_error = Some(message.clone());
             self.log_tmux_error(message);
@@ -180,10 +202,22 @@ impl GroveApp {
             retried: true,
             ..pending.clone()
         });
-        if let Err(error) =
+        let retry_result = if let Some(socket_path) = &self.interactive_daemon_socket_path() {
+            let payload = DaemonSessionResizePayload {
+                session_name: session.to_string(),
+                width: pending.expected_width,
+                height: pending.expected_height,
+            };
+            match session_resize_via_socket(socket_path, payload) {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(daemon_error)) => Err(std::io::Error::other(daemon_error.message)),
+                Err(io_error) => Err(io_error),
+            }
+        } else {
             self.tmux_input
                 .resize_session(session, pending.expected_width, pending.expected_height)
-        {
+        };
+        if let Err(error) = retry_result {
             let message = error.to_string();
             self.last_tmux_error = Some(message.clone());
             self.log_tmux_error(message);

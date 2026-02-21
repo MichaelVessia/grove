@@ -85,14 +85,31 @@ impl GroveApp {
         kind: SessionKind,
         session_name: String,
         launch_request: ShellLaunchRequest,
+        daemon_socket_path: Option<PathBuf>,
     ) {
         let completion_session = session_name.clone();
         self.queue_cmd(Cmd::task(move || {
             let started_at = Instant::now();
-            let (_, result) = execute_shell_launch_request_for_mode(
-                &launch_request,
-                CommandExecutionMode::Process,
-            );
+            let result = if let Some(socket_path) = daemon_socket_path {
+                let payload = DaemonSessionLaunchPayload {
+                    session_name: launch_request.session_name.clone(),
+                    workspace_path: launch_request.workspace_path.display().to_string(),
+                    command: launch_request.command.clone(),
+                    capture_cols: launch_request.capture_cols,
+                    capture_rows: launch_request.capture_rows,
+                };
+                match session_launch_via_socket(&socket_path, payload) {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(daemon_error)) => Err(daemon_error.message),
+                    Err(io_error) => Err(io_error.to_string()),
+                }
+            } else {
+                let (_, result) = execute_shell_launch_request_for_mode(
+                    &launch_request,
+                    CommandExecutionMode::Process,
+                );
+                result
+            };
             let duration_ms =
                 GroveApp::duration_millis(Instant::now().saturating_duration_since(started_at));
             match kind {
@@ -208,6 +225,7 @@ impl GroveApp {
             Some(capture_cols),
             Some(capture_rows),
         );
+        let daemon_socket_path = self.remote_session_socket_for_workspace(workspace);
         let async_launch = self.tmux_input.supports_background_launch();
         let mut started_fields = vec![
             ("session".to_string(), Value::from(session_name.clone())),
@@ -224,15 +242,31 @@ impl GroveApp {
         if async_launch {
             self.session_tracker_mut(kind)
                 .mark_in_flight(session_name.clone());
-            self.queue_session_launch_task(kind, session_name, launch_request);
+            self.queue_session_launch_task(kind, session_name, launch_request, daemon_socket_path);
             return None;
         }
 
         let launch_started_at = Instant::now();
-        let (_, launch_result) = execute_shell_launch_request_for_mode(
-            &launch_request,
-            CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
-        );
+        let launch_result = if let Some(socket_path) = &daemon_socket_path {
+            let payload = DaemonSessionLaunchPayload {
+                session_name: launch_request.session_name.clone(),
+                workspace_path: launch_request.workspace_path.display().to_string(),
+                command: launch_request.command.clone(),
+                capture_cols: launch_request.capture_cols,
+                capture_rows: launch_request.capture_rows,
+            };
+            match session_launch_via_socket(socket_path, payload) {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(daemon_error)) => Err(daemon_error.message),
+                Err(io_error) => Err(io_error.to_string()),
+            }
+        } else {
+            let (_, result) = execute_shell_launch_request_for_mode(
+                &launch_request,
+                CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
+            );
+            result
+        };
         let duration_ms =
             Self::duration_millis(Instant::now().saturating_duration_since(launch_started_at));
         let workspace_name = if kind == SessionKind::WorkspaceShell {
@@ -366,9 +400,14 @@ impl GroveApp {
                 self.ensure_workspace_shell_session_for_selected_workspace(false, false, false)
             })?,
         };
+        let daemon_socket_path = self
+            .state
+            .selected_workspace()
+            .and_then(|workspace| self.remote_session_socket_for_workspace(workspace));
         Some(LivePreviewTarget {
             session_name,
             include_escape_sequences: true,
+            daemon_socket_path,
         })
     }
 
@@ -428,5 +467,11 @@ impl GroveApp {
         self.interactive
             .as_ref()
             .map(|state| state.target_session.clone())
+    }
+
+    pub(super) fn interactive_daemon_socket_path(&self) -> Option<PathBuf> {
+        self.interactive
+            .as_ref()
+            .and_then(|state| state.daemon_socket_path.clone())
     }
 }

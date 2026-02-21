@@ -15,9 +15,21 @@ impl GroveApp {
         };
         self.interactive_send_in_flight = true;
         let command = send.command.clone();
+        let daemon_socket_path = self.interactive_daemon_socket_path();
         Cmd::task(move || {
             let started_at = Instant::now();
-            let execution = CommandTmuxInput::execute_command(&command);
+            let execution = if let Some(socket_path) = daemon_socket_path {
+                let payload = DaemonSessionSendKeysPayload {
+                    command: command.clone(),
+                };
+                match session_send_keys_via_socket(&socket_path, payload) {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(daemon_error)) => Err(std::io::Error::other(daemon_error.message)),
+                    Err(io_error) => Err(io_error),
+                }
+            } else {
+                CommandTmuxInput::execute_command(&command)
+            };
             let completed_at = Instant::now();
             let tmux_send_ms = u64::try_from(
                 completed_at
@@ -131,7 +143,19 @@ impl GroveApp {
         }
 
         let send_started_at = Instant::now();
-        match self.execute_tmux_command(&command) {
+        let sync_result = if let Some(socket_path) = &self.interactive_daemon_socket_path() {
+            let payload = DaemonSessionSendKeysPayload {
+                command: command.clone(),
+            };
+            match session_send_keys_via_socket(socket_path, payload) {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(daemon_error)) => Err(std::io::Error::other(daemon_error.message)),
+                Err(io_error) => Err(io_error),
+            }
+        } else {
+            self.execute_tmux_command(&command)
+        };
+        match sync_result {
             Ok(()) => {
                 self.last_tmux_error = None;
                 if let Some(trace_context) = trace_context {

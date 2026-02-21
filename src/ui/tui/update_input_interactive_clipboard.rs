@@ -55,7 +55,20 @@ impl GroveApp {
             );
         }
 
-        match self.tmux_input.paste_buffer(target_session, &text) {
+        let paste_result = if let Some(socket_path) = &self.interactive_daemon_socket_path() {
+            let payload = DaemonSessionPasteBufferPayload {
+                session_name: target_session.to_string(),
+                text: text.clone(),
+            };
+            match session_paste_buffer_via_socket(socket_path, payload) {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(daemon_error)) => Err(std::io::Error::other(daemon_error.message)),
+                Err(io_error) => Err(io_error),
+            }
+        } else {
+            self.tmux_input.paste_buffer(target_session, &text)
+        };
+        match paste_result {
             Ok(()) => {
                 self.last_tmux_error = None;
             }

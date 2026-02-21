@@ -77,7 +77,7 @@ fn groved_replies_to_ping_request() {
         response["type"],
         serde_json::Value::String("pong".to_string())
     );
-    assert_eq!(response["protocol_version"], serde_json::Value::from(1));
+    assert_eq!(response["protocol_version"], serde_json::Value::from(2));
 }
 
 #[test]
@@ -93,5 +93,5 @@ fn groved_recovers_from_stale_socket_file() {
         response["type"],
         serde_json::Value::String("pong".to_string())
     );
-    assert_eq!(response["protocol_version"], serde_json::Value::from(1));
+    assert_eq!(response["protocol_version"], serde_json::Value::from(2));
 }

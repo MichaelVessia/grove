@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 const DOUBLE_ESCAPE_WINDOW_MS: u64 = 150;
@@ -16,6 +17,7 @@ pub struct InteractiveState {
     pub pane_height: u16,
     pub pane_width: u16,
     pub bracketed_paste: bool,
+    pub daemon_socket_path: Option<PathBuf>,
     last_mouse_event_time: Option<Instant>,
     mouse_fragment_started_at: Option<Instant>,
     last_escape_time: Option<Instant>,
@@ -63,6 +65,7 @@ impl InteractiveState {
         now: Instant,
         pane_height: u16,
         pane_width: u16,
+        daemon_socket_path: Option<PathBuf>,
     ) -> Self {
         Self {
             active: true,
@@ -75,6 +78,7 @@ impl InteractiveState {
             pane_height,
             pane_width,
             bracketed_paste: false,
+            daemon_socket_path,
             last_mouse_event_time: None,
             mouse_fragment_started_at: None,
             last_escape_time: None,

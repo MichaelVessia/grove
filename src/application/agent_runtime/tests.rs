@@ -275,6 +275,7 @@ fn workspace_status_targets_for_polling_with_live_preview_skips_selected_session
     let live_preview = LivePreviewTarget {
         session_name: "grove-ws-selected".to_string(),
         include_escape_sequences: true,
+        daemon_socket_path: None,
     };
     let targets =
         workspace_status_targets_for_polling_with_live_preview(&workspaces, Some(&live_preview));
@@ -415,6 +416,7 @@ fn live_preview_capture_target_for_tab_sets_capture_mode() {
         Some(LivePreviewTarget {
             session_name: "grove-ws-feature".to_string(),
             include_escape_sequences: true,
+            daemon_socket_path: None,
         })
     );
     assert_eq!(
@@ -422,6 +424,7 @@ fn live_preview_capture_target_for_tab_sets_capture_mode() {
         Some(LivePreviewTarget {
             session_name: "grove-ws-feature-git".to_string(),
             include_escape_sequences: true,
+            daemon_socket_path: None,
         })
     );
 }

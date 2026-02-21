@@ -12,14 +12,26 @@ impl GroveApp {
 
         if let Some(live_preview_target) = live_preview {
             let capture_started_at = Instant::now();
-            let result = self
-                .tmux_input
-                .capture_output(
-                    &live_preview_target.session_name,
-                    600,
-                    live_preview_target.include_escape_sequences,
-                )
-                .map_err(|error| error.to_string());
+            let result = if let Some(socket_path) = &live_preview_target.daemon_socket_path {
+                let payload = DaemonSessionCapturePayload {
+                    session_name: live_preview_target.session_name.clone(),
+                    scrollback_lines: 600,
+                    include_escape_sequences: live_preview_target.include_escape_sequences,
+                };
+                match session_capture_via_socket(socket_path, payload) {
+                    Ok(Ok(output)) => Ok(output),
+                    Ok(Err(daemon_error)) => Err(daemon_error.message),
+                    Err(io_error) => Err(io_error.to_string()),
+                }
+            } else {
+                self.tmux_input
+                    .capture_output(
+                        &live_preview_target.session_name,
+                        600,
+                        live_preview_target.include_escape_sequences,
+                    )
+                    .map_err(|error| error.to_string())
+            };
             let capture_ms =
                 Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
             self.apply_live_preview_capture(
@@ -65,17 +77,31 @@ impl GroveApp {
         generation: u64,
         live_preview: Option<LivePreviewTarget>,
         cursor_session: Option<String>,
+        cursor_daemon_socket_path: Option<PathBuf>,
         status_poll_targets: Vec<WorkspaceStatusTarget>,
     ) -> Cmd<Msg> {
         Cmd::task(move || {
             let live_capture = live_preview.map(|target| {
                 let capture_started_at = Instant::now();
-                let result = CommandTmuxInput::capture_session_output(
-                    &target.session_name,
-                    600,
-                    target.include_escape_sequences,
-                )
-                .map_err(|error| error.to_string());
+                let result = if let Some(socket_path) = &target.daemon_socket_path {
+                    let payload = DaemonSessionCapturePayload {
+                        session_name: target.session_name.clone(),
+                        scrollback_lines: 600,
+                        include_escape_sequences: target.include_escape_sequences,
+                    };
+                    match session_capture_via_socket(socket_path, payload) {
+                        Ok(Ok(output)) => Ok(output),
+                        Ok(Err(daemon_error)) => Err(daemon_error.message),
+                        Err(io_error) => Err(io_error.to_string()),
+                    }
+                } else {
+                    CommandTmuxInput::capture_session_output(
+                        &target.session_name,
+                        600,
+                        target.include_escape_sequences,
+                    )
+                    .map_err(|error| error.to_string())
+                };
                 let capture_ms = GroveApp::duration_millis(
                     Instant::now().saturating_duration_since(capture_started_at),
                 );
@@ -90,8 +116,19 @@ impl GroveApp {
 
             let cursor_capture = cursor_session.map(|session| {
                 let started_at = Instant::now();
-                let result = CommandTmuxInput::capture_session_cursor_metadata(&session)
-                    .map_err(|error| error.to_string());
+                let result = if let Some(socket_path) = &cursor_daemon_socket_path {
+                    let payload = DaemonSessionCursorMetadataPayload {
+                        session_name: session.clone(),
+                    };
+                    match session_cursor_metadata_via_socket(socket_path, payload) {
+                        Ok(Ok(metadata)) => Ok(metadata),
+                        Ok(Err(daemon_error)) => Err(daemon_error.message),
+                        Err(io_error) => Err(io_error.to_string()),
+                    }
+                } else {
+                    CommandTmuxInput::capture_session_cursor_metadata(&session)
+                        .map_err(|error| error.to_string())
+                };
                 let capture_ms =
                     GroveApp::duration_millis(Instant::now().saturating_duration_since(started_at));
                 CursorCapture {
@@ -105,9 +142,21 @@ impl GroveApp {
                 .into_iter()
                 .map(|target| {
                     let capture_started_at = Instant::now();
-                    let result =
+                    let result = if let Some(socket_path) = &target.daemon_socket_path {
+                        let payload = DaemonSessionCapturePayload {
+                            session_name: target.session_name.clone(),
+                            scrollback_lines: 120,
+                            include_escape_sequences: false,
+                        };
+                        match session_capture_via_socket(socket_path, payload) {
+                            Ok(Ok(output)) => Ok(output),
+                            Ok(Err(daemon_error)) => Err(daemon_error.message),
+                            Err(io_error) => Err(io_error.to_string()),
+                        }
+                    } else {
                         CommandTmuxInput::capture_session_output(&target.session_name, 120, false)
-                            .map_err(|error| error.to_string());
+                            .map_err(|error| error.to_string())
+                    };
                     let capture_ms = GroveApp::duration_millis(
                         Instant::now().saturating_duration_since(capture_started_at),
                     );

@@ -690,6 +690,7 @@ fn preview_poll_missing_session_marks_workspace_orphaned_idle() {
         Instant::now(),
         20,
         80,
+        None,
     ));
     if let Some(workspace) = app.state.selected_workspace_mut() {
         workspace.status = WorkspaceStatus::Active;
@@ -1883,6 +1884,7 @@ fn alt_resize_keeps_interactive_mode_active() {
         Instant::now(),
         34,
         78,
+        None,
     ));
 
     ftui::Model::update(
@@ -3455,6 +3457,7 @@ fn alt_x_does_not_exit_interactive_or_open_stop_dialog() {
         Instant::now(),
         34,
         78,
+        None,
     ));
 
     ftui::Model::update(
@@ -3610,6 +3613,7 @@ fn stop_agent_completed_updates_workspace_status_and_exits_interactive() {
         Instant::now(),
         34,
         78,
+        None,
     ));
 
     ftui::Model::update(
@@ -4022,6 +4026,7 @@ fn resize_verify_retries_once_then_stops() {
         Instant::now(),
         34,
         78,
+        None,
     ));
     app.pending_resize_verification = Some(PendingResizeVerification {
         session: "grove-ws-feature-a".to_string(),
@@ -4064,6 +4069,7 @@ fn preview_poll_drops_cursor_capture_for_non_interactive_session() {
         Instant::now(),
         20,
         80,
+        None,
     ));
     if let Some(state) = app.interactive.as_mut() {
         state.update_cursor(3, 4, true, 20, 80);
@@ -6751,6 +6757,7 @@ fn frame_debug_record_includes_interactive_cursor_snapshot() {
         Instant::now(),
         3,
         80,
+        None,
     ));
     if let Some(state) = app.interactive.as_mut() {
         state.update_cursor(1, 2, true, 3, 80);

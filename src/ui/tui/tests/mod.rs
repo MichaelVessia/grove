@@ -1608,6 +1608,7 @@ fn ctrl_k_is_blocked_in_interactive_mode() {
         Instant::now(),
         24,
         80,
+        None,
     ));
 
     let _ = app.handle_key(
@@ -2887,6 +2888,7 @@ fn status_row_shows_interactive_reserved_key_hints() {
         Instant::now(),
         34,
         78,
+        None,
     ));
 
     with_rendered_frame(&app, 160, 24, |frame| {
@@ -3132,6 +3134,7 @@ fn codex_interactive_preview_keeps_ansi_colors() {
         Instant::now(),
         34,
         78,
+        None,
     ));
     app.preview.lines = vec!["Success: all tests passed".to_string()];
     app.preview.render_lines = vec!["\u{1b}[32mSuccess\u{1b}[0m: all tests passed".to_string()];

@@ -185,12 +185,17 @@ impl GroveApp {
             }
         };
 
+        let daemon_socket_path = self
+            .state
+            .selected_workspace()
+            .and_then(|workspace| self.remote_session_socket_for_workspace(workspace));
         self.interactive = Some(InteractiveState::new(
             "%0".to_string(),
             session_name,
             now,
             self.viewport_height,
             self.viewport_width,
+            daemon_socket_path,
         ));
         self.interactive_poll_due_at = None;
         self.last_tmux_error = None;

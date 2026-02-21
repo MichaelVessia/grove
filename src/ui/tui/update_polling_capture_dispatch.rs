@@ -5,7 +5,15 @@ impl GroveApp {
         &self,
         live_preview: Option<&LivePreviewTarget>,
     ) -> Vec<WorkspaceStatusTarget> {
-        workspace_status_targets_for_polling_with_live_preview(&self.state.workspaces, live_preview)
+        let mut targets = workspace_status_targets_for_polling_with_live_preview(
+            &self.state.workspaces,
+            live_preview,
+        );
+        for target in &mut targets {
+            target.daemon_socket_path =
+                self.remote_session_socket_for_workspace_path(&target.workspace_path);
+        }
+        targets
     }
 
     pub(super) fn selected_live_preview_session_if_ready(&self) -> Option<String> {
@@ -48,6 +56,7 @@ impl GroveApp {
 
         let live_preview = self.prepare_live_preview_session();
         let cursor_session = self.interactive_target_session();
+        let cursor_daemon_socket_path = self.interactive_daemon_socket_path();
         let status_poll_targets = self.status_poll_targets_for_async_preview(live_preview.as_ref());
 
         if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
@@ -64,6 +73,7 @@ impl GroveApp {
             self.poll_generation,
             live_preview,
             cursor_session,
+            cursor_daemon_socket_path,
             status_poll_targets,
         ));
     }
@@ -85,9 +95,11 @@ impl GroveApp {
             Some(LivePreviewTarget {
                 session_name: session_name_for_workspace_ref(workspace),
                 include_escape_sequences: true,
+                daemon_socket_path: self.remote_session_socket_for_workspace(workspace),
             })
         });
         let cursor_session = self.interactive_target_session();
+        let cursor_daemon_socket_path = self.interactive_daemon_socket_path();
         let status_poll_targets = Vec::new();
 
         if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
@@ -103,6 +115,7 @@ impl GroveApp {
             self.poll_generation,
             live_preview,
             cursor_session,
+            cursor_daemon_socket_path,
             status_poll_targets,
         ));
     }

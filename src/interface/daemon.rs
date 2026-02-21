@@ -15,7 +15,7 @@ use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
 const GROVE_DIR: &str = ".grove";
 const DEFAULT_SOCKET_FILE: &str = "groved.sock";
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DaemonArgs {
@@ -50,6 +50,24 @@ pub enum DaemonRequest {
     },
     AgentStop {
         payload: DaemonAgentStopPayload,
+    },
+    SessionLaunch {
+        payload: DaemonSessionLaunchPayload,
+    },
+    SessionCapture {
+        payload: DaemonSessionCapturePayload,
+    },
+    SessionCursorMetadata {
+        payload: DaemonSessionCursorMetadataPayload,
+    },
+    SessionResize {
+        payload: DaemonSessionResizePayload,
+    },
+    SessionSendKeys {
+        payload: DaemonSessionSendKeysPayload,
+    },
+    SessionPasteBuffer {
+        payload: DaemonSessionPasteBufferPayload,
     },
 }
 
@@ -105,6 +123,34 @@ pub enum DaemonResponse {
         result: DaemonWorkspaceMutationResult,
     },
     AgentStopErr {
+        error: DaemonCommandError,
+    },
+    SessionLaunchOk,
+    SessionLaunchErr {
+        error: DaemonCommandError,
+    },
+    SessionCaptureOk {
+        output: String,
+    },
+    SessionCaptureErr {
+        error: DaemonCommandError,
+    },
+    SessionCursorMetadataOk {
+        metadata: String,
+    },
+    SessionCursorMetadataErr {
+        error: DaemonCommandError,
+    },
+    SessionResizeOk,
+    SessionResizeErr {
+        error: DaemonCommandError,
+    },
+    SessionSendKeysOk,
+    SessionSendKeysErr {
+        error: DaemonCommandError,
+    },
+    SessionPasteBufferOk,
+    SessionPasteBufferErr {
         error: DaemonCommandError,
     },
 }
@@ -188,6 +234,45 @@ pub struct DaemonAgentStopPayload {
     pub workspace: Option<String>,
     pub workspace_path: Option<String>,
     pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonSessionLaunchPayload {
+    pub session_name: String,
+    pub workspace_path: String,
+    pub command: String,
+    pub capture_cols: Option<u16>,
+    pub capture_rows: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonSessionCapturePayload {
+    pub session_name: String,
+    pub scrollback_lines: u16,
+    pub include_escape_sequences: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonSessionCursorMetadataPayload {
+    pub session_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonSessionResizePayload {
+    pub session_name: String,
+    pub width: u16,
+    pub height: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonSessionSendKeysPayload {
+    pub command: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonSessionPasteBufferPayload {
+    pub session_name: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -397,6 +482,102 @@ pub fn agent_stop_via_socket(
     }
 }
 
+pub fn session_launch_via_socket(
+    socket_path: &Path,
+    payload: DaemonSessionLaunchPayload,
+) -> std::io::Result<Result<(), DaemonCommandError>> {
+    let request = DaemonRequest::SessionLaunch { payload };
+    let response = send_request(socket_path, &request)?;
+    match response {
+        DaemonResponse::SessionLaunchOk => Ok(Ok(())),
+        DaemonResponse::SessionLaunchErr { error } => Ok(Err(error)),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for session launch",
+        )),
+    }
+}
+
+pub fn session_capture_via_socket(
+    socket_path: &Path,
+    payload: DaemonSessionCapturePayload,
+) -> std::io::Result<Result<String, DaemonCommandError>> {
+    let request = DaemonRequest::SessionCapture { payload };
+    let response = send_request(socket_path, &request)?;
+    match response {
+        DaemonResponse::SessionCaptureOk { output } => Ok(Ok(output)),
+        DaemonResponse::SessionCaptureErr { error } => Ok(Err(error)),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for session capture",
+        )),
+    }
+}
+
+pub fn session_cursor_metadata_via_socket(
+    socket_path: &Path,
+    payload: DaemonSessionCursorMetadataPayload,
+) -> std::io::Result<Result<String, DaemonCommandError>> {
+    let request = DaemonRequest::SessionCursorMetadata { payload };
+    let response = send_request(socket_path, &request)?;
+    match response {
+        DaemonResponse::SessionCursorMetadataOk { metadata } => Ok(Ok(metadata)),
+        DaemonResponse::SessionCursorMetadataErr { error } => Ok(Err(error)),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for session cursor metadata",
+        )),
+    }
+}
+
+pub fn session_resize_via_socket(
+    socket_path: &Path,
+    payload: DaemonSessionResizePayload,
+) -> std::io::Result<Result<(), DaemonCommandError>> {
+    let request = DaemonRequest::SessionResize { payload };
+    let response = send_request(socket_path, &request)?;
+    match response {
+        DaemonResponse::SessionResizeOk => Ok(Ok(())),
+        DaemonResponse::SessionResizeErr { error } => Ok(Err(error)),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for session resize",
+        )),
+    }
+}
+
+pub fn session_send_keys_via_socket(
+    socket_path: &Path,
+    payload: DaemonSessionSendKeysPayload,
+) -> std::io::Result<Result<(), DaemonCommandError>> {
+    let request = DaemonRequest::SessionSendKeys { payload };
+    let response = send_request(socket_path, &request)?;
+    match response {
+        DaemonResponse::SessionSendKeysOk => Ok(Ok(())),
+        DaemonResponse::SessionSendKeysErr { error } => Ok(Err(error)),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for session send keys",
+        )),
+    }
+}
+
+pub fn session_paste_buffer_via_socket(
+    socket_path: &Path,
+    payload: DaemonSessionPasteBufferPayload,
+) -> std::io::Result<Result<(), DaemonCommandError>> {
+    let request = DaemonRequest::SessionPasteBuffer { payload };
+    let response = send_request(socket_path, &request)?;
+    match response {
+        DaemonResponse::SessionPasteBufferOk => Ok(Ok(())),
+        DaemonResponse::SessionPasteBufferErr { error } => Ok(Err(error)),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for session paste buffer",
+        )),
+    }
+}
+
 fn send_request(socket_path: &Path, request: &DaemonRequest) -> std::io::Result<DaemonResponse> {
     let mut stream = UnixStream::connect(socket_path)?;
     let request_json =
@@ -571,6 +752,16 @@ fn handle_connection(
         }
         DaemonRequest::AgentStart { payload } => handle_agent_start_request(service, payload),
         DaemonRequest::AgentStop { payload } => handle_agent_stop_request(service, payload),
+        DaemonRequest::SessionLaunch { payload } => handle_session_launch_request(payload),
+        DaemonRequest::SessionCapture { payload } => handle_session_capture_request(payload),
+        DaemonRequest::SessionCursorMetadata { payload } => {
+            handle_session_cursor_metadata_request(payload)
+        }
+        DaemonRequest::SessionResize { payload } => handle_session_resize_request(payload),
+        DaemonRequest::SessionSendKeys { payload } => handle_session_send_keys_request(payload),
+        DaemonRequest::SessionPasteBuffer { payload } => {
+            handle_session_paste_buffer_request(payload)
+        }
     };
 
     let payload = serde_json::to_string(&response)
@@ -865,6 +1056,99 @@ fn handle_agent_stop_request(
         },
         Err(error) => DaemonResponse::AgentStopErr {
             error: DaemonCommandError::from_command_error(error.code, error.message),
+        },
+    }
+}
+
+fn handle_session_launch_request(payload: DaemonSessionLaunchPayload) -> DaemonResponse {
+    let request = crate::application::agent_runtime::ShellLaunchRequest {
+        session_name: payload.session_name,
+        workspace_path: PathBuf::from(payload.workspace_path),
+        command: payload.command,
+        capture_cols: payload.capture_cols,
+        capture_rows: payload.capture_rows,
+    };
+    let (_, result) = crate::application::agent_runtime::execute_shell_launch_request_for_mode(
+        &request,
+        crate::application::agent_runtime::CommandExecutionMode::Process,
+    );
+    match result {
+        Ok(()) => DaemonResponse::SessionLaunchOk,
+        Err(error) => DaemonResponse::SessionLaunchErr {
+            error: DaemonCommandError {
+                code: "runtime_failure".to_string(),
+                message: error,
+            },
+        },
+    }
+}
+
+fn handle_session_capture_request(payload: DaemonSessionCapturePayload) -> DaemonResponse {
+    match crate::infrastructure::tmux::capture_session_output(
+        &payload.session_name,
+        usize::from(payload.scrollback_lines),
+        payload.include_escape_sequences,
+    ) {
+        Ok(output) => DaemonResponse::SessionCaptureOk { output },
+        Err(error) => DaemonResponse::SessionCaptureErr {
+            error: DaemonCommandError {
+                code: "runtime_failure".to_string(),
+                message: error.to_string(),
+            },
+        },
+    }
+}
+
+fn handle_session_cursor_metadata_request(
+    payload: DaemonSessionCursorMetadataPayload,
+) -> DaemonResponse {
+    match crate::infrastructure::tmux::capture_cursor_metadata(&payload.session_name) {
+        Ok(metadata) => DaemonResponse::SessionCursorMetadataOk { metadata },
+        Err(error) => DaemonResponse::SessionCursorMetadataErr {
+            error: DaemonCommandError {
+                code: "runtime_failure".to_string(),
+                message: error.to_string(),
+            },
+        },
+    }
+}
+
+fn handle_session_resize_request(payload: DaemonSessionResizePayload) -> DaemonResponse {
+    match crate::infrastructure::tmux::resize_session(
+        &payload.session_name,
+        payload.width,
+        payload.height,
+    ) {
+        Ok(()) => DaemonResponse::SessionResizeOk,
+        Err(error) => DaemonResponse::SessionResizeErr {
+            error: DaemonCommandError {
+                code: "runtime_failure".to_string(),
+                message: error.to_string(),
+            },
+        },
+    }
+}
+
+fn handle_session_send_keys_request(payload: DaemonSessionSendKeysPayload) -> DaemonResponse {
+    match crate::infrastructure::tmux::execute_command(&payload.command) {
+        Ok(()) => DaemonResponse::SessionSendKeysOk,
+        Err(error) => DaemonResponse::SessionSendKeysErr {
+            error: DaemonCommandError {
+                code: "runtime_failure".to_string(),
+                message: error.to_string(),
+            },
+        },
+    }
+}
+
+fn handle_session_paste_buffer_request(payload: DaemonSessionPasteBufferPayload) -> DaemonResponse {
+    match crate::infrastructure::tmux::paste_buffer(&payload.session_name, &payload.text) {
+        Ok(()) => DaemonResponse::SessionPasteBufferOk,
+        Err(error) => DaemonResponse::SessionPasteBufferErr {
+            error: DaemonCommandError {
+                code: "runtime_failure".to_string(),
+                message: error.to_string(),
+            },
         },
     }
 }

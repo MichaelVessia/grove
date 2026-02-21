@@ -70,11 +70,16 @@ use crate::infrastructure::config::{
 };
 use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
 use crate::interface::daemon::{
-    DaemonAgentStartPayload, DaemonAgentStopPayload, DaemonWorkspaceCreatePayload,
-    DaemonWorkspaceDeletePayload, DaemonWorkspaceEditPayload, DaemonWorkspaceMergePayload,
-    DaemonWorkspaceUpdatePayload, agent_start_via_socket, agent_stop_via_socket, ping_via_socket,
-    workspace_create_via_socket, workspace_delete_via_socket, workspace_edit_via_socket,
-    workspace_merge_via_socket, workspace_update_via_socket,
+    DaemonAgentStartPayload, DaemonAgentStopPayload, DaemonSessionCapturePayload,
+    DaemonSessionCursorMetadataPayload, DaemonSessionLaunchPayload,
+    DaemonSessionPasteBufferPayload, DaemonSessionResizePayload, DaemonSessionSendKeysPayload,
+    DaemonWorkspaceCreatePayload, DaemonWorkspaceDeletePayload, DaemonWorkspaceEditPayload,
+    DaemonWorkspaceMergePayload, DaemonWorkspaceUpdatePayload, agent_start_via_socket,
+    agent_stop_via_socket, ping_via_socket, session_capture_via_socket,
+    session_cursor_metadata_via_socket, session_launch_via_socket, session_paste_buffer_via_socket,
+    session_resize_via_socket, session_send_keys_via_socket, workspace_create_via_socket,
+    workspace_delete_via_socket, workspace_edit_via_socket, workspace_merge_via_socket,
+    workspace_update_via_socket,
 };
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};

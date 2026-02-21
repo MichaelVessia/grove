@@ -88,6 +88,35 @@ impl GroveApp {
         self.daemon_socket_path.clone()
     }
 
+    /// Returns a daemon socket path only for remote workspaces.
+    /// Session operations (capture, send-keys, resize, paste) must execute
+    /// on the machine where the tmux session lives. Local workspaces run
+    /// tmux locally, so they bypass the daemon for session ops.
+    pub(super) fn remote_session_socket_for_workspace(
+        &self,
+        workspace: &Workspace,
+    ) -> Option<PathBuf> {
+        let project = self.project_for_workspace(workspace)?;
+        match &project.target {
+            ProjectTarget::Local => None,
+            ProjectTarget::Remote { profile } => {
+                self.remote_socket_path_for_profile(profile.as_str())
+            }
+        }
+    }
+
+    pub(super) fn remote_session_socket_for_workspace_path(
+        &self,
+        workspace_path: &std::path::Path,
+    ) -> Option<PathBuf> {
+        let workspace = self
+            .state
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.path == workspace_path)?;
+        self.remote_session_socket_for_workspace(workspace)
+    }
+
     fn ensure_remote_profile_available(&mut self, profile: &str, operation: &str) -> bool {
         let status = self.remote_status_for(profile);
         let active_matches = self.active_remote_profile.as_deref() == Some(profile);

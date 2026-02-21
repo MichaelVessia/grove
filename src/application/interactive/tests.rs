@@ -8,8 +8,14 @@ use super::{
 #[test]
 fn double_escape_exits_within_window() {
     let now = Instant::now();
-    let mut state =
-        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
 
     assert_eq!(
         state.handle_key(InteractiveKey::Escape, now),
@@ -24,8 +30,14 @@ fn double_escape_exits_within_window() {
 #[test]
 fn escape_outside_window_is_forwarded_again() {
     let now = Instant::now();
-    let mut state =
-        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
 
     assert_eq!(
         state.handle_key(InteractiveKey::Escape, now),
@@ -40,8 +52,14 @@ fn escape_outside_window_is_forwarded_again() {
 #[test]
 fn ctrl_backslash_exits_immediately() {
     let now = Instant::now();
-    let mut state =
-        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
 
     assert_eq!(
         state.handle_key(InteractiveKey::CtrlBackslash, now),
@@ -84,8 +102,14 @@ fn key_mapping_covers_named_and_literal_tmux_forms() {
 #[test]
 fn back_tab_maps_to_tmux_btab() {
     let now = Instant::now();
-    let mut state =
-        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
 
     assert_eq!(
         state.handle_key(InteractiveKey::BackTab, now),
@@ -96,8 +120,14 @@ fn back_tab_maps_to_tmux_btab() {
 #[test]
 fn modified_enter_maps_to_kitty_csi_u_sequence() {
     let now = Instant::now();
-    let mut state =
-        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
 
     assert_eq!(
         state.handle_key(
@@ -127,8 +157,14 @@ fn modified_enter_maps_to_kitty_csi_u_sequence() {
 #[test]
 fn modified_enter_forwards_via_tmux_literal_send_keys() {
     let now = Instant::now();
-    let mut state =
-        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
     let action = state.handle_key(
         InteractiveKey::ModifiedEnter {
             shift: true,
@@ -187,8 +223,14 @@ fn ansi_cursor_overlay_preserves_ansi_and_inserts_marker() {
 #[test]
 fn split_mouse_fragment_filter_drops_sequence_after_mouse_event() {
     let now = Instant::now();
-    let mut state =
-        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
     state.note_mouse_event(now);
 
     assert!(state.should_drop_split_mouse_fragment('[', now));
@@ -206,8 +248,14 @@ fn split_mouse_fragment_filter_drops_sequence_after_mouse_event() {
 #[test]
 fn split_mouse_fragment_filter_drops_sequence_when_prefix_bracket_is_missing() {
     let now = Instant::now();
-    let mut state =
-        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
     state.note_mouse_event(now);
 
     assert!(state.should_drop_split_mouse_fragment('<', now));
@@ -224,8 +272,14 @@ fn split_mouse_fragment_filter_drops_sequence_when_prefix_bracket_is_missing() {
 #[test]
 fn split_mouse_fragment_filter_drops_boundary_marker_then_sequence() {
     let now = Instant::now();
-    let mut state =
-        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
     state.note_mouse_event(now);
 
     assert!(state.should_drop_split_mouse_fragment('M', now));
@@ -244,8 +298,14 @@ fn split_mouse_fragment_filter_drops_boundary_marker_then_sequence() {
 #[test]
 fn split_mouse_fragment_filter_allows_normal_bracket_typing() {
     let now = Instant::now();
-    let mut state =
-        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
 
     assert!(!state.should_drop_split_mouse_fragment('[', now));
 }
@@ -253,8 +313,14 @@ fn split_mouse_fragment_filter_allows_normal_bracket_typing() {
 #[test]
 fn alt_copy_and_paste_map_to_special_actions() {
     let now = Instant::now();
-    let mut state =
-        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+    let mut state = InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-auth".to_string(),
+        now,
+        40,
+        120,
+        None,
+    );
 
     assert_eq!(
         state.handle_key(InteractiveKey::AltC, now),

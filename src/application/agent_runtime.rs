@@ -107,12 +107,14 @@ pub struct WorkspaceStatusTarget {
     pub workspace_path: PathBuf,
     pub session_name: String,
     pub supported_agent: bool,
+    pub daemon_socket_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LivePreviewTarget {
     pub session_name: String,
     pub include_escape_sequences: bool,
+    pub daemon_socket_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -317,6 +319,7 @@ pub fn live_preview_capture_target_for_tab(
     Some(LivePreviewTarget {
         session_name,
         include_escape_sequences: true,
+        daemon_socket_path: None,
     })
 }
 
@@ -349,6 +352,7 @@ pub fn workspace_status_targets_for_polling(
                 workspace_path: workspace.path.clone(),
                 session_name,
                 supported_agent: workspace.supported_agent,
+                daemon_socket_path: None,
             })
         })
         .collect()
