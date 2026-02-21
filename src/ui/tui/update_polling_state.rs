@@ -283,6 +283,11 @@ impl GroveApp {
 
     pub(super) fn schedule_next_tick(&mut self) -> Cmd<Msg> {
         let scheduled_at = Instant::now();
+        if self.next_workspace_refresh_due_at.is_none() {
+            self.next_workspace_refresh_due_at =
+                Some(scheduled_at + Duration::from_millis(WORKSPACE_REFRESH_INTERVAL_MS));
+        }
+
         let mut poll_due_at = scheduled_at + self.next_poll_interval();
         let mut source = "adaptive_poll";
         if let Some(interactive_due_at) = self.interactive_poll_due_at
@@ -325,6 +330,13 @@ impl GroveApp {
 
         let mut due_at = poll_due_at;
         let mut trigger = "poll";
+        if let Some(workspace_refresh_due_at) = self.next_workspace_refresh_due_at
+            && workspace_refresh_due_at < due_at
+        {
+            due_at = workspace_refresh_due_at;
+            source = "workspace_refresh";
+            trigger = "workspace_refresh";
+        }
         if let Some(visual_due_at) = self.next_visual_due_at
             && visual_due_at < due_at
         {

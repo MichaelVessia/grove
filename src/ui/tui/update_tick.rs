@@ -38,6 +38,9 @@ impl GroveApp {
         let poll_due = self
             .next_poll_due_at
             .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at));
+        let workspace_refresh_due = self
+            .next_workspace_refresh_due_at
+            .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at));
         let visual_due = self
             .next_visual_due_at
             .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at));
@@ -58,6 +61,11 @@ impl GroveApp {
             }
             self.poll_preview();
         }
+        if workspace_refresh_due {
+            self.next_workspace_refresh_due_at =
+                Some(now + Duration::from_millis(WORKSPACE_REFRESH_INTERVAL_MS));
+            self.refresh_workspaces(None);
+        }
 
         let pending_after = self.pending_input_depth();
         self.event_log.log(
@@ -65,6 +73,7 @@ impl GroveApp {
                 .with_data("late_by_ms", Value::from(late_by_ms))
                 .with_data("early_by_ms", Value::from(early_by_ms))
                 .with_data("poll_due", Value::from(poll_due))
+                .with_data("workspace_refresh_due", Value::from(workspace_refresh_due))
                 .with_data("visual_due", Value::from(visual_due))
                 .with_data("pending_before", Value::from(pending_before))
                 .with_data("pending_after", Value::from(pending_after))

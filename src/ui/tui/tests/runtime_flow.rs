@@ -4917,6 +4917,22 @@ fn stale_tick_before_due_is_ignored() {
 }
 
 #[test]
+fn tick_due_workspace_refresh_queues_inventory_refresh() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 1;
+    app.next_workspace_refresh_due_at = Some(Instant::now() - Duration::from_secs(1));
+    force_tick_due(&mut app);
+
+    let _ = ftui::Model::update(&mut app, Msg::Tick);
+
+    assert!(app.refresh_in_flight);
+    let next_due = app
+        .next_workspace_refresh_due_at
+        .expect("workspace refresh due timestamp should be set");
+    assert!(next_due > Instant::now());
+}
+
+#[test]
 fn in_flight_preview_poll_schedules_short_tick_for_task_results() {
     let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 1;
