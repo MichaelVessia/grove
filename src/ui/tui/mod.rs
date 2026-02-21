@@ -38,16 +38,15 @@ use serde_json::Value;
 use crate::application::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
     WorkspaceStatusTarget, detect_status_with_session_override, evaluate_capture_change,
-    execute_command_with, execute_launch_request_with_result_for_mode,
-    execute_shell_launch_request_for_mode, execute_stop_workspace_with_result_for_mode,
-    git_session_name_for_workspace, latest_assistant_attention_marker,
-    launch_request_for_workspace, poll_interval, session_name_for_workspace_ref,
+    execute_command_with, execute_shell_launch_request_for_mode, git_session_name_for_workspace,
+    latest_assistant_attention_marker, poll_interval, session_name_for_workspace_ref,
     shell_launch_request_for_workspace, shell_session_name_for_workspace,
     tmux_capture_error_indicates_missing_session, tmux_launch_error_indicates_duplicate_session,
     trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
     workspace_can_stop_agent, workspace_status_targets_for_polling_with_live_preview,
 };
 use crate::application::commands::{
+    AgentMutationResponse, AgentStartRequest, AgentStopRequest, CommandResult,
     InProcessLifecycleCommandService, LifecycleCommandService, RepoContext, WorkspaceCreateRequest,
     WorkspaceCreateSetupTemplate, WorkspaceDeleteRequest, WorkspaceMergeRequest, WorkspaceSelector,
     WorkspaceUpdateRequest,

@@ -15,25 +15,46 @@ impl GroveApp {
             self.show_info_toast("workspace cannot be started");
             return;
         }
-        let Some(workspace) = self.state.selected_workspace() else {
+        let Some(workspace) = self.state.selected_workspace().cloned() else {
             self.show_info_toast("no workspace selected");
             return;
         };
+        let Some(repo_root) = workspace.project_path.clone() else {
+            self.show_error_toast("agent start failed");
+            return;
+        };
         let (capture_cols, capture_rows) = self.capture_dimensions();
+        let workspace_name = workspace.name.clone();
+        let workspace_path = workspace.path.clone();
+        let session_name = session_name_for_workspace_ref(&workspace);
 
-        let request = launch_request_for_workspace(
-            workspace,
+        let request = AgentStartRequest {
+            context: RepoContext { repo_root },
+            selector: WorkspaceSelector::NameAndPath {
+                name: workspace_name.clone(),
+                path: workspace_path.clone(),
+            },
+            workspace_hint: Some(workspace.clone()),
             prompt,
             pre_launch_command,
             skip_permissions,
-            Some(capture_cols),
-            Some(capture_rows),
-        );
+            capture_cols: Some(capture_cols),
+            capture_rows: Some(capture_rows),
+            dry_run: false,
+        };
 
         if !self.tmux_input.supports_background_launch() {
-            let completion = execute_launch_request_with_result_for_mode(
-                &request,
-                CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
+            let service = InProcessLifecycleCommandService::new();
+            let completion = start_agent_completion_from_service_result(
+                service.agent_start_for_mode(
+                    request,
+                    CommandExecutionMode::Delegating(&mut |command| {
+                        self.execute_tmux_command(command)
+                    }),
+                ),
+                workspace_name,
+                workspace_path,
+                session_name,
             );
             if let Some(error) = completion.result.as_ref().err() {
                 self.last_tmux_error = Some(error.clone());
@@ -41,17 +62,18 @@ impl GroveApp {
                 return;
             }
 
-            self.apply_start_agent_completion(completion.into());
+            self.apply_start_agent_completion(completion);
             return;
         }
 
         self.start_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let completion = execute_launch_request_with_result_for_mode(
-                &request,
-                CommandExecutionMode::Process,
-            );
-            Msg::StartAgentCompleted(completion.into())
+            Msg::StartAgentCompleted(execute_start_agent(
+                request,
+                workspace_name,
+                workspace_path,
+                session_name,
+            ))
         }));
     }
 
@@ -132,5 +154,42 @@ impl GroveApp {
             pre_launch_command,
             skip_permissions,
         );
+    }
+}
+
+fn execute_start_agent(
+    request: AgentStartRequest,
+    fallback_workspace_name: String,
+    fallback_workspace_path: PathBuf,
+    fallback_session_name: String,
+) -> StartAgentCompletion {
+    let service = InProcessLifecycleCommandService::new();
+    start_agent_completion_from_service_result(
+        service.agent_start(request),
+        fallback_workspace_name,
+        fallback_workspace_path,
+        fallback_session_name,
+    )
+}
+
+fn start_agent_completion_from_service_result(
+    result: CommandResult<AgentMutationResponse>,
+    fallback_workspace_name: String,
+    fallback_workspace_path: PathBuf,
+    fallback_session_name: String,
+) -> StartAgentCompletion {
+    match result {
+        Ok(response) => StartAgentCompletion {
+            workspace_name: response.workspace.name.clone(),
+            workspace_path: response.workspace.path.clone(),
+            session_name: session_name_for_workspace_ref(&response.workspace),
+            result: Ok(()),
+        },
+        Err(error) => StartAgentCompletion {
+            workspace_name: fallback_workspace_name,
+            workspace_path: fallback_workspace_path,
+            session_name: fallback_session_name,
+            result: Err(error.message),
+        },
     }
 }

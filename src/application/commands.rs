@@ -108,9 +108,12 @@ pub struct WorkspaceUpdateRequest {
 pub struct AgentStartRequest {
     pub context: RepoContext,
     pub selector: WorkspaceSelector,
+    pub workspace_hint: Option<Workspace>,
     pub prompt: Option<String>,
     pub pre_launch_command: Option<String>,
     pub skip_permissions: bool,
+    pub capture_cols: Option<u16>,
+    pub capture_rows: Option<u16>,
     pub dry_run: bool,
 }
 
@@ -118,6 +121,7 @@ pub struct AgentStartRequest {
 pub struct AgentStopRequest {
     pub context: RepoContext,
     pub selector: WorkspaceSelector,
+    pub workspace_hint: Option<Workspace>,
     pub dry_run: bool,
 }
 
@@ -202,6 +206,142 @@ impl InProcessLifecycleCommandService {
         read_workspace_markers(&workspace.path)
             .map(|markers| markers.base_branch)
             .map_err(command_error_from_workspace_marker)
+    }
+
+    fn resolve_workspace_with_hint(
+        &self,
+        context: &RepoContext,
+        selector: &WorkspaceSelector,
+        workspace_hint: Option<Workspace>,
+    ) -> CommandResult<Workspace> {
+        match self.resolve_workspace(context, selector) {
+            Ok(workspace) => Ok(workspace),
+            Err(error) => {
+                if let Some(workspace) = workspace_hint {
+                    return Ok(workspace);
+                }
+                Err(error)
+            }
+        }
+    }
+
+    pub fn agent_start_for_mode(
+        &self,
+        request: AgentStartRequest,
+        mode: CommandExecutionMode<'_>,
+    ) -> CommandResult<AgentMutationResponse> {
+        let mut workspace = self.resolve_workspace_with_hint(
+            &request.context,
+            &request.selector,
+            request.workspace_hint.clone(),
+        )?;
+        if request.dry_run {
+            return Ok(AgentMutationResponse {
+                status: if workspace.status.is_running() {
+                    workspace.status
+                } else {
+                    WorkspaceStatus::Active
+                },
+                workspace,
+                warnings: Vec::new(),
+            });
+        }
+
+        if workspace.status.is_running() {
+            return Ok(AgentMutationResponse {
+                workspace: workspace.clone(),
+                status: workspace.status,
+                warnings: Vec::new(),
+            });
+        }
+
+        let launch_request = launch_request_for_workspace(
+            &workspace,
+            request.prompt,
+            request.pre_launch_command,
+            request.skip_permissions,
+            request.capture_cols,
+            request.capture_rows,
+        );
+        let start_result = execute_launch_request_with_result_for_mode(&launch_request, mode);
+        if let Err(error) = start_result.result {
+            if tmux_launch_error_indicates_duplicate_session(&error) {
+                workspace.status = WorkspaceStatus::Active;
+                return Ok(AgentMutationResponse {
+                    workspace,
+                    status: WorkspaceStatus::Active,
+                    warnings: Vec::new(),
+                });
+            }
+
+            return Err(CommandError {
+                code: ErrorCode::RuntimeFailure,
+                message: error,
+            });
+        }
+
+        workspace.status = WorkspaceStatus::Active;
+        Ok(AgentMutationResponse {
+            workspace,
+            status: WorkspaceStatus::Active,
+            warnings: Vec::new(),
+        })
+    }
+
+    pub fn agent_stop_for_mode(
+        &self,
+        request: AgentStopRequest,
+        mode: CommandExecutionMode<'_>,
+    ) -> CommandResult<AgentMutationResponse> {
+        let mut workspace = self.resolve_workspace_with_hint(
+            &request.context,
+            &request.selector,
+            request.workspace_hint.clone(),
+        )?;
+        let idle_status = if workspace.is_main {
+            WorkspaceStatus::Main
+        } else {
+            WorkspaceStatus::Idle
+        };
+
+        if request.dry_run {
+            return Ok(AgentMutationResponse {
+                workspace,
+                status: idle_status,
+                warnings: Vec::new(),
+            });
+        }
+
+        if !workspace.status.has_session() {
+            return Ok(AgentMutationResponse {
+                workspace,
+                status: idle_status,
+                warnings: Vec::new(),
+            });
+        }
+
+        let stop_result = execute_stop_workspace_with_result_for_mode(&workspace, mode);
+        if let Err(error) = stop_result.result {
+            if tmux_capture_error_indicates_missing_session(&error) {
+                workspace.status = idle_status;
+                return Ok(AgentMutationResponse {
+                    workspace,
+                    status: idle_status,
+                    warnings: Vec::new(),
+                });
+            }
+            return Err(CommandError {
+                code: ErrorCode::RuntimeFailure,
+                message: error,
+            });
+        }
+
+        workspace.status = idle_status;
+        Ok(AgentMutationResponse {
+            workspace,
+            status: idle_status,
+            warnings: Vec::new(),
+        })
     }
 }
 
@@ -436,110 +576,11 @@ impl LifecycleCommandService for InProcessLifecycleCommandService {
     }
 
     fn agent_start(&self, request: AgentStartRequest) -> CommandResult<AgentMutationResponse> {
-        let mut workspace = self.resolve_workspace(&request.context, &request.selector)?;
-        if request.dry_run {
-            return Ok(AgentMutationResponse {
-                status: if workspace.status.is_running() {
-                    workspace.status
-                } else {
-                    WorkspaceStatus::Active
-                },
-                workspace,
-                warnings: Vec::new(),
-            });
-        }
-
-        if workspace.status.is_running() {
-            return Ok(AgentMutationResponse {
-                workspace: workspace.clone(),
-                status: workspace.status,
-                warnings: Vec::new(),
-            });
-        }
-
-        let launch_request = launch_request_for_workspace(
-            &workspace,
-            request.prompt,
-            request.pre_launch_command,
-            request.skip_permissions,
-            None,
-            None,
-        );
-        let start_result = execute_launch_request_with_result_for_mode(
-            &launch_request,
-            CommandExecutionMode::Process,
-        );
-        if let Err(error) = start_result.result {
-            if tmux_launch_error_indicates_duplicate_session(&error) {
-                workspace.status = WorkspaceStatus::Active;
-                return Ok(AgentMutationResponse {
-                    workspace,
-                    status: WorkspaceStatus::Active,
-                    warnings: Vec::new(),
-                });
-            }
-
-            return Err(CommandError {
-                code: ErrorCode::RuntimeFailure,
-                message: error,
-            });
-        }
-
-        workspace.status = WorkspaceStatus::Active;
-        Ok(AgentMutationResponse {
-            workspace,
-            status: WorkspaceStatus::Active,
-            warnings: Vec::new(),
-        })
+        self.agent_start_for_mode(request, CommandExecutionMode::Process)
     }
 
     fn agent_stop(&self, request: AgentStopRequest) -> CommandResult<AgentMutationResponse> {
-        let mut workspace = self.resolve_workspace(&request.context, &request.selector)?;
-        let idle_status = if workspace.is_main {
-            WorkspaceStatus::Main
-        } else {
-            WorkspaceStatus::Idle
-        };
-
-        if request.dry_run {
-            return Ok(AgentMutationResponse {
-                workspace,
-                status: idle_status,
-                warnings: Vec::new(),
-            });
-        }
-
-        if !workspace.status.has_session() {
-            return Ok(AgentMutationResponse {
-                workspace,
-                status: idle_status,
-                warnings: Vec::new(),
-            });
-        }
-
-        let stop_result =
-            execute_stop_workspace_with_result_for_mode(&workspace, CommandExecutionMode::Process);
-        if let Err(error) = stop_result.result {
-            if tmux_capture_error_indicates_missing_session(&error) {
-                workspace.status = idle_status;
-                return Ok(AgentMutationResponse {
-                    workspace,
-                    status: idle_status,
-                    warnings: Vec::new(),
-                });
-            }
-            return Err(CommandError {
-                code: ErrorCode::RuntimeFailure,
-                message: error,
-            });
-        }
-
-        workspace.status = idle_status;
-        Ok(AgentMutationResponse {
-            workspace,
-            status: idle_status,
-            warnings: Vec::new(),
-        })
+        self.agent_stop_for_mode(request, CommandExecutionMode::Process)
     }
 }
 
