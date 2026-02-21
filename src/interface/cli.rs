@@ -5,13 +5,13 @@ use serde::Serialize;
 
 use crate::application::commands::{
     ErrorCode as CommandErrorCode, InProcessLifecycleCommandService, LifecycleCommandService,
-    RepoContext, WorkspaceListRequest,
+    RepoContext, WorkspaceCreateRequest, WorkspaceListRequest,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::event_log::{FileEventLogger, now_millis};
 use crate::interface::cli_contract::{CommandEnvelope, ErrorDetail, NextAction};
-use crate::interface::cli_errors::CliErrorCode;
-use crate::interface::next_actions::NextActionsBuilder;
+use crate::interface::cli_errors::{CliErrorCode, classify_error_message};
+use crate::interface::next_actions::{NextActionsBuilder, after_workspace_create};
 use crate::interface::root_command_tree::{RootCommandTree, root_command_tree};
 
 const DEBUG_RECORD_DIR: &str = ".grove";
@@ -34,10 +34,27 @@ struct WorkspaceListArgs {
     repo: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct WorkspaceCreateArgs {
+    name: Option<String>,
+    base_branch: Option<String>,
+    existing_branch: Option<String>,
+    agent: Option<AgentType>,
+    start: bool,
+    dry_run: bool,
+    repo: Option<PathBuf>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 struct WorkspaceListResult {
     repo_root: String,
     workspaces: Vec<WorkspaceView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct WorkspaceMutationResult {
+    workspace: WorkspaceView,
+    dry_run: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -164,6 +181,88 @@ fn parse_workspace_list_args(
     Ok(parsed)
 }
 
+fn parse_workspace_create_args(
+    args: impl IntoIterator<Item = String>,
+) -> std::io::Result<WorkspaceCreateArgs> {
+    let mut parsed = WorkspaceCreateArgs::default();
+    let mut args = args.into_iter();
+
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--name" => {
+                let Some(name) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--name requires a value",
+                    ));
+                };
+                parsed.name = Some(name);
+            }
+            "--base" => {
+                let Some(branch) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--base requires a value",
+                    ));
+                };
+                parsed.base_branch = Some(branch);
+            }
+            "--existing-branch" => {
+                let Some(branch) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--existing-branch requires a value",
+                    ));
+                };
+                parsed.existing_branch = Some(branch);
+            }
+            "--agent" => {
+                let Some(value) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--agent requires a value",
+                    ));
+                };
+                parsed.agent = Some(parse_agent(&value)?);
+            }
+            "--start" => {
+                parsed.start = true;
+            }
+            "--dry-run" => {
+                parsed.dry_run = true;
+            }
+            "--repo" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--repo requires a path",
+                    ));
+                };
+                parsed.repo = Some(PathBuf::from(path));
+            }
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("unknown argument for 'workspace create': {argument}"),
+                ));
+            }
+        }
+    }
+
+    Ok(parsed)
+}
+
+fn parse_agent(value: &str) -> std::io::Result<AgentType> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "claude" => Ok(AgentType::Claude),
+        "codex" => Ok(AgentType::Codex),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "--agent must be one of: claude, codex",
+        )),
+    }
+}
+
 fn debug_record_path(app_start_ts: u64) -> std::io::Result<PathBuf> {
     let dir = PathBuf::from(DEBUG_RECORD_DIR);
     fs::create_dir_all(&dir)?;
@@ -260,16 +359,10 @@ fn emit_error(
 
 fn command_error_code(error: CommandErrorCode, message: &str) -> CliErrorCode {
     match error {
-        CommandErrorCode::InvalidArgument => {
-            if message.contains("[A-Za-z0-9_-]") {
-                CliErrorCode::WorkspaceInvalidName
-            } else {
-                CliErrorCode::InvalidArgument
-            }
-        }
-        CommandErrorCode::NotFound => CliErrorCode::RepoNotFound,
+        CommandErrorCode::InvalidArgument => classify_error_message(message),
+        CommandErrorCode::NotFound => classify_error_message(message),
         CommandErrorCode::Conflict => CliErrorCode::Conflict,
-        CommandErrorCode::RuntimeFailure => CliErrorCode::Internal,
+        CommandErrorCode::RuntimeFailure => classify_error_message(message),
         CommandErrorCode::Internal => CliErrorCode::Internal,
     }
 }
@@ -310,6 +403,50 @@ fn run_workspace_list(parsed: WorkspaceListArgs) -> std::io::Result<()> {
             command_error_code(error.code, &error.message),
             error.message,
             "Verify repository path and retry",
+        ),
+    }
+}
+
+fn run_workspace_create(parsed: WorkspaceCreateArgs) -> std::io::Result<()> {
+    let repo_root = if let Some(path) = parsed.repo {
+        path
+    } else {
+        std::env::current_dir()?
+    };
+    let command = "grove workspace create";
+    let request = WorkspaceCreateRequest {
+        context: RepoContext {
+            repo_root: repo_root.clone(),
+        },
+        name: parsed.name.unwrap_or_default(),
+        base_branch: parsed.base_branch,
+        existing_branch: parsed.existing_branch,
+        agent: parsed.agent,
+        start: parsed.start,
+        dry_run: parsed.dry_run,
+        setup_template: None,
+    };
+    let service = InProcessLifecycleCommandService::new();
+    let response = service.workspace_create(request);
+    match response {
+        Ok(result) => {
+            let started = result.workspace.status.is_running();
+            let payload = WorkspaceMutationResult {
+                workspace: WorkspaceView::from_workspace(result.workspace.clone()),
+                dry_run: parsed.dry_run,
+            };
+            emit_json(&CommandEnvelope::success(
+                command,
+                payload,
+                result.warnings,
+                after_workspace_create(&result.workspace.name, started),
+            ))
+        }
+        Err(error) => emit_error(
+            command,
+            command_error_code(error.code, &error.message),
+            error.message,
+            "Adjust create arguments and retry",
         ),
     }
 }
@@ -387,6 +524,17 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
                 ),
             };
         }
+        if workspace_command == "create" {
+            return match parse_workspace_create_args(workspace_args.iter().cloned()) {
+                Ok(parsed) => run_workspace_create(parsed),
+                Err(error) => emit_error(
+                    "grove workspace create",
+                    CliErrorCode::InvalidArgument,
+                    error.to_string(),
+                    "Retry with '--name <name> --base <branch>' and optional flags",
+                ),
+            };
+        }
     }
 
     let cli = parse_cli_args(args)?;
@@ -421,8 +569,10 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
 mod tests {
     use super::{
         CliArgs, TuiArgs, debug_record_path, ensure_event_log_parent_directory, parse_cli_args,
-        parse_tui_args, parse_workspace_list_args, resolve_event_log_path, root_command_envelope,
+        parse_tui_args, parse_workspace_create_args, parse_workspace_list_args,
+        resolve_event_log_path, root_command_envelope,
     };
+    use crate::domain::AgentType;
     use serde_json::Value;
     use std::path::PathBuf;
 
@@ -565,6 +715,57 @@ mod tests {
     #[test]
     fn workspace_list_parser_rejects_unknown_flag() {
         let error = parse_workspace_list_args(vec!["--wat".to_string()]).expect_err("unknown arg");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn workspace_create_parser_reads_expected_flags() {
+        let parsed = parse_workspace_create_args(vec![
+            "--name".to_string(),
+            "feature-auth".to_string(),
+            "--base".to_string(),
+            "main".to_string(),
+            "--agent".to_string(),
+            "claude".to_string(),
+            "--start".to_string(),
+            "--dry-run".to_string(),
+            "--repo".to_string(),
+            "/repos/grove".to_string(),
+        ])
+        .expect("workspace create args should parse");
+
+        assert_eq!(
+            parsed,
+            super::WorkspaceCreateArgs {
+                name: Some("feature-auth".to_string()),
+                base_branch: Some("main".to_string()),
+                existing_branch: None,
+                agent: Some(AgentType::Claude),
+                start: true,
+                dry_run: true,
+                repo: Some(PathBuf::from("/repos/grove")),
+            }
+        );
+    }
+
+    #[test]
+    fn workspace_create_parser_rejects_invalid_agent() {
+        let error = parse_workspace_create_args(vec![
+            "--name".to_string(),
+            "feature-auth".to_string(),
+            "--base".to_string(),
+            "main".to_string(),
+            "--agent".to_string(),
+            "wat".to_string(),
+        ])
+        .expect_err("invalid agent should fail");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn workspace_create_parser_rejects_unknown_flag() {
+        let error =
+            parse_workspace_create_args(vec!["--wat".to_string()]).expect_err("unknown arg");
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     }
 }
