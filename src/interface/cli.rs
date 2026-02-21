@@ -5,8 +5,8 @@ use serde::Serialize;
 
 use crate::application::commands::{
     ErrorCode as CommandErrorCode, InProcessLifecycleCommandService, LifecycleCommandService,
-    RepoContext, WorkspaceCreateRequest, WorkspaceEditRequest, WorkspaceListRequest,
-    WorkspaceSelector,
+    RepoContext, WorkspaceCreateRequest, WorkspaceDeleteRequest, WorkspaceEditRequest,
+    WorkspaceListRequest, WorkspaceSelector,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::event_log::{FileEventLogger, now_millis};
@@ -52,6 +52,16 @@ struct WorkspaceEditArgs {
     workspace_path: Option<PathBuf>,
     agent: Option<AgentType>,
     base_branch: Option<String>,
+    repo: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct WorkspaceDeleteArgs {
+    workspace: Option<String>,
+    workspace_path: Option<PathBuf>,
+    delete_branch: bool,
+    force_stop: bool,
+    dry_run: bool,
     repo: Option<PathBuf>,
 }
 
@@ -342,6 +352,62 @@ fn workspace_selector(
     }
 }
 
+fn parse_workspace_delete_args(
+    args: impl IntoIterator<Item = String>,
+) -> std::io::Result<WorkspaceDeleteArgs> {
+    let mut parsed = WorkspaceDeleteArgs::default();
+    let mut args = args.into_iter();
+
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--workspace" => {
+                let Some(name) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--workspace requires a value",
+                    ));
+                };
+                parsed.workspace = Some(name);
+            }
+            "--workspace-path" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--workspace-path requires a path",
+                    ));
+                };
+                parsed.workspace_path = Some(PathBuf::from(path));
+            }
+            "--delete-branch" => {
+                parsed.delete_branch = true;
+            }
+            "--force-stop" => {
+                parsed.force_stop = true;
+            }
+            "--dry-run" => {
+                parsed.dry_run = true;
+            }
+            "--repo" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--repo requires a path",
+                    ));
+                };
+                parsed.repo = Some(PathBuf::from(path));
+            }
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("unknown argument for 'workspace delete': {argument}"),
+                ));
+            }
+        }
+    }
+
+    Ok(parsed)
+}
+
 fn parse_agent(value: &str) -> std::io::Result<AgentType> {
     match value.trim().to_ascii_lowercase().as_str() {
         "claude" => Ok(AgentType::Claude),
@@ -427,6 +493,16 @@ fn workspace_edit_next_actions(workspace_name: &str) -> Vec<NextAction> {
         .push(
             format!("agent start {selector}"),
             "Start agent with updated workspace settings",
+        )
+        .build()
+}
+
+fn workspace_delete_next_actions() -> Vec<NextAction> {
+    NextActionsBuilder::new()
+        .push("workspace list", "Inspect workspace inventory")
+        .push(
+            "workspace create --name <name> --base <branch>",
+            "Create a replacement workspace",
         )
         .build()
 }
@@ -607,6 +683,55 @@ fn run_workspace_edit(parsed: WorkspaceEditArgs) -> std::io::Result<()> {
     }
 }
 
+fn run_workspace_delete(parsed: WorkspaceDeleteArgs) -> std::io::Result<()> {
+    let command = "grove workspace delete";
+    let selector = match workspace_selector(parsed.workspace, parsed.workspace_path) {
+        Ok(selector) => selector,
+        Err(error) => {
+            return emit_error(
+                command,
+                CliErrorCode::InvalidArgument,
+                error.to_string(),
+                "Retry with '--workspace <name>' or '--workspace-path <path>'",
+            );
+        }
+    };
+    let repo_root = if let Some(path) = parsed.repo {
+        path
+    } else {
+        std::env::current_dir()?
+    };
+    let request = WorkspaceDeleteRequest {
+        context: RepoContext { repo_root },
+        selector,
+        delete_branch: parsed.delete_branch,
+        force_stop: parsed.force_stop,
+        dry_run: parsed.dry_run,
+    };
+    let service = InProcessLifecycleCommandService::new();
+    let response = service.workspace_delete(request);
+    match response {
+        Ok(result) => {
+            let payload = WorkspaceMutationResult {
+                workspace: WorkspaceView::from_workspace(result.workspace),
+                dry_run: parsed.dry_run,
+            };
+            emit_json(&CommandEnvelope::success(
+                command,
+                payload,
+                result.warnings,
+                workspace_delete_next_actions(),
+            ))
+        }
+        Err(error) => emit_error(
+            command,
+            command_error_code(error.code, &error.message),
+            error.message,
+            "Adjust selector/delete flags, then retry",
+        ),
+    }
+}
+
 fn agent_label(agent: AgentType) -> &'static str {
     match agent {
         AgentType::Claude => "claude",
@@ -702,6 +827,17 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
                 ),
             };
         }
+        if workspace_command == "delete" {
+            return match parse_workspace_delete_args(workspace_args.iter().cloned()) {
+                Ok(parsed) => run_workspace_delete(parsed),
+                Err(error) => emit_error(
+                    "grove workspace delete",
+                    CliErrorCode::InvalidArgument,
+                    error.to_string(),
+                    "Retry with selector flags and optional '--delete-branch'/'--force-stop'",
+                ),
+            };
+        }
     }
 
     let cli = parse_cli_args(args)?;
@@ -736,9 +872,9 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
 mod tests {
     use super::{
         CliArgs, TuiArgs, debug_record_path, ensure_event_log_parent_directory, parse_cli_args,
-        parse_tui_args, parse_workspace_create_args, parse_workspace_edit_args,
-        parse_workspace_list_args, resolve_event_log_path, root_command_envelope,
-        workspace_selector,
+        parse_tui_args, parse_workspace_create_args, parse_workspace_delete_args,
+        parse_workspace_edit_args, parse_workspace_list_args, resolve_event_log_path,
+        root_command_envelope, workspace_selector,
     };
     use crate::application::commands::WorkspaceSelector;
     use crate::domain::AgentType;
@@ -990,5 +1126,38 @@ mod tests {
                 path: PathBuf::from("/tmp/grove-feature-auth"),
             }
         );
+    }
+
+    #[test]
+    fn workspace_delete_parser_reads_expected_flags() {
+        let parsed = parse_workspace_delete_args(vec![
+            "--workspace".to_string(),
+            "feature-auth".to_string(),
+            "--delete-branch".to_string(),
+            "--force-stop".to_string(),
+            "--dry-run".to_string(),
+            "--repo".to_string(),
+            "/repos/grove".to_string(),
+        ])
+        .expect("workspace delete args should parse");
+
+        assert_eq!(
+            parsed,
+            super::WorkspaceDeleteArgs {
+                workspace: Some("feature-auth".to_string()),
+                workspace_path: None,
+                delete_branch: true,
+                force_stop: true,
+                dry_run: true,
+                repo: Some(PathBuf::from("/repos/grove")),
+            }
+        );
+    }
+
+    #[test]
+    fn workspace_delete_parser_rejects_unknown_flag() {
+        let error =
+            parse_workspace_delete_args(vec!["--wat".to_string()]).expect_err("unknown arg");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     }
 }
