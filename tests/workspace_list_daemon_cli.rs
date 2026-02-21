@@ -68,10 +68,7 @@ fn socket_transport_rejects_unsupported_commands_for_now() {
     let output = Command::new(env!("CARGO_BIN_EXE_grove"))
         .arg("--socket")
         .arg("/tmp/non-existent-groved.sock")
-        .arg("agent")
-        .arg("stop")
-        .arg("--workspace")
-        .arg("feature-a")
+        .arg("tui")
         .output()
         .expect("grove should run");
 
@@ -224,6 +221,78 @@ fn workspace_update_missing_workspace_can_use_daemon_socket_transport() {
     assert_eq!(
         value["command"],
         serde_json::Value::String("grove workspace update".to_string())
+    );
+    assert_eq!(
+        value["error"]["code"],
+        serde_json::Value::String("WORKSPACE_NOT_FOUND".to_string())
+    );
+}
+
+#[test]
+fn agent_start_missing_workspace_can_use_daemon_socket_transport() {
+    let socket_path = unique_socket_path("agent-start");
+    let mut daemon = spawn_groved(&socket_path);
+    wait_for_socket_ready(&socket_path);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_grove"))
+        .arg("--socket")
+        .arg(&socket_path)
+        .arg("agent")
+        .arg("start")
+        .arg("--workspace")
+        .arg("definitely-missing-workspace")
+        .arg("--dry-run")
+        .arg("--repo")
+        .arg(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("grove should run");
+
+    let status = daemon.wait().expect("daemon should exit");
+    assert!(status.success(), "groved exited non-zero");
+    assert!(output.status.success(), "grove exited non-zero");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be valid utf-8");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout should be json");
+    assert_eq!(value["ok"], serde_json::Value::Bool(false));
+    assert_eq!(
+        value["command"],
+        serde_json::Value::String("grove agent start".to_string())
+    );
+    assert_eq!(
+        value["error"]["code"],
+        serde_json::Value::String("WORKSPACE_NOT_FOUND".to_string())
+    );
+}
+
+#[test]
+fn agent_stop_missing_workspace_can_use_daemon_socket_transport() {
+    let socket_path = unique_socket_path("agent-stop");
+    let mut daemon = spawn_groved(&socket_path);
+    wait_for_socket_ready(&socket_path);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_grove"))
+        .arg("--socket")
+        .arg(&socket_path)
+        .arg("agent")
+        .arg("stop")
+        .arg("--workspace")
+        .arg("definitely-missing-workspace")
+        .arg("--dry-run")
+        .arg("--repo")
+        .arg(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("grove should run");
+
+    let status = daemon.wait().expect("daemon should exit");
+    assert!(status.success(), "groved exited non-zero");
+    assert!(output.status.success(), "grove exited non-zero");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be valid utf-8");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout should be json");
+    assert_eq!(value["ok"], serde_json::Value::Bool(false));
+    assert_eq!(
+        value["command"],
+        serde_json::Value::String("grove agent stop".to_string())
     );
     assert_eq!(
         value["error"]["code"],

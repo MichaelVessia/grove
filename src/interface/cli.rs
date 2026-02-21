@@ -14,11 +14,12 @@ use crate::infrastructure::event_log::{FileEventLogger, now_millis};
 use crate::interface::cli_contract::{CommandEnvelope, ErrorDetail, NextAction};
 use crate::interface::cli_errors::{CliErrorCode, classify_error_message};
 use crate::interface::daemon::{
-    DaemonCommandError, DaemonWorkspaceCreatePayload, DaemonWorkspaceDeletePayload,
-    DaemonWorkspaceEditPayload, DaemonWorkspaceMergePayload, DaemonWorkspaceUpdatePayload,
-    DaemonWorkspaceView, workspace_create_via_socket, workspace_delete_via_socket,
-    workspace_edit_via_socket, workspace_list_via_socket, workspace_merge_via_socket,
-    workspace_update_via_socket,
+    DaemonAgentStartPayload, DaemonAgentStopPayload, DaemonCommandError,
+    DaemonWorkspaceCreatePayload, DaemonWorkspaceDeletePayload, DaemonWorkspaceEditPayload,
+    DaemonWorkspaceMergePayload, DaemonWorkspaceUpdatePayload, DaemonWorkspaceView,
+    agent_start_via_socket, agent_stop_via_socket, workspace_create_via_socket,
+    workspace_delete_via_socket, workspace_edit_via_socket, workspace_list_via_socket,
+    workspace_merge_via_socket, workspace_update_via_socket,
 };
 use crate::interface::next_actions::{
     NextActionsBuilder, after_agent_stop, after_workspace_create, after_workspace_merge,
@@ -1435,8 +1436,10 @@ fn run_workspace_update(
     }
 }
 
-fn run_agent_start(parsed: AgentStartArgs) -> std::io::Result<()> {
+fn run_agent_start(parsed: AgentStartArgs, daemon_socket: Option<&Path>) -> std::io::Result<()> {
     let command = "grove agent start";
+    let workspace_name = parsed.workspace.clone();
+    let workspace_path = parsed.workspace_path.clone();
     let selector = match workspace_selector(parsed.workspace, parsed.workspace_path) {
         Ok(selector) => selector,
         Err(error) => {
@@ -1453,6 +1456,47 @@ fn run_agent_start(parsed: AgentStartArgs) -> std::io::Result<()> {
     } else {
         std::env::current_dir()?
     };
+    if let Some(socket_path) = daemon_socket {
+        return match agent_start_via_socket(
+            socket_path,
+            DaemonAgentStartPayload {
+                repo_root: repo_root.display().to_string(),
+                workspace: workspace_name,
+                workspace_path: workspace_path.map(|path| path.display().to_string()),
+                prompt: parsed.prompt,
+                pre_launch_command: parsed.pre_launch_command,
+                skip_permissions: parsed.skip_permissions,
+                dry_run: parsed.dry_run,
+            },
+        ) {
+            Ok(Ok(result)) => {
+                let workspace_name = result.workspace.name.clone();
+                let payload = WorkspaceMutationResult {
+                    workspace: workspace_view_from_daemon(result.workspace),
+                    dry_run: parsed.dry_run,
+                };
+                emit_json(&CommandEnvelope::success(
+                    command,
+                    payload,
+                    result.warnings,
+                    agent_start_next_actions(&workspace_name),
+                ))
+            }
+            Ok(Err(error)) => emit_error(
+                command,
+                daemon_command_error_to_cli_code(&error),
+                error.message,
+                "Resolve workspace/runtime state and retry start",
+            ),
+            Err(error) => emit_error(
+                command,
+                CliErrorCode::IoError,
+                format!("daemon request failed: {error}"),
+                "Verify daemon socket path and daemon availability, then retry",
+            ),
+        };
+    }
+
     let request = AgentStartRequest {
         context: RepoContext { repo_root },
         selector,
@@ -1489,8 +1533,10 @@ fn run_agent_start(parsed: AgentStartArgs) -> std::io::Result<()> {
     }
 }
 
-fn run_agent_stop(parsed: AgentStopArgs) -> std::io::Result<()> {
+fn run_agent_stop(parsed: AgentStopArgs, daemon_socket: Option<&Path>) -> std::io::Result<()> {
     let command = "grove agent stop";
+    let workspace_name = parsed.workspace.clone();
+    let workspace_path = parsed.workspace_path.clone();
     let selector = match workspace_selector(parsed.workspace, parsed.workspace_path) {
         Ok(selector) => selector,
         Err(error) => {
@@ -1507,6 +1553,44 @@ fn run_agent_stop(parsed: AgentStopArgs) -> std::io::Result<()> {
     } else {
         std::env::current_dir()?
     };
+    if let Some(socket_path) = daemon_socket {
+        return match agent_stop_via_socket(
+            socket_path,
+            DaemonAgentStopPayload {
+                repo_root: repo_root.display().to_string(),
+                workspace: workspace_name,
+                workspace_path: workspace_path.map(|path| path.display().to_string()),
+                dry_run: parsed.dry_run,
+            },
+        ) {
+            Ok(Ok(result)) => {
+                let workspace_name = result.workspace.name.clone();
+                let payload = WorkspaceMutationResult {
+                    workspace: workspace_view_from_daemon(result.workspace),
+                    dry_run: parsed.dry_run,
+                };
+                emit_json(&CommandEnvelope::success(
+                    command,
+                    payload,
+                    result.warnings,
+                    after_agent_stop(&workspace_name),
+                ))
+            }
+            Ok(Err(error)) => emit_error(
+                command,
+                daemon_command_error_to_cli_code(&error),
+                error.message,
+                "Resolve workspace/runtime state and retry stop",
+            ),
+            Err(error) => emit_error(
+                command,
+                CliErrorCode::IoError,
+                format!("daemon request failed: {error}"),
+                "Verify daemon socket path and daemon availability, then retry",
+            ),
+        };
+    }
+
     let request = AgentStopRequest {
         context: RepoContext { repo_root },
         selector,
@@ -1683,14 +1767,6 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         }
     }
     if first == "agent" {
-        if daemon_socket_path.is_some() {
-            return emit_error(
-                "grove agent",
-                CliErrorCode::InvalidArgument,
-                "--socket currently supports workspace lifecycle commands only".to_string(),
-                "Retry with 'grove --socket <path> workspace <list|create|edit|delete|merge|update> ...'",
-            );
-        }
         let Some((agent_command, agent_args)) = remaining.split_first() else {
             return emit_error(
                 "grove agent",
@@ -1701,7 +1777,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         };
         if agent_command == "start" {
             return match parse_agent_start_args(agent_args.iter().cloned()) {
-                Ok(parsed) => run_agent_start(parsed),
+                Ok(parsed) => run_agent_start(parsed, daemon_socket_path),
                 Err(error) => emit_error(
                     "grove agent start",
                     CliErrorCode::InvalidArgument,
@@ -1712,7 +1788,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         }
         if agent_command == "stop" {
             return match parse_agent_stop_args(agent_args.iter().cloned()) {
-                Ok(parsed) => run_agent_stop(parsed),
+                Ok(parsed) => run_agent_stop(parsed, daemon_socket_path),
                 Err(error) => emit_error(
                     "grove agent stop",
                     CliErrorCode::InvalidArgument,
@@ -1727,8 +1803,8 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         return emit_error(
             "grove",
             CliErrorCode::InvalidArgument,
-            "--socket currently supports workspace lifecycle commands only".to_string(),
-            "Retry with 'grove --socket <path> workspace <list|create|edit|delete|merge|update> ...'",
+            "--socket currently supports lifecycle commands only".to_string(),
+            "Retry with 'grove --socket <path> workspace|agent ...' lifecycle commands",
         );
     }
 

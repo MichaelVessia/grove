@@ -6,9 +6,10 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::application::commands::{
-    ErrorCode as CommandErrorCode, InProcessLifecycleCommandService, LifecycleCommandService,
-    RepoContext, WorkspaceCreateRequest, WorkspaceDeleteRequest, WorkspaceEditRequest,
-    WorkspaceListRequest, WorkspaceMergeRequest, WorkspaceSelector, WorkspaceUpdateRequest,
+    AgentStartRequest, AgentStopRequest, ErrorCode as CommandErrorCode,
+    InProcessLifecycleCommandService, LifecycleCommandService, RepoContext, WorkspaceCreateRequest,
+    WorkspaceDeleteRequest, WorkspaceEditRequest, WorkspaceListRequest, WorkspaceMergeRequest,
+    WorkspaceSelector, WorkspaceUpdateRequest,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
@@ -43,6 +44,12 @@ pub enum DaemonRequest {
     },
     WorkspaceUpdate {
         payload: DaemonWorkspaceUpdatePayload,
+    },
+    AgentStart {
+        payload: DaemonAgentStartPayload,
+    },
+    AgentStop {
+        payload: DaemonAgentStopPayload,
     },
 }
 
@@ -86,6 +93,18 @@ pub enum DaemonResponse {
         result: DaemonWorkspaceMutationResult,
     },
     WorkspaceUpdateErr {
+        error: DaemonCommandError,
+    },
+    AgentStartOk {
+        result: DaemonWorkspaceMutationResult,
+    },
+    AgentStartErr {
+        error: DaemonCommandError,
+    },
+    AgentStopOk {
+        result: DaemonWorkspaceMutationResult,
+    },
+    AgentStopErr {
         error: DaemonCommandError,
     },
 }
@@ -144,6 +163,25 @@ pub struct DaemonWorkspaceMergePayload {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DaemonWorkspaceUpdatePayload {
+    pub repo_root: String,
+    pub workspace: Option<String>,
+    pub workspace_path: Option<String>,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonAgentStartPayload {
+    pub repo_root: String,
+    pub workspace: Option<String>,
+    pub workspace_path: Option<String>,
+    pub prompt: Option<String>,
+    pub pre_launch_command: Option<String>,
+    pub skip_permissions: bool,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonAgentStopPayload {
     pub repo_root: String,
     pub workspace: Option<String>,
     pub workspace_path: Option<String>,
@@ -307,6 +345,40 @@ pub fn workspace_update_via_socket(
         _ => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "unexpected daemon response for workspace update",
+        )),
+    }
+}
+
+pub fn agent_start_via_socket(
+    socket_path: &Path,
+    payload: DaemonAgentStartPayload,
+) -> std::io::Result<Result<DaemonWorkspaceMutationResult, DaemonCommandError>> {
+    let request = DaemonRequest::AgentStart { payload };
+    let response = send_request(socket_path, &request)?;
+
+    match response {
+        DaemonResponse::AgentStartOk { result } => Ok(Ok(result)),
+        DaemonResponse::AgentStartErr { error } => Ok(Err(error)),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for agent start",
+        )),
+    }
+}
+
+pub fn agent_stop_via_socket(
+    socket_path: &Path,
+    payload: DaemonAgentStopPayload,
+) -> std::io::Result<Result<DaemonWorkspaceMutationResult, DaemonCommandError>> {
+    let request = DaemonRequest::AgentStop { payload };
+    let response = send_request(socket_path, &request)?;
+
+    match response {
+        DaemonResponse::AgentStopOk { result } => Ok(Ok(result)),
+        DaemonResponse::AgentStopErr { error } => Ok(Err(error)),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for agent stop",
         )),
     }
 }
@@ -478,6 +550,8 @@ fn handle_connection(
         DaemonRequest::WorkspaceUpdate { payload } => {
             handle_workspace_update_request(service, payload)
         }
+        DaemonRequest::AgentStart { payload } => handle_agent_start_request(service, payload),
+        DaemonRequest::AgentStop { payload } => handle_agent_stop_request(service, payload),
     };
 
     let payload = serde_json::to_string(&response)
@@ -689,6 +763,79 @@ fn handle_workspace_update_request(
             },
         },
         Err(error) => DaemonResponse::WorkspaceUpdateErr {
+            error: DaemonCommandError::from_command_error(error.code, error.message),
+        },
+    }
+}
+
+fn handle_agent_start_request(
+    service: &impl LifecycleCommandService,
+    payload: DaemonAgentStartPayload,
+) -> DaemonResponse {
+    let selector =
+        match parse_workspace_selector_from_request(payload.workspace, payload.workspace_path) {
+            Ok(selector) => selector,
+            Err(error) => {
+                return DaemonResponse::AgentStartErr { error };
+            }
+        };
+
+    let request = AgentStartRequest {
+        context: RepoContext {
+            repo_root: PathBuf::from(payload.repo_root),
+        },
+        selector,
+        workspace_hint: None,
+        prompt: payload.prompt,
+        pre_launch_command: payload.pre_launch_command,
+        skip_permissions: payload.skip_permissions,
+        capture_cols: None,
+        capture_rows: None,
+        dry_run: payload.dry_run,
+    };
+
+    match service.agent_start(request) {
+        Ok(response) => DaemonResponse::AgentStartOk {
+            result: DaemonWorkspaceMutationResult {
+                workspace: DaemonWorkspaceView::from_workspace(response.workspace),
+                warnings: response.warnings,
+            },
+        },
+        Err(error) => DaemonResponse::AgentStartErr {
+            error: DaemonCommandError::from_command_error(error.code, error.message),
+        },
+    }
+}
+
+fn handle_agent_stop_request(
+    service: &impl LifecycleCommandService,
+    payload: DaemonAgentStopPayload,
+) -> DaemonResponse {
+    let selector =
+        match parse_workspace_selector_from_request(payload.workspace, payload.workspace_path) {
+            Ok(selector) => selector,
+            Err(error) => {
+                return DaemonResponse::AgentStopErr { error };
+            }
+        };
+
+    let request = AgentStopRequest {
+        context: RepoContext {
+            repo_root: PathBuf::from(payload.repo_root),
+        },
+        selector,
+        workspace_hint: None,
+        dry_run: payload.dry_run,
+    };
+
+    match service.agent_stop(request) {
+        Ok(response) => DaemonResponse::AgentStopOk {
+            result: DaemonWorkspaceMutationResult {
+                workspace: DaemonWorkspaceView::from_workspace(response.workspace),
+                warnings: response.warnings,
+            },
+        },
+        Err(error) => DaemonResponse::AgentStopErr {
             error: DaemonCommandError::from_command_error(error.code, error.message),
         },
     }
