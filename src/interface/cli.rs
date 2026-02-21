@@ -6,7 +6,7 @@ use serde::Serialize;
 use crate::application::commands::{
     ErrorCode as CommandErrorCode, InProcessLifecycleCommandService, LifecycleCommandService,
     RepoContext, WorkspaceCreateRequest, WorkspaceDeleteRequest, WorkspaceEditRequest,
-    WorkspaceListRequest, WorkspaceMergeRequest, WorkspaceSelector,
+    WorkspaceListRequest, WorkspaceMergeRequest, WorkspaceSelector, WorkspaceUpdateRequest,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::event_log::{FileEventLogger, now_millis};
@@ -73,6 +73,14 @@ struct WorkspaceMergeArgs {
     workspace_path: Option<PathBuf>,
     cleanup_workspace: bool,
     cleanup_branch: bool,
+    dry_run: bool,
+    repo: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct WorkspaceUpdateArgs {
+    workspace: Option<String>,
+    workspace_path: Option<PathBuf>,
     dry_run: bool,
     repo: Option<PathBuf>,
 }
@@ -476,6 +484,56 @@ fn parse_workspace_merge_args(
     Ok(parsed)
 }
 
+fn parse_workspace_update_args(
+    args: impl IntoIterator<Item = String>,
+) -> std::io::Result<WorkspaceUpdateArgs> {
+    let mut parsed = WorkspaceUpdateArgs::default();
+    let mut args = args.into_iter();
+
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--workspace" => {
+                let Some(name) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--workspace requires a value",
+                    ));
+                };
+                parsed.workspace = Some(name);
+            }
+            "--workspace-path" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--workspace-path requires a path",
+                    ));
+                };
+                parsed.workspace_path = Some(PathBuf::from(path));
+            }
+            "--dry-run" => {
+                parsed.dry_run = true;
+            }
+            "--repo" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--repo requires a path",
+                    ));
+                };
+                parsed.repo = Some(PathBuf::from(path));
+            }
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("unknown argument for 'workspace update': {argument}"),
+                ));
+            }
+        }
+    }
+
+    Ok(parsed)
+}
+
 fn parse_agent(value: &str) -> std::io::Result<AgentType> {
     match value.trim().to_ascii_lowercase().as_str() {
         "claude" => Ok(AgentType::Claude),
@@ -571,6 +629,21 @@ fn workspace_delete_next_actions() -> Vec<NextAction> {
         .push(
             "workspace create --name <name> --base <branch>",
             "Create a replacement workspace",
+        )
+        .build()
+}
+
+fn workspace_update_next_actions(workspace_name: &str) -> Vec<NextAction> {
+    let selector = format!("--workspace {workspace_name}");
+    NextActionsBuilder::new()
+        .push("workspace list", "Inspect workspace inventory")
+        .push(
+            format!("workspace merge {selector}"),
+            "Merge updated workspace branch",
+        )
+        .push(
+            format!("agent start {selector}"),
+            "Start or restart the workspace agent",
         )
         .build()
 }
@@ -850,6 +923,54 @@ fn run_workspace_merge(parsed: WorkspaceMergeArgs) -> std::io::Result<()> {
     }
 }
 
+fn run_workspace_update(parsed: WorkspaceUpdateArgs) -> std::io::Result<()> {
+    let command = "grove workspace update";
+    let selector = match workspace_selector(parsed.workspace, parsed.workspace_path) {
+        Ok(selector) => selector,
+        Err(error) => {
+            return emit_error(
+                command,
+                CliErrorCode::InvalidArgument,
+                error.to_string(),
+                "Retry with '--workspace <name>' or '--workspace-path <path>'",
+            );
+        }
+    };
+    let repo_root = if let Some(path) = parsed.repo {
+        path
+    } else {
+        std::env::current_dir()?
+    };
+    let request = WorkspaceUpdateRequest {
+        context: RepoContext { repo_root },
+        selector,
+        dry_run: parsed.dry_run,
+    };
+    let service = InProcessLifecycleCommandService::new();
+    let response = service.workspace_update(request);
+    match response {
+        Ok(result) => {
+            let workspace_name = result.workspace.name.clone();
+            let payload = WorkspaceMutationResult {
+                workspace: WorkspaceView::from_workspace(result.workspace),
+                dry_run: parsed.dry_run,
+            };
+            emit_json(&CommandEnvelope::success(
+                command,
+                payload,
+                result.warnings,
+                workspace_update_next_actions(&workspace_name),
+            ))
+        }
+        Err(error) => emit_error(
+            command,
+            command_error_code(error.code, &error.message),
+            error.message,
+            "Resolve workspace/base branch state and retry update",
+        ),
+    }
+}
+
 fn agent_label(agent: AgentType) -> &'static str {
     match agent {
         AgentType::Claude => "claude",
@@ -967,6 +1088,17 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
                 ),
             };
         }
+        if workspace_command == "update" {
+            return match parse_workspace_update_args(workspace_args.iter().cloned()) {
+                Ok(parsed) => run_workspace_update(parsed),
+                Err(error) => emit_error(
+                    "grove workspace update",
+                    CliErrorCode::InvalidArgument,
+                    error.to_string(),
+                    "Retry with selector flags and optional '--dry-run'",
+                ),
+            };
+        }
     }
 
     let cli = parse_cli_args(args)?;
@@ -1003,7 +1135,8 @@ mod tests {
         CliArgs, TuiArgs, debug_record_path, ensure_event_log_parent_directory, parse_cli_args,
         parse_tui_args, parse_workspace_create_args, parse_workspace_delete_args,
         parse_workspace_edit_args, parse_workspace_list_args, parse_workspace_merge_args,
-        resolve_event_log_path, root_command_envelope, workspace_selector,
+        parse_workspace_update_args, resolve_event_log_path, root_command_envelope,
+        workspace_selector,
     };
     use crate::application::commands::WorkspaceSelector;
     use crate::domain::AgentType;
@@ -1319,6 +1452,35 @@ mod tests {
     #[test]
     fn workspace_merge_parser_rejects_unknown_flag() {
         let error = parse_workspace_merge_args(vec!["--wat".to_string()]).expect_err("unknown arg");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn workspace_update_parser_reads_expected_flags() {
+        let parsed = parse_workspace_update_args(vec![
+            "--workspace".to_string(),
+            "feature-auth".to_string(),
+            "--dry-run".to_string(),
+            "--repo".to_string(),
+            "/repos/grove".to_string(),
+        ])
+        .expect("workspace update args should parse");
+
+        assert_eq!(
+            parsed,
+            super::WorkspaceUpdateArgs {
+                workspace: Some("feature-auth".to_string()),
+                workspace_path: None,
+                dry_run: true,
+                repo: Some(PathBuf::from("/repos/grove")),
+            }
+        );
+    }
+
+    #[test]
+    fn workspace_update_parser_rejects_unknown_flag() {
+        let error =
+            parse_workspace_update_args(vec!["--wat".to_string()]).expect_err("unknown arg");
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     }
 }
