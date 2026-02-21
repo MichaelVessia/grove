@@ -162,6 +162,9 @@ impl GroveApp {
             self.show_info_toast("no workspace selected");
             return;
         };
+        if !self.ensure_workspace_backend_available(&workspace, "workspace delete") {
+            return;
+        }
         if workspace.is_main {
             self.show_info_toast("cannot delete base workspace");
             return;

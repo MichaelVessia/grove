@@ -103,6 +103,9 @@ impl GroveApp {
             self.show_info_toast("no agent running");
             return;
         };
+        if !self.ensure_workspace_backend_available(&workspace, "agent stop") {
+            return;
+        }
         if !workspace_can_stop_agent(Some(&workspace)) {
             self.show_info_toast("no agent running");
             return;

@@ -99,6 +99,9 @@ impl GroveApp {
             self.show_info_toast("no workspace selected");
             return;
         };
+        if !self.ensure_workspace_backend_available(&workspace, "workspace update") {
+            return;
+        }
         let base_branch = if workspace.is_main {
             workspace.branch.clone()
         } else {

@@ -112,6 +112,9 @@ impl GroveApp {
             self.show_info_toast("no workspace selected");
             return;
         };
+        if !self.ensure_workspace_backend_available(&workspace, "agent start") {
+            return;
+        }
         if !workspace.supported_agent {
             self.show_info_toast("unsupported workspace agent marker");
             return;

@@ -27,7 +27,7 @@ use crate::application::agent_runtime::workspace_status_targets_for_polling_with
 use crate::application::interactive::InteractiveState;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
-use crate::infrastructure::config::{ProjectConfig, RemoteProfileConfig};
+use crate::infrastructure::config::{ProjectConfig, ProjectTarget, RemoteProfileConfig};
 use crate::infrastructure::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
 use crate::interface::daemon::{DaemonArgs, serve};
 use crate::ui::state::{PaneFocus, UiMode};
@@ -2105,6 +2105,102 @@ fn settings_dialog_test_profile_marks_offline_when_socket_unavailable() {
         app.remote_connection_state.get("prod"),
         Some(&RemoteConnectionState::Offline)
     );
+}
+
+#[test]
+fn settings_dialog_connect_can_recover_from_degraded_state() {
+    let mut app = fixture_app();
+    app.open_settings_dialog();
+    {
+        let dialog = app
+            .settings_dialog_mut()
+            .expect("settings dialog should be open");
+        dialog.remote_name = "prod".to_string();
+        dialog.remote_host = "build.example.com".to_string();
+        dialog.remote_user = "michael".to_string();
+        dialog.remote_socket_path = "/tmp/does-not-exist-grove.sock".to_string();
+    }
+    app.apply_settings_profile_save();
+    app.apply_settings_profile_connect();
+
+    assert_eq!(app.active_remote_profile, Some("prod".to_string()));
+    assert_eq!(
+        app.remote_connection_state.get("prod"),
+        Some(&RemoteConnectionState::Degraded)
+    );
+
+    let socket_path = unique_socket_path("reconnect");
+    let daemon = spawn_once_daemon(socket_path.clone());
+    for _ in 0..40 {
+        if socket_path.exists() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    {
+        let dialog = app
+            .settings_dialog_mut()
+            .expect("settings dialog should be open");
+        dialog.remote_socket_path = socket_path.display().to_string();
+    }
+    app.apply_settings_profile_save();
+    app.apply_settings_profile_connect();
+    daemon.join().expect("daemon thread should exit");
+
+    assert_eq!(app.active_remote_profile, Some("prod".to_string()));
+    assert_eq!(
+        app.remote_connection_state.get("prod"),
+        Some(&RemoteConnectionState::Connected)
+    );
+}
+
+#[test]
+fn remote_unavailable_does_not_block_local_workspace_dialogs() {
+    let mut app = fixture_app();
+    app.remote_profiles.push(RemoteProfileConfig {
+        name: "prod".to_string(),
+        host: "build.example.com".to_string(),
+        user: "michael".to_string(),
+        remote_socket_path: "/tmp/missing.sock".to_string(),
+        default_repo_path: None,
+    });
+    app.active_remote_profile = Some("prod".to_string());
+    app.remote_connection_state
+        .insert("prod".to_string(), RemoteConnectionState::Offline);
+    app.projects.push(ProjectConfig {
+        name: "remote-repo".to_string(),
+        path: PathBuf::from("/repos/remote"),
+        target: ProjectTarget::Remote {
+            profile: "prod".to_string(),
+        },
+        defaults: Default::default(),
+    });
+    let mut remote_workspace = Workspace::try_new(
+        "remote-ws".to_string(),
+        PathBuf::from("/repos/remote-ws"),
+        "remote-ws".to_string(),
+        None,
+        AgentType::Claude,
+        WorkspaceStatus::Idle,
+        false,
+    )
+    .expect("remote workspace should be valid");
+    remote_workspace.project_name = Some("remote-repo".to_string());
+    remote_workspace.project_path = Some(PathBuf::from("/repos/remote"));
+    app.state.workspaces.push(remote_workspace);
+
+    app.state.selected_index = app.state.workspaces.len().saturating_sub(1);
+    app.open_edit_dialog();
+    assert!(app.edit_dialog().is_none());
+    assert!(
+        app.last_tmux_error
+            .as_deref()
+            .is_some_and(|error| error.contains("REMOTE_UNAVAILABLE"))
+    );
+
+    app.state.selected_index = 0;
+    app.open_edit_dialog();
+    assert!(app.edit_dialog().is_some());
 }
 
 #[test]

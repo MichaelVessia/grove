@@ -1,6 +1,42 @@
 use super::*;
 
 impl GroveApp {
+    fn project_for_workspace(&self, workspace: &Workspace) -> Option<&ProjectConfig> {
+        let workspace_project_path = workspace.project_path.as_ref()?;
+        self.projects.iter().find(|project| {
+            refer_to_same_location(project.path.as_path(), workspace_project_path.as_path())
+        })
+    }
+
+    pub(super) fn ensure_workspace_backend_available(
+        &mut self,
+        workspace: &Workspace,
+        operation: &str,
+    ) -> bool {
+        let profile = match self.project_for_workspace(workspace) {
+            Some(ProjectConfig {
+                target: ProjectTarget::Remote { profile },
+                ..
+            }) => profile.clone(),
+            _ => return true,
+        };
+
+        let status = self.remote_status_for(profile.as_str());
+        let active_matches = self.active_remote_profile.as_deref() == Some(profile.as_str());
+        if active_matches && status == RemoteConnectionState::Connected {
+            return true;
+        }
+
+        self.last_tmux_error = Some(format!(
+            "REMOTE_UNAVAILABLE: profile '{profile}' is {}",
+            status.label()
+        ));
+        self.show_error_toast(format!(
+            "{operation} failed: REMOTE_UNAVAILABLE ({profile})"
+        ));
+        false
+    }
+
     pub(super) fn selected_workspace_name(&self) -> Option<String> {
         self.state
             .selected_workspace()

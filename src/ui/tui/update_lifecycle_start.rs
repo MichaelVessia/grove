@@ -19,6 +19,9 @@ impl GroveApp {
             self.show_info_toast("no workspace selected");
             return;
         };
+        if !self.ensure_workspace_backend_available(&workspace, "agent start") {
+            return;
+        }
         let Some(repo_root) = workspace.project_path.clone() else {
             self.show_error_toast("agent start failed");
             return;
