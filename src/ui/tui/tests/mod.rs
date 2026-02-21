@@ -20,10 +20,13 @@ use super::{
     SettingsDialogField, StartAgentCompletion, StartAgentConfigField, StartAgentConfigState,
     StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput, UiCommand,
     UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
-    WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, ansi_16_color,
-    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme, usize_to_u64,
+    WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceStatusCaptureOutput,
+    ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata, ui_theme, usize_to_u64,
 };
-use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
+use crate::application::agent_runtime::{
+    SessionActivity, detect_status_with_session_override, evaluate_capture_change,
+    workspace_status_targets_for_polling_with_live_preview,
+};
 use crate::application::interactive::InteractiveState;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
@@ -46,7 +49,7 @@ use proptest::prelude::*;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -56,6 +59,29 @@ type RecordedCommands = Rc<RefCell<Vec<Vec<String>>>>;
 type RecordedCaptures = Rc<RefCell<Vec<Result<String, String>>>>;
 type RecordedCalls = Rc<RefCell<Vec<String>>>;
 type RecordedEvents = Arc<Mutex<Vec<LoggedEvent>>>;
+
+fn workspace_status_capture_output(
+    raw_output: &str,
+    is_main: bool,
+    supported_agent: bool,
+) -> WorkspaceStatusCaptureOutput {
+    let change = evaluate_capture_change(None, raw_output);
+    let resolved_status = detect_status_with_session_override(
+        &change.cleaned_output,
+        SessionActivity::Active,
+        is_main,
+        true,
+        supported_agent,
+        AgentType::Claude,
+        Path::new("/repos/grove-feature-a"),
+    );
+    WorkspaceStatusCaptureOutput {
+        cleaned_output: change.cleaned_output,
+        digest: change.digest,
+        resolved_status,
+    }
+}
+
 type FixtureApp = (
     GroveApp,
     RecordedCommands,

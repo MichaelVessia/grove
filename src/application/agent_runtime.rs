@@ -107,6 +107,8 @@ pub struct WorkspaceStatusTarget {
     pub workspace_path: PathBuf,
     pub session_name: String,
     pub supported_agent: bool,
+    pub agent: AgentType,
+    pub is_main: bool,
     pub daemon_socket_path: Option<PathBuf>,
 }
 
@@ -352,6 +354,8 @@ pub fn workspace_status_targets_for_polling(
                 workspace_path: workspace.path.clone(),
                 session_name,
                 supported_agent: workspace.supported_agent,
+                agent: workspace.agent,
+                is_main: workspace.is_main,
                 daemon_socket_path: None,
             })
         })

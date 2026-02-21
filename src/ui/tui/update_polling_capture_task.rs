@@ -48,12 +48,32 @@ impl GroveApp {
 
         for target in status_poll_targets {
             let capture_started_at = Instant::now();
-            let result = self
+            let raw_result = self
                 .tmux_input
                 .capture_output(&target.session_name, 120, false)
                 .map_err(|error| error.to_string());
             let capture_ms =
                 Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
+            let result = match raw_result {
+                Ok(raw_output) => {
+                    let change = evaluate_capture_change(None, &raw_output);
+                    let resolved_status = detect_status_with_session_override(
+                        &change.cleaned_output,
+                        SessionActivity::Active,
+                        target.is_main,
+                        true,
+                        target.supported_agent,
+                        target.agent,
+                        &target.workspace_path,
+                    );
+                    Ok(WorkspaceStatusCaptureOutput {
+                        cleaned_output: change.cleaned_output,
+                        digest: change.digest,
+                        resolved_status,
+                    })
+                }
+                Err(e) => Err(e),
+            };
             self.apply_workspace_status_capture(WorkspaceStatusCapture {
                 workspace_name: target.workspace_name,
                 workspace_path: target.workspace_path,
@@ -142,7 +162,7 @@ impl GroveApp {
                 .into_iter()
                 .map(|target| {
                     let capture_started_at = Instant::now();
-                    let result = if let Some(socket_path) = &target.daemon_socket_path {
+                    let raw_result = if let Some(socket_path) = &target.daemon_socket_path {
                         let payload = DaemonSessionCapturePayload {
                             session_name: target.session_name.clone(),
                             scrollback_lines: 120,
@@ -160,6 +180,26 @@ impl GroveApp {
                     let capture_ms = GroveApp::duration_millis(
                         Instant::now().saturating_duration_since(capture_started_at),
                     );
+                    let result = match raw_result {
+                        Ok(raw_output) => {
+                            let change = evaluate_capture_change(None, &raw_output);
+                            let resolved_status = detect_status_with_session_override(
+                                &change.cleaned_output,
+                                SessionActivity::Active,
+                                target.is_main,
+                                true,
+                                target.supported_agent,
+                                target.agent,
+                                &target.workspace_path,
+                            );
+                            Ok(WorkspaceStatusCaptureOutput {
+                                cleaned_output: change.cleaned_output,
+                                digest: change.digest,
+                                resolved_status,
+                            })
+                        }
+                        Err(e) => Err(e),
+                    };
                     WorkspaceStatusCapture {
                         workspace_name: target.workspace_name,
                         workspace_path: target.workspace_path,

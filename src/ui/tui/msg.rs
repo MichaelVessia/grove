@@ -1,5 +1,6 @@
 use super::*;
-use crate::application::agent_runtime::SessionExecutionResult;
+use crate::application::agent_runtime::{OutputDigest, SessionExecutionResult};
+use crate::domain::WorkspaceStatus;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Msg {
@@ -68,7 +69,14 @@ pub(super) struct WorkspaceStatusCapture {
     pub(super) session_name: String,
     pub(super) supported_agent: bool,
     pub(super) capture_ms: u64,
-    pub(super) result: Result<String, String>,
+    pub(super) result: Result<WorkspaceStatusCaptureOutput, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct WorkspaceStatusCaptureOutput {
+    pub(super) cleaned_output: String,
+    pub(super) digest: OutputDigest,
+    pub(super) resolved_status: WorkspaceStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

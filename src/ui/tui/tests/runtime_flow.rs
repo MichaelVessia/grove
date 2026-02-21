@@ -494,7 +494,7 @@ fn preview_poll_transition_from_done_to_thinking_clears_attention() {
                 session_name: "grove-ws-feature-a".to_string(),
                 supported_agent: true,
                 capture_ms: 1,
-                result: Ok("thinking...".to_string()),
+                result: Ok(workspace_status_capture_output("thinking...", false, true)),
             }],
         }),
     );
@@ -527,7 +527,11 @@ fn background_poll_transition_from_waiting_to_active_clears_attention() {
                 session_name: "grove-ws-feature-a".to_string(),
                 supported_agent: true,
                 capture_ms: 1,
-                result: Ok("still working on it".to_string()),
+                result: Ok(workspace_status_capture_output(
+                    "still working on it",
+                    false,
+                    true,
+                )),
             }],
         }),
     );
@@ -556,7 +560,11 @@ fn selecting_workspace_clears_attention_for_selected_workspace() {
                 session_name: "grove-ws-feature-a".to_string(),
                 supported_agent: true,
                 capture_ms: 1,
-                result: Ok("Approve command? [y/n]".to_string()),
+                result: Ok(workspace_status_capture_output(
+                    "Approve command? [y/n]",
+                    false,
+                    true,
+                )),
             }],
         }),
     );
@@ -629,7 +637,11 @@ fn preview_poll_updates_non_selected_workspace_status_from_background_capture() 
                 session_name: "grove-ws-feature-a".to_string(),
                 supported_agent: true,
                 capture_ms: 1,
-                result: Ok("> Implement {feature}\n? for shortcuts\n".to_string()),
+                result: Ok(workspace_status_capture_output(
+                    "> Implement {feature}\n? for shortcuts\n",
+                    false,
+                    true,
+                )),
             }],
         }),
     );

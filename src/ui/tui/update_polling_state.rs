@@ -180,7 +180,7 @@ impl GroveApp {
         self.agent_activity_frames.clear();
     }
 
-    fn workspace_status_tracking_key(workspace_path: &Path) -> String {
+    pub(super) fn workspace_status_tracking_key(workspace_path: &Path) -> String {
         workspace_path.to_string_lossy().to_string()
     }
 
