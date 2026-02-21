@@ -14,9 +14,11 @@ use crate::infrastructure::event_log::{FileEventLogger, now_millis};
 use crate::interface::cli_contract::{CommandEnvelope, ErrorDetail, NextAction};
 use crate::interface::cli_errors::{CliErrorCode, classify_error_message};
 use crate::interface::daemon::{
-    DaemonCommandError, DaemonWorkspaceCreatePayload, DaemonWorkspaceEditPayload,
-    DaemonWorkspaceView, workspace_create_via_socket, workspace_edit_via_socket,
-    workspace_list_via_socket,
+    DaemonCommandError, DaemonWorkspaceCreatePayload, DaemonWorkspaceDeletePayload,
+    DaemonWorkspaceEditPayload, DaemonWorkspaceMergePayload, DaemonWorkspaceUpdatePayload,
+    DaemonWorkspaceView, workspace_create_via_socket, workspace_delete_via_socket,
+    workspace_edit_via_socket, workspace_list_via_socket, workspace_merge_via_socket,
+    workspace_update_via_socket,
 };
 use crate::interface::next_actions::{
     NextActionsBuilder, after_agent_stop, after_workspace_create, after_workspace_merge,
@@ -1154,8 +1156,13 @@ fn run_workspace_edit(
     }
 }
 
-fn run_workspace_delete(parsed: WorkspaceDeleteArgs) -> std::io::Result<()> {
+fn run_workspace_delete(
+    parsed: WorkspaceDeleteArgs,
+    daemon_socket: Option<&Path>,
+) -> std::io::Result<()> {
     let command = "grove workspace delete";
+    let workspace_name = parsed.workspace.clone();
+    let workspace_path = parsed.workspace_path.clone();
     let selector = match workspace_selector(parsed.workspace, parsed.workspace_path) {
         Ok(selector) => selector,
         Err(error) => {
@@ -1172,6 +1179,45 @@ fn run_workspace_delete(parsed: WorkspaceDeleteArgs) -> std::io::Result<()> {
     } else {
         std::env::current_dir()?
     };
+    if let Some(socket_path) = daemon_socket {
+        return match workspace_delete_via_socket(
+            socket_path,
+            DaemonWorkspaceDeletePayload {
+                repo_root: repo_root.display().to_string(),
+                workspace: workspace_name,
+                workspace_path: workspace_path.map(|path| path.display().to_string()),
+                delete_branch: parsed.delete_branch,
+                force_stop: parsed.force_stop,
+                dry_run: parsed.dry_run,
+            },
+        ) {
+            Ok(Ok(result)) => {
+                let payload = WorkspaceMutationResult {
+                    workspace: workspace_view_from_daemon(result.workspace),
+                    dry_run: parsed.dry_run,
+                };
+                emit_json(&CommandEnvelope::success(
+                    command,
+                    payload,
+                    result.warnings,
+                    workspace_delete_next_actions(),
+                ))
+            }
+            Ok(Err(error)) => emit_error(
+                command,
+                daemon_command_error_to_cli_code(&error),
+                error.message,
+                "Adjust selector/delete flags, then retry",
+            ),
+            Err(error) => emit_error(
+                command,
+                CliErrorCode::IoError,
+                format!("daemon request failed: {error}"),
+                "Verify daemon socket path and daemon availability, then retry",
+            ),
+        };
+    }
+
     let request = WorkspaceDeleteRequest {
         context: RepoContext { repo_root },
         selector,
@@ -1203,8 +1249,13 @@ fn run_workspace_delete(parsed: WorkspaceDeleteArgs) -> std::io::Result<()> {
     }
 }
 
-fn run_workspace_merge(parsed: WorkspaceMergeArgs) -> std::io::Result<()> {
+fn run_workspace_merge(
+    parsed: WorkspaceMergeArgs,
+    daemon_socket: Option<&Path>,
+) -> std::io::Result<()> {
     let command = "grove workspace merge";
+    let workspace_name = parsed.workspace.clone();
+    let workspace_path = parsed.workspace_path.clone();
     let selector = match workspace_selector(parsed.workspace, parsed.workspace_path) {
         Ok(selector) => selector,
         Err(error) => {
@@ -1221,6 +1272,46 @@ fn run_workspace_merge(parsed: WorkspaceMergeArgs) -> std::io::Result<()> {
     } else {
         std::env::current_dir()?
     };
+    if let Some(socket_path) = daemon_socket {
+        return match workspace_merge_via_socket(
+            socket_path,
+            DaemonWorkspaceMergePayload {
+                repo_root: repo_root.display().to_string(),
+                workspace: workspace_name,
+                workspace_path: workspace_path.map(|path| path.display().to_string()),
+                cleanup_workspace: parsed.cleanup_workspace,
+                cleanup_branch: parsed.cleanup_branch,
+                dry_run: parsed.dry_run,
+            },
+        ) {
+            Ok(Ok(result)) => {
+                let workspace_name = result.workspace.name.clone();
+                let payload = WorkspaceMutationResult {
+                    workspace: workspace_view_from_daemon(result.workspace),
+                    dry_run: parsed.dry_run,
+                };
+                emit_json(&CommandEnvelope::success(
+                    command,
+                    payload,
+                    result.warnings,
+                    after_workspace_merge(&workspace_name),
+                ))
+            }
+            Ok(Err(error)) => emit_error(
+                command,
+                daemon_command_error_to_cli_code(&error),
+                error.message,
+                "Resolve workspace/base branch state and retry merge",
+            ),
+            Err(error) => emit_error(
+                command,
+                CliErrorCode::IoError,
+                format!("daemon request failed: {error}"),
+                "Verify daemon socket path and daemon availability, then retry",
+            ),
+        };
+    }
+
     let request = WorkspaceMergeRequest {
         context: RepoContext { repo_root },
         selector,
@@ -1253,8 +1344,13 @@ fn run_workspace_merge(parsed: WorkspaceMergeArgs) -> std::io::Result<()> {
     }
 }
 
-fn run_workspace_update(parsed: WorkspaceUpdateArgs) -> std::io::Result<()> {
+fn run_workspace_update(
+    parsed: WorkspaceUpdateArgs,
+    daemon_socket: Option<&Path>,
+) -> std::io::Result<()> {
     let command = "grove workspace update";
+    let workspace_name = parsed.workspace.clone();
+    let workspace_path = parsed.workspace_path.clone();
     let selector = match workspace_selector(parsed.workspace, parsed.workspace_path) {
         Ok(selector) => selector,
         Err(error) => {
@@ -1271,6 +1367,44 @@ fn run_workspace_update(parsed: WorkspaceUpdateArgs) -> std::io::Result<()> {
     } else {
         std::env::current_dir()?
     };
+    if let Some(socket_path) = daemon_socket {
+        return match workspace_update_via_socket(
+            socket_path,
+            DaemonWorkspaceUpdatePayload {
+                repo_root: repo_root.display().to_string(),
+                workspace: workspace_name,
+                workspace_path: workspace_path.map(|path| path.display().to_string()),
+                dry_run: parsed.dry_run,
+            },
+        ) {
+            Ok(Ok(result)) => {
+                let workspace_name = result.workspace.name.clone();
+                let payload = WorkspaceMutationResult {
+                    workspace: workspace_view_from_daemon(result.workspace),
+                    dry_run: parsed.dry_run,
+                };
+                emit_json(&CommandEnvelope::success(
+                    command,
+                    payload,
+                    result.warnings,
+                    workspace_update_next_actions(&workspace_name),
+                ))
+            }
+            Ok(Err(error)) => emit_error(
+                command,
+                daemon_command_error_to_cli_code(&error),
+                error.message,
+                "Resolve workspace/base branch state and retry update",
+            ),
+            Err(error) => emit_error(
+                command,
+                CliErrorCode::IoError,
+                format!("daemon request failed: {error}"),
+                "Verify daemon socket path and daemon availability, then retry",
+            ),
+        };
+    }
+
     let request = WorkspaceUpdateRequest {
         context: RepoContext { repo_root },
         selector,
@@ -1503,15 +1637,6 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
                 ),
             };
         }
-        if daemon_socket_path.is_some() && workspace_command != "edit" {
-            return emit_error(
-                "grove workspace",
-                CliErrorCode::InvalidArgument,
-                "--socket currently supports only 'grove workspace list', 'grove workspace create', and 'grove workspace edit'"
-                    .to_string(),
-                "Retry with 'grove --socket <path> workspace list [--repo <path>]', 'grove --socket <path> workspace create ...', or 'grove --socket <path> workspace edit ...'",
-            );
-        }
         if workspace_command == "edit" {
             return match parse_workspace_edit_args(workspace_args.iter().cloned()) {
                 Ok(parsed) => run_workspace_edit(parsed, daemon_socket_path),
@@ -1525,7 +1650,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         }
         if workspace_command == "delete" {
             return match parse_workspace_delete_args(workspace_args.iter().cloned()) {
-                Ok(parsed) => run_workspace_delete(parsed),
+                Ok(parsed) => run_workspace_delete(parsed, daemon_socket_path),
                 Err(error) => emit_error(
                     "grove workspace delete",
                     CliErrorCode::InvalidArgument,
@@ -1536,7 +1661,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         }
         if workspace_command == "merge" {
             return match parse_workspace_merge_args(workspace_args.iter().cloned()) {
-                Ok(parsed) => run_workspace_merge(parsed),
+                Ok(parsed) => run_workspace_merge(parsed, daemon_socket_path),
                 Err(error) => emit_error(
                     "grove workspace merge",
                     CliErrorCode::InvalidArgument,
@@ -1547,7 +1672,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         }
         if workspace_command == "update" {
             return match parse_workspace_update_args(workspace_args.iter().cloned()) {
-                Ok(parsed) => run_workspace_update(parsed),
+                Ok(parsed) => run_workspace_update(parsed, daemon_socket_path),
                 Err(error) => emit_error(
                     "grove workspace update",
                     CliErrorCode::InvalidArgument,
@@ -1562,8 +1687,8 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
             return emit_error(
                 "grove agent",
                 CliErrorCode::InvalidArgument,
-                "--socket currently supports only workspace list/create/edit for now".to_string(),
-                "Retry with 'grove --socket <path> workspace list [--repo <path>]', 'grove --socket <path> workspace create ...', or 'grove --socket <path> workspace edit ...'",
+                "--socket currently supports workspace lifecycle commands only".to_string(),
+                "Retry with 'grove --socket <path> workspace <list|create|edit|delete|merge|update> ...'",
             );
         }
         let Some((agent_command, agent_args)) = remaining.split_first() else {
@@ -1602,8 +1727,8 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         return emit_error(
             "grove",
             CliErrorCode::InvalidArgument,
-            "--socket currently supports only workspace list/create/edit for now".to_string(),
-            "Retry with 'grove --socket <path> workspace list [--repo <path>]', 'grove --socket <path> workspace create ...', or 'grove --socket <path> workspace edit ...'",
+            "--socket currently supports workspace lifecycle commands only".to_string(),
+            "Retry with 'grove --socket <path> workspace <list|create|edit|delete|merge|update> ...'",
         );
     }
 

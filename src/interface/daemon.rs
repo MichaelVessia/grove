@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::application::commands::{
     ErrorCode as CommandErrorCode, InProcessLifecycleCommandService, LifecycleCommandService,
-    RepoContext, WorkspaceCreateRequest, WorkspaceEditRequest, WorkspaceListRequest,
-    WorkspaceSelector,
+    RepoContext, WorkspaceCreateRequest, WorkspaceDeleteRequest, WorkspaceEditRequest,
+    WorkspaceListRequest, WorkspaceMergeRequest, WorkspaceSelector, WorkspaceUpdateRequest,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
@@ -35,6 +35,15 @@ pub enum DaemonRequest {
     WorkspaceEdit {
         payload: DaemonWorkspaceEditPayload,
     },
+    WorkspaceDelete {
+        payload: DaemonWorkspaceDeletePayload,
+    },
+    WorkspaceMerge {
+        payload: DaemonWorkspaceMergePayload,
+    },
+    WorkspaceUpdate {
+        payload: DaemonWorkspaceUpdatePayload,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +68,24 @@ pub enum DaemonResponse {
         result: DaemonWorkspaceMutationResult,
     },
     WorkspaceEditErr {
+        error: DaemonCommandError,
+    },
+    WorkspaceDeleteOk {
+        result: DaemonWorkspaceMutationResult,
+    },
+    WorkspaceDeleteErr {
+        error: DaemonCommandError,
+    },
+    WorkspaceMergeOk {
+        result: DaemonWorkspaceMutationResult,
+    },
+    WorkspaceMergeErr {
+        error: DaemonCommandError,
+    },
+    WorkspaceUpdateOk {
+        result: DaemonWorkspaceMutationResult,
+    },
+    WorkspaceUpdateErr {
         error: DaemonCommandError,
     },
 }
@@ -93,6 +120,34 @@ pub struct DaemonWorkspaceEditPayload {
     pub workspace_path: Option<String>,
     pub agent: Option<String>,
     pub base_branch: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonWorkspaceDeletePayload {
+    pub repo_root: String,
+    pub workspace: Option<String>,
+    pub workspace_path: Option<String>,
+    pub delete_branch: bool,
+    pub force_stop: bool,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonWorkspaceMergePayload {
+    pub repo_root: String,
+    pub workspace: Option<String>,
+    pub workspace_path: Option<String>,
+    pub cleanup_workspace: bool,
+    pub cleanup_branch: bool,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonWorkspaceUpdatePayload {
+    pub repo_root: String,
+    pub workspace: Option<String>,
+    pub workspace_path: Option<String>,
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,11 +219,7 @@ pub fn workspace_list_via_socket(
     match response {
         DaemonResponse::WorkspaceListOk { result } => Ok(Ok(result)),
         DaemonResponse::WorkspaceListErr { error } => Ok(Err(error)),
-        DaemonResponse::Pong { .. }
-        | DaemonResponse::WorkspaceCreateOk { .. }
-        | DaemonResponse::WorkspaceCreateErr { .. }
-        | DaemonResponse::WorkspaceEditOk { .. }
-        | DaemonResponse::WorkspaceEditErr { .. } => Err(std::io::Error::new(
+        _ => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "unexpected daemon response for workspace list",
         )),
@@ -185,11 +236,7 @@ pub fn workspace_create_via_socket(
     match response {
         DaemonResponse::WorkspaceCreateOk { result } => Ok(Ok(result)),
         DaemonResponse::WorkspaceCreateErr { error } => Ok(Err(error)),
-        DaemonResponse::Pong { .. }
-        | DaemonResponse::WorkspaceListOk { .. }
-        | DaemonResponse::WorkspaceListErr { .. }
-        | DaemonResponse::WorkspaceEditOk { .. }
-        | DaemonResponse::WorkspaceEditErr { .. } => Err(std::io::Error::new(
+        _ => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "unexpected daemon response for workspace create",
         )),
@@ -206,13 +253,60 @@ pub fn workspace_edit_via_socket(
     match response {
         DaemonResponse::WorkspaceEditOk { result } => Ok(Ok(result)),
         DaemonResponse::WorkspaceEditErr { error } => Ok(Err(error)),
-        DaemonResponse::Pong { .. }
-        | DaemonResponse::WorkspaceListOk { .. }
-        | DaemonResponse::WorkspaceListErr { .. }
-        | DaemonResponse::WorkspaceCreateOk { .. }
-        | DaemonResponse::WorkspaceCreateErr { .. } => Err(std::io::Error::new(
+        _ => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "unexpected daemon response for workspace edit",
+        )),
+    }
+}
+
+pub fn workspace_delete_via_socket(
+    socket_path: &Path,
+    payload: DaemonWorkspaceDeletePayload,
+) -> std::io::Result<Result<DaemonWorkspaceMutationResult, DaemonCommandError>> {
+    let request = DaemonRequest::WorkspaceDelete { payload };
+    let response = send_request(socket_path, &request)?;
+
+    match response {
+        DaemonResponse::WorkspaceDeleteOk { result } => Ok(Ok(result)),
+        DaemonResponse::WorkspaceDeleteErr { error } => Ok(Err(error)),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for workspace delete",
+        )),
+    }
+}
+
+pub fn workspace_merge_via_socket(
+    socket_path: &Path,
+    payload: DaemonWorkspaceMergePayload,
+) -> std::io::Result<Result<DaemonWorkspaceMutationResult, DaemonCommandError>> {
+    let request = DaemonRequest::WorkspaceMerge { payload };
+    let response = send_request(socket_path, &request)?;
+
+    match response {
+        DaemonResponse::WorkspaceMergeOk { result } => Ok(Ok(result)),
+        DaemonResponse::WorkspaceMergeErr { error } => Ok(Err(error)),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for workspace merge",
+        )),
+    }
+}
+
+pub fn workspace_update_via_socket(
+    socket_path: &Path,
+    payload: DaemonWorkspaceUpdatePayload,
+) -> std::io::Result<Result<DaemonWorkspaceMutationResult, DaemonCommandError>> {
+    let request = DaemonRequest::WorkspaceUpdate { payload };
+    let response = send_request(socket_path, &request)?;
+
+    match response {
+        DaemonResponse::WorkspaceUpdateOk { result } => Ok(Ok(result)),
+        DaemonResponse::WorkspaceUpdateErr { error } => Ok(Err(error)),
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for workspace update",
         )),
     }
 }
@@ -375,6 +469,15 @@ fn handle_connection(
             handle_workspace_create_request(service, payload)
         }
         DaemonRequest::WorkspaceEdit { payload } => handle_workspace_edit_request(service, payload),
+        DaemonRequest::WorkspaceDelete { payload } => {
+            handle_workspace_delete_request(service, payload)
+        }
+        DaemonRequest::WorkspaceMerge { payload } => {
+            handle_workspace_merge_request(service, payload)
+        }
+        DaemonRequest::WorkspaceUpdate { payload } => {
+            handle_workspace_update_request(service, payload)
+        }
     };
 
     let payload = serde_json::to_string(&response)
@@ -483,6 +586,109 @@ fn handle_workspace_edit_request(
             },
         },
         Err(error) => DaemonResponse::WorkspaceEditErr {
+            error: DaemonCommandError::from_command_error(error.code, error.message),
+        },
+    }
+}
+
+fn handle_workspace_delete_request(
+    service: &impl LifecycleCommandService,
+    payload: DaemonWorkspaceDeletePayload,
+) -> DaemonResponse {
+    let selector =
+        match parse_workspace_selector_from_request(payload.workspace, payload.workspace_path) {
+            Ok(selector) => selector,
+            Err(error) => {
+                return DaemonResponse::WorkspaceDeleteErr { error };
+            }
+        };
+
+    let request = WorkspaceDeleteRequest {
+        context: RepoContext {
+            repo_root: PathBuf::from(payload.repo_root),
+        },
+        selector,
+        delete_branch: payload.delete_branch,
+        force_stop: payload.force_stop,
+        dry_run: payload.dry_run,
+    };
+
+    match service.workspace_delete(request) {
+        Ok(response) => DaemonResponse::WorkspaceDeleteOk {
+            result: DaemonWorkspaceMutationResult {
+                workspace: DaemonWorkspaceView::from_workspace(response.workspace),
+                warnings: response.warnings,
+            },
+        },
+        Err(error) => DaemonResponse::WorkspaceDeleteErr {
+            error: DaemonCommandError::from_command_error(error.code, error.message),
+        },
+    }
+}
+
+fn handle_workspace_merge_request(
+    service: &impl LifecycleCommandService,
+    payload: DaemonWorkspaceMergePayload,
+) -> DaemonResponse {
+    let selector =
+        match parse_workspace_selector_from_request(payload.workspace, payload.workspace_path) {
+            Ok(selector) => selector,
+            Err(error) => {
+                return DaemonResponse::WorkspaceMergeErr { error };
+            }
+        };
+
+    let request = WorkspaceMergeRequest {
+        context: RepoContext {
+            repo_root: PathBuf::from(payload.repo_root),
+        },
+        selector,
+        cleanup_workspace: payload.cleanup_workspace,
+        cleanup_branch: payload.cleanup_branch,
+        dry_run: payload.dry_run,
+    };
+
+    match service.workspace_merge(request) {
+        Ok(response) => DaemonResponse::WorkspaceMergeOk {
+            result: DaemonWorkspaceMutationResult {
+                workspace: DaemonWorkspaceView::from_workspace(response.workspace),
+                warnings: response.warnings,
+            },
+        },
+        Err(error) => DaemonResponse::WorkspaceMergeErr {
+            error: DaemonCommandError::from_command_error(error.code, error.message),
+        },
+    }
+}
+
+fn handle_workspace_update_request(
+    service: &impl LifecycleCommandService,
+    payload: DaemonWorkspaceUpdatePayload,
+) -> DaemonResponse {
+    let selector =
+        match parse_workspace_selector_from_request(payload.workspace, payload.workspace_path) {
+            Ok(selector) => selector,
+            Err(error) => {
+                return DaemonResponse::WorkspaceUpdateErr { error };
+            }
+        };
+
+    let request = WorkspaceUpdateRequest {
+        context: RepoContext {
+            repo_root: PathBuf::from(payload.repo_root),
+        },
+        selector,
+        dry_run: payload.dry_run,
+    };
+
+    match service.workspace_update(request) {
+        Ok(response) => DaemonResponse::WorkspaceUpdateOk {
+            result: DaemonWorkspaceMutationResult {
+                workspace: DaemonWorkspaceView::from_workspace(response.workspace),
+                warnings: response.warnings,
+            },
+        },
+        Err(error) => DaemonResponse::WorkspaceUpdateErr {
             error: DaemonCommandError::from_command_error(error.code, error.message),
         },
     }
