@@ -5,6 +5,12 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::application::commands::{
+    ErrorCode as CommandErrorCode, InProcessLifecycleCommandService, LifecycleCommandService,
+    RepoContext, WorkspaceListRequest,
+};
+use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+
 const GROVE_DIR: &str = ".grove";
 const DEFAULT_SOCKET_FILE: &str = "groved.sock";
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -19,17 +25,120 @@ pub struct DaemonArgs {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DaemonRequest {
     Ping,
+    WorkspaceList { repo_root: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DaemonResponse {
     Pong { protocol_version: u32 },
+    WorkspaceListOk { result: DaemonWorkspaceListResult },
+    WorkspaceListErr { error: DaemonCommandError },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonWorkspaceListResult {
+    pub repo_root: String,
+    pub workspaces: Vec<DaemonWorkspaceView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonWorkspaceView {
+    pub name: String,
+    pub path: String,
+    pub project_name: Option<String>,
+    pub project_path: Option<String>,
+    pub branch: String,
+    pub base_branch: Option<String>,
+    pub last_activity_unix_secs: Option<i64>,
+    pub agent: String,
+    pub status: String,
+    pub is_main: bool,
+    pub is_orphaned: bool,
+    pub supported_agent: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DaemonCommandError {
+    pub code: String,
+    pub message: String,
+}
+
+impl DaemonWorkspaceView {
+    fn from_workspace(workspace: Workspace) -> Self {
+        Self {
+            name: workspace.name,
+            path: workspace.path.display().to_string(),
+            project_name: workspace.project_name,
+            project_path: workspace
+                .project_path
+                .map(|path| path.display().to_string()),
+            branch: workspace.branch,
+            base_branch: workspace.base_branch,
+            last_activity_unix_secs: workspace.last_activity_unix_secs,
+            agent: agent_label(workspace.agent).to_string(),
+            status: workspace_status_label(workspace.status).to_string(),
+            is_main: workspace.is_main,
+            is_orphaned: workspace.is_orphaned,
+            supported_agent: workspace.supported_agent,
+        }
+    }
+}
+
+impl DaemonCommandError {
+    fn from_command_error(code: CommandErrorCode, message: String) -> Self {
+        Self {
+            code: command_error_code_label(code).to_string(),
+            message,
+        }
+    }
 }
 
 pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
     let parsed = parse_args(args)?;
     serve(parsed)
+}
+
+pub fn workspace_list_via_socket(
+    socket_path: &Path,
+    repo_root: &Path,
+) -> std::io::Result<Result<DaemonWorkspaceListResult, DaemonCommandError>> {
+    let request = DaemonRequest::WorkspaceList {
+        repo_root: repo_root.display().to_string(),
+    };
+    let response = send_request(socket_path, &request)?;
+
+    match response {
+        DaemonResponse::WorkspaceListOk { result } => Ok(Ok(result)),
+        DaemonResponse::WorkspaceListErr { error } => Ok(Err(error)),
+        DaemonResponse::Pong { .. } => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected daemon response for workspace list",
+        )),
+    }
+}
+
+fn send_request(socket_path: &Path, request: &DaemonRequest) -> std::io::Result<DaemonResponse> {
+    let mut stream = UnixStream::connect(socket_path)?;
+    let request_json =
+        serde_json::to_string(request).map_err(|error| std::io::Error::other(error.to_string()))?;
+
+    stream.write_all(request_json.as_bytes())?;
+    stream.write_all(b"\n")?;
+    stream.flush()?;
+
+    let mut response_line = String::new();
+    let mut reader = BufReader::new(stream);
+    let bytes_read = reader.read_line(&mut response_line)?;
+    if bytes_read == 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "daemon closed socket before writing a response",
+        ));
+    }
+
+    serde_json::from_str(response_line.trim())
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string()))
 }
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> std::io::Result<DaemonArgs> {
@@ -69,10 +178,11 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> std::io::Result<DaemonA
 pub fn serve(args: DaemonArgs) -> std::io::Result<()> {
     ensure_socket_parent(&args.socket_path)?;
     let listener = bind_listener(&args.socket_path)?;
+    let service = InProcessLifecycleCommandService::new();
 
     for stream in listener.incoming() {
         let stream = stream?;
-        let handled_request = handle_connection(stream)?;
+        let handled_request = handle_connection(stream, &service)?;
         if args.once && handled_request {
             break;
         }
@@ -135,7 +245,10 @@ fn remove_socket_if_exists(socket_path: &Path) -> std::io::Result<()> {
     }
 }
 
-fn handle_connection(mut stream: UnixStream) -> std::io::Result<bool> {
+fn handle_connection(
+    mut stream: UnixStream,
+    service: &impl LifecycleCommandService,
+) -> std::io::Result<bool> {
     let mut request_line = String::new();
     {
         let mut reader = BufReader::new(stream.try_clone()?);
@@ -156,6 +269,9 @@ fn handle_connection(mut stream: UnixStream) -> std::io::Result<bool> {
         DaemonRequest::Ping => DaemonResponse::Pong {
             protocol_version: PROTOCOL_VERSION,
         },
+        DaemonRequest::WorkspaceList { repo_root } => {
+            handle_workspace_list_request(service, PathBuf::from(repo_root))
+        }
     };
 
     let payload = serde_json::to_string(&response)
@@ -164,6 +280,63 @@ fn handle_connection(mut stream: UnixStream) -> std::io::Result<bool> {
     stream.write_all(b"\n")?;
     stream.flush()?;
     Ok(true)
+}
+
+fn handle_workspace_list_request(
+    service: &impl LifecycleCommandService,
+    repo_root: PathBuf,
+) -> DaemonResponse {
+    let repo_root_display = repo_root.display().to_string();
+    let request = WorkspaceListRequest {
+        context: RepoContext { repo_root },
+    };
+
+    match service.workspace_list(request) {
+        Ok(response) => DaemonResponse::WorkspaceListOk {
+            result: DaemonWorkspaceListResult {
+                repo_root: repo_root_display,
+                workspaces: response
+                    .workspaces
+                    .into_iter()
+                    .map(DaemonWorkspaceView::from_workspace)
+                    .collect(),
+            },
+        },
+        Err(error) => DaemonResponse::WorkspaceListErr {
+            error: DaemonCommandError::from_command_error(error.code, error.message),
+        },
+    }
+}
+
+fn command_error_code_label(code: CommandErrorCode) -> &'static str {
+    match code {
+        CommandErrorCode::InvalidArgument => "invalid_argument",
+        CommandErrorCode::NotFound => "not_found",
+        CommandErrorCode::Conflict => "conflict",
+        CommandErrorCode::RuntimeFailure => "runtime_failure",
+        CommandErrorCode::Internal => "internal",
+    }
+}
+
+fn agent_label(agent: AgentType) -> &'static str {
+    match agent {
+        AgentType::Claude => "claude",
+        AgentType::Codex => "codex",
+    }
+}
+
+fn workspace_status_label(status: WorkspaceStatus) -> &'static str {
+    match status {
+        WorkspaceStatus::Main => "main",
+        WorkspaceStatus::Idle => "idle",
+        WorkspaceStatus::Active => "active",
+        WorkspaceStatus::Thinking => "thinking",
+        WorkspaceStatus::Waiting => "waiting",
+        WorkspaceStatus::Done => "done",
+        WorkspaceStatus::Error => "error",
+        WorkspaceStatus::Unknown => "unknown",
+        WorkspaceStatus::Unsupported => "unsupported",
+    }
 }
 
 #[cfg(test)]

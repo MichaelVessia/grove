@@ -13,6 +13,7 @@ use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::event_log::{FileEventLogger, now_millis};
 use crate::interface::cli_contract::{CommandEnvelope, ErrorDetail, NextAction};
 use crate::interface::cli_errors::{CliErrorCode, classify_error_message};
+use crate::interface::daemon::{DaemonCommandError, workspace_list_via_socket};
 use crate::interface::next_actions::{
     NextActionsBuilder, after_agent_stop, after_workspace_create, after_workspace_merge,
 };
@@ -843,13 +844,56 @@ fn command_error_code(error: CommandErrorCode, message: &str) -> CliErrorCode {
     }
 }
 
-fn run_workspace_list(parsed: WorkspaceListArgs) -> std::io::Result<()> {
+fn command_error_code_from_wire_label(code: &str) -> CommandErrorCode {
+    match code {
+        "invalid_argument" => CommandErrorCode::InvalidArgument,
+        "not_found" => CommandErrorCode::NotFound,
+        "conflict" => CommandErrorCode::Conflict,
+        "runtime_failure" => CommandErrorCode::RuntimeFailure,
+        _ => CommandErrorCode::Internal,
+    }
+}
+
+fn daemon_command_error_to_cli_code(error: &DaemonCommandError) -> CliErrorCode {
+    command_error_code(
+        command_error_code_from_wire_label(&error.code),
+        &error.message,
+    )
+}
+
+fn run_workspace_list(
+    parsed: WorkspaceListArgs,
+    daemon_socket: Option<&Path>,
+) -> std::io::Result<()> {
     let repo_root = if let Some(path) = parsed.repo {
         path
     } else {
         std::env::current_dir()?
     };
     let command = "grove workspace list";
+    if let Some(socket_path) = daemon_socket {
+        return match workspace_list_via_socket(socket_path, &repo_root) {
+            Ok(Ok(result)) => emit_json(&CommandEnvelope::success(
+                command,
+                result,
+                Vec::new(),
+                workspace_list_next_actions(),
+            )),
+            Ok(Err(error)) => emit_error(
+                command,
+                daemon_command_error_to_cli_code(&error),
+                error.message,
+                "Verify repository path and retry",
+            ),
+            Err(error) => emit_error(
+                command,
+                CliErrorCode::IoError,
+                format!("daemon request failed: {error}"),
+                "Verify daemon socket path and daemon availability, then retry",
+            ),
+        };
+    }
+
     let request = WorkspaceListRequest {
         context: RepoContext {
             repo_root: repo_root.clone(),
@@ -881,6 +925,28 @@ fn run_workspace_list(parsed: WorkspaceListArgs) -> std::io::Result<()> {
             "Verify repository path and retry",
         ),
     }
+}
+
+fn split_global_socket_arg(args: Vec<String>) -> std::io::Result<(Option<PathBuf>, Vec<String>)> {
+    let mut args_iter = args.into_iter();
+    let Some(first) = args_iter.next() else {
+        return Ok((None, Vec::new()));
+    };
+
+    if first != "--socket" {
+        let mut remaining = vec![first];
+        remaining.extend(args_iter);
+        return Ok((None, remaining));
+    }
+
+    let Some(socket_path) = args_iter.next() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "--socket requires a path",
+        ));
+    };
+
+    Ok((Some(PathBuf::from(socket_path)), args_iter.collect()))
 }
 
 fn run_workspace_create(parsed: WorkspaceCreateArgs) -> std::io::Result<()> {
@@ -1274,11 +1340,22 @@ fn run_tui(cli: TuiArgs) -> std::io::Result<()> {
 }
 
 pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
-    let args = args.into_iter().collect::<Vec<String>>();
+    let raw_args = args.into_iter().collect::<Vec<String>>();
+    let (daemon_socket, args) = split_global_socket_arg(raw_args)?;
     let Some((first, remaining)) = args.split_first() else {
         return emit_json(&root_command_envelope());
     };
+    let daemon_socket_path = daemon_socket.as_deref();
+
     if first == "tui" {
+        if daemon_socket_path.is_some() {
+            return emit_error(
+                "grove tui",
+                CliErrorCode::InvalidArgument,
+                "--socket is not supported for 'grove tui' yet".to_string(),
+                "Retry without '--socket' for TUI, or use '--socket' with 'grove workspace list'",
+            );
+        }
         return run_tui(parse_tui_args(remaining.iter().cloned())?);
     }
     if first == "workspace" {
@@ -1292,7 +1369,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         };
         if workspace_command == "list" {
             return match parse_workspace_list_args(workspace_args.iter().cloned()) {
-                Ok(parsed) => run_workspace_list(parsed),
+                Ok(parsed) => run_workspace_list(parsed, daemon_socket_path),
                 Err(error) => emit_error(
                     "grove workspace list",
                     CliErrorCode::InvalidArgument,
@@ -1300,6 +1377,14 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
                     "Retry with '--repo <path>' or omit '--repo' to use current directory",
                 ),
             };
+        }
+        if daemon_socket_path.is_some() {
+            return emit_error(
+                "grove workspace",
+                CliErrorCode::InvalidArgument,
+                "--socket currently supports only 'grove workspace list'".to_string(),
+                "Retry with 'grove --socket <path> workspace list [--repo <path>]'",
+            );
         }
         if workspace_command == "create" {
             return match parse_workspace_create_args(workspace_args.iter().cloned()) {
@@ -1358,6 +1443,14 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
         }
     }
     if first == "agent" {
+        if daemon_socket_path.is_some() {
+            return emit_error(
+                "grove agent",
+                CliErrorCode::InvalidArgument,
+                "--socket currently supports only 'grove workspace list'".to_string(),
+                "Retry with 'grove --socket <path> workspace list [--repo <path>]'",
+            );
+        }
         let Some((agent_command, agent_args)) = remaining.split_first() else {
             return emit_error(
                 "grove agent",
@@ -1388,6 +1481,15 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
                 ),
             };
         }
+    }
+
+    if daemon_socket_path.is_some() {
+        return emit_error(
+            "grove",
+            CliErrorCode::InvalidArgument,
+            "--socket currently supports only 'grove workspace list'".to_string(),
+            "Retry with 'grove --socket <path> workspace list [--repo <path>]'",
+        );
     }
 
     let cli = parse_cli_args(args)?;
@@ -1425,7 +1527,7 @@ mod tests {
         parse_agent_start_args, parse_agent_stop_args, parse_cli_args, parse_tui_args,
         parse_workspace_create_args, parse_workspace_delete_args, parse_workspace_edit_args,
         parse_workspace_list_args, parse_workspace_merge_args, parse_workspace_update_args,
-        resolve_event_log_path, root_command_envelope, workspace_selector,
+        resolve_event_log_path, root_command_envelope, split_global_socket_arg, workspace_selector,
     };
     use crate::application::commands::WorkspaceSelector;
     use crate::domain::AgentType;
@@ -1571,6 +1673,27 @@ mod tests {
     #[test]
     fn workspace_list_parser_rejects_unknown_flag() {
         let error = parse_workspace_list_args(vec!["--wat".to_string()]).expect_err("unknown arg");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn split_global_socket_arg_reads_socket_and_remaining_args() {
+        let (socket_path, remaining) = split_global_socket_arg(vec![
+            "--socket".to_string(),
+            "/tmp/groved.sock".to_string(),
+            "workspace".to_string(),
+            "list".to_string(),
+        ])
+        .expect("global socket args should parse");
+
+        assert_eq!(socket_path, Some(PathBuf::from("/tmp/groved.sock")));
+        assert_eq!(remaining, vec!["workspace".to_string(), "list".to_string()]);
+    }
+
+    #[test]
+    fn split_global_socket_arg_rejects_missing_socket_path() {
+        let error = split_global_socket_arg(vec!["--socket".to_string()])
+            .expect_err("missing socket path should fail");
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     }
 

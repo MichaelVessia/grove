@@ -1,0 +1,88 @@
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+fn unique_socket_path(label: &str) -> PathBuf {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time should be after unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "grove-workspace-list-daemon-{label}-{}-{timestamp}.sock",
+        std::process::id()
+    ))
+}
+
+fn wait_for_socket_ready(path: &Path) {
+    for _ in 0..200 {
+        if path.exists() && std::os::unix::net::UnixStream::connect(path).is_ok() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("socket was not ready at {}", path.display());
+}
+
+fn spawn_groved(socket_path: &Path) -> Child {
+    Command::new(env!("CARGO_BIN_EXE_groved"))
+        .arg("--socket")
+        .arg(socket_path)
+        .arg("--once")
+        .spawn()
+        .expect("groved should start")
+}
+
+#[test]
+fn workspace_list_can_use_daemon_socket_transport() {
+    let socket_path = unique_socket_path("workspace-list");
+    let mut daemon = spawn_groved(&socket_path);
+    wait_for_socket_ready(&socket_path);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_grove"))
+        .arg("--socket")
+        .arg(&socket_path)
+        .arg("workspace")
+        .arg("list")
+        .arg("--repo")
+        .arg(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("grove should run");
+
+    let status = daemon.wait().expect("daemon should exit");
+    assert!(status.success(), "groved exited non-zero");
+    assert!(output.status.success(), "grove exited non-zero");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be valid utf-8");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout should be json");
+    assert_eq!(value["ok"], serde_json::Value::Bool(true));
+    assert_eq!(
+        value["command"],
+        serde_json::Value::String("grove workspace list".to_string())
+    );
+    assert!(value["result"]["workspaces"].is_array());
+}
+
+#[test]
+fn socket_transport_rejects_unsupported_commands_for_now() {
+    let output = Command::new(env!("CARGO_BIN_EXE_grove"))
+        .arg("--socket")
+        .arg("/tmp/non-existent-groved.sock")
+        .arg("workspace")
+        .arg("create")
+        .arg("--name")
+        .arg("feature-a")
+        .arg("--base")
+        .arg("main")
+        .output()
+        .expect("grove should run");
+
+    assert!(output.status.success(), "grove exited non-zero");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be valid utf-8");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout should be json");
+    assert_eq!(value["ok"], serde_json::Value::Bool(false));
+    assert_eq!(
+        value["error"]["code"],
+        serde_json::Value::String("INVALID_ARGUMENT".to_string())
+    );
+}
