@@ -105,12 +105,46 @@ impl GroveApp {
 
     pub(super) fn track_workspace_status_transition(
         &mut self,
-        _workspace_path: &Path,
-        _previous_status: WorkspaceStatus,
-        _next_status: WorkspaceStatus,
-        _previous_orphaned: bool,
-        _next_orphaned: bool,
+        workspace_path: &Path,
+        previous_status: WorkspaceStatus,
+        next_status: WorkspaceStatus,
+        previous_orphaned: bool,
+        next_orphaned: bool,
     ) {
+        if previous_status == next_status && previous_orphaned == next_orphaned {
+            return;
+        }
+        self.log_event_with_fields(
+            "workspace_status",
+            "transition",
+            [
+                (
+                    "workspace_path".to_string(),
+                    Value::from(workspace_path.display().to_string()),
+                ),
+                (
+                    "previous_status".to_string(),
+                    Value::from(Self::workspace_status_name(previous_status)),
+                ),
+                (
+                    "next_status".to_string(),
+                    Value::from(Self::workspace_status_name(next_status)),
+                ),
+                (
+                    "previous_orphaned".to_string(),
+                    Value::from(previous_orphaned),
+                ),
+                ("next_orphaned".to_string(), Value::from(next_orphaned)),
+                (
+                    "status_changed".to_string(),
+                    Value::from(previous_status != next_status),
+                ),
+                (
+                    "orphaned_changed".to_string(),
+                    Value::from(previous_orphaned != next_orphaned),
+                ),
+            ],
+        );
     }
 
     pub(super) fn reconcile_workspace_attention_tracking(&mut self) {
@@ -253,6 +287,20 @@ impl GroveApp {
     pub(super) fn clear_status_tracking(&mut self) {
         self.workspace_status_digests.clear();
         self.workspace_output_changing.clear();
+    }
+
+    pub(super) fn workspace_status_name(status: WorkspaceStatus) -> &'static str {
+        match status {
+            WorkspaceStatus::Main => "main",
+            WorkspaceStatus::Idle => "idle",
+            WorkspaceStatus::Active => "active",
+            WorkspaceStatus::Thinking => "thinking",
+            WorkspaceStatus::Waiting => "waiting",
+            WorkspaceStatus::Done => "done",
+            WorkspaceStatus::Error => "error",
+            WorkspaceStatus::Unknown => "unknown",
+            WorkspaceStatus::Unsupported => "unsupported",
+        }
     }
 
     fn workspace_output_changing(&self, workspace_path: &Path) -> bool {
@@ -404,7 +452,7 @@ impl GroveApp {
             && existing_due_at <= due_at
             && existing_due_at > scheduled_at
         {
-            self.event_log.log(
+            self.emit_event(
                 LogEvent::new("tick", "retained")
                     .with_data("source", Value::from(source))
                     .with_data("trigger", Value::from(trigger))
@@ -427,7 +475,7 @@ impl GroveApp {
         let interval_ms = Self::duration_millis(interval);
         self.next_tick_due_at = Some(due_at);
         self.next_tick_interval_ms = Some(interval_ms);
-        self.event_log.log(
+        self.emit_event(
             LogEvent::new("tick", "scheduled")
                 .with_data("source", Value::from(source))
                 .with_data("trigger", Value::from(trigger))

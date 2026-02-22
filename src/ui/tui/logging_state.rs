@@ -17,6 +17,24 @@ pub(super) enum ToastSeverity {
 }
 
 impl GroveApp {
+    pub(super) fn emit_event(&self, event: LogEvent) {
+        let mono_ms = Self::duration_millis(
+            Instant::now().saturating_duration_since(self.session_started_at),
+        );
+        let mut event_seq = self.event_seq.borrow_mut();
+        *event_seq = event_seq.saturating_add(1);
+        let frame_seq = *self.frame_render_seq.borrow();
+        self.event_log.log(
+            event
+                .with_data("run_id", Value::from(self.session_run_id.clone()))
+                .with_data("mono_ms", Value::from(mono_ms))
+                .with_data("event_seq", Value::from(*event_seq))
+                .with_data("msg_seq", Value::from(self.msg_seq))
+                .with_data("poll_generation", Value::from(self.poll_generation))
+                .with_data("frame_seq", Value::from(frame_seq)),
+        );
+    }
+
     pub(super) fn mode_label(&self) -> &'static str {
         if self.interactive.is_some() {
             return "Interactive";
@@ -90,8 +108,7 @@ impl GroveApp {
         kind: &str,
         fields: impl IntoIterator<Item = (String, Value)>,
     ) {
-        self.event_log
-            .log(LogEvent::new(event, kind).with_data_fields(fields));
+        self.emit_event(LogEvent::new(event, kind).with_data_fields(fields));
     }
 
     pub(super) fn capture_transition_snapshot(&self) -> TransitionSnapshot {

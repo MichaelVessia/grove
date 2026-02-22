@@ -2,6 +2,7 @@ use super::*;
 
 impl GroveApp {
     pub(super) fn poll_preview_sync(&mut self) {
+        let poll_started_at = Instant::now();
         let live_preview = self.prepare_live_preview_session();
         let has_live_preview = live_preview.is_some();
         let cursor_session = self.interactive_target_session();
@@ -9,9 +10,30 @@ impl GroveApp {
             &self.state.workspaces,
             live_preview.as_ref(),
         );
+        self.log_event_with_fields(
+            "preview_poll",
+            "cycle_started",
+            [
+                ("mode".to_string(), Value::from("sync")),
+                ("generation".to_string(), Value::from(self.poll_generation)),
+                (
+                    "live_capture_targeted".to_string(),
+                    Value::from(has_live_preview),
+                ),
+                (
+                    "cursor_capture_targeted".to_string(),
+                    Value::from(cursor_session.is_some()),
+                ),
+                (
+                    "workspace_status_targets".to_string(),
+                    Value::from(usize_to_u64(status_poll_targets.len())),
+                ),
+            ],
+        );
 
         if let Some(live_preview_target) = live_preview {
             let previous_digest = self.preview.last_digest().cloned();
+            let task_started_at = Instant::now();
             let capture_started_at = Instant::now();
             let raw_result = if let Some(socket_path) = &live_preview_target.daemon_socket_path {
                 let payload = DaemonSessionCapturePayload {
@@ -35,6 +57,8 @@ impl GroveApp {
             };
             let capture_ms =
                 Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
+            let total_ms =
+                Self::duration_millis(Instant::now().saturating_duration_since(task_started_at));
             let result = match raw_result {
                 Ok(raw_output) => {
                     let change = evaluate_capture_change(previous_digest.as_ref(), &raw_output);
@@ -67,7 +91,7 @@ impl GroveApp {
                 &live_preview_target.session_name,
                 live_preview_target.include_escape_sequences,
                 capture_ms,
-                capture_ms,
+                total_ms,
                 result,
             );
         } else {
@@ -118,6 +142,20 @@ impl GroveApp {
         if let Some(target_session) = cursor_session {
             self.poll_interactive_cursor_sync(&target_session);
         }
+        self.log_event_with_fields(
+            "preview_poll",
+            "cycle_completed",
+            [
+                ("mode".to_string(), Value::from("sync")),
+                ("generation".to_string(), Value::from(self.poll_generation)),
+                (
+                    "duration_ms".to_string(),
+                    Value::from(Self::duration_millis(
+                        Instant::now().saturating_duration_since(poll_started_at),
+                    )),
+                ),
+            ],
+        );
     }
 
     pub(super) fn schedule_async_preview_poll(
@@ -131,6 +169,7 @@ impl GroveApp {
     ) -> Cmd<Msg> {
         Cmd::task(move || {
             let live_capture = live_preview.map(|target| {
+                let task_started_at = Instant::now();
                 let capture_started_at = Instant::now();
                 let raw_result = if let Some(socket_path) = &target.daemon_socket_path {
                     let payload = DaemonSessionCapturePayload {
@@ -153,6 +192,9 @@ impl GroveApp {
                 };
                 let capture_ms = GroveApp::duration_millis(
                     Instant::now().saturating_duration_since(capture_started_at),
+                );
+                let total_ms = GroveApp::duration_millis(
+                    Instant::now().saturating_duration_since(task_started_at),
                 );
                 let result =
                     match raw_result {
@@ -188,7 +230,7 @@ impl GroveApp {
                     session: target.session_name,
                     include_escape_sequences: target.include_escape_sequences,
                     capture_ms,
-                    total_ms: capture_ms,
+                    total_ms,
                     result,
                 }
             });

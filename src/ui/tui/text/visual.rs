@@ -60,10 +60,6 @@ pub(in crate::ui::tui) fn visual_grapheme_at(
     None
 }
 
-pub(in crate::ui::tui) fn truncate_for_log(value: &str, max_chars: usize) -> String {
-    value.chars().take(max_chars).collect()
-}
-
 pub(in crate::ui::tui) fn truncate_to_display_width(value: &str, max_width: usize) -> String {
     if max_width == 0 {
         return String::new();

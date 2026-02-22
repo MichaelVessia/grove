@@ -34,7 +34,11 @@ pub fn root_command_tree() -> RootCommandTree {
             remote_transport: false,
         },
         commands: vec![
-            command("grove tui", "Launch Grove TUI", "grove tui [--repo <path>]"),
+            command(
+                "grove tui",
+                "Launch Grove TUI",
+                "grove tui [--event-log <path>] [--debug-record] [--evidence-log <path>] [--render-trace <path>] [--frame-timing-log <path>]",
+            ),
             command(
                 "grove workspace list",
                 "List workspaces in a repository",
@@ -75,6 +79,11 @@ pub fn root_command_tree() -> RootCommandTree {
                 "Stop an agent in a workspace",
                 "grove agent stop [--workspace <name> | --workspace-path <path>] [--dry-run] [--repo <path>]",
             ),
+            command(
+                "grove debug bundle",
+                "Collect observability artifacts into a bundle directory",
+                "grove debug bundle [--out <path>]",
+            ),
         ],
     }
 }
@@ -104,6 +113,7 @@ mod tests {
             "grove workspace update",
             "grove agent start",
             "grove agent stop",
+            "grove debug bundle",
         ])
     }
 
@@ -145,7 +155,7 @@ mod tests {
             json!({
                 "command": "grove tui",
                 "description": "Launch Grove TUI",
-                "usage": "grove tui [--repo <path>]"
+                "usage": "grove tui [--event-log <path>] [--debug-record] [--evidence-log <path>] [--render-trace <path>] [--frame-timing-log <path>]"
             })
         );
     }

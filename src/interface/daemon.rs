@@ -2,8 +2,10 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value, json};
 
 use crate::application::commands::{
     AgentStartRequest, AgentStopRequest, ErrorCode as CommandErrorCode,
@@ -16,6 +18,23 @@ use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 const GROVE_DIR: &str = ".grove";
 const DEFAULT_SOCKET_FILE: &str = "groved.sock";
 pub const PROTOCOL_VERSION: u32 = 2;
+
+fn daemon_log_event(event: &str, kind: &str, fields: impl IntoIterator<Item = (String, Value)>) {
+    let mut data = Map::new();
+    for (key, value) in fields {
+        data.insert(key, value);
+    }
+    let line = json!({
+        "ts": crate::infrastructure::event_log::now_millis(),
+        "event": event,
+        "kind": kind,
+        "data": data,
+    });
+    let Ok(text) = serde_json::to_string(&line) else {
+        return;
+    };
+    eprintln!("{text}");
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DaemonArgs {
@@ -580,27 +599,216 @@ pub fn session_paste_buffer_via_socket(
     }
 }
 
+fn daemon_request_kind(request: &DaemonRequest) -> &'static str {
+    match request {
+        DaemonRequest::Ping => "ping",
+        DaemonRequest::WorkspaceList { .. } => "workspace_list",
+        DaemonRequest::WorkspaceCreate { .. } => "workspace_create",
+        DaemonRequest::WorkspaceEdit { .. } => "workspace_edit",
+        DaemonRequest::WorkspaceDelete { .. } => "workspace_delete",
+        DaemonRequest::WorkspaceMerge { .. } => "workspace_merge",
+        DaemonRequest::WorkspaceUpdate { .. } => "workspace_update",
+        DaemonRequest::AgentStart { .. } => "agent_start",
+        DaemonRequest::AgentStop { .. } => "agent_stop",
+        DaemonRequest::SessionLaunch { .. } => "session_launch",
+        DaemonRequest::SessionCapture { .. } => "session_capture",
+        DaemonRequest::SessionCursorMetadata { .. } => "session_cursor_metadata",
+        DaemonRequest::SessionResize { .. } => "session_resize",
+        DaemonRequest::SessionSendKeys { .. } => "session_send_keys",
+        DaemonRequest::SessionPasteBuffer { .. } => "session_paste_buffer",
+    }
+}
+
+fn daemon_response_kind(response: &DaemonResponse) -> &'static str {
+    match response {
+        DaemonResponse::Pong { .. } => "pong",
+        DaemonResponse::WorkspaceListOk { .. } => "workspace_list_ok",
+        DaemonResponse::WorkspaceListErr { .. } => "workspace_list_err",
+        DaemonResponse::WorkspaceCreateOk { .. } => "workspace_create_ok",
+        DaemonResponse::WorkspaceCreateErr { .. } => "workspace_create_err",
+        DaemonResponse::WorkspaceEditOk { .. } => "workspace_edit_ok",
+        DaemonResponse::WorkspaceEditErr { .. } => "workspace_edit_err",
+        DaemonResponse::WorkspaceDeleteOk { .. } => "workspace_delete_ok",
+        DaemonResponse::WorkspaceDeleteErr { .. } => "workspace_delete_err",
+        DaemonResponse::WorkspaceMergeOk { .. } => "workspace_merge_ok",
+        DaemonResponse::WorkspaceMergeErr { .. } => "workspace_merge_err",
+        DaemonResponse::WorkspaceUpdateOk { .. } => "workspace_update_ok",
+        DaemonResponse::WorkspaceUpdateErr { .. } => "workspace_update_err",
+        DaemonResponse::AgentStartOk { .. } => "agent_start_ok",
+        DaemonResponse::AgentStartErr { .. } => "agent_start_err",
+        DaemonResponse::AgentStopOk { .. } => "agent_stop_ok",
+        DaemonResponse::AgentStopErr { .. } => "agent_stop_err",
+        DaemonResponse::SessionLaunchOk => "session_launch_ok",
+        DaemonResponse::SessionLaunchErr { .. } => "session_launch_err",
+        DaemonResponse::SessionCaptureOk { .. } => "session_capture_ok",
+        DaemonResponse::SessionCaptureErr { .. } => "session_capture_err",
+        DaemonResponse::SessionCursorMetadataOk { .. } => "session_cursor_metadata_ok",
+        DaemonResponse::SessionCursorMetadataErr { .. } => "session_cursor_metadata_err",
+        DaemonResponse::SessionResizeOk => "session_resize_ok",
+        DaemonResponse::SessionResizeErr { .. } => "session_resize_err",
+        DaemonResponse::SessionSendKeysOk => "session_send_keys_ok",
+        DaemonResponse::SessionSendKeysErr { .. } => "session_send_keys_err",
+        DaemonResponse::SessionPasteBufferOk => "session_paste_buffer_ok",
+        DaemonResponse::SessionPasteBufferErr { .. } => "session_paste_buffer_err",
+    }
+}
+
 fn send_request(socket_path: &Path, request: &DaemonRequest) -> std::io::Result<DaemonResponse> {
-    let mut stream = UnixStream::connect(socket_path)?;
+    let request_kind = daemon_request_kind(request);
+    let total_started_at = Instant::now();
+    let connect_started_at = Instant::now();
+    let mut stream = match UnixStream::connect(socket_path) {
+        Ok(stream) => stream,
+        Err(error) => {
+            daemon_log_event(
+                "daemon_request",
+                "client_failed",
+                [
+                    ("request".to_string(), Value::from(request_kind)),
+                    ("stage".to_string(), Value::from("connect")),
+                    ("error".to_string(), Value::from(error.to_string())),
+                    (
+                        "duration_ms".to_string(),
+                        Value::from(
+                            u64::try_from(
+                                Instant::now()
+                                    .saturating_duration_since(total_started_at)
+                                    .as_millis(),
+                            )
+                            .unwrap_or(u64::MAX),
+                        ),
+                    ),
+                ],
+            );
+            return Err(error);
+        }
+    };
+    let connect_ms = u64::try_from(
+        Instant::now()
+            .saturating_duration_since(connect_started_at)
+            .as_millis(),
+    )
+    .unwrap_or(u64::MAX);
     let request_json =
         serde_json::to_string(request).map_err(|error| std::io::Error::other(error.to_string()))?;
 
-    stream.write_all(request_json.as_bytes())?;
-    stream.write_all(b"\n")?;
-    stream.flush()?;
+    let write_started_at = Instant::now();
+    if let Err(error) = stream.write_all(request_json.as_bytes()) {
+        daemon_log_event(
+            "daemon_request",
+            "client_failed",
+            [
+                ("request".to_string(), Value::from(request_kind)),
+                ("stage".to_string(), Value::from("write_request")),
+                ("error".to_string(), Value::from(error.to_string())),
+            ],
+        );
+        return Err(error);
+    }
+    if let Err(error) = stream.write_all(b"\n") {
+        daemon_log_event(
+            "daemon_request",
+            "client_failed",
+            [
+                ("request".to_string(), Value::from(request_kind)),
+                ("stage".to_string(), Value::from("write_newline")),
+                ("error".to_string(), Value::from(error.to_string())),
+            ],
+        );
+        return Err(error);
+    }
+    if let Err(error) = stream.flush() {
+        daemon_log_event(
+            "daemon_request",
+            "client_failed",
+            [
+                ("request".to_string(), Value::from(request_kind)),
+                ("stage".to_string(), Value::from("flush_request")),
+                ("error".to_string(), Value::from(error.to_string())),
+            ],
+        );
+        return Err(error);
+    }
+    let write_ms = u64::try_from(
+        Instant::now()
+            .saturating_duration_since(write_started_at)
+            .as_millis(),
+    )
+    .unwrap_or(u64::MAX);
 
     let mut response_line = String::new();
     let mut reader = BufReader::new(stream);
-    let bytes_read = reader.read_line(&mut response_line)?;
+    let read_started_at = Instant::now();
+    let bytes_read = match reader.read_line(&mut response_line) {
+        Ok(bytes_read) => bytes_read,
+        Err(error) => {
+            daemon_log_event(
+                "daemon_request",
+                "client_failed",
+                [
+                    ("request".to_string(), Value::from(request_kind)),
+                    ("stage".to_string(), Value::from("read_response")),
+                    ("error".to_string(), Value::from(error.to_string())),
+                ],
+            );
+            return Err(error);
+        }
+    };
+    let read_ms = u64::try_from(
+        Instant::now()
+            .saturating_duration_since(read_started_at)
+            .as_millis(),
+    )
+    .unwrap_or(u64::MAX);
     if bytes_read == 0 {
-        return Err(std::io::Error::new(
+        let error = std::io::Error::new(
             std::io::ErrorKind::UnexpectedEof,
             "daemon closed socket before writing a response",
-        ));
+        );
+        daemon_log_event(
+            "daemon_request",
+            "client_failed",
+            [
+                ("request".to_string(), Value::from(request_kind)),
+                ("stage".to_string(), Value::from("response_eof")),
+                ("error".to_string(), Value::from(error.to_string())),
+            ],
+        );
+        return Err(error);
     }
 
-    serde_json::from_str(response_line.trim())
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string()))
+    let parse_started_at = Instant::now();
+    let response = serde_json::from_str(response_line.trim())
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string()))?;
+    let parse_ms = u64::try_from(
+        Instant::now()
+            .saturating_duration_since(parse_started_at)
+            .as_millis(),
+    )
+    .unwrap_or(u64::MAX);
+    let total_ms = u64::try_from(
+        Instant::now()
+            .saturating_duration_since(total_started_at)
+            .as_millis(),
+    )
+    .unwrap_or(u64::MAX);
+    daemon_log_event(
+        "daemon_request",
+        "client_completed",
+        [
+            ("request".to_string(), Value::from(request_kind)),
+            (
+                "response".to_string(),
+                Value::from(daemon_response_kind(&response)),
+            ),
+            ("connect_ms".to_string(), Value::from(connect_ms)),
+            ("write_ms".to_string(), Value::from(write_ms)),
+            ("read_ms".to_string(), Value::from(read_ms)),
+            ("parse_ms".to_string(), Value::from(parse_ms)),
+            ("total_ms".to_string(), Value::from(total_ms)),
+        ],
+    );
+    Ok(response)
 }
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> std::io::Result<DaemonArgs> {
@@ -657,7 +865,11 @@ pub fn serve(args: DaemonArgs) -> std::io::Result<()> {
             std::thread::spawn(move || {
                 let service = InProcessLifecycleCommandService::new();
                 if let Err(error) = handle_connection(stream, &service) {
-                    eprintln!("groved: connection handler error: {error}");
+                    daemon_log_event(
+                        "daemon_request",
+                        "server_connection_handler_failed",
+                        [("error".to_string(), Value::from(error.to_string()))],
+                    );
                 }
             });
         }
@@ -747,7 +959,8 @@ fn drain_coalescable_literals(
     combined_text: &mut String,
     reader: &mut BufReader<UnixStream>,
     line_buf: &mut String,
-) -> std::io::Result<Option<DaemonRequest>> {
+) -> std::io::Result<(Option<DaemonRequest>, u64)> {
+    let mut merged_followups = 0u64;
     while reader.buffer().contains(&b'\n') {
         line_buf.clear();
         let bytes_read = reader.read_line(line_buf)?;
@@ -759,9 +972,16 @@ fn drain_coalescable_literals(
             continue;
         }
         let Ok(request) = serde_json::from_str::<DaemonRequest>(trimmed) else {
-            eprintln!(
-                "groved: dropped invalid request during coalesce: {}",
-                truncate_for_log(trimmed, 160)
+            daemon_log_event(
+                "daemon_request",
+                "server_invalid_dropped",
+                [
+                    ("stage".to_string(), Value::from("coalesce")),
+                    (
+                        "request_preview".to_string(),
+                        Value::from(trimmed.to_string()),
+                    ),
+                ],
             );
             continue;
         };
@@ -770,11 +990,12 @@ fn drain_coalescable_literals(
             && sess == session
         {
             combined_text.push_str(text);
+            merged_followups = merged_followups.saturating_add(1);
             continue;
         }
-        return Ok(Some(request));
+        return Ok((Some(request), merged_followups));
     }
-    Ok(None)
+    Ok((None, merged_followups))
 }
 
 /// Attempts to coalesce a send-keys payload with subsequent buffered literals.
@@ -785,11 +1006,11 @@ fn coalesce_send_keys(
     reader: &mut BufReader<UnixStream>,
     line_buf: &mut String,
     service: &impl LifecycleCommandService,
-) -> std::io::Result<(DaemonResponse, Option<DaemonRequest>)> {
+) -> std::io::Result<(DaemonResponse, Option<DaemonRequest>, u64)> {
     if let Some((session, text)) = parse_literal_send_keys(&payload.command) {
         let session_owned = session.to_string();
         let mut combined_text = text.to_string();
-        let overflow =
+        let (overflow, merged_followups) =
             drain_coalescable_literals(&session_owned, &mut combined_text, reader, line_buf)?;
         let coalesced_command = vec![
             "tmux".to_string(),
@@ -809,10 +1030,10 @@ fn coalesce_send_keys(
             },
             service,
         );
-        Ok((response, overflow))
+        Ok((response, overflow, merged_followups))
     } else {
         let response = dispatch_request(DaemonRequest::SessionSendKeys { payload }, service);
-        Ok((response, None))
+        Ok((response, None, 0))
     }
 }
 
@@ -827,6 +1048,7 @@ fn handle_connection(
     let mut pending_request: Option<DaemonRequest> = None;
 
     loop {
+        let request_started_at = Instant::now();
         let request = if let Some(overflow) = pending_request.take() {
             overflow
         } else {
@@ -843,9 +1065,17 @@ fn handle_connection(
             match serde_json::from_str::<DaemonRequest>(trimmed) {
                 Ok(request) => request,
                 Err(error) => {
-                    eprintln!(
-                        "groved: dropped invalid request ({error}): {}",
-                        truncate_for_log(trimmed, 160)
+                    daemon_log_event(
+                        "daemon_request",
+                        "server_invalid_dropped",
+                        [
+                            ("stage".to_string(), Value::from("read")),
+                            ("error".to_string(), Value::from(error.to_string())),
+                            (
+                                "request_preview".to_string(),
+                                Value::from(trimmed.to_string()),
+                            ),
+                        ],
                     );
                     continue;
                 }
@@ -853,24 +1083,122 @@ fn handle_connection(
         };
 
         handled_any = true;
+        let request_kind = daemon_request_kind(&request);
 
         match request {
             DaemonRequest::SessionSendKeys { payload } => {
                 let fire_and_forget = payload.fire_and_forget;
-                let (response, overflow) =
+                let (response, overflow, merged_followups) =
                     coalesce_send_keys(payload, &mut reader, &mut line_buf, service)?;
                 pending_request = overflow;
-                if !fire_and_forget && let Err(write_error) = write_response(&mut writer, &response)
-                {
-                    eprintln!("groved: write error on persistent connection: {write_error}");
+                let dispatch_ms = u64::try_from(
+                    Instant::now()
+                        .saturating_duration_since(request_started_at)
+                        .as_millis(),
+                )
+                .unwrap_or(u64::MAX);
+                let write_started_at = Instant::now();
+                let mut write_error: Option<String> = None;
+                if !fire_and_forget && let Err(error) = write_response(&mut writer, &response) {
+                    write_error = Some(error.to_string());
+                }
+                let write_ms = u64::try_from(
+                    Instant::now()
+                        .saturating_duration_since(write_started_at)
+                        .as_millis(),
+                )
+                .unwrap_or(u64::MAX);
+                let total_ms = u64::try_from(
+                    Instant::now()
+                        .saturating_duration_since(request_started_at)
+                        .as_millis(),
+                )
+                .unwrap_or(u64::MAX);
+                let mut fields = vec![
+                    ("request".to_string(), Value::from(request_kind)),
+                    (
+                        "response".to_string(),
+                        Value::from(daemon_response_kind(&response)),
+                    ),
+                    ("dispatch_ms".to_string(), Value::from(dispatch_ms)),
+                    ("write_ms".to_string(), Value::from(write_ms)),
+                    ("total_ms".to_string(), Value::from(total_ms)),
+                    ("fire_and_forget".to_string(), Value::from(fire_and_forget)),
+                    (
+                        "coalesced_count".to_string(),
+                        Value::from(merged_followups.saturating_add(1)),
+                    ),
+                ];
+                if let Some(error) = write_error {
+                    fields.push(("write_error".to_string(), Value::from(error)));
+                    daemon_log_event(
+                        "daemon_request",
+                        "server_completed_with_write_error",
+                        fields,
+                    );
                     break;
                 }
+                daemon_log_event("daemon_request", "server_completed", fields);
             }
             other => {
                 let response = dispatch_request(other, service);
-                if let Err(write_error) = write_response(&mut writer, &response) {
-                    eprintln!("groved: write error on persistent connection: {write_error}");
-                    break;
+                let dispatch_ms = u64::try_from(
+                    Instant::now()
+                        .saturating_duration_since(request_started_at)
+                        .as_millis(),
+                )
+                .unwrap_or(u64::MAX);
+                let write_started_at = Instant::now();
+                let write_result = write_response(&mut writer, &response);
+                let write_ms = u64::try_from(
+                    Instant::now()
+                        .saturating_duration_since(write_started_at)
+                        .as_millis(),
+                )
+                .unwrap_or(u64::MAX);
+                let total_ms = u64::try_from(
+                    Instant::now()
+                        .saturating_duration_since(request_started_at)
+                        .as_millis(),
+                )
+                .unwrap_or(u64::MAX);
+                match write_result {
+                    Ok(()) => daemon_log_event(
+                        "daemon_request",
+                        "server_completed",
+                        [
+                            ("request".to_string(), Value::from(request_kind)),
+                            (
+                                "response".to_string(),
+                                Value::from(daemon_response_kind(&response)),
+                            ),
+                            ("dispatch_ms".to_string(), Value::from(dispatch_ms)),
+                            ("write_ms".to_string(), Value::from(write_ms)),
+                            ("total_ms".to_string(), Value::from(total_ms)),
+                            ("fire_and_forget".to_string(), Value::from(false)),
+                            ("coalesced_count".to_string(), Value::from(0)),
+                        ],
+                    ),
+                    Err(error) => {
+                        daemon_log_event(
+                            "daemon_request",
+                            "server_completed_with_write_error",
+                            [
+                                ("request".to_string(), Value::from(request_kind)),
+                                (
+                                    "response".to_string(),
+                                    Value::from(daemon_response_kind(&response)),
+                                ),
+                                ("dispatch_ms".to_string(), Value::from(dispatch_ms)),
+                                ("write_ms".to_string(), Value::from(write_ms)),
+                                ("total_ms".to_string(), Value::from(total_ms)),
+                                ("fire_and_forget".to_string(), Value::from(false)),
+                                ("coalesced_count".to_string(), Value::from(0)),
+                                ("write_error".to_string(), Value::from(error.to_string())),
+                            ],
+                        );
+                        break;
+                    }
                 }
             }
         }
@@ -916,15 +1244,6 @@ fn dispatch_request(
             handle_session_paste_buffer_request(payload)
         }
     }
-}
-
-fn truncate_for_log(value: &str, max_chars: usize) -> String {
-    if value.chars().count() <= max_chars {
-        return value.to_string();
-    }
-
-    let truncated: String = value.chars().take(max_chars).collect();
-    format!("{truncated}...")
 }
 
 fn handle_workspace_list_request(
@@ -1641,12 +1960,13 @@ mod tests {
 
         let mut combined = "a".to_string();
         let mut line_buf = String::new();
-        let overflow =
+        let (overflow, merged_followups) =
             drain_coalescable_literals("sess1", &mut combined, &mut reader, &mut line_buf)
                 .expect("drain should succeed");
 
         assert_eq!(combined, "abc");
         assert!(overflow.is_none());
+        assert_eq!(merged_followups, 2);
     }
 
     #[test]
@@ -1672,7 +1992,7 @@ mod tests {
 
         let mut combined = "a".to_string();
         let mut line_buf = String::new();
-        let overflow =
+        let (overflow, merged_followups) =
             drain_coalescable_literals("sess1", &mut combined, &mut reader, &mut line_buf)
                 .expect("drain should succeed");
 
@@ -1681,6 +2001,7 @@ mod tests {
             overflow.is_some(),
             "named key should be returned as overflow"
         );
+        assert_eq!(merged_followups, 1);
     }
 
     #[test]
@@ -1706,7 +2027,7 @@ mod tests {
 
         let mut combined = "a".to_string();
         let mut line_buf = String::new();
-        let overflow =
+        let (overflow, merged_followups) =
             drain_coalescable_literals("sess1", &mut combined, &mut reader, &mut line_buf)
                 .expect("drain should succeed");
 
@@ -1715,6 +2036,7 @@ mod tests {
             overflow.is_some(),
             "different session should be returned as overflow"
         );
+        assert_eq!(merged_followups, 1);
     }
 
     #[test]

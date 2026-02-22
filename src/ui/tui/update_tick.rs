@@ -17,7 +17,7 @@ impl GroveApp {
             .notifications
             .tick(Duration::from_millis(TOAST_TICK_INTERVAL_MS));
         if !self.tick_is_due(now) {
-            self.event_log.log(
+            self.emit_event(
                 LogEvent::new("tick", "skipped")
                     .with_data("reason", Value::from("not_due"))
                     .with_data(
@@ -68,7 +68,7 @@ impl GroveApp {
         }
 
         let pending_after = self.pending_input_depth();
-        self.event_log.log(
+        self.emit_event(
             LogEvent::new("tick", "processed")
                 .with_data("late_by_ms", Value::from(late_by_ms))
                 .with_data("early_by_ms", Value::from(early_by_ms))

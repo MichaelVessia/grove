@@ -69,17 +69,80 @@ impl GroveApp {
 
     pub(super) fn refresh_workspaces(&mut self, preferred_workspace_path: Option<PathBuf>) {
         if !self.tmux_input.supports_background_launch() {
+            let started_at = Instant::now();
+            self.log_event_with_fields(
+                "refresh_workspaces",
+                "started",
+                [
+                    ("mode".to_string(), Value::from("sync")),
+                    (
+                        "preferred_workspace_path".to_string(),
+                        preferred_workspace_path
+                            .as_ref()
+                            .map(|path| Value::from(path.display().to_string()))
+                            .unwrap_or(Value::Null),
+                    ),
+                    (
+                        "workspace_count_before".to_string(),
+                        Value::from(usize_to_u64(self.state.workspaces.len())),
+                    ),
+                ],
+            );
             self.refresh_workspaces_sync(preferred_workspace_path);
+            self.log_event_with_fields(
+                "refresh_workspaces",
+                "completed",
+                [
+                    ("mode".to_string(), Value::from("sync")),
+                    (
+                        "duration_ms".to_string(),
+                        Value::from(Self::duration_millis(
+                            Instant::now().saturating_duration_since(started_at),
+                        )),
+                    ),
+                    (
+                        "workspace_count_after".to_string(),
+                        Value::from(usize_to_u64(self.state.workspaces.len())),
+                    ),
+                ],
+            );
             return;
         }
 
         if self.refresh_in_flight {
+            self.log_event_with_fields(
+                "refresh_workspaces",
+                "skipped_in_flight",
+                [(
+                    "workspace_count".to_string(),
+                    Value::from(usize_to_u64(self.state.workspaces.len())),
+                )],
+            );
             return;
         }
 
         let projects = self.projects.clone();
         let remote_profiles = self.remote_profiles.clone();
         let daemon_socket_path = self.daemon_socket_path.clone();
+        self.refresh_started_at = Some(Instant::now());
+        self.log_event_with_fields(
+            "refresh_workspaces",
+            "started",
+            [
+                ("mode".to_string(), Value::from("async")),
+                (
+                    "preferred_workspace_path".to_string(),
+                    preferred_workspace_path
+                        .as_ref()
+                        .map(|path| Value::from(path.display().to_string()))
+                        .unwrap_or(Value::Null),
+                ),
+                (
+                    "workspace_count_before".to_string(),
+                    Value::from(usize_to_u64(self.state.workspaces.len())),
+                ),
+            ],
+        );
         self.refresh_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let bootstrap = bootstrap_data_for_projects_with_transport(
@@ -155,6 +218,13 @@ impl GroveApp {
         self.state.mode = previous_mode;
         self.state.focus = previous_focus;
         self.refresh_in_flight = false;
+        let duration_ms = self
+            .refresh_started_at
+            .take()
+            .map(|started_at| {
+                Self::duration_millis(Instant::now().saturating_duration_since(started_at))
+            })
+            .unwrap_or(0);
         self.reconcile_workspace_attention_with_markers(completion.attention_markers);
         self.clear_agent_activity_tracking();
         self.clear_status_tracking();
@@ -163,5 +233,17 @@ impl GroveApp {
         if !started_in_background {
             self.poll_preview();
         }
+        self.log_event_with_fields(
+            "refresh_workspaces",
+            "completed",
+            [
+                ("mode".to_string(), Value::from("async")),
+                ("duration_ms".to_string(), Value::from(duration_ms)),
+                (
+                    "workspace_count_after".to_string(),
+                    Value::from(usize_to_u64(self.state.workspaces.len())),
+                ),
+            ],
+        );
     }
 }

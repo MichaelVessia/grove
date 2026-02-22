@@ -2,6 +2,7 @@ use super::*;
 
 impl GroveApp {
     pub(super) fn update_model(&mut self, msg: Msg) -> Cmd<Msg> {
+        self.msg_seq = self.msg_seq.saturating_add(1);
         let update_started_at = Instant::now();
         let msg_kind = Self::msg_kind(&msg);
         let before = self.capture_transition_snapshot();
@@ -92,7 +93,7 @@ impl GroveApp {
             Msg::Noop => Cmd::None,
         };
         self.emit_transition_events(&before);
-        self.event_log.log(
+        self.emit_event(
             LogEvent::new("update_timing", "message_handled")
                 .with_data("msg_kind", Value::from(msg_kind))
                 .with_data(

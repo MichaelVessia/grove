@@ -55,6 +55,7 @@ impl GroveApp {
         let mut seq = self.frame_render_seq.borrow_mut();
         *seq = seq.saturating_add(1);
         let seq_value = *seq;
+        drop(seq);
 
         let selected_workspace = self
             .state

@@ -74,6 +74,7 @@ impl GroveApp {
                 ),
                 ("bracketed".to_string(), Value::from(paste_event.bracketed)),
                 ("session".to_string(), Value::from(target_session.clone())),
+                ("text".to_string(), Value::from(paste_event.text.clone())),
             ],
         );
 
@@ -199,7 +200,39 @@ impl GroveApp {
         let Some(command) = self.non_interactive_command_for_key(&key_event) else {
             return false;
         };
-        self.execute_ui_command(command)
+        let command_name = command
+            .palette_spec()
+            .map(|spec| spec.id.to_string())
+            .unwrap_or_else(|| format!("{command:?}"));
+        self.log_event_with_fields(
+            "input",
+            "non_interactive_command_selected",
+            [
+                ("command".to_string(), Value::from(command_name.clone())),
+                (
+                    "key_code".to_string(),
+                    Value::from(format!("{:?}", key_event.code)),
+                ),
+                (
+                    "key_modifiers".to_string(),
+                    Value::from(format!("{:?}", key_event.modifiers)),
+                ),
+                (
+                    "key_repeat".to_string(),
+                    Value::from(matches!(key_event.kind, KeyEventKind::Repeat)),
+                ),
+            ],
+        );
+        let quit_requested = self.execute_ui_command(command);
+        self.log_event_with_fields(
+            "input",
+            "non_interactive_command_completed",
+            [
+                ("command".to_string(), Value::from(command_name)),
+                ("quit_requested".to_string(), Value::from(quit_requested)),
+            ],
+        );
+        quit_requested
     }
 
     fn dispatch_dialog_key(&mut self, key_event: &KeyEvent) -> bool {

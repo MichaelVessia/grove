@@ -80,7 +80,30 @@ impl GroveApp {
     }
 
     pub(super) fn execute_ui_command(&mut self, command: UiCommand) -> bool {
+        let command_name = command
+            .palette_spec()
+            .map(|spec| spec.id.to_string())
+            .unwrap_or_else(|| format!("{command:?}"));
+        let before_mode = self.state.mode;
+        let before_focus = self.state.focus;
+        let before_selection = self.state.selected_index;
+        self.log_event_with_fields(
+            "ui_command",
+            "execute",
+            [("command".to_string(), Value::from(command_name.clone()))],
+        );
         if matches!(&command, UiCommand::Quit) {
+            self.log_event_with_fields(
+                "ui_command",
+                "completed",
+                [
+                    ("command".to_string(), Value::from(command_name)),
+                    ("quit_requested".to_string(), Value::from(true)),
+                    ("mode_changed".to_string(), Value::from(false)),
+                    ("focus_changed".to_string(), Value::from(false)),
+                    ("selection_changed".to_string(), Value::from(false)),
+                ],
+            );
             return true;
         }
 
@@ -208,6 +231,26 @@ impl GroveApp {
             UiCommand::Quit => unreachable!(),
         }
 
+        self.log_event_with_fields(
+            "ui_command",
+            "completed",
+            [
+                ("command".to_string(), Value::from(command_name)),
+                ("quit_requested".to_string(), Value::from(false)),
+                (
+                    "mode_changed".to_string(),
+                    Value::from(self.state.mode != before_mode),
+                ),
+                (
+                    "focus_changed".to_string(),
+                    Value::from(self.state.focus != before_focus),
+                ),
+                (
+                    "selection_changed".to_string(),
+                    Value::from(self.state.selected_index != before_selection),
+                ),
+            ],
+        );
         false
     }
 }

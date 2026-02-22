@@ -91,17 +91,16 @@ impl InteractiveState {
         }
     }
 
-    pub fn open_daemon_stream(&mut self) {
+    pub fn open_daemon_stream(&mut self) -> Result<(), String> {
         let Some(socket_path) = &self.daemon_socket_path else {
-            return;
+            return Ok(());
         };
         match UnixStream::connect(socket_path) {
             Ok(stream) => {
                 self.daemon_stream = Some(BufWriter::new(stream));
+                Ok(())
             }
-            Err(error) => {
-                eprintln!("grove: failed to open persistent daemon connection: {error}");
-            }
+            Err(error) => Err(error.to_string()),
         }
     }
 

@@ -12,7 +12,8 @@ impl GroveApp {
         match result {
             Ok(output) => {
                 let apply_started_at = Instant::now();
-                let raw_len = output.raw_output.len();
+                let raw_output = output.raw_output.clone();
+                let raw_len = raw_output.len();
                 let update = self
                     .preview
                     .apply_precomputed_capture(output.raw_output, output.change);
@@ -54,7 +55,7 @@ impl GroveApp {
                     }
                 }
                 self.last_tmux_error = None;
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("preview_poll", "capture_completed")
                         .with_data("session", Value::from(session_name.to_string()))
                         .with_data("capture_ms", Value::from(capture_ms))
@@ -65,6 +66,23 @@ impl GroveApp {
                         )
                         .with_data("output_bytes", Value::from(usize_to_u64(raw_len)))
                         .with_data("changed", Value::from(update.changed_cleaned))
+                        .with_data("changed_raw", Value::from(update.changed_raw))
+                        .with_data("changed_cleaned", Value::from(update.changed_cleaned))
+                        .with_data("raw_hash", Value::from(update.digest.raw_hash))
+                        .with_data("raw_len", Value::from(usize_to_u64(update.digest.raw_len)))
+                        .with_data("raw_output", Value::from(raw_output.clone()))
+                        .with_data("cleaned_hash", Value::from(update.digest.cleaned_hash))
+                        .with_data(
+                            "cleaned_len".to_string(),
+                            Value::from(usize_to_u64(update.cleaned_output.len())),
+                        )
+                        .with_data("cleaned_output", Value::from(update.cleaned_output.clone()))
+                        .with_data(
+                            "sanitizer_removed_bytes",
+                            Value::from(usize_to_u64(
+                                raw_len.saturating_sub(update.cleaned_output.len()),
+                            )),
+                        )
                         .with_data(
                             "include_escape_sequences",
                             Value::from(include_escape_sequences),
@@ -75,7 +93,19 @@ impl GroveApp {
                     let now = Instant::now();
                     let mut output_event = LogEvent::new("preview_update", "output_changed")
                         .with_data("line_count", Value::from(line_count))
-                        .with_data("session", Value::from(session_name.to_string()));
+                        .with_data("session", Value::from(session_name.to_string()))
+                        .with_data("changed_raw", Value::from(update.changed_raw))
+                        .with_data("changed_cleaned", Value::from(update.changed_cleaned))
+                        .with_data("raw_hash", Value::from(update.digest.raw_hash))
+                        .with_data("raw_len", Value::from(usize_to_u64(update.digest.raw_len)))
+                        .with_data("raw_output", Value::from(raw_output.clone()))
+                        .with_data("cleaned_hash", Value::from(update.digest.cleaned_hash))
+                        .with_data(
+                            "cleaned_len",
+                            Value::from(usize_to_u64(update.cleaned_output.len())),
+                        );
+                    output_event = output_event
+                        .with_data("cleaned_output", Value::from(update.cleaned_output.clone()));
                     if let Some(first_input) = consumed_inputs.first() {
                         let last_input = consumed_inputs.last().unwrap_or(first_input);
                         let oldest_input_to_preview_ms = Self::duration_millis(
@@ -170,7 +200,7 @@ impl GroveApp {
                             );
                         }
                     }
-                    self.event_log.log(output_event);
+                    self.emit_event(output_event);
                 }
             }
             Err(message) => {
@@ -217,7 +247,7 @@ impl GroveApp {
                         self.interactive = None;
                     }
                 }
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("preview_poll", "capture_failed")
                         .with_data("session", Value::from(session_name.to_string()))
                         .with_data("capture_ms", Value::from(capture_ms))

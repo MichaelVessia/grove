@@ -51,6 +51,11 @@ impl GroveApp {
         }
         if self.preview_poll_in_flight {
             self.preview_poll_requested = true;
+            self.log_event_with_fields(
+                "preview_poll",
+                "requested_while_in_flight",
+                [("generation".to_string(), Value::from(self.poll_generation))],
+            );
             return;
         }
 
@@ -63,6 +68,11 @@ impl GroveApp {
             self.preview_poll_requested = false;
             self.clear_agent_activity_tracking();
             self.refresh_preview_summary();
+            self.log_event_with_fields(
+                "preview_poll",
+                "skipped_no_targets",
+                [("generation".to_string(), Value::from(self.poll_generation))],
+            );
             return;
         }
 
@@ -74,6 +84,27 @@ impl GroveApp {
         self.poll_generation = self.poll_generation.saturating_add(1);
         self.preview_poll_in_flight = true;
         self.preview_poll_requested = false;
+        self.preview_poll_started_at = Some(Instant::now());
+        self.log_event_with_fields(
+            "preview_poll",
+            "cycle_started",
+            [
+                ("generation".to_string(), Value::from(self.poll_generation)),
+                (
+                    "live_capture_targeted".to_string(),
+                    Value::from(live_preview.is_some()),
+                ),
+                (
+                    "cursor_capture_targeted".to_string(),
+                    Value::from(cursor_session.is_some()),
+                ),
+                (
+                    "workspace_status_targets".to_string(),
+                    Value::from(usize_to_u64(status_poll_targets.len())),
+                ),
+                ("source".to_string(), Value::from("normal")),
+            ],
+        );
         self.queue_cmd(self.schedule_async_preview_poll(
             self.poll_generation,
             live_preview,
@@ -128,6 +159,27 @@ impl GroveApp {
         };
         self.poll_generation = self.poll_generation.saturating_add(1);
         self.preview_poll_requested = false;
+        self.preview_poll_started_at = Some(Instant::now());
+        self.log_event_with_fields(
+            "preview_poll",
+            "cycle_started",
+            [
+                ("generation".to_string(), Value::from(self.poll_generation)),
+                (
+                    "live_capture_targeted".to_string(),
+                    Value::from(live_preview.is_some()),
+                ),
+                (
+                    "cursor_capture_targeted".to_string(),
+                    Value::from(cursor_session.is_some()),
+                ),
+                (
+                    "workspace_status_targets".to_string(),
+                    Value::from(usize_to_u64(status_poll_targets.len())),
+                ),
+                ("source".to_string(), Value::from("prioritized")),
+            ],
+        );
         self.queue_cmd(self.schedule_async_preview_poll(
             self.poll_generation,
             live_preview,
@@ -139,8 +191,13 @@ impl GroveApp {
     }
 
     pub(super) fn handle_preview_poll_completed(&mut self, completion: PreviewPollCompletion) {
+        let completion_generation = completion.generation;
+        let live_capture_present = completion.live_capture.is_some();
+        let cursor_capture_present = completion.cursor_capture.is_some();
+        let status_capture_count = completion.workspace_status_captures.len();
+        let attention_marker_count = completion.attention_markers.len();
         if completion.generation < self.poll_generation {
-            self.event_log.log(
+            self.emit_event(
                 LogEvent::new("preview_poll", "stale_result_dropped")
                     .with_data("generation", Value::from(completion.generation))
                     .with_data("latest_generation", Value::from(self.poll_generation)),
@@ -171,7 +228,7 @@ impl GroveApp {
                 if let Some(selected_session) = selected_live_session {
                     event = event.with_data("selected_session", Value::from(selected_session));
                 }
-                self.event_log.log(event);
+                self.emit_event(event);
                 self.clear_agent_activity_tracking();
                 if self
                     .selected_live_preview_session_for_completion()
@@ -211,5 +268,36 @@ impl GroveApp {
             self.preview_poll_requested = false;
             self.poll_preview();
         }
+        let cycle_duration_ms = self
+            .preview_poll_started_at
+            .take()
+            .map(|started_at| {
+                Self::duration_millis(Instant::now().saturating_duration_since(started_at))
+            })
+            .unwrap_or(0);
+        self.log_event_with_fields(
+            "preview_poll",
+            "cycle_completed",
+            [
+                ("generation".to_string(), Value::from(completion_generation)),
+                ("duration_ms".to_string(), Value::from(cycle_duration_ms)),
+                (
+                    "live_capture_present".to_string(),
+                    Value::from(live_capture_present),
+                ),
+                (
+                    "cursor_capture_present".to_string(),
+                    Value::from(cursor_capture_present),
+                ),
+                (
+                    "workspace_status_capture_count".to_string(),
+                    Value::from(usize_to_u64(status_capture_count)),
+                ),
+                (
+                    "attention_marker_count".to_string(),
+                    Value::from(usize_to_u64(attention_marker_count)),
+                ),
+            ],
+        );
     }
 }

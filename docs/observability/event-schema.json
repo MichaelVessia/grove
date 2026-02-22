@@ -1,0 +1,138 @@
+{
+  "schema_version": "grove-event-schema-v1",
+  "required_common_fields": [
+    "run_id",
+    "mono_ms",
+    "event_seq",
+    "msg_seq",
+    "poll_generation",
+    "frame_seq"
+  ],
+  "events": [
+    {
+      "event": "app",
+      "kind": "session_started",
+      "required_fields": ["pid", "term", "tmux", "debug_record"]
+    },
+    {
+      "event": "update_timing",
+      "kind": "message_handled",
+      "required_fields": ["msg_kind", "update_ms", "pending_depth"]
+    },
+    {
+      "event": "frame",
+      "kind": "timing",
+      "required_fields": ["draw_ms", "view_ms", "pending_depth"]
+    },
+    {
+      "event": "frame",
+      "kind": "rendered",
+      "required_fields": ["seq", "frame_hash", "frame_changed", "line_count"]
+    },
+    {
+      "event": "tick",
+      "kind": "scheduled",
+      "required_fields": ["source", "trigger", "interval_ms"]
+    },
+    {
+      "event": "tick",
+      "kind": "processed",
+      "required_fields": ["poll_due", "workspace_refresh_due", "pending_before", "pending_after"]
+    },
+    {
+      "event": "preview_poll",
+      "kind": "cycle_started",
+      "required_fields": ["generation", "live_capture_targeted", "cursor_capture_targeted", "workspace_status_targets"]
+    },
+    {
+      "event": "preview_poll",
+      "kind": "cycle_completed",
+      "required_fields": ["generation", "duration_ms"]
+    },
+    {
+      "event": "preview_poll",
+      "kind": "capture_completed",
+      "required_fields": ["session", "capture_ms", "total_ms", "changed_raw", "changed_cleaned", "raw_hash", "cleaned_hash"]
+    },
+    {
+      "event": "preview_poll",
+      "kind": "capture_failed",
+      "required_fields": ["session", "capture_ms", "error"]
+    },
+    {
+      "event": "preview_update",
+      "kind": "output_changed",
+      "required_fields": ["session", "line_count", "changed_raw", "changed_cleaned", "raw_hash", "cleaned_hash"]
+    },
+    {
+      "event": "workspace_status",
+      "kind": "transition",
+      "required_fields": ["workspace_path", "previous_status", "next_status", "status_changed"]
+    },
+    {
+      "event": "workspace_status",
+      "kind": "capture_completed",
+      "required_fields": ["workspace_path", "session", "capture_ms", "changed_raw", "changed_cleaned", "resolved_status"]
+    },
+    {
+      "event": "workspace_status",
+      "kind": "capture_failed",
+      "required_fields": ["workspace_path", "session", "capture_ms", "error"]
+    },
+    {
+      "event": "refresh_workspaces",
+      "kind": "started",
+      "required_fields": ["mode", "workspace_count_before"]
+    },
+    {
+      "event": "refresh_workspaces",
+      "kind": "completed",
+      "required_fields": ["mode", "duration_ms", "workspace_count_after"]
+    },
+    {
+      "event": "input",
+      "kind": "interactive_key_received",
+      "required_fields": ["seq", "key", "repeat"]
+    },
+    {
+      "event": "input",
+      "kind": "interactive_forwarded",
+      "required_fields": ["seq", "session", "action", "queue_depth"]
+    },
+    {
+      "event": "input",
+      "kind": "interactive_input_to_preview",
+      "required_fields": ["seq", "session", "input_to_preview_ms", "tmux_to_preview_ms"]
+    },
+    {
+      "event": "input",
+      "kind": "interactive_paste_buffer_completed",
+      "required_fields": ["seq", "session", "path", "chars", "paste_ms"]
+    },
+    {
+      "event": "input",
+      "kind": "interactive_paste_buffer_failed",
+      "required_fields": ["seq", "session", "path", "chars", "paste_ms", "error"]
+    },
+    {
+      "event": "input",
+      "kind": "non_interactive_command_selected",
+      "required_fields": ["command", "key_code", "key_modifiers"]
+    },
+    {
+      "event": "ui_command",
+      "kind": "execute",
+      "required_fields": ["command"]
+    },
+    {
+      "event": "ui_command",
+      "kind": "completed",
+      "required_fields": ["command", "quit_requested", "mode_changed", "focus_changed", "selection_changed"]
+    },
+    {
+      "event": "daemon",
+      "kind": "stream_open_failed",
+      "required_fields": ["session", "socket_path", "error"]
+    }
+  ]
+}

@@ -124,7 +124,7 @@ impl GroveApp {
                         false,
                     );
                 }
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("agent_lifecycle", "agent_started")
                         .with_data("workspace", Value::from(completion.workspace_name))
                         .with_data("session", Value::from(completion.session_name)),

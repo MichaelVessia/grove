@@ -173,7 +173,7 @@ impl GroveApp {
                 .with_data("mapped_col", Value::from(usize_to_u64(point.col)));
             event = self.add_selection_point_snapshot_fields(event, "mapped_", point);
         }
-        self.event_log.log(event);
+        self.emit_event(event);
 
         if self.modal_open() {
             return;

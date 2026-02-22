@@ -12,17 +12,14 @@ impl GroveApp {
         let render_line = self.preview.render_lines.get(point.line).cloned();
 
         if let Some(line) = raw_line {
-            event = event.with_data(
-                format!("{key_prefix}line_raw_preview"),
-                Value::from(truncate_for_log(&line, 120)),
-            );
+            event = event.with_data(format!("{key_prefix}line_raw_preview"), Value::from(line));
         }
 
         if let Some(line) = clean_line {
             event = event
                 .with_data(
                     format!("{key_prefix}line_clean_preview"),
-                    Value::from(truncate_for_log(&line, 120)),
+                    Value::from(line.clone()),
                 )
                 .with_data(
                     format!("{key_prefix}line_visual_width"),
@@ -30,22 +27,16 @@ impl GroveApp {
                 )
                 .with_data(
                     format!("{key_prefix}line_context"),
-                    Value::from(truncate_for_log(
-                        &visual_substring(
-                            &line,
-                            point.col.saturating_sub(16),
-                            Some(point.col.saturating_add(16)),
-                        ),
-                        120,
+                    Value::from(visual_substring(
+                        &line,
+                        point.col.saturating_sub(16),
+                        Some(point.col.saturating_add(16)),
                     )),
                 );
 
             if let Some((grapheme, start_col, end_col)) = visual_grapheme_at(&line, point.col) {
                 event = event
-                    .with_data(
-                        format!("{key_prefix}grapheme"),
-                        Value::from(truncate_for_log(&grapheme, 16)),
-                    )
+                    .with_data(format!("{key_prefix}grapheme"), Value::from(grapheme))
                     .with_data(
                         format!("{key_prefix}grapheme_start_col"),
                         Value::from(usize_to_u64(start_col)),
@@ -60,7 +51,7 @@ impl GroveApp {
         if let Some(line) = render_line {
             event = event.with_data(
                 format!("{key_prefix}line_render_preview"),
-                Value::from(truncate_for_log(&line, 120)),
+                Value::from(line),
             );
         }
 
@@ -105,17 +96,14 @@ impl GroveApp {
                 .with_data("col", Value::from(usize_to_u64(point.col)));
             event = self.add_selection_point_snapshot_fields(event, "", point);
             if let Some(line) = self.preview_plain_line(point.line) {
-                event = event.with_data("line_preview", Value::from(truncate_for_log(&line, 120)));
+                event = event.with_data("line_preview", Value::from(line));
             }
             if let Some(render_line) = self.preview.render_lines.get(point.line) {
-                event = event.with_data(
-                    "render_line_preview",
-                    Value::from(truncate_for_log(render_line, 120)),
-                );
+                event = event.with_data("render_line_preview", Value::from(render_line.clone()));
             }
         }
 
-        self.event_log.log(event);
+        self.emit_event(event);
     }
 
     pub(super) fn log_preview_drag_finished(
@@ -172,12 +160,9 @@ impl GroveApp {
                     "selected_char_count",
                     Value::from(usize_to_u64(text.chars().count())),
                 )
-                .with_data(
-                    "selected_preview",
-                    Value::from(truncate_for_log(&text, 240)),
-                );
+                .with_data("selected_preview", Value::from(text));
         }
 
-        self.event_log.log(event);
+        self.emit_event(event);
     }
 }

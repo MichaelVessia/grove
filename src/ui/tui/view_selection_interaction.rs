@@ -155,7 +155,7 @@ impl GroveApp {
             return;
         }
         let text = lines.join("\n");
-        self.event_log.log(
+        self.emit_event(
             LogEvent::new("selection", "interactive_copy_payload")
                 .with_data("from_selection", Value::from(copied_from_selection))
                 .with_data("line_count", Value::from(usize_to_u64(lines.len())))
@@ -163,7 +163,7 @@ impl GroveApp {
                     "char_count",
                     Value::from(usize_to_u64(text.chars().count())),
                 )
-                .with_data("preview", Value::from(truncate_for_log(&text, 240))),
+                .with_data("preview", Value::from(text.clone())),
         );
         self.copied_text = Some(text.clone());
         match self.clipboard.write_text(&text) {

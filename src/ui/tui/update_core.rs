@@ -210,6 +210,41 @@ impl GroveApp {
     }
 
     pub(super) fn init_model(&mut self) -> Cmd<Msg> {
+        let daemon_socket = self
+            .daemon_socket_path
+            .as_ref()
+            .map(|path| path.display().to_string());
+        let active_remote_profile = self.active_remote_profile.clone();
+        let term = std::env::var("TERM").unwrap_or_default();
+        self.log_event_with_fields(
+            "app",
+            "session_started",
+            [
+                (
+                    "pid".to_string(),
+                    Value::from(u64::from(std::process::id())),
+                ),
+                ("term".to_string(), Value::from(term)),
+                (
+                    "tmux".to_string(),
+                    Value::from(std::env::var_os("TMUX").is_some()),
+                ),
+                (
+                    "debug_record".to_string(),
+                    Value::from(self.debug_record_start_ts.is_some()),
+                ),
+                (
+                    "daemon_socket".to_string(),
+                    daemon_socket.map(Value::from).unwrap_or(Value::Null),
+                ),
+                (
+                    "active_remote_profile".to_string(),
+                    active_remote_profile
+                        .map(Value::from)
+                        .unwrap_or(Value::Null),
+                ),
+            ],
+        );
         self.reconnect_active_profile_on_startup();
         self.poll_preview();
         let next_tick_cmd = self.schedule_next_tick();

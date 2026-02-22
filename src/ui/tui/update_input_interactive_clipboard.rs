@@ -55,22 +55,66 @@ impl GroveApp {
             );
         }
 
-        let paste_result = if let Some(socket_path) = &self.interactive_daemon_socket_path() {
-            let payload = DaemonSessionPasteBufferPayload {
-                session_name: target_session.to_string(),
-                text: text.clone(),
+        let paste_started_at = Instant::now();
+        let (path_kind, paste_result) =
+            if let Some(socket_path) = &self.interactive_daemon_socket_path() {
+                let payload = DaemonSessionPasteBufferPayload {
+                    session_name: target_session.to_string(),
+                    text: text.clone(),
+                };
+                (
+                    "daemon",
+                    match session_paste_buffer_via_socket(socket_path, payload) {
+                        Ok(Ok(())) => Ok(()),
+                        Ok(Err(daemon_error)) => Err(std::io::Error::other(daemon_error.message)),
+                        Err(io_error) => Err(io_error),
+                    },
+                )
+            } else {
+                ("tmux", self.tmux_input.paste_buffer(target_session, &text))
             };
-            match session_paste_buffer_via_socket(socket_path, payload) {
-                Ok(Ok(())) => Ok(()),
-                Ok(Err(daemon_error)) => Err(std::io::Error::other(daemon_error.message)),
-                Err(io_error) => Err(io_error),
-            }
-        } else {
-            self.tmux_input.paste_buffer(target_session, &text)
-        };
+        let paste_ms =
+            Self::duration_millis(Instant::now().saturating_duration_since(paste_started_at));
         match paste_result {
             Ok(()) => {
                 self.last_tmux_error = None;
+                if let Some(trace_context) = trace_context {
+                    self.log_input_event_with_fields(
+                        "interactive_paste_buffer_completed",
+                        trace_context.seq,
+                        vec![
+                            (
+                                "session".to_string(),
+                                Value::from(target_session.to_string()),
+                            ),
+                            ("path".to_string(), Value::from(path_kind)),
+                            (
+                                "chars".to_string(),
+                                Value::from(usize_to_u64(text.chars().count())),
+                            ),
+                            ("text".to_string(), Value::from(text.clone())),
+                            ("paste_ms".to_string(), Value::from(paste_ms)),
+                        ],
+                    );
+                } else {
+                    self.log_event_with_fields(
+                        "input",
+                        "interactive_paste_buffer_completed",
+                        [
+                            (
+                                "session".to_string(),
+                                Value::from(target_session.to_string()),
+                            ),
+                            ("path".to_string(), Value::from(path_kind)),
+                            (
+                                "chars".to_string(),
+                                Value::from(usize_to_u64(text.chars().count())),
+                            ),
+                            ("text".to_string(), Value::from(text.clone())),
+                            ("paste_ms".to_string(), Value::from(paste_ms)),
+                        ],
+                    );
+                }
             }
             Err(error) => {
                 let message = error.to_string();
@@ -85,6 +129,32 @@ impl GroveApp {
                                 "session".to_string(),
                                 Value::from(target_session.to_string()),
                             ),
+                            ("path".to_string(), Value::from(path_kind)),
+                            (
+                                "chars".to_string(),
+                                Value::from(usize_to_u64(text.chars().count())),
+                            ),
+                            ("text".to_string(), Value::from(text.clone())),
+                            ("paste_ms".to_string(), Value::from(paste_ms)),
+                            ("error".to_string(), Value::from(message)),
+                        ],
+                    );
+                } else {
+                    self.log_event_with_fields(
+                        "input",
+                        "interactive_paste_buffer_failed",
+                        [
+                            (
+                                "session".to_string(),
+                                Value::from(target_session.to_string()),
+                            ),
+                            ("path".to_string(), Value::from(path_kind)),
+                            (
+                                "chars".to_string(),
+                                Value::from(usize_to_u64(text.chars().count())),
+                            ),
+                            ("text".to_string(), Value::from(text.clone())),
+                            ("paste_ms".to_string(), Value::from(paste_ms)),
                             ("error".to_string(), Value::from(message)),
                         ],
                     );

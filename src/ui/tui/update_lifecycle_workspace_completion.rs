@@ -33,7 +33,7 @@ impl GroveApp {
             Ok(()) => {
                 self.projects = completion.projects;
                 self.refresh_project_dialog_filtered();
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("project_lifecycle", "project_deleted")
                         .with_data("project", Value::from(completion.project_name.clone()))
                         .with_data(
@@ -48,7 +48,7 @@ impl GroveApp {
                 ));
             }
             Err(error) => {
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("project_lifecycle", "project_delete_failed")
                         .with_data("project", Value::from(completion.project_name))
                         .with_data(
@@ -77,7 +77,7 @@ impl GroveApp {
         }
         match completion.result {
             Ok(()) => {
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("workspace_lifecycle", "workspace_deleted")
                         .with_data("workspace", Value::from(completion.workspace_name.clone()))
                         .with_data(
@@ -100,7 +100,7 @@ impl GroveApp {
                 }
             }
             Err(error) => {
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("workspace_lifecycle", "workspace_delete_failed")
                         .with_data("workspace", Value::from(completion.workspace_name))
                         .with_data("error", Value::from(error.clone())),
@@ -119,7 +119,7 @@ impl GroveApp {
         self.merge_in_flight = false;
         match completion.result {
             Ok(()) => {
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("workspace_lifecycle", "workspace_merged")
                         .with_data("workspace", Value::from(completion.workspace_name.clone()))
                         .with_data(
@@ -151,7 +151,7 @@ impl GroveApp {
                 }
             }
             Err(error) => {
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("workspace_lifecycle", "workspace_merge_failed")
                         .with_data("workspace", Value::from(completion.workspace_name))
                         .with_data(
@@ -173,7 +173,7 @@ impl GroveApp {
         self.update_from_base_in_flight = false;
         match completion.result {
             Ok(()) => {
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("workspace_lifecycle", "workspace_updated_from_base")
                         .with_data("workspace", Value::from(completion.workspace_name.clone()))
                         .with_data(
@@ -205,7 +205,7 @@ impl GroveApp {
                 }
             }
             Err(error) => {
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("workspace_lifecycle", "workspace_update_from_base_failed")
                         .with_data("workspace", Value::from(completion.workspace_name))
                         .with_data(

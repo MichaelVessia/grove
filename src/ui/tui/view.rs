@@ -40,7 +40,7 @@ impl GroveApp {
         let frame_log_started_at = Instant::now();
         self.log_frame_render(frame);
         let view_completed_at = Instant::now();
-        self.event_log.log(
+        self.emit_event(
             LogEvent::new("frame", "timing")
                 .with_data(
                     "header_ms",

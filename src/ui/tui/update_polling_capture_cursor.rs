@@ -86,7 +86,7 @@ impl GroveApp {
         let raw_metadata = match cursor_capture.result {
             Ok(raw_metadata) => raw_metadata,
             Err(error) => {
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("preview_poll", "cursor_capture_failed")
                         .with_data("session", Value::from(cursor_capture.session))
                         .with_data("duration_ms", Value::from(cursor_capture.capture_ms))
@@ -98,7 +98,7 @@ impl GroveApp {
         let metadata = match parse_cursor_metadata(&raw_metadata) {
             Some(metadata) => metadata,
             None => {
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("preview_poll", "cursor_parse_failed")
                         .with_data("session", Value::from(cursor_capture.session))
                         .with_data("capture_ms", Value::from(cursor_capture.capture_ms))
@@ -118,7 +118,7 @@ impl GroveApp {
             return;
         };
         if interactive_session != session {
-            self.event_log.log(
+            self.emit_event(
                 LogEvent::new("preview_poll", "cursor_session_mismatch_dropped")
                     .with_data("captured_session", Value::from(session))
                     .with_data("interactive_session", Value::from(interactive_session)),
@@ -145,7 +145,7 @@ impl GroveApp {
         );
         let parse_duration_ms =
             Self::duration_millis(Instant::now().saturating_duration_since(parse_started_at));
-        self.event_log.log(
+        self.emit_event(
             LogEvent::new("preview_poll", "cursor_capture_completed")
                 .with_data("session", Value::from(session))
                 .with_data("capture_ms", Value::from(cursor_capture.capture_ms))
@@ -178,7 +178,7 @@ impl GroveApp {
         }
 
         if pending.retried {
-            self.event_log.log(
+            self.emit_event(
                 LogEvent::new("preview_poll", "resize_verify_failed")
                     .with_data("session", Value::from(session.to_string()))
                     .with_data("expected_width", Value::from(pending.expected_width))
@@ -190,7 +190,7 @@ impl GroveApp {
             return;
         }
 
-        self.event_log.log(
+        self.emit_event(
             LogEvent::new("preview_poll", "resize_verify_retry")
                 .with_data("session", Value::from(session.to_string()))
                 .with_data("expected_width", Value::from(pending.expected_width))

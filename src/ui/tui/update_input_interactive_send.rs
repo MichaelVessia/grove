@@ -53,6 +53,7 @@ impl GroveApp {
         let InteractiveSendCompletion {
             send:
                 QueuedInteractiveSend {
+                    command,
                     target_session,
                     action_kind,
                     trace_context,
@@ -73,6 +74,7 @@ impl GroveApp {
                     vec![
                         ("session".to_string(), Value::from(target_session)),
                         ("action".to_string(), Value::from(action_kind)),
+                        ("command".to_string(), Value::from(command)),
                         ("error".to_string(), Value::from(error)),
                     ],
                 );
@@ -87,6 +89,7 @@ impl GroveApp {
             let mut fields = vec![
                 ("session".to_string(), Value::from(target_session)),
                 ("action".to_string(), Value::from(action_kind)),
+                ("command".to_string(), Value::from(command)),
                 ("tmux_send_ms".to_string(), Value::from(tmux_send_ms)),
                 (
                     "queue_depth".to_string(),
@@ -159,6 +162,7 @@ impl GroveApp {
                                 "action".to_string(),
                                 Value::from(Self::interactive_action_kind(action)),
                             ),
+                            ("command".to_string(), Value::from(command.clone())),
                             ("pipeline".to_string(), Value::from(true)),
                             (
                                 "queue_depth".to_string(),
@@ -177,7 +181,18 @@ impl GroveApp {
                     return Cmd::None;
                 }
                 Err(error) => {
-                    eprintln!("grove: pipeline send failed, falling back: {error}");
+                    self.log_event_with_fields(
+                        "input",
+                        "pipeline_send_fallback",
+                        [
+                            (
+                                "session".to_string(),
+                                Value::from(target_session.to_string()),
+                            ),
+                            ("command".to_string(), Value::from(command.clone())),
+                            ("error".to_string(), Value::from(error.to_string())),
+                        ],
+                    );
                     if let Some(state) = self.interactive.as_mut() {
                         state.close_daemon_stream();
                     }
@@ -232,6 +247,7 @@ impl GroveApp {
                             "action".to_string(),
                             Value::from(Self::interactive_action_kind(action)),
                         ),
+                        ("command".to_string(), Value::from(command.clone())),
                         ("tmux_send_ms".to_string(), Value::from(send_duration_ms)),
                         (
                             "queue_depth".to_string(),
@@ -265,6 +281,7 @@ impl GroveApp {
                                 "action".to_string(),
                                 Value::from(Self::interactive_action_kind(action)),
                             ),
+                            ("command".to_string(), Value::from(command.clone())),
                             ("error".to_string(), Value::from(error.to_string())),
                         ],
                     );

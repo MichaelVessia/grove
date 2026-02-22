@@ -138,12 +138,12 @@ mod logging_state;
 mod selection;
 use selection::{TextSelectionPoint, TextSelectionState};
 mod runner;
-pub use runner::{run_with_debug_record, run_with_event_log};
+pub use runner::{RuntimeObservabilityPaths, run_with_debug_record, run_with_event_log};
 mod text;
 use text::{
     ansi_line_to_plain_text, chrome_bar_line, keybind_hint_spans, line_visual_width,
-    pad_or_truncate_to_display_width, truncate_for_log, truncate_to_display_width,
-    visual_grapheme_at, visual_substring,
+    pad_or_truncate_to_display_width, truncate_to_display_width, visual_grapheme_at,
+    visual_substring,
 };
 mod update;
 mod update_core;
@@ -348,11 +348,16 @@ struct GroveApp {
     next_workspace_refresh_due_at: Option<Instant>,
     preview_poll_in_flight: bool,
     preview_poll_requested: bool,
+    preview_poll_started_at: Option<Instant>,
     next_visual_due_at: Option<Instant>,
     interactive_poll_due_at: Option<Instant>,
     fast_animation_frame: usize,
     poll_generation: u64,
     debug_record_start_ts: Option<u64>,
+    session_run_id: String,
+    session_started_at: Instant,
+    event_seq: RefCell<u64>,
+    msg_seq: u64,
     frame_render_seq: RefCell<u64>,
     last_frame_hash: RefCell<u64>,
     input_seq_counter: u64,
@@ -361,6 +366,7 @@ struct GroveApp {
     interactive_send_in_flight: bool,
     pending_resize_verification: Option<PendingResizeVerification>,
     refresh_in_flight: bool,
+    refresh_started_at: Option<Instant>,
     project_delete_in_flight: bool,
     delete_in_flight: bool,
     delete_in_flight_workspace: Option<PathBuf>,

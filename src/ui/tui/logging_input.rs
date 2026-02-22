@@ -7,10 +7,10 @@ impl GroveApp {
         seq: u64,
         fields: impl IntoIterator<Item = (String, Value)>,
     ) {
-        self.event_log.log(
-            LogEvent::new("input", kind)
-                .with_data("seq", Value::from(seq))
-                .with_data_fields(fields),
+        self.log_event_with_fields(
+            "input",
+            kind,
+            std::iter::once(("seq".to_string(), Value::from(seq))).chain(fields),
         );
     }
 
@@ -132,11 +132,20 @@ impl GroveApp {
         self.interactive_poll_due_at =
             Some(now + Duration::from_millis(INTERACTIVE_KEYSTROKE_DEBOUNCE_MS));
         let next_generation = self.poll_generation.saturating_add(1);
-        self.event_log.log(
-            LogEvent::new("tick", "interactive_debounce_scheduled")
-                .with_data("generation", Value::from(next_generation))
-                .with_data("due_in_ms", Value::from(INTERACTIVE_KEYSTROKE_DEBOUNCE_MS))
-                .with_data("pending_depth", Value::from(self.pending_input_depth())),
+        self.log_event_with_fields(
+            "tick",
+            "interactive_debounce_scheduled",
+            [
+                ("generation".to_string(), Value::from(next_generation)),
+                (
+                    "due_in_ms".to_string(),
+                    Value::from(INTERACTIVE_KEYSTROKE_DEBOUNCE_MS),
+                ),
+                (
+                    "pending_depth".to_string(),
+                    Value::from(self.pending_input_depth()),
+                ),
+            ],
         );
     }
 }

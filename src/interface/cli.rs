@@ -39,6 +39,9 @@ struct CliArgs {
 struct TuiArgs {
     event_log_path: Option<PathBuf>,
     debug_record: bool,
+    evidence_log_path: Option<PathBuf>,
+    render_trace_path: Option<PathBuf>,
+    frame_timing_log_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -113,6 +116,11 @@ struct AgentStopArgs {
     repo: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct DebugBundleArgs {
+    out: Option<PathBuf>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 struct WorkspaceListResult {
     repo_root: String,
@@ -139,6 +147,12 @@ struct WorkspaceView {
     is_main: bool,
     is_orphaned: bool,
     supported_agent: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct DebugBundleResult {
+    bundle_path: String,
+    copied: Vec<String>,
 }
 
 impl WorkspaceView {
@@ -224,6 +238,33 @@ fn parse_tui_args(args: impl IntoIterator<Item = String>) -> std::io::Result<Tui
             }
             "--debug-record" => {
                 cli.debug_record = true;
+            }
+            "--evidence-log" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--evidence-log requires a file path",
+                    ));
+                };
+                cli.evidence_log_path = Some(PathBuf::from(path));
+            }
+            "--render-trace" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--render-trace requires a file path",
+                    ));
+                };
+                cli.render_trace_path = Some(PathBuf::from(path));
+            }
+            "--frame-timing-log" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--frame-timing-log requires a file path",
+                    ));
+                };
+                cli.frame_timing_log_path = Some(PathBuf::from(path));
             }
             _ => {
                 return Err(std::io::Error::new(
@@ -698,6 +739,33 @@ fn parse_agent_stop_args(args: impl IntoIterator<Item = String>) -> std::io::Res
     Ok(parsed)
 }
 
+fn parse_debug_bundle_args(
+    args: impl IntoIterator<Item = String>,
+) -> std::io::Result<DebugBundleArgs> {
+    let mut parsed = DebugBundleArgs::default();
+    let mut args = args.into_iter();
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--out" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--out requires a path",
+                    ));
+                };
+                parsed.out = Some(PathBuf::from(path));
+            }
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("unknown argument for 'debug bundle': {argument}"),
+                ));
+            }
+        }
+    }
+    Ok(parsed)
+}
+
 fn parse_agent(value: &str) -> std::io::Result<AgentType> {
     match value.trim().to_ascii_lowercase().as_str() {
         "claude" => Ok(AgentType::Claude),
@@ -710,17 +778,30 @@ fn parse_agent(value: &str) -> std::io::Result<AgentType> {
 }
 
 fn debug_record_path(app_start_ts: u64) -> std::io::Result<PathBuf> {
+    unique_debug_artifact_path("debug-record", app_start_ts, "jsonl")
+}
+
+fn unique_debug_artifact_path(
+    label: &str,
+    app_start_ts: u64,
+    extension: &str,
+) -> std::io::Result<PathBuf> {
     let dir = PathBuf::from(DEBUG_RECORD_DIR);
     fs::create_dir_all(&dir)?;
 
     let mut sequence = 0u32;
     loop {
         let file_name = if sequence == 0 {
-            format!("debug-record-{app_start_ts}-{}.jsonl", std::process::id())
+            format!(
+                "{label}-{app_start_ts}-{}.{}",
+                std::process::id(),
+                extension
+            )
         } else {
             format!(
-                "debug-record-{app_start_ts}-{}-{sequence}.jsonl",
-                std::process::id()
+                "{label}-{app_start_ts}-{}-{sequence}.{}",
+                std::process::id(),
+                extension
             )
         };
         let path = dir.join(file_name);
@@ -759,6 +840,7 @@ fn root_next_actions() -> Vec<NextAction> {
     NextActionsBuilder::new()
         .push("grove tui", "Launch Grove TUI")
         .push("grove workspace list", "List repository workspaces")
+        .push("grove debug bundle", "Bundle observability artifacts")
         .build()
 }
 
@@ -855,6 +937,115 @@ fn emit_error(
         fix.to_string(),
         Vec::new(),
         vec![NextAction::new("grove", "Show root command tree")],
+    ))
+}
+
+fn unique_debug_bundle_path(app_start_ts: u64) -> std::io::Result<PathBuf> {
+    let dir = PathBuf::from(DEBUG_RECORD_DIR);
+    fs::create_dir_all(&dir)?;
+    let mut sequence = 0u32;
+    loop {
+        let file_name = if sequence == 0 {
+            format!("debug-bundle-{app_start_ts}-{}", std::process::id())
+        } else {
+            format!(
+                "debug-bundle-{app_start_ts}-{}-{sequence}",
+                std::process::id()
+            )
+        };
+        let path = dir.join(file_name);
+        if !path.exists() {
+            return Ok(path);
+        }
+        sequence = sequence.saturating_add(1);
+    }
+}
+
+fn debug_artifact_candidate(entry_name: &str) -> bool {
+    entry_name.starts_with("debug-record-")
+        || entry_name.starts_with("evidence-")
+        || entry_name.starts_with("render-trace-")
+        || entry_name.starts_with("frame-timing-")
+        || entry_name.ends_with("_payloads")
+}
+
+fn copy_debug_artifact_dir(
+    src_dir: &Path,
+    dst_dir: &Path,
+    copied: &mut Vec<String>,
+) -> std::io::Result<()> {
+    fs::create_dir_all(dst_dir)?;
+    for entry in fs::read_dir(src_dir)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst_dir.join(entry.file_name());
+        let metadata = entry.metadata()?;
+        if metadata.is_dir() {
+            copy_debug_artifact_dir(src_path.as_path(), dst_path.as_path(), copied)?;
+            continue;
+        }
+        if metadata.is_file() {
+            fs::copy(src_path.as_path(), dst_path.as_path())?;
+            copied.push(dst_path.display().to_string());
+        }
+    }
+    Ok(())
+}
+
+fn run_debug_bundle(parsed: DebugBundleArgs) -> std::io::Result<()> {
+    let source_dir = PathBuf::from(DEBUG_RECORD_DIR);
+    let bundle_path = match parsed.out {
+        Some(path) => path,
+        None => unique_debug_bundle_path(now_millis())?,
+    };
+    fs::create_dir_all(bundle_path.as_path())?;
+
+    let mut copied = Vec::new();
+    if source_dir.exists() {
+        for entry in fs::read_dir(source_dir.as_path())? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !debug_artifact_candidate(name.as_str()) {
+                continue;
+            }
+            let src_path = entry.path();
+            let dst_path = bundle_path.join(name);
+            let metadata = entry.metadata()?;
+            if metadata.is_dir() {
+                copy_debug_artifact_dir(src_path.as_path(), dst_path.as_path(), &mut copied)?;
+                continue;
+            }
+            if metadata.is_file() {
+                fs::copy(src_path.as_path(), dst_path.as_path())?;
+                copied.push(dst_path.display().to_string());
+            }
+        }
+    }
+
+    let manifest_path = bundle_path.join("manifest.json");
+    let manifest = serde_json::json!({
+        "created_at_unix_ms": now_millis(),
+        "source_dir": source_dir.display().to_string(),
+        "bundle_path": bundle_path.display().to_string(),
+        "copied_files": copied,
+    });
+    fs::write(
+        manifest_path.as_path(),
+        serde_json::to_string_pretty(&manifest)
+            .map_err(|error| std::io::Error::other(error.to_string()))?,
+    )?;
+
+    emit_json(&CommandEnvelope::success(
+        "grove debug bundle",
+        DebugBundleResult {
+            bundle_path: bundle_path.display().to_string(),
+            copied,
+        },
+        Vec::new(),
+        vec![NextAction::new(
+            "grove tui --debug-record",
+            "Capture a fresh debug record session",
+        )],
     ))
 }
 
@@ -1650,8 +1841,15 @@ fn daemon_workspace_status_is_running(status: &str) -> bool {
 }
 
 fn run_tui(cli: TuiArgs, daemon_socket_path: Option<&Path>) -> std::io::Result<()> {
+    let TuiArgs {
+        event_log_path: cli_event_log_path,
+        debug_record,
+        evidence_log_path: cli_evidence_log_path,
+        render_trace_path: cli_render_trace_path,
+        frame_timing_log_path: cli_frame_timing_log_path,
+    } = cli;
     let app_start_ts = now_millis();
-    let debug_record_path = if cli.debug_record {
+    let debug_record_path = if debug_record {
         Some(debug_record_path(app_start_ts)?)
     } else {
         None
@@ -1659,24 +1857,91 @@ fn run_tui(cli: TuiArgs, daemon_socket_path: Option<&Path>) -> std::io::Result<(
     if let Some(path) = debug_record_path.as_ref() {
         eprintln!("grove debug record: {}", path.display());
     }
-    let event_log_path = debug_record_path.or(cli.event_log_path.map(resolve_event_log_path));
+    let event_log_path = debug_record_path.or(cli_event_log_path.map(resolve_event_log_path));
+    let evidence_log_path = match cli_evidence_log_path {
+        Some(path) => Some(resolve_event_log_path(path)),
+        None => {
+            if debug_record {
+                Some(unique_debug_artifact_path(
+                    "evidence",
+                    app_start_ts,
+                    "jsonl",
+                )?)
+            } else {
+                None
+            }
+        }
+    };
+    let render_trace_path = match cli_render_trace_path {
+        Some(path) => Some(resolve_event_log_path(path)),
+        None => {
+            if debug_record {
+                Some(unique_debug_artifact_path(
+                    "render-trace",
+                    app_start_ts,
+                    "jsonl",
+                )?)
+            } else {
+                None
+            }
+        }
+    };
+    let frame_timing_log_path = match cli_frame_timing_log_path {
+        Some(path) => Some(resolve_event_log_path(path)),
+        None => {
+            if debug_record {
+                Some(unique_debug_artifact_path(
+                    "frame-timing",
+                    app_start_ts,
+                    "jsonl",
+                )?)
+            } else {
+                None
+            }
+        }
+    };
     if let Some(path) = event_log_path.as_ref() {
         ensure_event_log_parent_directory(path)?;
     }
+    if let Some(path) = evidence_log_path.as_ref() {
+        ensure_event_log_parent_directory(path)?;
+    }
+    if let Some(path) = render_trace_path.as_ref() {
+        ensure_event_log_parent_directory(path)?;
+    }
+    if let Some(path) = frame_timing_log_path.as_ref() {
+        ensure_event_log_parent_directory(path)?;
+    }
+    if debug_record {
+        if let Some(path) = evidence_log_path.as_ref() {
+            eprintln!("grove evidence log: {}", path.display());
+        }
+        if let Some(path) = render_trace_path.as_ref() {
+            eprintln!("grove render trace: {}", path.display());
+        }
+        if let Some(path) = frame_timing_log_path.as_ref() {
+            eprintln!("grove frame timing: {}", path.display());
+        }
+    }
+    let observability_paths = crate::interface::tui::RuntimeObservabilityPaths {
+        evidence_log_path,
+        render_trace_path,
+        frame_timing_log_path,
+    };
 
-    if cli.debug_record
-        && let Some(path) = event_log_path
-    {
+    if debug_record && let Some(path) = event_log_path {
         return crate::interface::tui::run_with_debug_record(
             path,
             app_start_ts,
             daemon_socket_path.map(Path::to_path_buf),
+            observability_paths,
         );
     }
 
     crate::interface::tui::run_with_event_log(
         event_log_path,
         daemon_socket_path.map(Path::to_path_buf),
+        observability_paths,
     )
 }
 
@@ -1798,6 +2063,35 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
                     CliErrorCode::InvalidArgument,
                     error.to_string(),
                     "Retry with selector flags and optional '--dry-run'",
+                ),
+            };
+        }
+    }
+    if first == "debug" {
+        if daemon_socket_path.is_some() {
+            return emit_error(
+                "grove debug",
+                CliErrorCode::InvalidArgument,
+                "--socket is not supported for debug commands".to_string(),
+                "Retry without '--socket'",
+            );
+        }
+        let Some((debug_command, debug_args)) = remaining.split_first() else {
+            return emit_error(
+                "grove debug",
+                CliErrorCode::InvalidArgument,
+                "debug subcommand is required".to_string(),
+                "Use 'grove debug bundle'",
+            );
+        };
+        if debug_command == "bundle" {
+            return match parse_debug_bundle_args(debug_args.iter().cloned()) {
+                Ok(parsed) => run_debug_bundle(parsed),
+                Err(error) => emit_error(
+                    "grove debug bundle",
+                    CliErrorCode::InvalidArgument,
+                    error.to_string(),
+                    "Retry with optional '--out <path>'",
                 ),
             };
         }
@@ -1964,6 +2258,49 @@ mod tests {
             TuiArgs {
                 event_log_path: Some(PathBuf::from(".grove/events.jsonl")),
                 debug_record: true,
+                evidence_log_path: None,
+                render_trace_path: None,
+                frame_timing_log_path: None,
+            }
+        );
+    }
+
+    #[test]
+    fn tui_parser_reads_forensic_paths() {
+        let parsed = parse_tui_args(vec![
+            "--evidence-log".to_string(),
+            ".grove/evidence.jsonl".to_string(),
+            "--render-trace".to_string(),
+            ".grove/trace.jsonl".to_string(),
+            "--frame-timing-log".to_string(),
+            ".grove/frame-timing.jsonl".to_string(),
+        ])
+        .expect("tui args should parse");
+        assert_eq!(
+            parsed.evidence_log_path,
+            Some(PathBuf::from(".grove/evidence.jsonl"))
+        );
+        assert_eq!(
+            parsed.render_trace_path,
+            Some(PathBuf::from(".grove/trace.jsonl"))
+        );
+        assert_eq!(
+            parsed.frame_timing_log_path,
+            Some(PathBuf::from(".grove/frame-timing.jsonl"))
+        );
+    }
+
+    #[test]
+    fn debug_bundle_parser_reads_out_path() {
+        let parsed = super::parse_debug_bundle_args(vec![
+            "--out".to_string(),
+            ".grove/custom-bundle".to_string(),
+        ])
+        .expect("debug bundle args should parse");
+        assert_eq!(
+            parsed,
+            super::DebugBundleArgs {
+                out: Some(PathBuf::from(".grove/custom-bundle")),
             }
         );
     }

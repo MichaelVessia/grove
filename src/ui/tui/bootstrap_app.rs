@@ -140,6 +140,9 @@ impl GroveApp {
                 .disable_sequences()
                 .validated(),
         );
+        let session_started_at = Instant::now();
+        let app_start_ts = crate::infrastructure::event_log::now_millis();
+        let session_run_id = format!("grove-{}-{}", app_start_ts, std::process::id());
         let mut app = Self {
             repo_name: bootstrap.repo_name,
             projects,
@@ -200,11 +203,16 @@ impl GroveApp {
             next_workspace_refresh_due_at: None,
             preview_poll_in_flight: false,
             preview_poll_requested: false,
+            preview_poll_started_at: None,
             next_visual_due_at: None,
             interactive_poll_due_at: None,
             fast_animation_frame: 0,
             poll_generation: 0,
             debug_record_start_ts,
+            session_run_id,
+            session_started_at,
+            event_seq: RefCell::new(0),
+            msg_seq: 0,
             frame_render_seq: RefCell::new(0),
             last_frame_hash: RefCell::new(0),
             input_seq_counter: 1,
@@ -213,6 +221,7 @@ impl GroveApp {
             interactive_send_in_flight: false,
             pending_resize_verification: None,
             refresh_in_flight: false,
+            refresh_started_at: None,
             project_delete_in_flight: false,
             delete_in_flight: false,
             delete_in_flight_workspace: None,

@@ -122,7 +122,7 @@ impl GroveApp {
                 self.state.mode = UiMode::List;
                 self.state.focus = PaneFocus::WorkspaceList;
                 self.refresh_preview_summary();
-                self.event_log.log(
+                self.emit_event(
                     LogEvent::new("agent_lifecycle", "agent_stopped")
                         .with_data("workspace", Value::from(completion.workspace_name))
                         .with_data("session", Value::from(completion.session_name)),

@@ -81,20 +81,28 @@ impl GroveApp {
             );
             return Cmd::None;
         };
-        self.log_input_event_with_fields(
-            "interactive_key_received",
-            input_seq,
-            vec![
-                (
-                    "key".to_string(),
-                    Value::from(Self::interactive_key_kind(&interactive_key)),
-                ),
-                (
-                    "repeat".to_string(),
-                    Value::from(matches!(key_event.kind, KeyEventKind::Repeat)),
-                ),
-            ],
-        );
+        let mut key_fields = vec![
+            (
+                "key".to_string(),
+                Value::from(Self::interactive_key_kind(&interactive_key)),
+            ),
+            (
+                "repeat".to_string(),
+                Value::from(matches!(key_event.kind, KeyEventKind::Repeat)),
+            ),
+            (
+                "key_code".to_string(),
+                Value::from(format!("{:?}", key_event.code)),
+            ),
+            (
+                "key_modifiers".to_string(),
+                Value::from(format!("{:?}", key_event.modifiers)),
+            ),
+        ];
+        if let KeyCode::Char(character) = key_event.code {
+            key_fields.push(("char".to_string(), Value::from(character.to_string())));
+        }
+        self.log_input_event_with_fields("interactive_key_received", input_seq, key_fields);
 
         let (action, target_session, bracketed_paste) = {
             let Some(state) = self.interactive.as_mut() else {
@@ -105,17 +113,27 @@ impl GroveApp {
             let bracketed_paste = state.bracketed_paste;
             (action, session, bracketed_paste)
         };
-        self.log_input_event_with_fields(
-            "interactive_action_selected",
-            input_seq,
-            vec![
-                (
-                    "action".to_string(),
-                    Value::from(Self::interactive_action_kind(&action)),
-                ),
-                ("session".to_string(), Value::from(target_session.clone())),
-            ],
-        );
+        let mut action_fields = vec![
+            (
+                "action".to_string(),
+                Value::from(Self::interactive_action_kind(&action)),
+            ),
+            ("session".to_string(), Value::from(target_session.clone())),
+        ];
+        match &action {
+            InteractiveAction::SendNamed(key) => {
+                action_fields.push(("named_key".to_string(), Value::from(key.clone())));
+            }
+            InteractiveAction::SendLiteral(text) => {
+                action_fields.push((
+                    "literal_chars".to_string(),
+                    Value::from(usize_to_u64(text.chars().count())),
+                ));
+                action_fields.push(("literal_text".to_string(), Value::from(text.clone())));
+            }
+            _ => {}
+        }
+        self.log_input_event_with_fields("interactive_action_selected", input_seq, action_fields);
         let trace_context = InputTraceContext {
             seq: input_seq,
             received_at: now,
@@ -197,11 +215,37 @@ impl GroveApp {
             self.viewport_width,
             daemon_socket_path,
         ));
-        if let Some(state) = self.interactive.as_mut() {
-            state.open_daemon_stream();
+        let mut stream_open_failure: Option<(String, Option<PathBuf>, String)> = None;
+        if let Some(state) = self.interactive.as_mut()
+            && let Err(error) = state.open_daemon_stream()
+        {
+            stream_open_failure = Some((
+                state.target_session.clone(),
+                state.daemon_socket_path.clone(),
+                error,
+            ));
         }
         self.interactive_poll_due_at = None;
-        self.last_tmux_error = None;
+        if let Some((session, socket_path, error)) = stream_open_failure {
+            self.last_tmux_error = Some(error.clone());
+            self.log_event_with_fields(
+                "daemon",
+                "stream_open_failed",
+                [
+                    ("session".to_string(), Value::from(session)),
+                    (
+                        "socket_path".to_string(),
+                        socket_path
+                            .as_ref()
+                            .map(|path| Value::from(path.display().to_string()))
+                            .unwrap_or(Value::Null),
+                    ),
+                    ("error".to_string(), Value::from(error)),
+                ],
+            );
+        } else {
+            self.last_tmux_error = None;
+        }
         self.state.mode = UiMode::Preview;
         self.state.focus = PaneFocus::Preview;
         self.clear_attention_for_selected_workspace();
