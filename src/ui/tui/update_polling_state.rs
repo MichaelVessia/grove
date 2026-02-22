@@ -1,21 +1,8 @@
 use super::*;
 
 impl GroveApp {
-    fn current_attention_marker_for_workspace_path(&self, workspace_path: &Path) -> Option<String> {
-        let workspace = self
-            .state
-            .workspaces
-            .iter()
-            .find(|workspace| workspace.path == workspace_path)?;
-        if !workspace.supported_agent || !workspace.status.has_session() {
-            return None;
-        }
-
-        latest_assistant_attention_marker(workspace.agent, workspace.path.as_path())
-    }
-
     fn acknowledge_workspace_attention_for_path(&mut self, workspace_path: &Path) -> bool {
-        let Some(marker) = self.current_attention_marker_for_workspace_path(workspace_path) else {
+        let Some(marker) = self.last_attention_markers.get(workspace_path).cloned() else {
             return false;
         };
         if self
@@ -76,7 +63,7 @@ impl GroveApp {
             return;
         }
 
-        let Some(marker) = self.current_attention_marker_for_workspace_path(workspace_path) else {
+        let Some(marker) = self.last_attention_markers.get(workspace_path).cloned() else {
             self.workspace_attention.remove(workspace_path);
             return;
         };
@@ -151,6 +138,7 @@ impl GroveApp {
         &mut self,
         markers: HashMap<PathBuf, String>,
     ) {
+        self.last_attention_markers = markers.clone();
         let current_workspace_paths = self
             .state
             .workspaces

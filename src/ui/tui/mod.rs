@@ -324,6 +324,7 @@ struct GroveApp {
     agent_activity_frames: VecDeque<bool>,
     workspace_attention: HashMap<PathBuf, WorkspaceAttention>,
     workspace_attention_ack_markers: HashMap<PathBuf, String>,
+    last_attention_markers: HashMap<PathBuf, String>,
     workspace_status_digests: HashMap<String, OutputDigest>,
     workspace_output_changing: HashMap<String, bool>,
     lazygit_sessions: SessionTracker,

@@ -176,6 +176,7 @@ impl GroveApp {
             agent_activity_frames: VecDeque::with_capacity(AGENT_ACTIVITY_WINDOW_FRAMES),
             workspace_attention: HashMap::new(),
             workspace_attention_ack_markers,
+            last_attention_markers: HashMap::new(),
             workspace_status_digests: HashMap::new(),
             workspace_output_changing: HashMap::new(),
             lazygit_sessions: SessionTracker::default(),

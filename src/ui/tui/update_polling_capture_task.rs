@@ -115,8 +115,6 @@ impl GroveApp {
         if !has_live_preview {
             self.refresh_preview_summary();
         }
-        self.reconcile_workspace_attention_tracking();
-
         if let Some(target_session) = cursor_session {
             self.poll_interactive_cursor_sync(&target_session);
         }
