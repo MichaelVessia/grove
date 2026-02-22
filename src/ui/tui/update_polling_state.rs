@@ -118,13 +118,12 @@ impl GroveApp {
 
     pub(super) fn track_workspace_status_transition(
         &mut self,
-        workspace_path: &Path,
+        _workspace_path: &Path,
         _previous_status: WorkspaceStatus,
         _next_status: WorkspaceStatus,
         _previous_orphaned: bool,
         _next_orphaned: bool,
     ) {
-        self.refresh_workspace_attention_for_path(workspace_path);
     }
 
     pub(super) fn reconcile_workspace_attention_tracking(&mut self) {

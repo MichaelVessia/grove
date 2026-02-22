@@ -201,6 +201,8 @@ impl GroveApp {
             self.refresh_preview_summary();
         }
 
+        self.reconcile_workspace_attention_with_markers(completion.attention_markers);
+
         if let Some(cursor_capture) = completion.cursor_capture {
             self.apply_cursor_capture_result(cursor_capture);
         }

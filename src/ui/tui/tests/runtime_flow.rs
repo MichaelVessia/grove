@@ -190,6 +190,7 @@ fn preview_poll_completion_runs_deferred_background_poll_request() {
             live_capture: None,
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -227,6 +228,7 @@ fn switching_workspace_drops_in_flight_capture_for_previous_session() {
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -254,6 +256,7 @@ fn switching_workspace_drops_in_flight_capture_for_previous_session() {
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -302,6 +305,7 @@ fn async_preview_capture_failure_sets_toast_message() {
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -330,6 +334,7 @@ fn stale_preview_poll_result_is_dropped_by_generation() {
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
     assert_eq!(app.preview.lines, vec!["initial".to_string()]);
@@ -352,6 +357,7 @@ fn stale_preview_poll_result_is_dropped_by_generation() {
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
     assert_eq!(app.preview.lines, vec!["fresh-output".to_string()]);
@@ -377,6 +383,7 @@ fn preview_poll_uses_cleaned_change_for_status_lane() {
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
     assert!(app.output_changing);
@@ -398,6 +405,7 @@ fn preview_poll_uses_cleaned_change_for_status_lane() {
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -432,6 +440,7 @@ fn preview_poll_waiting_prompt_sets_waiting_status() {
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -470,6 +479,7 @@ fn preview_poll_ignores_done_pattern_embedded_in_control_sequence() {
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -504,6 +514,7 @@ fn preview_poll_transition_from_done_to_thinking_clears_attention() {
                 capture_ms: 1,
                 result: Ok(workspace_status_capture_output("thinking...", false, true)),
             }],
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -541,6 +552,7 @@ fn background_poll_transition_from_waiting_to_active_clears_attention() {
                     true,
                 )),
             }],
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -574,6 +586,7 @@ fn selecting_workspace_clears_attention_for_selected_workspace() {
                     true,
                 )),
             }],
+            attention_markers: HashMap::new(),
         }),
     );
     app.workspace_attention.insert(
@@ -614,6 +627,7 @@ fn entering_interactive_clears_attention_for_selected_workspace() {
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
     app.workspace_attention.insert(
@@ -651,6 +665,7 @@ fn preview_poll_updates_non_selected_workspace_status_from_background_capture() 
                     true,
                 )),
             }],
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -693,6 +708,7 @@ fn preview_poll_non_selected_missing_session_marks_orphaned_idle() {
                         .to_string(),
                 ),
             }],
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -733,6 +749,7 @@ fn preview_poll_missing_session_marks_workspace_orphaned_idle() {
             }),
             cursor_capture: None,
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -4068,6 +4085,7 @@ fn resize_verify_retries_once_then_stops() {
                 result: Ok("1 0 0 70 20".to_string()),
             }),
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -4108,6 +4126,7 @@ fn preview_poll_drops_cursor_capture_for_non_interactive_session() {
                 result: Ok("1 9 7 88 22".to_string()),
             }),
             workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
         }),
     );
 

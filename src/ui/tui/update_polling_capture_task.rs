@@ -115,6 +115,7 @@ impl GroveApp {
         if !has_live_preview {
             self.refresh_preview_summary();
         }
+        self.reconcile_workspace_attention_tracking();
 
         if let Some(target_session) = cursor_session {
             self.poll_interactive_cursor_sync(&target_session);
@@ -218,6 +219,31 @@ impl GroveApp {
                 }
             });
 
+            let mut attention_markers = HashMap::new();
+            if let Some(ref capture) = live_capture
+                && let Ok(ref output) = capture.result
+                && let Some(ref resolved) = output.resolved_status
+                && resolved.supported_agent
+                && let Some(marker) = latest_assistant_attention_marker(
+                    resolved.agent,
+                    resolved.workspace_path.as_path(),
+                )
+            {
+                attention_markers.insert(resolved.workspace_path.clone(), marker);
+            }
+            for target in &status_poll_targets {
+                if target.supported_agent
+                    && let Some(marker) = latest_assistant_attention_marker(
+                        target.agent,
+                        target.workspace_path.as_path(),
+                    )
+                {
+                    attention_markers
+                        .entry(target.workspace_path.clone())
+                        .or_insert(marker);
+                }
+            }
+
             let workspace_status_captures = status_poll_targets
                 .into_iter()
                 .map(|target| {
@@ -276,6 +302,7 @@ impl GroveApp {
                 live_capture,
                 cursor_capture,
                 workspace_status_captures,
+                attention_markers,
             })
         })
     }

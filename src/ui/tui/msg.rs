@@ -30,6 +30,7 @@ pub(super) struct PreviewPollCompletion {
     pub(super) live_capture: Option<LivePreviewCapture>,
     pub(super) cursor_capture: Option<CursorCapture>,
     pub(super) workspace_status_captures: Vec<WorkspaceStatusCapture>,
+    pub(super) attention_markers: HashMap<PathBuf, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
