@@ -25,7 +25,7 @@ const WAITING_PATTERNS: [&str; 9] = [
 ];
 const WAITING_TAIL_LINES: usize = 8;
 const STATUS_TAIL_LINES: usize = 60;
-const SESSION_STATUS_TAIL_BYTES: usize = 2 * 1024 * 1024;
+const SESSION_STATUS_TAIL_BYTES: usize = 256 * 1024;
 const SESSION_ACTIVITY_THRESHOLD: Duration = Duration::from_secs(30);
 const CODEX_SESSION_LOOKUP_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 const DONE_PATTERNS: [&str; 5] = [

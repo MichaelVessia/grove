@@ -315,6 +315,7 @@ struct GroveApp {
     poll_generation: u64,
     debug_record_start_ts: Option<u64>,
     frame_render_seq: RefCell<u64>,
+    last_frame_hash: RefCell<u64>,
     input_seq_counter: u64,
     pending_interactive_inputs: VecDeque<PendingInteractiveInput>,
     pending_interactive_sends: VecDeque<QueuedInteractiveSend>,
