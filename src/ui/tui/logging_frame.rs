@@ -44,6 +44,13 @@ impl GroveApp {
 
         let lines = Self::frame_buffer_lines(frame);
         let frame_hash = Self::frame_lines_hash(&lines);
+        let previous_hash = {
+            let mut hash_ref = self.last_frame_hash.borrow_mut();
+            let previous = *hash_ref;
+            *hash_ref = frame_hash;
+            previous
+        };
+        let frame_changed = frame_hash != previous_hash;
         let non_empty_line_count = lines.iter().filter(|line| !line.is_empty()).count();
         let mut seq = self.frame_render_seq.borrow_mut();
         *seq = seq.saturating_add(1);
@@ -191,10 +198,13 @@ impl GroveApp {
                 ));
             }
         }
-        frame_fields.push((
-            "frame_lines".to_string(),
-            Value::Array(lines.into_iter().map(Value::from).collect()),
-        ));
+        frame_fields.push(("frame_changed".to_string(), Value::from(frame_changed)));
+        if frame_changed {
+            frame_fields.push((
+                "frame_lines".to_string(),
+                Value::Array(lines.into_iter().map(Value::from).collect()),
+            ));
+        }
         self.log_event_with_fields("frame", "rendered", frame_fields);
     }
 }

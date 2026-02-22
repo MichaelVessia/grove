@@ -27,42 +27,31 @@ impl GroveApp {
                 self.output_changing = update.changed_cleaned;
                 self.agent_output_changing = update.changed_cleaned && consumed_inputs.is_empty();
                 self.push_agent_activity_frame(self.agent_output_changing);
-                let selected_workspace_index = self
-                    .state
-                    .selected_workspace()
-                    .filter(|workspace| session_name_for_workspace_ref(workspace) == session_name)
-                    .map(|_| self.state.selected_index);
-                if let Some(index) = selected_workspace_index {
-                    let workspace_path = self.state.workspaces[index].path.clone();
-                    let workspace_agent = self.state.workspaces[index].agent;
-                    let workspace_is_main = self.state.workspaces[index].is_main;
-                    let supported_agent = self.state.workspaces[index].supported_agent;
-                    let previous_status = self.state.workspaces[index].status;
-                    let previous_orphaned = self.state.workspaces[index].is_orphaned;
-                    let key = Self::workspace_status_tracking_key(&workspace_path);
-                    self.workspace_status_digests
-                        .insert(key.clone(), update.digest.clone());
-                    self.workspace_output_changing
-                        .insert(key, update.changed_cleaned);
-                    let resolved_status = detect_status_with_session_override(
-                        &update.cleaned_output,
-                        SessionActivity::Active,
-                        workspace_is_main,
-                        true,
-                        supported_agent,
-                        workspace_agent,
-                        &workspace_path,
-                    );
-                    let workspace = &mut self.state.workspaces[index];
-                    workspace.status = resolved_status;
-                    workspace.is_orphaned = false;
-                    self.track_workspace_status_transition(
-                        &workspace_path,
-                        previous_status,
-                        resolved_status,
-                        previous_orphaned,
-                        false,
-                    );
+                if let Some(resolved) = output.resolved_status {
+                    let workspace_index = self
+                        .state
+                        .workspaces
+                        .iter()
+                        .position(|workspace| workspace.path == resolved.workspace_path);
+                    if let Some(index) = workspace_index {
+                        let key = Self::workspace_status_tracking_key(&resolved.workspace_path);
+                        self.workspace_status_digests
+                            .insert(key.clone(), update.digest.clone());
+                        self.workspace_output_changing
+                            .insert(key, update.changed_cleaned);
+                        let previous_status = self.state.workspaces[index].status;
+                        let previous_orphaned = self.state.workspaces[index].is_orphaned;
+                        let workspace = &mut self.state.workspaces[index];
+                        workspace.status = resolved.status;
+                        workspace.is_orphaned = false;
+                        self.track_workspace_status_transition(
+                            &resolved.workspace_path,
+                            previous_status,
+                            resolved.status,
+                            previous_orphaned,
+                            false,
+                        );
+                    }
                 }
                 self.last_tmux_error = None;
                 self.event_log.log(

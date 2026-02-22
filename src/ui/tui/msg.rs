@@ -1,6 +1,6 @@
 use super::*;
 use crate::application::agent_runtime::{CaptureChange, OutputDigest, SessionExecutionResult};
-use crate::domain::WorkspaceStatus;
+use crate::domain::{AgentType, WorkspaceStatus};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Msg {
@@ -45,6 +45,16 @@ pub(super) struct LivePreviewCapture {
 pub(super) struct LivePreviewCaptureOutput {
     pub(super) raw_output: String,
     pub(super) change: CaptureChange,
+    pub(super) resolved_status: Option<ResolvedLivePreviewStatus>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ResolvedLivePreviewStatus {
+    pub(super) workspace_path: PathBuf,
+    pub(super) is_main: bool,
+    pub(super) supported_agent: bool,
+    pub(super) agent: AgentType,
+    pub(super) status: WorkspaceStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,6 +99,7 @@ pub(super) struct WorkspaceStatusCaptureOutput {
 pub(super) struct RefreshWorkspacesCompletion {
     pub(super) preferred_workspace_path: Option<PathBuf>,
     pub(super) bootstrap: BootstrapData,
+    pub(super) attention_markers: HashMap<PathBuf, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

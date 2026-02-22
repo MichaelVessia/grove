@@ -17,11 +17,12 @@ use super::{
     MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
     PendingAutoStartWorkspace, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
     ProjectAddDialogField, ProjectDefaultsDialogField, RefreshWorkspacesCompletion,
-    RemoteConnectionState, SettingsDialogField, StartAgentCompletion, StartAgentConfigField,
-    StartAgentConfigState, StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput,
-    UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
-    WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceStatusCaptureOutput,
-    ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata, ui_theme, usize_to_u64,
+    RemoteConnectionState, ResolvedLivePreviewStatus, SettingsDialogField, StartAgentCompletion,
+    StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
+    TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
+    WorkspaceAttention, WorkspaceShellLaunchCompletion, WorkspaceStatusCapture,
+    WorkspaceStatusCaptureOutput, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+    ui_theme, usize_to_u64,
 };
 use crate::application::agent_runtime::{
     OutputDigest, SessionActivity, detect_status_with_session_override, evaluate_capture_change,
@@ -48,6 +49,7 @@ use ftui::{Cmd, Frame, GraphemePool};
 use proptest::prelude::*;
 use serde_json::Value;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -91,9 +93,25 @@ fn live_preview_capture_output_with(
     previous_digest: Option<&OutputDigest>,
 ) -> LivePreviewCaptureOutput {
     let change = evaluate_capture_change(previous_digest, raw_output);
+    let status = detect_status_with_session_override(
+        &change.cleaned_output,
+        SessionActivity::Active,
+        false,
+        true,
+        true,
+        AgentType::Claude,
+        Path::new("/repos/grove-feature-a"),
+    );
     LivePreviewCaptureOutput {
         raw_output: raw_output.to_owned(),
         change,
+        resolved_status: Some(ResolvedLivePreviewStatus {
+            workspace_path: PathBuf::from("/repos/grove-feature-a"),
+            is_main: false,
+            supported_agent: true,
+            agent: AgentType::Claude,
+            status,
+        }),
     }
 }
 

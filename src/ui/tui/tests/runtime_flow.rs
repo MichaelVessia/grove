@@ -1371,6 +1371,7 @@ fn refresh_workspace_completion_autostarts_agent_for_new_workspace() {
         Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
             preferred_workspace_path: Some(PathBuf::from("/repos/grove-feature-a")),
             bootstrap: fixture_bootstrap(WorkspaceStatus::Idle),
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -1395,6 +1396,7 @@ fn refresh_workspace_completion_auto_launches_shell_for_new_workspace() {
         Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
             preferred_workspace_path: Some(PathBuf::from("/repos/grove-feature-a")),
             bootstrap: fixture_bootstrap(WorkspaceStatus::Idle),
+            attention_markers: HashMap::new(),
         }),
     );
 
@@ -4994,6 +4996,7 @@ fn periodic_refresh_completion_applies_external_workspace_changes() {
         Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
             preferred_workspace_path: Some(PathBuf::from("/repos/grove-feature-a")),
             bootstrap: refreshed,
+            attention_markers: HashMap::new(),
         }),
     );
 

@@ -25,7 +25,7 @@ const WAITING_PATTERNS: [&str; 9] = [
 ];
 const WAITING_TAIL_LINES: usize = 8;
 const STATUS_TAIL_LINES: usize = 60;
-const SESSION_STATUS_TAIL_BYTES: usize = 2 * 1024 * 1024;
+const SESSION_STATUS_TAIL_BYTES: usize = 256 * 1024;
 const SESSION_ACTIVITY_THRESHOLD: Duration = Duration::from_secs(30);
 const CODEX_SESSION_LOOKUP_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 const DONE_PATTERNS: [&str; 5] = [
@@ -113,10 +113,19 @@ pub struct WorkspaceStatusTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LivePreviewStatusContext {
+    pub workspace_path: PathBuf,
+    pub is_main: bool,
+    pub supported_agent: bool,
+    pub agent: AgentType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LivePreviewTarget {
     pub session_name: String,
     pub include_escape_sequences: bool,
     pub daemon_socket_path: Option<PathBuf>,
+    pub status_context: Option<LivePreviewStatusContext>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -322,6 +331,7 @@ pub fn live_preview_capture_target_for_tab(
         session_name,
         include_escape_sequences: true,
         daemon_socket_path: None,
+        status_context: None,
     })
 }
 

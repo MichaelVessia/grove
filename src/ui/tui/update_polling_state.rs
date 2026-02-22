@@ -148,6 +148,79 @@ impl GroveApp {
         }
     }
 
+    pub(super) fn reconcile_workspace_attention_with_markers(
+        &mut self,
+        markers: HashMap<PathBuf, String>,
+    ) {
+        let current_workspace_paths = self
+            .state
+            .workspaces
+            .iter()
+            .map(|workspace| workspace.path.clone())
+            .collect::<Vec<PathBuf>>();
+        let valid_paths = current_workspace_paths
+            .iter()
+            .cloned()
+            .collect::<HashSet<PathBuf>>();
+
+        self.workspace_attention
+            .retain(|path, _| valid_paths.contains(path));
+        self.workspace_attention_ack_markers
+            .retain(|path, _| valid_paths.contains(path));
+        for path in current_workspace_paths {
+            self.refresh_workspace_attention_for_path_with_marker(
+                path.as_path(),
+                markers.get(&path),
+            );
+        }
+    }
+
+    fn refresh_workspace_attention_for_path_with_marker(
+        &mut self,
+        workspace_path: &Path,
+        precomputed_marker: Option<&String>,
+    ) {
+        let selected_workspace_matches = self
+            .state
+            .selected_workspace()
+            .is_some_and(|workspace| workspace.path == workspace_path);
+        if selected_workspace_matches {
+            self.workspace_attention.remove(workspace_path);
+            if let Some(marker) = precomputed_marker
+                && self
+                    .workspace_attention_ack_markers
+                    .get(workspace_path)
+                    .is_none_or(|saved| saved != marker)
+            {
+                self.workspace_attention_ack_markers
+                    .insert(workspace_path.to_path_buf(), marker.clone());
+                if let Err(error) = self.save_runtime_config() {
+                    self.last_tmux_error = Some(format!("attention ack persist failed: {error}"));
+                }
+            }
+            return;
+        }
+
+        let Some(marker) = precomputed_marker else {
+            self.workspace_attention.remove(workspace_path);
+            return;
+        };
+
+        let acknowledged = self
+            .workspace_attention_ack_markers
+            .get(workspace_path)
+            .is_some_and(|saved| saved == marker);
+        if acknowledged {
+            self.workspace_attention.remove(workspace_path);
+            return;
+        }
+
+        self.workspace_attention.insert(
+            workspace_path.to_path_buf(),
+            WorkspaceAttention::NeedsAttention,
+        );
+    }
+
     fn next_poll_interval(&self) -> Duration {
         let status = self.selected_workspace_status();
 

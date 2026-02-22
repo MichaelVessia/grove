@@ -102,6 +102,12 @@ impl GroveApp {
                 session_name: session_name_for_workspace_ref(workspace),
                 include_escape_sequences: true,
                 daemon_socket_path: self.remote_session_socket_for_workspace(workspace),
+                status_context: Some(LivePreviewStatusContext {
+                    workspace_path: workspace.path.clone(),
+                    is_main: workspace.is_main,
+                    supported_agent: workspace.supported_agent,
+                    agent: workspace.agent,
+                }),
             })
         });
         let cursor_session = self.interactive_target_session();

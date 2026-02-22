@@ -400,14 +400,22 @@ impl GroveApp {
                 self.ensure_workspace_shell_session_for_selected_workspace(false, false, false)
             })?,
         };
-        let daemon_socket_path = self
-            .state
-            .selected_workspace()
-            .and_then(|workspace| self.remote_session_socket_for_workspace(workspace));
+        let workspace = self.state.selected_workspace();
+        let daemon_socket_path =
+            workspace.and_then(|workspace| self.remote_session_socket_for_workspace(workspace));
+        let status_context = workspace
+            .filter(|workspace| session_name_for_workspace_ref(workspace) == session_name)
+            .map(|workspace| LivePreviewStatusContext {
+                workspace_path: workspace.path.clone(),
+                is_main: workspace.is_main,
+                supported_agent: workspace.supported_agent,
+                agent: workspace.agent,
+            });
         Some(LivePreviewTarget {
             session_name,
             include_escape_sequences: true,
             daemon_socket_path,
+            status_context,
         })
     }
 

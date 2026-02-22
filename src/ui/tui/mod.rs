@@ -36,9 +36,10 @@ use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
 use serde_json::Value;
 
 use crate::application::agent_runtime::{
-    CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
-    WorkspaceStatusTarget, detect_status_with_session_override, evaluate_capture_change,
-    execute_command_with, execute_shell_launch_request_for_mode, git_session_name_for_workspace,
+    CommandExecutionMode, LivePreviewStatusContext, LivePreviewTarget, OutputDigest,
+    SessionActivity, ShellLaunchRequest, WorkspaceStatusTarget,
+    detect_status_with_session_override, evaluate_capture_change, execute_command_with,
+    execute_shell_launch_request_for_mode, git_session_name_for_workspace,
     latest_assistant_attention_marker, poll_interval, session_name_for_workspace_ref,
     shell_launch_request_for_workspace, shell_session_name_for_workspace,
     tmux_capture_error_indicates_missing_session, tmux_launch_error_indicates_duplicate_session,
@@ -352,6 +353,7 @@ struct GroveApp {
     poll_generation: u64,
     debug_record_start_ts: Option<u64>,
     frame_render_seq: RefCell<u64>,
+    last_frame_hash: RefCell<u64>,
     input_seq_counter: u64,
     pending_interactive_inputs: VecDeque<PendingInteractiveInput>,
     pending_interactive_sends: VecDeque<QueuedInteractiveSend>,

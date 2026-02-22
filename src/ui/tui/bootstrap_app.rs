@@ -205,6 +205,7 @@ impl GroveApp {
             poll_generation: 0,
             debug_record_start_ts,
             frame_render_seq: RefCell::new(0),
+            last_frame_hash: RefCell::new(0),
             input_seq_counter: 1,
             pending_interactive_inputs: VecDeque::new(),
             pending_interactive_sends: VecDeque::new(),

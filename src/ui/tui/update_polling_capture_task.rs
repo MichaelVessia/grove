@@ -38,7 +38,28 @@ impl GroveApp {
             let result = match raw_result {
                 Ok(raw_output) => {
                     let change = evaluate_capture_change(previous_digest.as_ref(), &raw_output);
-                    Ok(LivePreviewCaptureOutput { raw_output, change })
+                    let resolved_status = live_preview_target.status_context.as_ref().map(|ctx| {
+                        ResolvedLivePreviewStatus {
+                            status: detect_status_with_session_override(
+                                &change.cleaned_output,
+                                SessionActivity::Active,
+                                ctx.is_main,
+                                true,
+                                ctx.supported_agent,
+                                ctx.agent,
+                                &ctx.workspace_path,
+                            ),
+                            workspace_path: ctx.workspace_path.clone(),
+                            is_main: ctx.is_main,
+                            supported_agent: ctx.supported_agent,
+                            agent: ctx.agent,
+                        }
+                    });
+                    Ok(LivePreviewCaptureOutput {
+                        raw_output,
+                        change,
+                        resolved_status,
+                    })
                 }
                 Err(e) => Err(e),
             };
@@ -134,14 +155,36 @@ impl GroveApp {
                 let capture_ms = GroveApp::duration_millis(
                     Instant::now().saturating_duration_since(capture_started_at),
                 );
-                let result = match raw_result {
-                    Ok(raw_output) => {
-                        let change =
-                            evaluate_capture_change(previous_live_digest.as_ref(), &raw_output);
-                        Ok(LivePreviewCaptureOutput { raw_output, change })
-                    }
-                    Err(e) => Err(e),
-                };
+                let result =
+                    match raw_result {
+                        Ok(raw_output) => {
+                            let change =
+                                evaluate_capture_change(previous_live_digest.as_ref(), &raw_output);
+                            let resolved_status = target.status_context.as_ref().map(|ctx| {
+                                ResolvedLivePreviewStatus {
+                                    status: detect_status_with_session_override(
+                                        &change.cleaned_output,
+                                        SessionActivity::Active,
+                                        ctx.is_main,
+                                        true,
+                                        ctx.supported_agent,
+                                        ctx.agent,
+                                        &ctx.workspace_path,
+                                    ),
+                                    workspace_path: ctx.workspace_path.clone(),
+                                    is_main: ctx.is_main,
+                                    supported_agent: ctx.supported_agent,
+                                    agent: ctx.agent,
+                                }
+                            });
+                            Ok(LivePreviewCaptureOutput {
+                                raw_output,
+                                change,
+                                resolved_status,
+                            })
+                        }
+                        Err(e) => Err(e),
+                    };
                 LivePreviewCapture {
                     session: target.session_name,
                     include_escape_sequences: target.include_escape_sequences,

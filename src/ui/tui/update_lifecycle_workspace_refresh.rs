@@ -1,5 +1,20 @@
 use super::*;
 
+fn compute_attention_markers(workspaces: &[Workspace]) -> HashMap<PathBuf, String> {
+    let mut markers = HashMap::new();
+    for workspace in workspaces {
+        if !workspace.supported_agent || !workspace.status.has_session() {
+            continue;
+        }
+        if let Some(marker) =
+            latest_assistant_attention_marker(workspace.agent, workspace.path.as_path())
+        {
+            markers.insert(workspace.path.clone(), marker);
+        }
+    }
+    markers
+}
+
 impl GroveApp {
     fn auto_launch_pending_workspace_shell(&mut self) -> bool {
         let Some(pending_path) = self.pending_auto_launch_shell_workspace_path.clone() else {
@@ -72,9 +87,11 @@ impl GroveApp {
                 daemon_socket_path.as_deref(),
                 &remote_profiles,
             );
+            let attention_markers = compute_attention_markers(&bootstrap.workspaces);
             Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
                 preferred_workspace_path,
                 bootstrap,
+                attention_markers,
             })
         }));
     }
@@ -138,7 +155,7 @@ impl GroveApp {
         self.state.mode = previous_mode;
         self.state.focus = previous_focus;
         self.refresh_in_flight = false;
-        self.reconcile_workspace_attention_tracking();
+        self.reconcile_workspace_attention_with_markers(completion.attention_markers);
         self.clear_agent_activity_tracking();
         self.clear_status_tracking();
         self.auto_launch_pending_workspace_shell();
