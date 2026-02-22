@@ -21,8 +21,8 @@ use super::{
     StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
     TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
     WorkspaceAttention, WorkspaceShellLaunchCompletion, WorkspaceStatusCapture,
-    WorkspaceStatusCaptureOutput, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
-    ui_theme, usize_to_u64,
+    WorkspaceStatusCaptureOutput, WorkspaceStatusPollCompletion, ansi_16_color,
+    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme, usize_to_u64,
 };
 use crate::application::agent_runtime::{
     OutputDigest, SessionActivity, detect_status_with_session_override, evaluate_capture_change,

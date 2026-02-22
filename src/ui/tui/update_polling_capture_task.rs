@@ -165,7 +165,6 @@ impl GroveApp {
         previous_live_digest: Option<OutputDigest>,
         cursor_session: Option<String>,
         cursor_daemon_socket_path: Option<PathBuf>,
-        status_poll_targets: Vec<WorkspaceStatusTarget>,
     ) -> Cmd<Msg> {
         Cmd::task(move || {
             let live_capture = live_preview.map(|target| {
@@ -271,79 +270,141 @@ impl GroveApp {
             {
                 attention_markers.insert(resolved.workspace_path.clone(), marker);
             }
-            for target in &status_poll_targets {
-                if target.supported_agent
-                    && let Some(marker) = latest_assistant_attention_marker(
-                        target.agent,
-                        target.workspace_path.as_path(),
-                    )
-                {
-                    attention_markers
-                        .entry(target.workspace_path.clone())
-                        .or_insert(marker);
-                }
-            }
-
-            let workspace_status_captures = status_poll_targets
-                .into_iter()
-                .map(|target| {
-                    let capture_started_at = Instant::now();
-                    let raw_result = if let Some(socket_path) = &target.daemon_socket_path {
-                        let payload = DaemonSessionCapturePayload {
-                            session_name: target.session_name.clone(),
-                            scrollback_lines: 120,
-                            include_escape_sequences: false,
-                        };
-                        match session_capture_via_socket(socket_path, payload) {
-                            Ok(Ok(output)) => Ok(output),
-                            Ok(Err(daemon_error)) => Err(daemon_error.message),
-                            Err(io_error) => Err(io_error.to_string()),
-                        }
-                    } else {
-                        CommandTmuxInput::capture_session_output(&target.session_name, 120, false)
-                            .map_err(|error| error.to_string())
-                    };
-                    let capture_ms = GroveApp::duration_millis(
-                        Instant::now().saturating_duration_since(capture_started_at),
-                    );
-                    let result = match raw_result {
-                        Ok(raw_output) => {
-                            let change = evaluate_capture_change(None, &raw_output);
-                            let resolved_status = detect_status_with_session_override(
-                                &change.cleaned_output,
-                                SessionActivity::Active,
-                                target.is_main,
-                                true,
-                                target.supported_agent,
-                                target.agent,
-                                &target.workspace_path,
-                            );
-                            Ok(WorkspaceStatusCaptureOutput {
-                                cleaned_output: change.cleaned_output,
-                                digest: change.digest,
-                                resolved_status,
-                            })
-                        }
-                        Err(e) => Err(e),
-                    };
-                    WorkspaceStatusCapture {
-                        workspace_name: target.workspace_name,
-                        workspace_path: target.workspace_path,
-                        session_name: target.session_name,
-                        supported_agent: target.supported_agent,
-                        capture_ms,
-                        result,
-                    }
-                })
-                .collect();
 
             Msg::PreviewPollCompleted(PreviewPollCompletion {
                 generation,
                 live_capture,
                 cursor_capture,
+                workspace_status_captures: Vec::new(),
+                attention_markers,
+            })
+        })
+    }
+
+    pub(super) fn schedule_async_workspace_status_poll(
+        &self,
+        status_poll_targets: Vec<WorkspaceStatusTarget>,
+    ) -> Cmd<Msg> {
+        Cmd::task(move || {
+            if status_poll_targets.is_empty() {
+                return Msg::WorkspaceStatusPollCompleted(WorkspaceStatusPollCompletion {
+                    workspace_status_captures: Vec::new(),
+                    attention_markers: HashMap::new(),
+                });
+            }
+
+            let target_count = status_poll_targets.len();
+            let worker_count = WORKSPACE_STATUS_CAPTURE_PARALLELISM
+                .max(1)
+                .min(target_count);
+            let next_index = std::sync::atomic::AtomicUsize::new(0);
+            let captures = std::sync::Mutex::new(vec![None; target_count]);
+            let attention_markers = std::sync::Mutex::new(HashMap::new());
+
+            std::thread::scope(|scope| {
+                for _ in 0..worker_count {
+                    let targets = &status_poll_targets;
+                    let next_index = &next_index;
+                    let captures = &captures;
+                    let attention_markers = &attention_markers;
+                    scope.spawn(move || {
+                        loop {
+                            let index =
+                                next_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            if index >= targets.len() {
+                                break;
+                            }
+
+                            let target = &targets[index];
+                            if target.supported_agent
+                                && let Some(marker) = latest_assistant_attention_marker(
+                                    target.agent,
+                                    target.workspace_path.as_path(),
+                                )
+                            {
+                                let mut markers = match attention_markers.lock() {
+                                    Ok(guard) => guard,
+                                    Err(error) => error.into_inner(),
+                                };
+                                markers.insert(target.workspace_path.clone(), marker);
+                            }
+
+                            let capture = capture_workspace_status_target(target);
+                            let mut slots = match captures.lock() {
+                                Ok(guard) => guard,
+                                Err(error) => error.into_inner(),
+                            };
+                            slots[index] = Some(capture);
+                        }
+                    });
+                }
+            });
+
+            let workspace_status_captures = match captures.into_inner() {
+                Ok(slots) => slots,
+                Err(error) => error.into_inner(),
+            }
+            .into_iter()
+            .flatten()
+            .collect::<Vec<WorkspaceStatusCapture>>();
+            let attention_markers = match attention_markers.into_inner() {
+                Ok(markers) => markers,
+                Err(error) => error.into_inner(),
+            };
+
+            Msg::WorkspaceStatusPollCompleted(WorkspaceStatusPollCompletion {
                 workspace_status_captures,
                 attention_markers,
             })
         })
+    }
+}
+
+fn capture_workspace_status_target(target: &WorkspaceStatusTarget) -> WorkspaceStatusCapture {
+    let capture_started_at = Instant::now();
+    let raw_result = if let Some(socket_path) = &target.daemon_socket_path {
+        let payload = DaemonSessionCapturePayload {
+            session_name: target.session_name.clone(),
+            scrollback_lines: 120,
+            include_escape_sequences: false,
+        };
+        match session_capture_via_socket(socket_path, payload) {
+            Ok(Ok(output)) => Ok(output),
+            Ok(Err(daemon_error)) => Err(daemon_error.message),
+            Err(io_error) => Err(io_error.to_string()),
+        }
+    } else {
+        CommandTmuxInput::capture_session_output(&target.session_name, 120, false)
+            .map_err(|error| error.to_string())
+    };
+    let capture_ms =
+        GroveApp::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
+    let result = match raw_result {
+        Ok(raw_output) => {
+            let change = evaluate_capture_change(None, &raw_output);
+            let resolved_status = detect_status_with_session_override(
+                &change.cleaned_output,
+                SessionActivity::Active,
+                target.is_main,
+                true,
+                target.supported_agent,
+                target.agent,
+                &target.workspace_path,
+            );
+            Ok(WorkspaceStatusCaptureOutput {
+                cleaned_output: change.cleaned_output,
+                digest: change.digest,
+                resolved_status,
+            })
+        }
+        Err(error) => Err(error),
+    };
+    WorkspaceStatusCapture {
+        workspace_name: target.workspace_name.clone(),
+        workspace_path: target.workspace_path.clone(),
+        session_name: target.session_name.clone(),
+        supported_agent: target.supported_agent,
+        capture_ms,
+        result,
     }
 }

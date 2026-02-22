@@ -10,6 +10,7 @@ pub(super) enum Msg {
     Tick,
     Resize { width: u16, height: u16 },
     PreviewPollCompleted(PreviewPollCompletion),
+    WorkspaceStatusPollCompleted(WorkspaceStatusPollCompletion),
     LazygitLaunchCompleted(LazygitLaunchCompletion),
     WorkspaceShellLaunchCompleted(WorkspaceShellLaunchCompletion),
     RefreshWorkspacesCompleted(RefreshWorkspacesCompletion),
@@ -29,6 +30,12 @@ pub(super) struct PreviewPollCompletion {
     pub(super) generation: u64,
     pub(super) live_capture: Option<LivePreviewCapture>,
     pub(super) cursor_capture: Option<CursorCapture>,
+    pub(super) workspace_status_captures: Vec<WorkspaceStatusCapture>,
+    pub(super) attention_markers: HashMap<PathBuf, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct WorkspaceStatusPollCompletion {
     pub(super) workspace_status_captures: Vec<WorkspaceStatusCapture>,
     pub(super) attention_markers: HashMap<PathBuf, String>,
 }

@@ -6,7 +6,7 @@ TUNNEL_KEY = $(subst /,-,$(subst :,-,$(subst @,-,$(REMOTE_USER)-$(REMOTE_HOST)))
 LOCAL_SOCKET ?= $(HOME)/.grove/groved-$(TUNNEL_KEY).sock
 SSH_CONTROL_PATH ?= $(HOME)/.grove/ssh-groved-$(TUNNEL_KEY).ctl
 
-.PHONY: fmt clippy test ci tui debug-tui groved tui-daemon root tunnel-up tunnel-down tunnel-status
+.PHONY: fmt clippy test ci tui debug-tui groved tui-daemon root tunnel-up tunnel-down tunnel-status cleanup
 
 fmt:
 	cargo fmt --check
@@ -33,6 +33,10 @@ tui-daemon:
 
 root:
 	cargo run --bin grove --
+
+cleanup:
+	@rm -rf .grove/debug-record-*.jsonl .grove/evidence-*.jsonl .grove/frame-timing-*.jsonl .grove/render-trace-*.jsonl .grove/render-trace-*_payloads .grove/debug-bundle-*.tar.gz
+	@echo "cleaned debug artifacts from .grove/"
 
 tunnel-up:
 	@test -n "$(REMOTE_HOST)" || (echo "REMOTE_HOST is required (example: make tunnel-up REMOTE_HOST=build.example.com)"; exit 2)

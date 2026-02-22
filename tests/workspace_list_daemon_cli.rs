@@ -1,16 +1,20 @@
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+static NEXT_SOCKET_ID: AtomicU64 = AtomicU64::new(1);
+
 fn unique_socket_path(label: &str) -> PathBuf {
-    let compact_label = label.chars().take(8).collect::<String>();
+    let compact_label = label.chars().take(16).collect::<String>();
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system time should be after unix epoch")
         .as_nanos();
+    let id = NEXT_SOCKET_ID.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!(
-        "gwsd-{compact_label}-{}-{timestamp}.sock",
-        std::process::id()
+        "gwsd-{compact_label}-{}-{timestamp}-{id}.sock",
+        std::process::id(),
     ))
 }
 

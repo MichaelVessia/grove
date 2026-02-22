@@ -113,30 +113,67 @@ fn poll_preview_marks_request_when_background_poll_is_in_flight() {
 }
 
 #[test]
-fn async_preview_still_polls_background_workspace_status_targets_when_live_preview_exists() {
+fn background_workspace_status_poll_targets_skip_selected_live_preview_session() {
     let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 1;
     app.state.workspaces[0].status = WorkspaceStatus::Active;
 
-    let live_preview = app.prepare_live_preview_session();
-    assert!(live_preview.is_some());
-
-    let status_targets = app.status_poll_targets_for_async_preview(live_preview.as_ref());
+    let status_targets = app.workspace_status_poll_targets_for_background();
     assert_eq!(status_targets.len(), 1);
     assert_eq!(status_targets[0].workspace_name, "grove");
 }
 
 #[test]
-fn async_preview_polls_workspace_status_targets_when_live_preview_missing() {
+fn background_workspace_status_poll_targets_include_active_workspace_when_no_live_preview() {
     let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 0;
 
-    let live_preview = app.prepare_live_preview_session();
-    assert!(live_preview.is_none());
-
-    let status_targets = app.status_poll_targets_for_async_preview(live_preview.as_ref());
+    let status_targets = app.workspace_status_poll_targets_for_background();
     assert_eq!(status_targets.len(), 1);
     assert_eq!(status_targets[0].workspace_name, "feature-a");
+}
+
+#[test]
+fn background_workspace_status_poll_targets_are_capped_and_round_robin() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 0;
+
+    for (name, timestamp) in [
+        ("feature-b", 1_700_000_090),
+        ("feature-c", 1_700_000_080),
+        ("feature-d", 1_700_000_070),
+        ("feature-e", 1_700_000_060),
+    ] {
+        let mut workspace = Workspace::try_new(
+            name.to_string(),
+            PathBuf::from(format!("/repos/grove-{name}")),
+            name.to_string(),
+            Some(timestamp),
+            AgentType::Codex,
+            WorkspaceStatus::Active,
+            false,
+        )
+        .expect("workspace should be valid");
+        workspace.project_path = Some(PathBuf::from("/repos/grove"));
+        workspace.base_branch = Some("main".to_string());
+        app.state.workspaces.push(workspace);
+    }
+
+    let cycle_one = app
+        .capped_workspace_status_poll_targets(app.workspace_status_poll_targets_for_background());
+    let cycle_two = app
+        .capped_workspace_status_poll_targets(app.workspace_status_poll_targets_for_background());
+    let cycle_one_names = cycle_one
+        .iter()
+        .map(|target| target.workspace_name.clone())
+        .collect::<Vec<String>>();
+    let cycle_two_names = cycle_two
+        .iter()
+        .map(|target| target.workspace_name.clone())
+        .collect::<Vec<String>>();
+
+    assert_eq!(cycle_one_names, vec!["feature-a", "feature-b", "feature-c"]);
+    assert_eq!(cycle_two_names, vec!["feature-d", "feature-e", "feature-a"]);
 }
 
 #[test]
@@ -196,6 +233,26 @@ fn preview_poll_completion_runs_deferred_background_poll_request() {
 
     assert!(app.preview_poll_in_flight);
     assert!(!app.preview_poll_requested);
+    assert!(cmd_contains_task(&cmd));
+}
+
+#[test]
+fn workspace_status_poll_completion_runs_deferred_background_poll_request() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 0;
+    app.workspace_status_poll_in_flight = true;
+    app.workspace_status_poll_requested = true;
+
+    let cmd = ftui::Model::update(
+        &mut app,
+        Msg::WorkspaceStatusPollCompleted(WorkspaceStatusPollCompletion {
+            workspace_status_captures: Vec::new(),
+            attention_markers: HashMap::new(),
+        }),
+    );
+
+    assert!(app.workspace_status_poll_in_flight);
+    assert!(!app.workspace_status_poll_requested);
     assert!(cmd_contains_task(&cmd));
 }
 
@@ -671,6 +728,40 @@ fn preview_poll_updates_non_selected_workspace_status_from_background_capture() 
 
     assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Waiting);
     assert!(!app.state.workspaces[1].is_orphaned);
+}
+
+#[test]
+fn workspace_status_poll_attention_marker_updates_do_not_clear_unpolled_paths() {
+    let mut app = fixture_app();
+    let main_path = PathBuf::from("/repos/grove");
+    let feature_path = PathBuf::from("/repos/grove-feature-a");
+    app.last_attention_markers
+        .insert(main_path.clone(), "main-marker".to_string());
+    app.last_attention_markers
+        .insert(feature_path.clone(), "feature-marker".to_string());
+    app.workspace_status_poll_in_flight = true;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::WorkspaceStatusPollCompleted(WorkspaceStatusPollCompletion {
+            workspace_status_captures: vec![WorkspaceStatusCapture {
+                workspace_name: "feature-a".to_string(),
+                workspace_path: feature_path.clone(),
+                session_name: "grove-ws-feature-a".to_string(),
+                supported_agent: true,
+                capture_ms: 1,
+                result: Ok(workspace_status_capture_output(
+                    "still working on it",
+                    false,
+                    true,
+                )),
+            }],
+            attention_markers: HashMap::new(),
+        }),
+    );
+
+    assert!(app.last_attention_markers.contains_key(&main_path));
+    assert!(!app.last_attention_markers.contains_key(&feature_path));
 }
 
 #[test]
@@ -4982,6 +5073,42 @@ fn tick_due_workspace_refresh_queues_inventory_refresh() {
         .next_workspace_refresh_due_at
         .expect("workspace refresh due timestamp should be set");
     assert!(next_due > Instant::now());
+}
+
+#[test]
+fn tick_due_workspace_status_poll_queues_background_status_poll() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 0;
+    let now = Instant::now();
+    app.next_tick_due_at = Some(now);
+    app.next_poll_due_at = Some(now + Duration::from_secs(10));
+    app.next_workspace_status_poll_due_at = Some(now - Duration::from_secs(1));
+
+    let cmd = ftui::Model::update(&mut app, Msg::Tick);
+
+    assert!(cmd_contains_task(&cmd));
+    assert!(app.workspace_status_poll_in_flight);
+}
+
+#[test]
+fn tick_due_workspace_status_poll_defers_when_interactive_io_is_prioritized() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 0;
+    app.interactive_send_in_flight = true;
+    let now = Instant::now();
+    app.next_tick_due_at = Some(now);
+    app.next_poll_due_at = Some(now + Duration::from_secs(10));
+    app.next_workspace_status_poll_due_at = Some(now - Duration::from_secs(1));
+
+    let cmd = ftui::Model::update(&mut app, Msg::Tick);
+
+    assert!(!cmd_contains_task(&cmd));
+    assert!(!app.workspace_status_poll_in_flight);
+    let deferred_due_at = app
+        .next_workspace_status_poll_due_at
+        .expect("workspace status poll should have been deferred");
+    assert!(deferred_due_at > now);
+    assert!(deferred_due_at <= now + Duration::from_millis(600));
 }
 
 #[test]

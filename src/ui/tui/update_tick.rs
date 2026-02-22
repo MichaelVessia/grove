@@ -41,6 +41,9 @@ impl GroveApp {
         let workspace_refresh_due = self
             .next_workspace_refresh_due_at
             .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at));
+        let workspace_status_poll_due = self
+            .next_workspace_status_poll_due_at
+            .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at));
         let visual_due = self
             .next_visual_due_at
             .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at));
@@ -59,12 +62,67 @@ impl GroveApp {
             {
                 self.interactive_poll_due_at = None;
             }
-            self.poll_preview();
+            if self.should_prioritize_interactive_io(now) {
+                self.poll_preview_prioritized();
+            } else {
+                self.poll_preview();
+            }
         }
         if workspace_refresh_due {
-            self.next_workspace_refresh_due_at =
-                Some(now + Duration::from_millis(WORKSPACE_REFRESH_INTERVAL_MS));
-            self.refresh_workspaces(None);
+            if self.should_prioritize_interactive_io(now) {
+                self.next_workspace_refresh_due_at =
+                    Some(now + Duration::from_millis(WORKSPACE_REFRESH_DEFER_INTERVAL_MS));
+                self.log_event_with_fields(
+                    "refresh_workspaces",
+                    "deferred_due_to_input",
+                    [
+                        (
+                            "pending_depth".to_string(),
+                            Value::from(self.pending_input_depth()),
+                        ),
+                        (
+                            "oldest_pending_age_ms".to_string(),
+                            Value::from(self.oldest_pending_input_age_ms(now)),
+                        ),
+                        (
+                            "defer_ms".to_string(),
+                            Value::from(WORKSPACE_REFRESH_DEFER_INTERVAL_MS),
+                        ),
+                    ],
+                );
+            } else {
+                self.next_workspace_refresh_due_at =
+                    Some(now + Duration::from_millis(WORKSPACE_REFRESH_INTERVAL_MS));
+                self.refresh_workspaces(None);
+            }
+        }
+        if workspace_status_poll_due {
+            if self.should_prioritize_interactive_io(now) {
+                self.next_workspace_status_poll_due_at =
+                    Some(now + Duration::from_millis(WORKSPACE_REFRESH_DEFER_INTERVAL_MS));
+                self.log_event_with_fields(
+                    "workspace_status",
+                    "poll_deferred_due_to_input",
+                    [
+                        (
+                            "pending_depth".to_string(),
+                            Value::from(self.pending_input_depth()),
+                        ),
+                        (
+                            "oldest_pending_age_ms".to_string(),
+                            Value::from(self.oldest_pending_input_age_ms(now)),
+                        ),
+                        (
+                            "defer_ms".to_string(),
+                            Value::from(WORKSPACE_REFRESH_DEFER_INTERVAL_MS),
+                        ),
+                    ],
+                );
+            } else {
+                self.next_workspace_status_poll_due_at =
+                    Some(now + Duration::from_millis(WORKSPACE_STATUS_POLL_INTERVAL_MS));
+                self.poll_workspace_statuses_background();
+            }
         }
 
         let pending_after = self.pending_input_depth();
@@ -74,6 +132,10 @@ impl GroveApp {
                 .with_data("early_by_ms", Value::from(early_by_ms))
                 .with_data("poll_due", Value::from(poll_due))
                 .with_data("workspace_refresh_due", Value::from(workspace_refresh_due))
+                .with_data(
+                    "workspace_status_poll_due",
+                    Value::from(workspace_status_poll_due),
+                )
                 .with_data("visual_due", Value::from(visual_due))
                 .with_data("pending_before", Value::from(pending_before))
                 .with_data("pending_after", Value::from(pending_after))

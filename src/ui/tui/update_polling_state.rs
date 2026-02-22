@@ -196,6 +196,41 @@ impl GroveApp {
         }
     }
 
+    pub(super) fn reconcile_workspace_attention_with_marker_updates(
+        &mut self,
+        updated_paths: Vec<PathBuf>,
+        markers: HashMap<PathBuf, String>,
+    ) {
+        let valid_paths = self
+            .state
+            .workspaces
+            .iter()
+            .map(|workspace| workspace.path.clone())
+            .collect::<HashSet<PathBuf>>();
+        self.last_attention_markers
+            .retain(|path, _| valid_paths.contains(path));
+        self.workspace_attention
+            .retain(|path, _| valid_paths.contains(path));
+        self.workspace_attention_ack_markers
+            .retain(|path, _| valid_paths.contains(path));
+
+        let mut touched_paths = updated_paths.into_iter().collect::<HashSet<PathBuf>>();
+        touched_paths.extend(markers.keys().cloned());
+
+        for path in touched_paths {
+            if !valid_paths.contains(&path) {
+                continue;
+            }
+            if let Some(marker) = markers.get(&path).cloned() {
+                self.last_attention_markers.insert(path.clone(), marker);
+            } else {
+                self.last_attention_markers.remove(&path);
+            }
+            let marker = self.last_attention_markers.get(&path).cloned();
+            self.refresh_workspace_attention_for_path_with_marker(path.as_path(), marker.as_ref());
+        }
+    }
+
     fn refresh_workspace_attention_for_path_with_marker(
         &mut self,
         workspace_path: &Path,
@@ -376,11 +411,30 @@ impl GroveApp {
         now_with_tolerance >= due_at
     }
 
+    pub(super) fn should_prioritize_interactive_io(&self, now: Instant) -> bool {
+        if self.pending_input_depth() > 0 {
+            return true;
+        }
+        if self.interactive_send_in_flight {
+            return true;
+        }
+        self.interactive.as_ref().is_some_and(|interactive| {
+            now.saturating_duration_since(interactive.last_key_time)
+                < Duration::from_millis(LOCAL_TYPING_SUPPRESS_MS)
+        })
+    }
+
     pub(super) fn schedule_next_tick(&mut self) -> Cmd<Msg> {
         let scheduled_at = Instant::now();
         if self.next_workspace_refresh_due_at.is_none() {
             self.next_workspace_refresh_due_at =
                 Some(scheduled_at + Duration::from_millis(WORKSPACE_REFRESH_INTERVAL_MS));
+        }
+        if self.tmux_input.supports_background_poll()
+            && self.next_workspace_status_poll_due_at.is_none()
+        {
+            self.next_workspace_status_poll_due_at =
+                Some(scheduled_at + Duration::from_millis(WORKSPACE_STATUS_POLL_INTERVAL_MS));
         }
 
         let mut poll_due_at = scheduled_at + self.next_poll_interval();
@@ -432,6 +486,13 @@ impl GroveApp {
             source = "workspace_refresh";
             trigger = "workspace_refresh";
         }
+        if let Some(workspace_status_poll_due_at) = self.next_workspace_status_poll_due_at
+            && workspace_status_poll_due_at < due_at
+        {
+            due_at = workspace_status_poll_due_at;
+            source = "workspace_status_poll";
+            trigger = "workspace_status_poll";
+        }
         if let Some(visual_due_at) = self.next_visual_due_at
             && visual_due_at < due_at
         {
@@ -444,6 +505,15 @@ impl GroveApp {
             if in_flight_due_at < due_at {
                 due_at = in_flight_due_at;
                 source = "poll_in_flight";
+                trigger = "task_result";
+            }
+        }
+        if self.workspace_status_poll_in_flight {
+            let in_flight_due_at =
+                scheduled_at + Duration::from_millis(PREVIEW_POLL_IN_FLIGHT_TICK_MS);
+            if in_flight_due_at < due_at {
+                due_at = in_flight_due_at;
+                source = "workspace_status_poll_in_flight";
                 trigger = "task_result";
             }
         }
