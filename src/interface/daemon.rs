@@ -1,7 +1,9 @@
-use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::ffi::OsStr;
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -18,6 +20,76 @@ use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 const GROVE_DIR: &str = ".grove";
 const DEFAULT_SOCKET_FILE: &str = "groved.sock";
 pub const PROTOCOL_VERSION: u32 = 2;
+const DAEMON_CLIENT_LOG_PATH_ENV: &str = "GROVE_DAEMON_CLIENT_LOG_PATH";
+static DAEMON_CLIENT_LOG_PATH_OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+static DAEMON_CLIENT_LOG_WRITER: OnceLock<Mutex<DaemonClientLogWriter>> = OnceLock::new();
+
+#[derive(Default)]
+struct DaemonClientLogWriter {
+    path: Option<PathBuf>,
+    writer: Option<BufWriter<File>>,
+}
+
+pub fn set_daemon_client_log_path(path: Option<PathBuf>) {
+    let state = DAEMON_CLIENT_LOG_PATH_OVERRIDE.get_or_init(|| Mutex::new(None));
+    let Ok(mut state) = state.lock() else {
+        return;
+    };
+    *state = path;
+}
+
+fn daemon_client_log_path() -> Option<PathBuf> {
+    let override_state = DAEMON_CLIENT_LOG_PATH_OVERRIDE.get_or_init(|| Mutex::new(None));
+    if let Ok(override_path) = override_state.lock()
+        && override_path.is_some()
+    {
+        return override_path.clone();
+    }
+    daemon_client_log_path_from_env(std::env::var_os(DAEMON_CLIENT_LOG_PATH_ENV).as_deref())
+}
+
+fn daemon_client_log_path_from_env(value: Option<&OsStr>) -> Option<PathBuf> {
+    let value = value.and_then(OsStr::to_str)?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(trimmed))
+}
+
+fn open_daemon_client_log_writer(path: &Path) -> Option<BufWriter<File>> {
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .ok()?;
+    Some(BufWriter::new(file))
+}
+
+fn daemon_write_client_log_line(text: &str) {
+    let log_path = daemon_client_log_path();
+    let state =
+        DAEMON_CLIENT_LOG_WRITER.get_or_init(|| Mutex::new(DaemonClientLogWriter::default()));
+    let Ok(mut state) = state.lock() else {
+        return;
+    };
+
+    if state.path != log_path {
+        state.path = log_path.clone();
+        state.writer = log_path.as_deref().and_then(open_daemon_client_log_writer);
+    }
+    let Some(writer) = state.writer.as_mut() else {
+        return;
+    };
+
+    if writer.write_all(text.as_bytes()).is_err() {
+        return;
+    }
+    if writer.write_all(b"\n").is_err() {
+        return;
+    }
+    let _ = writer.flush();
+}
 
 fn daemon_log_event(event: &str, kind: &str, fields: impl IntoIterator<Item = (String, Value)>) {
     let mut data = Map::new();
@@ -33,6 +105,10 @@ fn daemon_log_event(event: &str, kind: &str, fields: impl IntoIterator<Item = (S
     let Ok(text) = serde_json::to_string(&line) else {
         return;
     };
+    if kind.starts_with("client_") {
+        daemon_write_client_log_line(&text);
+        return;
+    }
     eprintln!("{text}");
 }
 
@@ -1689,6 +1765,7 @@ fn workspace_status_label(status: WorkspaceStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
     use std::io::Read;
     use std::net::Shutdown;
     use std::process;
@@ -1722,6 +1799,24 @@ mod tests {
     fn parse_args_rejects_unknown_flag() {
         let error = parse_args(["--unknown".to_string()]).expect_err("parse should fail");
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn daemon_client_log_path_from_env_returns_none_for_missing_or_blank_values() {
+        assert_eq!(daemon_client_log_path_from_env(None), None);
+        assert_eq!(daemon_client_log_path_from_env(Some(OsStr::new(""))), None);
+        assert_eq!(
+            daemon_client_log_path_from_env(Some(OsStr::new("   "))),
+            None
+        );
+    }
+
+    #[test]
+    fn daemon_client_log_path_from_env_trims_whitespace() {
+        assert_eq!(
+            daemon_client_log_path_from_env(Some(OsStr::new(" /tmp/grove-daemon.jsonl "))),
+            Some(PathBuf::from("/tmp/grove-daemon.jsonl"))
+        );
     }
 
     #[test]

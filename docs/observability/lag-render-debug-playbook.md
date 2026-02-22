@@ -113,13 +113,16 @@ High signal fields:
 
 ## Daemon Transport Triage
 
-Daemon emits structured stderr JSON events:
-- `daemon_request/client_completed`
-- `daemon_request/client_failed`
-- `daemon_request/server_completed`
-- `daemon_request/server_completed_with_write_error`
-- `daemon_request/server_invalid_dropped`
-- `daemon_request/server_connection_handler_failed`
+Daemon transport emits structured JSON events:
+- client-side events are written to the active TUI event log when
+  `--event-log` or `--debug-record` is enabled, or to a custom file via
+  `GROVE_DAEMON_CLIENT_LOG_PATH=/path/to/daemon-client.jsonl`:
+  `daemon_request/client_completed`, `daemon_request/client_failed`
+- daemon (`groved`) stderr events:
+  - `daemon_request/server_completed`
+  - `daemon_request/server_completed_with_write_error`
+  - `daemon_request/server_invalid_dropped`
+  - `daemon_request/server_connection_handler_failed`
 
 High signal fields:
 - `request`, `response`

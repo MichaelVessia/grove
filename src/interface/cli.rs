@@ -17,9 +17,9 @@ use crate::interface::daemon::{
     DaemonAgentStartPayload, DaemonAgentStopPayload, DaemonCommandError,
     DaemonWorkspaceCreatePayload, DaemonWorkspaceDeletePayload, DaemonWorkspaceEditPayload,
     DaemonWorkspaceMergePayload, DaemonWorkspaceUpdatePayload, DaemonWorkspaceView,
-    agent_start_via_socket, agent_stop_via_socket, workspace_create_via_socket,
-    workspace_delete_via_socket, workspace_edit_via_socket, workspace_list_via_socket,
-    workspace_merge_via_socket, workspace_update_via_socket,
+    agent_start_via_socket, agent_stop_via_socket, set_daemon_client_log_path,
+    workspace_create_via_socket, workspace_delete_via_socket, workspace_edit_via_socket,
+    workspace_list_via_socket, workspace_merge_via_socket, workspace_update_via_socket,
 };
 use crate::interface::next_actions::{
     NextActionsBuilder, after_agent_stop, after_workspace_create, after_workspace_merge,
@@ -1923,6 +1923,7 @@ fn run_tui(cli: TuiArgs, daemon_socket_path: Option<&Path>) -> std::io::Result<(
             eprintln!("grove frame timing: {}", path.display());
         }
     }
+    set_daemon_client_log_path(event_log_path.clone());
     let observability_paths = crate::interface::tui::RuntimeObservabilityPaths {
         evidence_log_path,
         render_trace_path,
