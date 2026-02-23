@@ -2134,13 +2134,27 @@ fn status_row_shows_palette_hints_when_palette_open() {
     let mut app = fixture_app();
     app.open_command_palette();
 
-    with_rendered_frame(&app, 80, 24, |frame| {
+    with_rendered_frame(&app, 120, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains("Palette"));
         assert!(
             !status_text.trim().is_empty(),
             "status row should remain visible with palette open, got: {status_text}"
         );
+    });
+}
+
+#[test]
+fn status_row_uses_selected_workspace_status_as_state_chip() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+
+    with_rendered_frame(&app, 120, 24, |frame| {
+        let status_row = frame.height().saturating_sub(1);
+        let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains(" Idle "));
+        assert!(!status_text.contains(" Context "));
     });
 }
 
@@ -2218,6 +2232,7 @@ fn status_row_keeps_compact_footer_in_interactive_mode() {
     with_rendered_frame(&app, 160, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains("Interactive"));
         assert!(status_text.contains("project: grove"));
         assert!(status_text.contains("workspace: base"));
         assert!(status_text.contains("? help"));
@@ -2329,6 +2344,7 @@ fn status_row_keeps_compact_footer_in_create_dialog() {
     with_rendered_frame(&app, 140, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains("Dialog: Create"));
         assert!(status_text.contains("? help"));
         assert!(status_text.contains("Ctrl+K palette"));
     });

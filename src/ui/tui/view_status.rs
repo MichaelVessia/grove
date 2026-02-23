@@ -1,6 +1,69 @@
 use super::*;
 
 impl GroveApp {
+    fn footer_workspace_state_label(status: WorkspaceStatus) -> &'static str {
+        match status {
+            WorkspaceStatus::Main => "Main",
+            WorkspaceStatus::Idle => "Idle",
+            WorkspaceStatus::Active => "Active",
+            WorkspaceStatus::Thinking => "Thinking",
+            WorkspaceStatus::Waiting => "Waiting",
+            WorkspaceStatus::Done => "Done",
+            WorkspaceStatus::Error => "Error",
+            WorkspaceStatus::Unknown => "Unknown",
+            WorkspaceStatus::Unsupported => "Unsupported",
+        }
+    }
+
+    fn footer_dialog_state_label(kind: &str) -> &'static str {
+        match kind {
+            "launch" => "Launch",
+            "stop" => "Stop",
+            "confirm" => "Confirm",
+            "delete" => "Delete",
+            "merge" => "Merge",
+            "update_from_base" => "Update",
+            "create" => "Create",
+            "edit" => "Edit",
+            "project" => "Project",
+            "settings" => "Settings",
+            _ => "Dialog",
+        }
+    }
+
+    fn footer_state_chip_label(&self) -> String {
+        match &self.discovery_state {
+            DiscoveryState::Error(_) => return "Discovery Error".to_string(),
+            DiscoveryState::Empty => return "No Worktrees".to_string(),
+            DiscoveryState::Ready => {}
+        }
+
+        if self.command_palette.is_visible() {
+            return "Palette".to_string();
+        }
+
+        if self.keybind_help_open {
+            return "Help".to_string();
+        }
+
+        if let Some(dialog_kind) = self.active_dialog_kind() {
+            return format!("Dialog: {}", Self::footer_dialog_state_label(dialog_kind));
+        }
+
+        if self.interactive.is_some() {
+            return "Interactive".to_string();
+        }
+
+        if let Some(workspace) = self.state.selected_workspace() {
+            return Self::footer_workspace_state_label(workspace.status).to_string();
+        }
+
+        match self.state.mode {
+            UiMode::List => "List".to_string(),
+            UiMode::Preview => "Preview".to_string(),
+        }
+    }
+
     #[cfg(test)]
     fn unsafe_label(&self) -> &'static str {
         if self.launch_skip_permissions {
@@ -131,6 +194,7 @@ impl GroveApp {
         }
 
         let theme = ui_theme();
+        let state_label = self.footer_state_chip_label();
         let context = self.footer_context_line();
         let hints = self.footer_key_hints_line();
         let base_style = Style::new().bg(theme.mantle).fg(theme.text);
@@ -142,7 +206,7 @@ impl GroveApp {
 
         let left: Vec<FtSpan> = vec![
             FtSpan::styled(" ".to_string(), base_style),
-            FtSpan::styled(" Context ".to_string(), context_chip_style),
+            FtSpan::styled(format!(" {state_label} "), context_chip_style),
             FtSpan::styled(" ".to_string(), base_style),
             FtSpan::styled(context, text_style),
         ];
