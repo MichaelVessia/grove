@@ -73,7 +73,7 @@ use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
 mod ansi;
 #[cfg(test)]
 use ansi::ansi_16_color;
-use ansi::ansi_line_to_styled_line;
+use ansi::ansi_lines_to_styled_lines;
 mod bootstrap_app;
 mod bootstrap_config;
 mod bootstrap_discovery;

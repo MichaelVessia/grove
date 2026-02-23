@@ -155,10 +155,9 @@ fn apply_sgr_codes(raw_params: &str, state: &mut AnsiStyleState) {
     }
 }
 
-pub(in crate::ui::tui) fn ansi_line_to_styled_line(line: &str) -> FtLine {
+fn ansi_line_to_styled_line_with_state(line: &str, state: &mut AnsiStyleState) -> FtLine {
     let mut spans: Vec<FtSpan<'static>> = Vec::new();
     let mut buffer = String::new();
-    let mut state = AnsiStyleState::default();
     let mut chars = line.chars().peekable();
 
     let flush = |buffer: &mut String, spans: &mut Vec<FtSpan<'static>>, state: AnsiStyleState| {
@@ -195,8 +194,8 @@ pub(in crate::ui::tui) fn ansi_line_to_styled_line(line: &str) -> FtLine {
                     params.push(value);
                 }
                 if final_char == Some('m') {
-                    flush(&mut buffer, &mut spans, state);
-                    apply_sgr_codes(&params, &mut state);
+                    flush(&mut buffer, &mut spans, *state);
+                    apply_sgr_codes(&params, state);
                 }
             }
             ']' => {
@@ -223,11 +222,19 @@ pub(in crate::ui::tui) fn ansi_line_to_styled_line(line: &str) -> FtLine {
         }
     }
 
-    flush(&mut buffer, &mut spans, state);
+    flush(&mut buffer, &mut spans, *state);
 
     if spans.is_empty() {
         return FtLine::raw("");
     }
 
     FtLine::from_spans(spans)
+}
+
+pub(in crate::ui::tui) fn ansi_lines_to_styled_lines(lines: &[String]) -> Vec<FtLine> {
+    let mut state = AnsiStyleState::default();
+    lines
+        .iter()
+        .map(|line| ansi_line_to_styled_line_with_state(line, &mut state))
+        .collect()
 }

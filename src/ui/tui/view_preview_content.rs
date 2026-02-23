@@ -232,9 +232,6 @@ impl GroveApp {
             }];
         }
 
-        visible_render_lines
-            .iter()
-            .map(|line| ansi_line_to_styled_line(line))
-            .collect()
+        ansi_lines_to_styled_lines(&visible_render_lines)
     }
 }

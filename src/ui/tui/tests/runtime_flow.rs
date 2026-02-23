@@ -5291,13 +5291,35 @@ fn parse_cursor_metadata_requires_five_fields() {
 
 #[test]
 fn ansi_line_parser_preserves_text_and_styles() {
-    let line = ansi_line_to_styled_line("a\u{1b}[31mb\u{1b}[0mc");
+    let lines = ansi_lines_to_styled_lines(&["a\u{1b}[31mb\u{1b}[0mc".to_string()]);
+    let line = &lines[0];
     assert_eq!(line.to_plain_text(), "abc");
     assert_eq!(line.spans().len(), 3);
     assert_eq!(line.spans()[1].as_str(), "b");
     assert_eq!(
         line.spans()[1].style.and_then(|style| style.fg),
         Some(ansi_16_color(1))
+    );
+}
+
+#[test]
+fn ansi_parser_carries_style_across_lines_until_reset() {
+    let styled_lines = ansi_lines_to_styled_lines(&[
+        "a\u{1b}[31mb".to_string(),
+        "c".to_string(),
+        "\u{1b}[0md".to_string(),
+    ]);
+    assert_eq!(styled_lines.len(), 3);
+    assert_eq!(styled_lines[0].to_plain_text(), "ab");
+    assert_eq!(styled_lines[1].to_plain_text(), "c");
+    assert_eq!(styled_lines[2].to_plain_text(), "d");
+    assert_eq!(
+        styled_lines[1].spans()[0].style.and_then(|style| style.fg),
+        Some(ansi_16_color(1))
+    );
+    assert_eq!(
+        styled_lines[2].spans()[0].style.and_then(|style| style.fg),
+        None
     );
 }
 
