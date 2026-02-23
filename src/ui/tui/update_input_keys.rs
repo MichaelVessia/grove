@@ -9,18 +9,11 @@ impl GroveApp {
         self.preview_is_focused() && self.preview_tab == PreviewTab::Agent
     }
 
-    pub(super) fn preview_shell_tab_is_focused(&self) -> bool {
-        self.preview_is_focused() && self.preview_tab == PreviewTab::Shell
-    }
-
     pub(super) fn preview_scroll_tab_is_focused(&self) -> bool {
         self.preview_is_focused()
             && matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
     }
 
-    pub(super) fn preview_git_tab_is_focused(&self) -> bool {
-        self.preview_is_focused() && self.preview_tab == PreviewTab::Git
-    }
     pub(super) fn open_keybind_help(&mut self) {
         if self.modal_open() {
             return;

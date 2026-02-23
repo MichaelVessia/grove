@@ -44,14 +44,6 @@ pub(super) struct PaletteCommandSpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum StatusHintContext {
-    List,
-    PreviewAgent,
-    PreviewShell,
-    PreviewGit,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum HelpHintContext {
     Global,
     Workspace,

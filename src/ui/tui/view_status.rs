@@ -89,80 +89,40 @@ impl GroveApp {
         }
     }
 
-    fn status_hints_line(&self, context: StatusHintContext) -> String {
-        UiCommand::status_hints_for(context)
-            .iter()
-            .filter_map(|command| command.status_hint_label(context))
-            .collect::<Vec<&str>>()
-            .join(", ")
+    fn selected_project_label(&self) -> String {
+        let Some(workspace) = self.state.selected_workspace() else {
+            return self.repo_name.clone();
+        };
+
+        if let Some(project_name) = workspace.project_name.as_ref() {
+            return project_name.clone();
+        }
+
+        if let Some(project_path) = workspace.project_path.as_ref()
+            && let Some(project) = self
+                .projects
+                .iter()
+                .find(|project| refer_to_same_location(project.path.as_path(), project_path))
+        {
+            return project.name.clone();
+        }
+
+        self.repo_name.clone()
     }
 
-    fn keybind_hints_line(&self) -> String {
-        if self.command_palette.is_visible() {
-            return "Type to search, Up/Down or C-n/C-p choose, Enter run, Esc close".to_string();
-        }
-        if self.keybind_help_open {
-            return "Esc/? close help".to_string();
-        }
-        if self.create_dialog().is_some() {
-            return "Tab/S-Tab or C-n/C-p field, j/k adjust controls, ';' separates workspace setup cmds, Space toggles auto-run or unsafe, h/l buttons, Enter select/create, Esc cancel"
-                .to_string();
-        }
-        if let Some(dialog) = self.edit_dialog() {
-            if dialog.is_main {
-                return "Tab/S-Tab or C-n/C-p field, type/backspace branch, h/l buttons, Space toggle agent, Enter save/select, Esc cancel"
-                    .to_string();
-            }
-            return "Tab/S-Tab or C-n/C-p field, type/backspace base branch, h/l buttons, Space toggle agent, Enter save/select, Esc cancel"
-                .to_string();
-        }
-        if self.launch_dialog().is_some() {
-            return "Tab/S-Tab or C-n/C-p field, h/l buttons, Space toggles unsafe, Enter select/start, Esc cancel"
-                .to_string();
-        }
-        if self.stop_dialog().is_some() {
-            return "Tab/S-Tab or C-n/C-p field, h/l buttons, Enter select/kill, x confirm, Esc cancel"
-                .to_string();
-        }
-        if self.delete_dialog().is_some() {
-            return "Tab/S-Tab or C-n/C-p field, j/k move, Space toggle branch delete, Enter select/delete, D confirm, Esc cancel"
-                .to_string();
-        }
-        if self.merge_dialog().is_some() {
-            return "Tab/S-Tab or C-n/C-p field, j/k move, Space toggle cleanup, Enter select/merge, m confirm, Esc cancel"
-                .to_string();
-        }
-        if self.update_from_base_dialog().is_some() {
-            return "Tab/S-Tab or C-n/C-p field, h/l buttons, Enter select/update, u confirm, Esc cancel"
-                .to_string();
-        }
-        if self.settings_dialog().is_some() {
-            return "Tab/S-Tab or C-n/C-p field, j/k or h/l change, Enter save/select, Esc cancel"
-                .to_string();
-        }
-        if let Some(dialog) = self.project_dialog() {
-            if dialog.defaults_dialog.is_some() {
-                return "Tab/S-Tab or C-n/C-p field, type/backspace edit defaults, Space toggle auto-run, Enter save/select, Esc close"
-                    .to_string();
-            }
-            return "Type filter, Up/Down or Tab/S-Tab/C-n/C-p navigate, Enter focus project, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close"
-                .to_string();
-        }
-        if self.interactive.is_some() {
-            return "Reserved: Ctrl+K palette, Esc Esc/Ctrl+\\ exit, Alt+J/K browse, Alt+[/] tabs, Alt+Left/Right or Alt+H/L resize (Alt+B/F fallback), Alt+C copy, Alt+V paste"
-                .to_string();
-        }
-        if self.preview_agent_tab_is_focused() {
-            return self.status_hints_line(StatusHintContext::PreviewAgent);
-        }
-        if self.preview_shell_tab_is_focused() {
-            return self.status_hints_line(StatusHintContext::PreviewShell);
-        }
-        if self.preview_git_tab_is_focused() {
-            return self.status_hints_line(StatusHintContext::PreviewGit);
-        }
+    fn footer_context_line(&self) -> String {
+        let project_label = self.selected_project_label();
+        let workspace_label = self
+            .state
+            .selected_workspace()
+            .map(Self::workspace_display_name)
+            .unwrap_or_else(|| "none".to_string());
 
-        self.status_hints_line(StatusHintContext::List)
+        format!("project: {project_label} · workspace: {workspace_label}")
+    }
+
+    fn footer_key_hints_line(&self) -> &'static str {
+        "? help, Ctrl+K palette"
     }
 
     pub(super) fn render_status_line(&self, frame: &mut Frame, area: Rect) {
@@ -171,32 +131,30 @@ impl GroveApp {
         }
 
         let theme = ui_theme();
-        let hints = self.keybind_hints_line();
+        let context = self.footer_context_line();
+        let hints = self.footer_key_hints_line();
         let base_style = Style::new().bg(theme.mantle).fg(theme.text);
-        let chip_style = Style::new().bg(theme.surface0).fg(theme.blue).bold();
+        let context_chip_style = Style::new().bg(theme.surface0).fg(theme.blue).bold();
+        let key_chip_style = Style::new().bg(theme.surface0).fg(theme.mauve).bold();
         let key_style = Style::new().bg(theme.mantle).fg(theme.lavender).bold();
         let text_style = Style::new().bg(theme.mantle).fg(theme.subtext0);
         let sep_style = Style::new().bg(theme.mantle).fg(theme.overlay0);
 
-        let mut left: Vec<FtSpan> = vec![
+        let left: Vec<FtSpan> = vec![
             FtSpan::styled(" ".to_string(), base_style),
-            FtSpan::styled(" Keys ".to_string(), chip_style),
+            FtSpan::styled(" Context ".to_string(), context_chip_style),
+            FtSpan::styled(" ".to_string(), base_style),
+            FtSpan::styled(context, text_style),
+        ];
+
+        let mut right: Vec<FtSpan> = vec![
+            FtSpan::styled(" ".to_string(), base_style),
+            FtSpan::styled(" Keys ".to_string(), key_chip_style),
             FtSpan::styled(" ".to_string(), base_style),
         ];
-        left.extend(keybind_hint_spans(
-            hints.as_str(),
-            text_style,
-            key_style,
-            sep_style,
-        ));
+        right.extend(keybind_hint_spans(hints, text_style, key_style, sep_style));
 
-        let line = chrome_bar_line(
-            usize::from(area.width),
-            base_style,
-            left,
-            Vec::new(),
-            Vec::new(),
-        );
+        let line = chrome_bar_line(usize::from(area.width), base_style, left, Vec::new(), right);
         Paragraph::new(FtText::from_line(line)).render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_STATUS));
     }

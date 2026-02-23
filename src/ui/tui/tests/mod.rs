@@ -1125,7 +1125,7 @@ fn activity_spinner_does_not_shift_header_or_status_layout() {
             let active_status = row_text(active_frame, active_status_row, 0, active_frame.width());
             assert_eq!(
                 idle_status, active_status,
-                "status keybind hints should remain stable when spinner state changes"
+                "status footer should remain stable when spinner state changes"
             );
         });
     });
@@ -1158,12 +1158,11 @@ fn interactive_input_echo_does_not_trigger_activity_spinner() {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(
-            status_text.contains("j/k move")
-                && status_text.contains("Alt+[ prev tab")
-                && status_text.contains("Alt+] next tab")
-                && status_text.contains("h/l pane")
-                && status_text.contains("Enter open"),
-            "status row should show keybind hints, got: {status_text}"
+            status_text.contains("project: grove")
+                && status_text.contains("workspace: feature-a")
+                && status_text.contains("? help")
+                && status_text.contains("Ctrl+K palette"),
+            "status row should show compact context + key hints, got: {status_text}"
         );
     });
 }
@@ -1337,7 +1336,7 @@ fn create_dialog_renders_action_buttons() {
 }
 
 #[test]
-fn status_row_shows_keybind_hints_not_toast_state() {
+fn status_row_ignores_toast_and_shows_compact_footer() {
     let mut app = fixture_app();
     app.show_success_toast("Agent started");
 
@@ -1345,16 +1344,15 @@ fn status_row_shows_keybind_hints_not_toast_state() {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(!status_text.contains("Agent started"));
-        assert!(status_text.contains("j/k move"));
-        assert!(status_text.contains("Alt+[ prev tab"));
-        assert!(status_text.contains("Alt+] next tab"));
-        assert!(status_text.contains("h/l pane"));
-        assert!(status_text.contains("Enter open"));
+        assert!(status_text.contains("project: grove"));
+        assert!(status_text.contains("workspace: base"));
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
 #[test]
-fn status_row_shows_start_hint_in_preview_mode() {
+fn status_row_keeps_compact_footer_in_preview_mode() {
     let mut app = fixture_app();
     app.state.mode = UiMode::Preview;
     app.state.focus = PaneFocus::Preview;
@@ -1363,15 +1361,15 @@ fn status_row_shows_start_hint_in_preview_mode() {
     with_rendered_frame(&app, 220, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Enter attach shell"));
-        assert!(status_text.contains("s start"));
-        assert!(status_text.contains("x stop"));
-        assert!(status_text.contains("D delete"));
+        assert!(status_text.contains("project: grove"));
+        assert!(status_text.contains("workspace: base"));
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
 #[test]
-fn status_row_hides_agent_hints_in_git_tab() {
+fn status_row_keeps_compact_footer_in_git_tab() {
     let mut app = fixture_app();
     app.state.mode = UiMode::Preview;
     app.state.focus = PaneFocus::Preview;
@@ -1382,13 +1380,14 @@ fn status_row_hides_agent_hints_in_git_tab() {
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(!status_text.contains("s start"));
         assert!(!status_text.contains("x stop"));
-        assert!(!status_text.contains("j/k scroll"));
-        assert!(status_text.contains("Enter attach lazygit"));
+        assert!(!status_text.contains("Enter attach lazygit"));
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
 #[test]
-fn status_row_shows_shell_hints_without_agent_controls_in_shell_tab() {
+fn status_row_keeps_compact_footer_in_shell_tab() {
     let mut app = fixture_app();
     app.state.mode = UiMode::Preview;
     app.state.focus = PaneFocus::Preview;
@@ -1397,10 +1396,12 @@ fn status_row_shows_shell_hints_without_agent_controls_in_shell_tab() {
     with_rendered_frame(&app, 180, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Enter attach shell"));
-        assert!(status_text.contains("j/k scroll"));
+        assert!(!status_text.contains("Enter attach shell"));
+        assert!(!status_text.contains("j/k scroll"));
         assert!(!status_text.contains("s start"));
         assert!(!status_text.contains("x stop"));
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
@@ -2050,33 +2051,27 @@ fn status_row_shows_palette_hints_when_palette_open() {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(
-            status_text.contains("Type to"),
-            "status row missing search hint: {status_text}"
-        );
-        assert!(
-            status_text.contains("close"),
-            "status row missing close hint: {status_text}"
+            !status_text.trim().is_empty(),
+            "status row should remain visible with palette open, got: {status_text}"
         );
     });
 }
 
 #[test]
-fn project_dialog_footer_hints_wrap_instead_of_truncating() {
+fn project_dialog_keeps_compact_footer() {
     let mut app = fixture_app();
     app.open_project_dialog();
 
     with_rendered_frame(&app, 60, 24, |frame| {
-        let has_first_segment = (0..frame.height())
-            .any(|row| row_text(frame, row, 0, frame.width()).contains("Enter focus"));
-        let has_last_segment = (0..frame.height())
-            .any(|row| row_text(frame, row, 0, frame.width()).contains("Esc close"));
-        assert!(has_first_segment);
-        assert!(has_last_segment);
+        let status_row = frame.height().saturating_sub(1);
+        let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
 #[test]
-fn launch_dialog_footer_hints_wrap_instead_of_truncating() {
+fn launch_dialog_keeps_compact_footer() {
     let mut app = fixture_app();
     app.set_launch_dialog(LaunchDialogState {
         start_config: StartAgentConfigState::new(String::new(), String::new(), false),
@@ -2084,12 +2079,10 @@ fn launch_dialog_footer_hints_wrap_instead_of_truncating() {
     });
 
     with_rendered_frame(&app, 60, 24, |frame| {
-        let has_first_segment = (0..frame.height())
-            .any(|row| row_text(frame, row, 0, frame.width()).contains("Tab/C-n next"));
-        let has_last_segment = (0..frame.height())
-            .any(|row| row_text(frame, row, 0, frame.width()).contains("Esc cancel"));
-        assert!(has_first_segment);
-        assert!(has_last_segment);
+        let status_row = frame.height().saturating_sub(1);
+        let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
@@ -2125,7 +2118,7 @@ fn create_dialog_wrapped_hint_rows_keep_hint_style() {
 }
 
 #[test]
-fn status_row_shows_interactive_reserved_key_hints() {
+fn status_row_keeps_compact_footer_in_interactive_mode() {
     let mut app = fixture_app();
     app.interactive = Some(InteractiveState::new(
         "%0".to_string(),
@@ -2138,9 +2131,12 @@ fn status_row_shows_interactive_reserved_key_hints() {
     with_rendered_frame(&app, 160, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains("project: grove"));
+        assert!(status_text.contains("workspace: base"));
+        assert!(status_text.contains("? help"));
         assert!(status_text.contains("Ctrl+K palette"));
-        assert!(status_text.contains("Esc Esc/Ctrl+\\ exit"));
-        assert!(status_text.contains("Alt+C copy"));
+        assert!(!status_text.contains("Esc Esc/Ctrl+\\ exit"));
+        assert!(!status_text.contains("Alt+C copy"));
     });
 }
 
@@ -2239,33 +2235,33 @@ fn toast_messages_are_sanitized_and_truncated_to_fit_width() {
 }
 
 #[test]
-fn status_row_shows_create_dialog_keybind_hints_when_modal_open() {
+fn status_row_keeps_compact_footer_in_create_dialog() {
     let mut app = fixture_app();
     app.open_create_dialog();
 
     with_rendered_frame(&app, 140, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Tab/S-Tab or C-n/C-p field"));
-        assert!(status_text.contains("j/k adjust controls"));
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
 #[test]
-fn status_row_shows_edit_dialog_keybind_hints_when_modal_open() {
+fn status_row_keeps_compact_footer_in_edit_dialog() {
     let mut app = fixture_app();
     app.open_edit_dialog();
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("type/backspace branch"));
-        assert!(status_text.contains("h/l buttons"));
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
 #[test]
-fn status_row_shows_launch_dialog_keybind_hints_when_modal_open() {
+fn status_row_keeps_compact_footer_in_launch_dialog() {
     let mut app = fixture_app();
     app.set_launch_dialog(LaunchDialogState {
         start_config: StartAgentConfigState::new(String::new(), String::new(), false),
@@ -2275,12 +2271,13 @@ fn status_row_shows_launch_dialog_keybind_hints_when_modal_open() {
     with_rendered_frame(&app, 140, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Space toggles unsafe"));
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
 #[test]
-fn status_row_shows_stop_dialog_keybind_hints_when_modal_open() {
+fn status_row_keeps_compact_footer_in_stop_dialog() {
     let mut app = fixture_app();
     app.state.selected_index = 1;
     app.state.workspaces[1].status = WorkspaceStatus::Active;
@@ -2289,13 +2286,13 @@ fn status_row_shows_stop_dialog_keybind_hints_when_modal_open() {
     with_rendered_frame(&app, 90, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Enter select/kill"));
-        assert!(status_text.contains("x confirm"));
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
 #[test]
-fn status_row_shows_delete_dialog_keybind_hints_when_modal_open() {
+fn status_row_keeps_compact_footer_in_delete_dialog() {
     let mut app = fixture_app();
     app.state.selected_index = 1;
     app.open_delete_dialog();
@@ -2303,13 +2300,13 @@ fn status_row_shows_delete_dialog_keybind_hints_when_modal_open() {
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Tab/S-Tab or C-n/C-p field"));
-        assert!(status_text.contains("Space toggle"));
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
 #[test]
-fn status_row_shows_merge_dialog_keybind_hints_when_modal_open() {
+fn status_row_keeps_compact_footer_in_merge_dialog() {
     let mut app = fixture_app();
     app.state.selected_index = 1;
     app.open_merge_dialog();
@@ -2317,13 +2314,13 @@ fn status_row_shows_merge_dialog_keybind_hints_when_modal_open() {
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Tab/S-Tab or C-n/C-p field"));
-        assert!(status_text.contains("Space toggle cleanup"));
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
 #[test]
-fn status_row_shows_update_from_base_dialog_hints_when_modal_open() {
+fn status_row_keeps_compact_footer_in_update_from_base_dialog() {
     let mut app = fixture_app();
     app.state.selected_index = 1;
     app.open_update_from_base_dialog();
@@ -2331,8 +2328,8 @@ fn status_row_shows_update_from_base_dialog_hints_when_modal_open() {
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Tab/S-Tab or C-n/C-p field"));
-        assert!(status_text.contains("Enter select/update"));
+        assert!(status_text.contains("? help"));
+        assert!(status_text.contains("Ctrl+K palette"));
     });
 }
 
