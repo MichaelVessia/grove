@@ -2146,14 +2146,13 @@ fn status_row_shows_palette_hints_when_palette_open() {
 }
 
 #[test]
-fn status_row_uses_selected_workspace_status_as_state_chip() {
-    let mut app = fixture_app();
-    app.state.selected_index = 1;
+fn status_row_uses_ui_mode_as_state_chip() {
+    let app = fixture_app();
 
     with_rendered_frame(&app, 120, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains(" Idle "));
+        assert!(status_text.contains(" List "));
         assert!(!status_text.contains(" Context "));
     });
 }

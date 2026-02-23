@@ -1,20 +1,6 @@
 use super::*;
 
 impl GroveApp {
-    fn footer_workspace_state_label(status: WorkspaceStatus) -> &'static str {
-        match status {
-            WorkspaceStatus::Main => "Main",
-            WorkspaceStatus::Idle => "Idle",
-            WorkspaceStatus::Active => "Active",
-            WorkspaceStatus::Thinking => "Thinking",
-            WorkspaceStatus::Waiting => "Waiting",
-            WorkspaceStatus::Done => "Done",
-            WorkspaceStatus::Error => "Error",
-            WorkspaceStatus::Unknown => "Unknown",
-            WorkspaceStatus::Unsupported => "Unsupported",
-        }
-    }
-
     fn footer_dialog_state_label(kind: &str) -> &'static str {
         match kind {
             "launch" => "Launch",
@@ -54,13 +40,9 @@ impl GroveApp {
             return "Interactive".to_string();
         }
 
-        if let Some(workspace) = self.state.selected_workspace() {
-            return Self::footer_workspace_state_label(workspace.status).to_string();
-        }
-
         match self.state.mode {
             UiMode::List => "List".to_string(),
-            UiMode::Preview => "Preview".to_string(),
+            UiMode::Preview => format!("Preview: {}", self.preview_tab.label()),
         }
     }
 
