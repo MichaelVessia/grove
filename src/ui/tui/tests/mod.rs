@@ -416,6 +416,7 @@ fn arb_key_event() -> impl Strategy<Value = KeyEvent> {
         Just(key_press(KeyCode::Char('k'))),
         Just(key_press(KeyCode::Char('s'))),
         Just(key_press(KeyCode::Char('x'))),
+        Just(key_press(KeyCode::Char('r'))),
         Just(key_press(KeyCode::Char('n'))),
         Just(key_press(KeyCode::Char('!'))),
         Just(key_press(KeyCode::Char('q'))),
@@ -1380,6 +1381,7 @@ fn status_row_keeps_compact_footer_in_git_tab() {
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(!status_text.contains("s start"));
         assert!(!status_text.contains("x stop"));
+        assert!(!status_text.contains("r restart"));
         assert!(!status_text.contains("Enter attach lazygit"));
         assert!(status_text.contains("? help"));
         assert!(status_text.contains("Ctrl+K palette"));
@@ -1400,6 +1402,7 @@ fn status_row_keeps_compact_footer_in_shell_tab() {
         assert!(!status_text.contains("j/k scroll"));
         assert!(!status_text.contains("s start"));
         assert!(!status_text.contains("x stop"));
+        assert!(!status_text.contains("r restart"));
         assert!(status_text.contains("? help"));
         assert!(status_text.contains("Ctrl+K palette"));
     });
@@ -1797,6 +1800,11 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
             .any(|id| id == &palette_id(UiCommand::StartAgent))
     );
     assert!(
+        !list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::RestartAgent))
+    );
+    assert!(
         list_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::PreviousTab))
@@ -1829,6 +1837,11 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
         preview_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::StartAgent))
+    );
+    assert!(
+        !preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::RestartAgent))
     );
     assert!(
         preview_ids
@@ -1869,6 +1882,23 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
         !preview_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::EnterInteractive))
+    );
+
+    app.state.workspaces[1].status = WorkspaceStatus::Active;
+    let running_preview_ids: Vec<String> = app
+        .build_command_palette_actions()
+        .into_iter()
+        .map(|action| action.id)
+        .collect();
+    assert!(
+        running_preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::RestartAgent))
+    );
+    assert!(
+        !running_preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::StartAgent))
     );
 
     app.shell_sessions

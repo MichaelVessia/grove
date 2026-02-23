@@ -49,6 +49,7 @@ pub(super) const HIT_ID_MERGE_DIALOG: u32 = 15;
 pub(super) const HIT_ID_UPDATE_FROM_BASE_DIALOG: u32 = 16;
 pub(super) const HIT_ID_PROJECT_DEFAULTS_DIALOG: u32 = 17;
 pub(super) const HIT_ID_STOP_DIALOG: u32 = 18;
+pub(super) const HIT_ID_CONFIRM_DIALOG: u32 = 19;
 pub(super) const MAX_PENDING_INPUT_TRACES: usize = 256;
 pub(super) const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 pub(super) const FAST_ANIMATION_INTERVAL_MS: u64 = 100;

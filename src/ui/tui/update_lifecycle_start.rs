@@ -1,8 +1,9 @@
 use super::*;
 
 impl GroveApp {
-    pub(super) fn start_selected_workspace_agent_with_options(
+    fn start_workspace_agent_with_options(
         &mut self,
+        workspace: Workspace,
         prompt: Option<String>,
         pre_launch_command: Option<String>,
         skip_permissions: bool,
@@ -10,19 +11,14 @@ impl GroveApp {
         if self.start_in_flight {
             return;
         }
-
-        if !workspace_can_start_agent(self.state.selected_workspace()) {
+        if !workspace_can_start_agent(Some(&workspace)) {
             self.show_info_toast("workspace cannot be started");
             return;
         }
-        let Some(workspace) = self.state.selected_workspace() else {
-            self.show_info_toast("no workspace selected");
-            return;
-        };
-        let (capture_cols, capture_rows) = self.capture_dimensions();
 
+        let (capture_cols, capture_rows) = self.capture_dimensions();
         let request = launch_request_for_workspace(
-            workspace,
+            &workspace,
             prompt,
             pre_launch_command,
             skip_permissions,
@@ -53,6 +49,53 @@ impl GroveApp {
             );
             Msg::StartAgentCompleted(completion.into())
         }));
+    }
+
+    pub(super) fn start_selected_workspace_agent_with_options(
+        &mut self,
+        prompt: Option<String>,
+        pre_launch_command: Option<String>,
+        skip_permissions: bool,
+    ) {
+        if self.start_in_flight {
+            return;
+        }
+
+        if !workspace_can_start_agent(self.state.selected_workspace()) {
+            self.show_info_toast("workspace cannot be started");
+            return;
+        }
+        let Some(workspace) = self.state.selected_workspace().cloned() else {
+            self.show_info_toast("no workspace selected");
+            return;
+        };
+        self.start_workspace_agent_with_options(
+            workspace,
+            prompt,
+            pre_launch_command,
+            skip_permissions,
+        );
+    }
+
+    pub(super) fn restart_workspace_agent_by_path(&mut self, workspace_path: &Path) {
+        let Some(workspace) = self
+            .state
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.path == workspace_path)
+            .cloned()
+        else {
+            self.show_error_toast("agent restart failed");
+            return;
+        };
+
+        let prompt = read_workspace_launch_prompt(&workspace.path);
+        self.start_workspace_agent_with_options(
+            workspace,
+            prompt,
+            None,
+            self.launch_skip_permissions,
+        );
     }
 
     pub(super) fn apply_start_agent_completion(&mut self, completion: StartAgentCompletion) {

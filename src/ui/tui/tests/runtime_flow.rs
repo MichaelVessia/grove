@@ -1519,13 +1519,49 @@ fn key_message_updates_model_state() {
 }
 
 #[test]
-fn q_quits_when_not_interactive() {
+fn q_opens_quit_dialog_when_not_interactive() {
     let mut app = fixture_app();
     let cmd = ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('q')).with_kind(KeyEventKind::Press)),
     );
-    assert!(matches!(cmd, Cmd::Quit));
+    assert!(!matches!(cmd, Cmd::Quit));
+    assert!(app.confirm_dialog().is_some());
+}
+
+#[test]
+fn enter_confirms_quit_dialog_and_quits() {
+    let mut app = fixture_app();
+    let open_cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('q')).with_kind(KeyEventKind::Press)),
+    );
+    assert!(!matches!(open_cmd, Cmd::Quit));
+    assert!(app.confirm_dialog().is_some());
+
+    let confirm_cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+    assert!(matches!(confirm_cmd, Cmd::Quit));
+    assert!(app.confirm_dialog().is_none());
+}
+
+#[test]
+fn escape_cancels_quit_dialog() {
+    let mut app = fixture_app();
+    let _ = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('q')).with_kind(KeyEventKind::Press)),
+    );
+    assert!(app.confirm_dialog().is_some());
+
+    let cancel_cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+    );
+    assert!(!matches!(cancel_cmd, Cmd::Quit));
+    assert!(app.confirm_dialog().is_none());
 }
 
 #[test]
@@ -3581,6 +3617,120 @@ fn stop_key_stops_selected_workspace_agent() {
 }
 
 #[test]
+fn restart_key_restarts_selected_workspace_agent() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(app.confirm_dialog().is_some());
+    assert!(commands.borrow().is_empty());
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(app.confirm_dialog().is_none());
+    assert!(commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "C-c".to_string(),
+            ]
+    }));
+    assert!(commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+            ]
+    }));
+    assert!(commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "new-session".to_string(),
+                "-d".to_string(),
+                "-s".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "-c".to_string(),
+                "/repos/grove-feature-a".to_string(),
+            ]
+    }));
+    assert!(commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "codex".to_string(),
+                "Enter".to_string(),
+            ]
+    }));
+    assert_eq!(
+        app.state
+            .selected_workspace()
+            .map(|workspace| workspace.status),
+        Some(WorkspaceStatus::Active)
+    );
+}
+
+#[test]
+fn background_restart_key_queues_lifecycle_task() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 1;
+    focus_agent_preview_tab(&mut app);
+
+    let open_cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
+    );
+    assert!(!cmd_contains_task(&open_cmd));
+    assert!(app.confirm_dialog().is_some());
+
+    let confirm_cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(cmd_contains_task(&confirm_cmd));
+}
+
+#[test]
+fn escape_cancels_restart_dialog() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
+    );
+    assert!(app.confirm_dialog().is_some());
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(app.confirm_dialog().is_none());
+    assert!(commands.borrow().is_empty());
+}
+
+#[test]
 fn background_stop_key_queues_lifecycle_task() {
     let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 1;
@@ -3708,6 +3858,21 @@ fn stop_key_without_running_agent_shows_toast() {
 }
 
 #[test]
+fn restart_key_without_running_agent_shows_toast() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(commands.borrow().is_empty());
+    assert!(app.status_bar_line().contains("no agent running"));
+}
+
+#[test]
 fn stop_key_noop_in_git_tab() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -3719,6 +3884,23 @@ fn stop_key_noop_in_git_tab() {
     ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(commands.borrow().is_empty());
+}
+
+#[test]
+fn restart_key_noop_in_git_tab() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+    app.state.mode = UiMode::Preview;
+    app.state.focus = PaneFocus::Preview;
+    app.preview_tab = PreviewTab::Git;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
     );
 
     assert!(commands.borrow().is_empty());

@@ -171,6 +171,12 @@ impl GroveApp {
                             || self.state.focus == PaneFocus::Preview)
                         && self.preview_tab == PreviewTab::Agent
                 }
+                UiCommand::RestartAgent => {
+                    matches!(key_event.code, KeyCode::Char('r'))
+                        && (self.state.mode == UiMode::Preview
+                            || self.state.focus == PaneFocus::Preview)
+                        && self.preview_tab == PreviewTab::Agent
+                }
                 UiCommand::DeleteWorkspace => matches!(key_event.code, KeyCode::Char('D')),
                 UiCommand::MergeWorkspace => matches!(key_event.code, KeyCode::Char('m')),
                 UiCommand::UpdateFromBase => matches!(key_event.code, KeyCode::Char('u')),
@@ -217,6 +223,10 @@ impl GroveApp {
         }
         if self.stop_dialog().is_some() {
             self.handle_stop_dialog_key(*key_event);
+            return true;
+        }
+        if self.confirm_dialog().is_some() {
+            self.handle_confirm_dialog_key(*key_event);
             return true;
         }
         if self.delete_dialog().is_some() {

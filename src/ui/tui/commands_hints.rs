@@ -37,6 +37,7 @@ impl UiCommand {
                 UiCommand::ScrollBottom,
                 UiCommand::StartAgent,
                 UiCommand::StopAgent,
+                UiCommand::RestartAgent,
             ],
             HelpHintContext::PreviewShell => &[
                 UiCommand::PreviousTab,
@@ -57,7 +58,7 @@ impl UiCommand {
     pub(super) fn help_hint_label(self, context: HelpHintContext) -> Option<&'static str> {
         match (self, context) {
             (UiCommand::OpenHelp, HelpHintContext::Global) => Some("? help"),
-            (UiCommand::Quit, HelpHintContext::Global) => Some("q quit"),
+            (UiCommand::Quit, HelpHintContext::Global) => Some("q quit (confirm)"),
             (UiCommand::ToggleFocus, HelpHintContext::Global) => Some("Tab/h/l switch pane"),
             (UiCommand::ToggleSidebar, HelpHintContext::Global) => Some("\\ toggle sidebar"),
             (UiCommand::ToggleMouseCapture, HelpHintContext::Global) => {
@@ -107,6 +108,7 @@ impl UiCommand {
             (UiCommand::ScrollBottom, HelpHintContext::PreviewShell) => Some("G or End bottom"),
             (UiCommand::StartAgent, HelpHintContext::PreviewAgent) => Some("s start"),
             (UiCommand::StopAgent, HelpHintContext::PreviewAgent) => Some("x stop (confirm)"),
+            (UiCommand::RestartAgent, HelpHintContext::PreviewAgent) => Some("r restart"),
             (UiCommand::EnterInteractive, HelpHintContext::PreviewGit) => {
                 Some("Enter attach lazygit")
             }

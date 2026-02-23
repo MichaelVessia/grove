@@ -335,6 +335,7 @@ impl GroveApp {
         match self.active_dialog.as_ref() {
             Some(ActiveDialog::Launch(_)) => Some("launch"),
             Some(ActiveDialog::Stop(_)) => Some("stop"),
+            Some(ActiveDialog::Confirm(_)) => Some("confirm"),
             Some(ActiveDialog::Delete(_)) => Some("delete"),
             Some(ActiveDialog::Merge(_)) => Some("merge"),
             Some(ActiveDialog::UpdateFromBase(_)) => Some("update_from_base"),
@@ -362,6 +363,14 @@ impl GroveApp {
         StopDialogState
     );
     active_dialog_take_accessor!(take_stop_dialog, Stop, StopDialogState);
+    active_dialog_accessors!(
+        confirm_dialog,
+        confirm_dialog_mut,
+        set_confirm_dialog,
+        Confirm,
+        ConfirmDialogState
+    );
+    active_dialog_take_accessor!(take_confirm_dialog, Confirm, ConfirmDialogState);
     active_dialog_accessors!(
         delete_dialog,
         delete_dialog_mut,

@@ -92,6 +92,7 @@ use terminal::{
 mod shared;
 use shared::*;
 mod dialogs;
+mod dialogs_confirm;
 mod dialogs_create_key;
 mod dialogs_create_setup;
 mod dialogs_delete;
@@ -162,6 +163,7 @@ mod view_chrome_header;
 mod view_chrome_shared;
 mod view_chrome_sidebar;
 mod view_layout;
+mod view_overlays_confirm;
 mod view_overlays_create;
 mod view_overlays_edit;
 mod view_overlays_help;
@@ -253,6 +255,7 @@ impl SessionTracker {
 enum ActiveDialog {
     Launch(LaunchDialogState),
     Stop(StopDialogState),
+    Confirm(ConfirmDialogState),
     Delete(DeleteDialogState),
     Merge(MergeDialogState),
     UpdateFromBase(UpdateFromBaseDialogState),
@@ -333,6 +336,7 @@ struct GroveApp {
     pending_auto_start_workspace: Option<PendingAutoStartWorkspace>,
     pending_create_start_config: Option<StartAgentConfigState>,
     pending_auto_launch_shell_workspace_path: Option<PathBuf>,
+    pending_restart_workspace_path: Option<PathBuf>,
     start_in_flight: bool,
     stop_in_flight: bool,
     deferred_cmds: Vec<Cmd<Msg>>,

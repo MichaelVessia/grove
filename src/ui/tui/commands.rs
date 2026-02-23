@@ -21,6 +21,7 @@ pub(super) enum UiCommand {
     EditWorkspace,
     StartAgent,
     StopAgent,
+    RestartAgent,
     DeleteWorkspace,
     MergeWorkspace,
     UpdateFromBase,
@@ -54,7 +55,7 @@ pub(super) enum HelpHintContext {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 32] = [
+    pub(super) const ALL: [UiCommand; 33] = [
         UiCommand::ToggleFocus,
         UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
@@ -76,6 +77,7 @@ impl UiCommand {
         UiCommand::EditWorkspace,
         UiCommand::StartAgent,
         UiCommand::StopAgent,
+        UiCommand::RestartAgent,
         UiCommand::DeleteWorkspace,
         UiCommand::MergeWorkspace,
         UiCommand::UpdateFromBase,

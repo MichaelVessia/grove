@@ -80,10 +80,6 @@ impl GroveApp {
     }
 
     pub(super) fn execute_ui_command(&mut self, command: UiCommand) -> bool {
-        if matches!(&command, UiCommand::Quit) {
-            return true;
-        }
-
         match command {
             UiCommand::ToggleFocus => {
                 reduce(&mut self.state, Action::ToggleFocus);
@@ -175,6 +171,9 @@ impl GroveApp {
             UiCommand::StopAgent => {
                 self.open_stop_dialog();
             }
+            UiCommand::RestartAgent => {
+                self.open_restart_dialog();
+            }
             UiCommand::DeleteWorkspace => {
                 self.open_delete_dialog();
             }
@@ -205,7 +204,9 @@ impl GroveApp {
             UiCommand::OpenCommandPalette => {
                 self.open_command_palette();
             }
-            UiCommand::Quit => unreachable!(),
+            UiCommand::Quit => {
+                self.open_quit_dialog();
+            }
         }
 
         false

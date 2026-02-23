@@ -80,6 +80,21 @@ pub(super) struct StopDialogState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ConfirmDialogAction {
+    RestartAgent {
+        workspace_name: String,
+        workspace_path: PathBuf,
+    },
+    QuitApp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ConfirmDialogState {
+    pub(super) action: ConfirmDialogAction,
+    pub(super) focused_field: ConfirmDialogField,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DeleteDialogState {
     pub(super) project_name: Option<String>,
     pub(super) project_path: Option<PathBuf>,
@@ -131,8 +146,18 @@ pub(super) enum StopDialogField {
     CancelButton,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ConfirmDialogField {
+    ConfirmButton,
+    CancelButton,
+}
+
 cyclic_field_nav!(pub(super) StopDialogField {
     StopButton, CancelButton,
+});
+
+cyclic_field_nav!(pub(super) ConfirmDialogField {
+    ConfirmButton, CancelButton,
 });
 
 cyclic_field_nav!(pub(super) DeleteDialogField {

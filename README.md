@@ -130,6 +130,7 @@ Inside Grove:
 
 - `n` new workspace
 - `s` start agent
+- `r` restart agent in Agent preview (with confirm modal)
 - `Enter` open preview / interactive attach (context dependent)
 - `x` stop agent in Agent preview (with confirm modal)
 - `Alt+X` stop selected workspace agent from any context (with confirm modal)
@@ -140,7 +141,7 @@ Inside Grove:
 - `S` settings
 - `Ctrl+K` command palette
 - `?` keybind help
-- `q` quit
+- `q` quit (with confirm modal)
 
 ## CLI Flags
 

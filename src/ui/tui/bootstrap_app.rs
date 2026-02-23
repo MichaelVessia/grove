@@ -187,6 +187,7 @@ impl GroveApp {
             pending_auto_start_workspace: None,
             pending_create_start_config: None,
             pending_auto_launch_shell_workspace_path: None,
+            pending_restart_workspace_path: None,
             start_in_flight: false,
             stop_in_flight: false,
             deferred_cmds: Vec::new(),

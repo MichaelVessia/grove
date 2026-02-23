@@ -175,6 +175,13 @@ impl UiCommand {
                 tags: &["stop", "agent", "workspace", "x"],
                 category: "Workspace",
             }),
+            Self::RestartAgent => Some(PaletteCommandSpec {
+                id: "palette:restart_agent",
+                title: "Restart Agent",
+                description: "Open confirm dialog to restart selected workspace agent session (r in Agent preview)",
+                tags: &["restart", "agent", "workspace", "r"],
+                category: "Workspace",
+            }),
             Self::DeleteWorkspace => Some(PaletteCommandSpec {
                 id: "palette:delete_workspace",
                 title: "Delete Workspace",
@@ -248,7 +255,7 @@ impl UiCommand {
             Self::Quit => Some(PaletteCommandSpec {
                 id: "palette:quit",
                 title: "Quit Grove",
-                description: "Exit application (q)",
+                description: "Open confirm dialog to exit application (q)",
                 tags: &["quit", "exit", "q"],
                 category: "System",
             }),
