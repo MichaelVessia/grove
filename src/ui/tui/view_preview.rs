@@ -6,14 +6,18 @@ impl GroveApp {
             return;
         }
 
-        let title = "Preview";
-        let block =
-            Block::new()
-                .title(title)
-                .borders(Borders::ALL)
-                .border_style(self.pane_border_style(
-                    self.state.focus == PaneFocus::Preview && !self.modal_open(),
-                ));
+        let preview_focused = self.state.focus == PaneFocus::Preview && !self.modal_open();
+        let interactive_input_active = self.interactive.is_some() && !self.modal_open();
+        let theme = ui_theme();
+        let (title, border_style) = if interactive_input_active {
+            ("Preview · INSERT", Style::new().fg(theme.teal).bold())
+        } else {
+            ("Preview", self.pane_border_style(preview_focused))
+        };
+        let block = Block::new()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(border_style);
         let inner = block.inner(area);
         block.render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_PREVIEW));

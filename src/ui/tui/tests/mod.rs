@@ -2423,6 +2423,61 @@ fn preview_pane_renders_ansi_colors() {
 }
 
 #[test]
+fn preview_pane_border_is_blue_when_preview_focused_without_interactive_input() {
+    let mut app = fixture_app();
+    app.state.mode = UiMode::Preview;
+    app.state.focus = PaneFocus::Preview;
+
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+    with_rendered_frame(&app, 80, 24, |frame| {
+        let Some(corner_cell) = frame.buffer.get(layout.preview.x, layout.preview.y) else {
+            panic!("preview border corner should exist");
+        };
+        assert_eq!(corner_cell.fg, ui_theme().blue);
+
+        let title_text = row_text(
+            frame,
+            layout.preview.y,
+            layout.preview.x.saturating_add(1),
+            layout.preview.right().saturating_sub(1),
+        );
+        assert!(title_text.contains("Preview"));
+        assert!(!title_text.contains("INSERT"));
+    });
+}
+
+#[test]
+fn interactive_preview_border_is_teal_and_shows_insert_label() {
+    let mut app = fixture_app();
+    app.state.mode = UiMode::Preview;
+    app.state.focus = PaneFocus::Preview;
+    app.interactive = Some(InteractiveState::new(
+        "%1".to_string(),
+        "grove-ws-feature-a".to_string(),
+        Instant::now(),
+        34,
+        78,
+    ));
+
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+    with_rendered_frame(&app, 80, 24, |frame| {
+        let Some(corner_cell) = frame.buffer.get(layout.preview.x, layout.preview.y) else {
+            panic!("preview border corner should exist");
+        };
+        assert_eq!(corner_cell.fg, ui_theme().teal);
+
+        let title_text = row_text(
+            frame,
+            layout.preview.y,
+            layout.preview.x.saturating_add(1),
+            layout.preview.right().saturating_sub(1),
+        );
+        assert!(title_text.contains("Preview"));
+        assert!(title_text.contains("INSERT"));
+    });
+}
+
+#[test]
 fn codex_interactive_preview_keeps_ansi_colors() {
     let mut app = fixture_app();
     app.state.selected_index = 1;
