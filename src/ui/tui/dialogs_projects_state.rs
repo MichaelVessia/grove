@@ -107,6 +107,7 @@ impl GroveApp {
             filter: String::new(),
             filtered_project_indices,
             selected_filtered_index,
+            reorder: None,
             add_dialog: None,
             defaults_dialog: None,
         });
@@ -121,5 +122,27 @@ impl GroveApp {
             path: String::new(),
             focused_field: ProjectAddDialogField::Name,
         });
+    }
+
+    pub(super) fn select_project_dialog_project_by_path(&mut self, project_path: &Path) {
+        let filtered_indices = self
+            .project_dialog()
+            .map(|dialog| dialog.filtered_project_indices.clone())
+            .unwrap_or_default();
+        if filtered_indices.is_empty() {
+            return;
+        }
+
+        let Some(selected_filtered_index) = filtered_indices.iter().position(|project_index| {
+            self.projects
+                .get(*project_index)
+                .is_some_and(|project| refer_to_same_location(project.path.as_path(), project_path))
+        }) else {
+            return;
+        };
+
+        if let Some(dialog) = self.project_dialog_mut() {
+            dialog.selected_filtered_index = selected_filtered_index;
+        }
     }
 }

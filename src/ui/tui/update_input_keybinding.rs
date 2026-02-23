@@ -47,6 +47,10 @@ impl GroveApp {
     pub(super) fn apply_keybinding_action(&mut self, action: KeybindingAction) -> bool {
         match action {
             KeybindingAction::DismissModal => {
+                if self.project_reorder_active() {
+                    self.cancel_project_reorder_from_dialog();
+                    return false;
+                }
                 if let Some(kind) = self.active_dialog_kind() {
                     self.log_dialog_event(kind, "dialog_cancelled");
                     if kind == "create" {

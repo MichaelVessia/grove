@@ -192,6 +192,37 @@ impl GroveApp {
         let ctrl_p = key_event.modifiers == Modifiers::CTRL
             && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
 
+        if self.project_reorder_active() {
+            match key_event.code {
+                KeyCode::Escape => {
+                    self.cancel_project_reorder_from_dialog();
+                }
+                KeyCode::Enter => {
+                    self.save_project_reorder_from_dialog();
+                }
+                KeyCode::Char('k') if key_event.modifiers.is_empty() => {
+                    self.move_selected_project_in_dialog(-1);
+                }
+                KeyCode::Char('j') if key_event.modifiers.is_empty() => {
+                    self.move_selected_project_in_dialog(1);
+                }
+                KeyCode::Up | KeyCode::BackTab => {
+                    self.move_selected_project_in_dialog(-1);
+                }
+                KeyCode::Down | KeyCode::Tab => {
+                    self.move_selected_project_in_dialog(1);
+                }
+                KeyCode::Char(_) if ctrl_n => {
+                    self.move_selected_project_in_dialog(1);
+                }
+                KeyCode::Char(_) if ctrl_p => {
+                    self.move_selected_project_in_dialog(-1);
+                }
+                _ => {}
+            }
+            return;
+        }
+
         match key_event.code {
             KeyCode::Escape => {
                 if let Some(dialog) = self.project_dialog_mut()
@@ -294,6 +325,12 @@ impl GroveApp {
                     && (character == 'e' || character == 'E') =>
             {
                 self.open_selected_project_defaults_dialog();
+            }
+            KeyCode::Char(character)
+                if key_event.modifiers == Modifiers::CTRL
+                    && (character == 'r' || character == 'R') =>
+            {
+                self.open_project_reorder_mode();
             }
             KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
                 if let Some(dialog) = self.project_dialog_mut() {

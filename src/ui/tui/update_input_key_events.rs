@@ -183,6 +183,7 @@ impl GroveApp {
                 UiCommand::OpenProjects => {
                     matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'))
                 }
+                UiCommand::ReorderProjects => false,
                 UiCommand::DeleteProject => false,
                 UiCommand::OpenSettings => matches!(key_event.code, KeyCode::Char('S')),
                 UiCommand::ToggleMouseCapture => matches!(key_event.code, KeyCode::Char('M')),

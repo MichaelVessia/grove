@@ -647,7 +647,7 @@ impl GroveApp {
             content_width,
             label_width,
             "Projects",
-            "Type filter, Up/Down or Tab/S-Tab/C-n/C-p move, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Enter/Esc",
+            "Type filter, Up/Down or Tab/S-Tab/C-n/C-p move, Ctrl+R reorder, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Enter/Esc",
             theme,
         );
         Self::keybind_help_push_section_gap(&mut lines, section_gap);

@@ -182,6 +182,13 @@ impl GroveApp {
             ),
             Style::new().fg(theme.overlay0),
         )]));
+        let reorder_active = dialog.reorder.is_some();
+        if reorder_active {
+            lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("Reorder mode active", content_width),
+                Style::new().fg(theme.peach).bold(),
+            )]));
+        }
         lines.push(FtLine::raw(""));
 
         if dialog.filtered_project_indices.is_empty() {
@@ -197,14 +204,21 @@ impl GroveApp {
                     continue;
                 };
                 let selected = visible_index == dialog.selected_filtered_index;
-                let marker = if selected { ">" } else { " " };
+                let marker = if selected && reorder_active {
+                    "↕"
+                } else if selected {
+                    ">"
+                } else {
+                    " "
+                };
                 let name_style = if selected {
                     Style::new().fg(theme.mauve).bold()
                 } else {
                     Style::new().fg(theme.text)
                 };
+                let position = project_index.saturating_add(1);
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                    format!("{marker} {}", project.name),
+                    format!("{marker} {position:>2}. {}", project.name),
                     name_style,
                 )]));
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(
@@ -218,11 +232,12 @@ impl GroveApp {
         }
 
         lines.push(FtLine::raw(""));
-        lines.extend(modal_wrapped_hint_rows(
-            content_width,
-            theme,
-            "Enter focus, Up/Down or Tab/S-Tab/C-n/C-p navigate, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close",
-        ));
+        let hints = if reorder_active {
+            "Reorder mode, j/k or Up/Down or Tab/S-Tab/C-n/C-p move, Enter save, Esc cancel"
+        } else {
+            "Enter focus, Up/Down or Tab/S-Tab/C-n/C-p navigate, Ctrl+R reorder, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close"
+        };
+        lines.extend(modal_wrapped_hint_rows(content_width, theme, hints));
 
         let content = OverlayModalContent {
             title: "Projects",

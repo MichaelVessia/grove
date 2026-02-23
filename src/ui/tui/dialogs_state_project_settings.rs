@@ -1,10 +1,21 @@
+use std::path::PathBuf;
+
+use crate::infrastructure::config::ProjectConfig;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ProjectDialogState {
     pub(super) filter: String,
     pub(super) filtered_project_indices: Vec<usize>,
     pub(super) selected_filtered_index: usize,
+    pub(super) reorder: Option<ProjectReorderState>,
     pub(super) add_dialog: Option<ProjectAddDialogState>,
     pub(super) defaults_dialog: Option<ProjectDefaultsDialogState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ProjectReorderState {
+    pub(super) original_projects: Vec<ProjectConfig>,
+    pub(super) moving_project_path: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

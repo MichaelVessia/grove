@@ -981,6 +981,156 @@ fn project_dialog_ctrl_n_and_ctrl_p_match_tab_navigation() {
 }
 
 #[test]
+fn project_dialog_ctrl_r_enters_reorder_mode() {
+    let mut app = fixture_app();
+    app.projects.push(ProjectConfig {
+        name: "site".to_string(),
+        path: PathBuf::from("/repos/site"),
+        defaults: Default::default(),
+    });
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('r'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert!(
+        app.project_dialog()
+            .and_then(|dialog| dialog.reorder.as_ref())
+            .is_some()
+    );
+}
+
+#[test]
+fn project_dialog_reorder_j_and_k_move_selection() {
+    let mut app = fixture_app();
+    app.projects.push(ProjectConfig {
+        name: "site".to_string(),
+        path: PathBuf::from("/repos/site"),
+        defaults: Default::default(),
+    });
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('r'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert_eq!(app.projects[0].name, "site");
+    assert_eq!(app.projects[1].name, "grove");
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert_eq!(app.projects[0].name, "grove");
+    assert_eq!(app.projects[1].name, "site");
+}
+
+#[test]
+fn project_dialog_reorder_enter_saves_project_order() {
+    let mut app = fixture_app();
+    app.projects.push(ProjectConfig {
+        name: "site".to_string(),
+        path: PathBuf::from("/repos/site"),
+        defaults: Default::default(),
+    });
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('r'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Down).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert_eq!(app.projects[0].name, "site");
+    assert_eq!(app.projects[1].name, "grove");
+    assert!(
+        app.project_dialog()
+            .and_then(|dialog| dialog.reorder.as_ref())
+            .is_none()
+    );
+
+    let loaded =
+        crate::infrastructure::config::load_from_path(&app.config_path).expect("config loads");
+    assert_eq!(loaded.projects[0].name, "site");
+    assert_eq!(loaded.projects[1].name, "grove");
+}
+
+#[test]
+fn project_dialog_reorder_escape_restores_original_order() {
+    let mut app = fixture_app();
+    app.projects.push(ProjectConfig {
+        name: "site".to_string(),
+        path: PathBuf::from("/repos/site"),
+        defaults: Default::default(),
+    });
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('r'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Down).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+    );
+
+    assert_eq!(app.projects[0].name, "grove");
+    assert_eq!(app.projects[1].name, "site");
+    assert!(
+        app.project_dialog()
+            .and_then(|dialog| dialog.reorder.as_ref())
+            .is_none()
+    );
+}
+
+#[test]
 fn project_add_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     let mut app = fixture_app();
 

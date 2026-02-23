@@ -210,6 +210,15 @@ impl UiCommand {
                 tags: &["projects", "project", "switcher", "defaults", "setup", "p"],
                 category: "Workspace",
             }),
+            Self::ReorderProjects => Some(PaletteCommandSpec {
+                id: "palette:reorder_projects",
+                title: "Reorder Projects",
+                description: "Open projects dialog in reorder mode (Ctrl+R, j/k or Up/Down, Enter/Esc)",
+                tags: &[
+                    "projects", "project", "reorder", "move", "ctrl+r", "up", "down",
+                ],
+                category: "Workspace",
+            }),
             Self::DeleteProject => Some(PaletteCommandSpec {
                 id: "palette:delete_project",
                 title: "Remove Selected Project",

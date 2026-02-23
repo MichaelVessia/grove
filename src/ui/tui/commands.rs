@@ -26,6 +26,7 @@ pub(super) enum UiCommand {
     MergeWorkspace,
     UpdateFromBase,
     OpenProjects,
+    ReorderProjects,
     DeleteProject,
     OpenSettings,
     ToggleMouseCapture,
@@ -55,7 +56,7 @@ pub(super) enum HelpHintContext {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 33] = [
+    pub(super) const ALL: [UiCommand; 34] = [
         UiCommand::ToggleFocus,
         UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
@@ -82,6 +83,7 @@ impl UiCommand {
         UiCommand::MergeWorkspace,
         UiCommand::UpdateFromBase,
         UiCommand::OpenProjects,
+        UiCommand::ReorderProjects,
         UiCommand::DeleteProject,
         UiCommand::OpenSettings,
         UiCommand::ToggleMouseCapture,

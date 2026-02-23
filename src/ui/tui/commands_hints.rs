@@ -23,6 +23,7 @@ impl UiCommand {
                 UiCommand::MergeWorkspace,
                 UiCommand::UpdateFromBase,
                 UiCommand::OpenProjects,
+                UiCommand::ReorderProjects,
                 UiCommand::DeleteWorkspace,
                 UiCommand::OpenSettings,
                 UiCommand::ToggleUnsafe,
@@ -82,6 +83,9 @@ impl UiCommand {
             (UiCommand::MergeWorkspace, HelpHintContext::Workspace) => Some("m merge"),
             (UiCommand::UpdateFromBase, HelpHintContext::Workspace) => Some("u update"),
             (UiCommand::OpenProjects, HelpHintContext::Workspace) => Some("p projects"),
+            (UiCommand::ReorderProjects, HelpHintContext::Workspace) => {
+                Some("Ctrl+R reorder projects")
+            }
             (UiCommand::DeleteWorkspace, HelpHintContext::Workspace) => Some("D delete"),
             (UiCommand::OpenSettings, HelpHintContext::Workspace) => Some("S settings"),
             (UiCommand::ToggleUnsafe, HelpHintContext::Workspace) => Some("! unsafe toggle"),
