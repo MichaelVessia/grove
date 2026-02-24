@@ -84,6 +84,7 @@ pub(super) enum ConfirmDialogAction {
     RestartAgent {
         workspace_name: String,
         workspace_path: PathBuf,
+        agent: AgentType,
     },
     QuitApp,
 }

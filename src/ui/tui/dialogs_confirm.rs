@@ -23,6 +23,7 @@ impl GroveApp {
             action: ConfirmDialogAction::RestartAgent {
                 workspace_name: workspace.name.clone(),
                 workspace_path: workspace.path.clone(),
+                agent: workspace.agent,
             },
             focused_field: ConfirmDialogField::ConfirmButton,
         });

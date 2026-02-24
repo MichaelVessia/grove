@@ -17,12 +17,23 @@ impl GroveApp {
         let cancel_focused = dialog.focused_field == ConfirmDialogField::CancelButton;
 
         let (title, message, detail, border_color) = match &dialog.action {
-            ConfirmDialogAction::RestartAgent { workspace_name, .. } => (
-                "Restart Agent?",
-                format!("Restart agent for workspace '{workspace_name}'?"),
-                "Current agent process will be interrupted immediately".to_string(),
-                theme.yellow,
-            ),
+            ConfirmDialogAction::RestartAgent {
+                workspace_name,
+                agent,
+                ..
+            } => {
+                let detail = if agent.exit_command().is_some() {
+                    "Agent will be gracefully exited and resumed".to_string()
+                } else {
+                    "Current agent process will be interrupted immediately".to_string()
+                };
+                (
+                    "Restart Agent?",
+                    format!("Restart agent for workspace '{workspace_name}'?"),
+                    detail,
+                    theme.yellow,
+                )
+            }
             ConfirmDialogAction::QuitApp => (
                 "Quit Grove?",
                 "Exit Grove now?".to_string(),
