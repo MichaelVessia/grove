@@ -5,7 +5,7 @@ impl GroveApp {
         if self.modal_open() {
             return;
         }
-        if self.start_in_flight || self.stop_in_flight {
+        if self.start_in_flight || self.stop_in_flight || self.restart_in_flight {
             self.show_info_toast("agent lifecycle already in progress");
             return;
         }
