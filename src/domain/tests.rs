@@ -104,3 +104,39 @@ fn agent_type_cycles_all_variants() {
     }
     assert_eq!(backward, AgentType::Claude);
 }
+
+#[test]
+fn claude_agent_supports_graceful_restart() {
+    assert_eq!(AgentType::Claude.exit_command(), Some("/exit\n"));
+    assert!(AgentType::Claude.resume_command_pattern().is_some());
+}
+
+#[test]
+fn codex_and_opencode_do_not_support_graceful_restart() {
+    assert_eq!(AgentType::Codex.exit_command(), None);
+    assert_eq!(AgentType::Codex.resume_command_pattern(), None);
+    assert_eq!(AgentType::OpenCode.exit_command(), None);
+    assert_eq!(AgentType::OpenCode.resume_command_pattern(), None);
+}
+
+#[test]
+fn claude_resume_pattern_matches_resume_command() {
+    let pattern = AgentType::Claude.resume_command_pattern().unwrap();
+    let regex = regex::Regex::new(pattern).unwrap();
+
+    let output =
+        "Session saved. To resume this conversation, run:\nclaude --resume abc123-def456\n$";
+    let captures = regex.captures(output);
+    assert!(captures.is_some());
+    let matched = captures.unwrap().get(1).unwrap().as_str();
+    assert_eq!(matched, "claude --resume abc123-def456");
+}
+
+#[test]
+fn claude_resume_pattern_does_not_match_unrelated_output() {
+    let pattern = AgentType::Claude.resume_command_pattern().unwrap();
+    let regex = regex::Regex::new(pattern).unwrap();
+
+    let output = "Working on your task...\nDone!\n$";
+    assert!(regex.captures(output).is_none());
+}

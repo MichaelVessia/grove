@@ -66,6 +66,20 @@ impl AgentType {
     pub const fn allows_cursor_overlay(self) -> bool {
         !matches!(self, Self::Codex)
     }
+
+    pub const fn exit_command(self) -> Option<&'static str> {
+        match self {
+            Self::Claude => Some("/exit\n"),
+            _ => None,
+        }
+    }
+
+    pub const fn resume_command_pattern(self) -> Option<&'static str> {
+        match self {
+            Self::Claude => Some(r"(claude\s+--resume\s+\S+)"),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
