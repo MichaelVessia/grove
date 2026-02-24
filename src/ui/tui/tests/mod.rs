@@ -1491,6 +1491,15 @@ fn ctrl_k_opens_command_palette() {
 }
 
 #[test]
+fn ctrl_k_control_character_opens_command_palette() {
+    let mut app = fixture_app();
+
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('\u{0b}')).with_kind(KeyEventKind::Press));
+
+    assert!(app.command_palette.is_visible());
+}
+
+#[test]
 fn ctrl_k_is_blocked_while_modal_is_open() {
     let mut app = fixture_app();
     app.open_create_dialog();

@@ -153,14 +153,36 @@ impl GroveApp {
         }
     }
 
+    fn control_character_for(character: char) -> Option<char> {
+        let normalized = character.to_ascii_lowercase();
+        if !normalized.is_ascii_lowercase() {
+            return None;
+        }
+
+        let normalized_code = u32::from(normalized);
+        let a_code = u32::from('a');
+        let offset = normalized_code.checked_sub(a_code)?;
+        let control_code = offset.checked_add(1)?;
+        char::from_u32(control_code)
+    }
+
     pub(super) fn is_ctrl_char_key(key_event: &KeyEvent, character: char) -> bool {
-        matches!(
-            key_event.code,
-            KeyCode::Char(value)
-                if value == character
-                    && key_event.kind == KeyEventKind::Press
-                    && key_event.modifiers == Modifiers::CTRL
-        )
+        if key_event.kind != KeyEventKind::Press {
+            return false;
+        }
+
+        let KeyCode::Char(value) = key_event.code else {
+            return false;
+        };
+        if value.eq_ignore_ascii_case(&character) && key_event.modifiers == Modifiers::CTRL {
+            return true;
+        }
+
+        let Some(control_character) = Self::control_character_for(character) else {
+            return false;
+        };
+        value == control_character
+            && (key_event.modifiers.is_empty() || key_event.modifiers == Modifiers::CTRL)
     }
 
     pub(super) fn enter_interactive(&mut self, now: Instant) -> bool {
