@@ -610,6 +610,52 @@ fn with_rendered_frame(app: &GroveApp, width: u16, height: u16, assert_frame: im
     assert_frame(&frame);
 }
 
+#[test]
+fn restart_dialog_shows_graceful_text_for_claude_agent() {
+    let mut app = fixture_app();
+    app.state.mode = UiMode::Preview;
+    app.state.focus = PaneFocus::Preview;
+    app.preview_tab = PreviewTab::Agent;
+
+    // First workspace is "grove" with Claude agent - set it to Active
+    app.state.workspaces[0].status = WorkspaceStatus::Active;
+    app.state.selected_index = 0;
+
+    app.open_restart_dialog();
+    assert!(app.confirm_dialog().is_some());
+
+    with_rendered_frame(&app, 80, 24, |frame| {
+        let found = find_row_containing(frame, "gracefully exited and resumed", 0, frame.width());
+        assert!(
+            found.is_some(),
+            "dialog should show graceful restart text for Claude agent"
+        );
+    });
+}
+
+#[test]
+fn restart_dialog_shows_hard_restart_text_for_codex_agent() {
+    let mut app = fixture_app();
+    app.state.mode = UiMode::Preview;
+    app.state.focus = PaneFocus::Preview;
+    app.preview_tab = PreviewTab::Agent;
+
+    // Second workspace is "feature-a" with Codex agent - set it to Active
+    app.state.workspaces[1].status = WorkspaceStatus::Active;
+    app.state.selected_index = 1;
+
+    app.open_restart_dialog();
+    assert!(app.confirm_dialog().is_some());
+
+    with_rendered_frame(&app, 80, 24, |frame| {
+        let found = find_row_containing(frame, "interrupted immediately", 0, frame.width());
+        assert!(
+            found.is_some(),
+            "dialog should show hard restart text for Codex agent"
+        );
+    });
+}
+
 proptest::proptest! {
     #[test]
     fn no_panic_on_random_messages(msgs in prop::collection::vec(arb_msg(), 1..200)) {

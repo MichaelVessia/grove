@@ -303,3 +303,34 @@ fn execute_graceful_restart(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::domain::AgentType;
+
+    #[test]
+    fn claude_resume_pattern_captures_full_command() {
+        let pattern = AgentType::Claude.resume_command_pattern().unwrap();
+        let regex = regex::Regex::new(pattern).unwrap();
+
+        let output = "Goodbye! To resume this conversation:\nclaude --resume 01j8k9m2n3\n$ ";
+        let captures = regex.captures(output).unwrap();
+        assert_eq!(
+            captures.get(1).unwrap().as_str(),
+            "claude --resume 01j8k9m2n3"
+        );
+    }
+
+    #[test]
+    fn claude_resume_pattern_handles_long_session_ids() {
+        let pattern = AgentType::Claude.resume_command_pattern().unwrap();
+        let regex = regex::Regex::new(pattern).unwrap();
+
+        let output = "claude --resume abc123-def456-ghi789\n";
+        let captures = regex.captures(output).unwrap();
+        assert_eq!(
+            captures.get(1).unwrap().as_str(),
+            "claude --resume abc123-def456-ghi789"
+        );
+    }
+}
