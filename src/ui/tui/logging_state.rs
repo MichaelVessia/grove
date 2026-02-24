@@ -79,6 +79,7 @@ impl GroveApp {
             Msg::CreateWorkspaceCompleted(_) => "create_workspace_completed",
             Msg::StartAgentCompleted(_) => "start_agent_completed",
             Msg::StopAgentCompleted(_) => "stop_agent_completed",
+            Msg::GracefulRestartCompleted(_) => "graceful_restart_completed",
             Msg::InteractiveSendCompleted(_) => "interactive_send_completed",
             Msg::Noop => "noop",
         }

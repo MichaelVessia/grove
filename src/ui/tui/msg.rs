@@ -19,6 +19,7 @@ pub(super) enum Msg {
     CreateWorkspaceCompleted(CreateWorkspaceCompletion),
     StartAgentCompleted(StartAgentCompletion),
     StopAgentCompleted(StopAgentCompletion),
+    GracefulRestartCompleted(GracefulRestartCompletion),
     InteractiveSendCompleted(InteractiveSendCompletion),
     Noop,
 }
@@ -129,6 +130,14 @@ pub(super) struct StartAgentCompletion {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StopAgentCompletion {
+    pub(super) workspace_name: String,
+    pub(super) workspace_path: PathBuf,
+    pub(super) session_name: String,
+    pub(super) result: Result<(), String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct GracefulRestartCompletion {
     pub(super) workspace_name: String,
     pub(super) workspace_path: PathBuf,
     pub(super) session_name: String,

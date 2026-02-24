@@ -337,6 +337,7 @@ struct GroveApp {
     pending_create_start_config: Option<StartAgentConfigState>,
     pending_auto_launch_shell_workspace_path: Option<PathBuf>,
     pending_restart_workspace_path: Option<PathBuf>,
+    restart_in_flight: bool,
     start_in_flight: bool,
     stop_in_flight: bool,
     deferred_cmds: Vec<Cmd<Msg>>,
