@@ -154,13 +154,28 @@ impl GroveApp {
     }
 
     pub(super) fn is_ctrl_char_key(key_event: &KeyEvent, character: char) -> bool {
-        matches!(
-            key_event.code,
-            KeyCode::Char(value)
-                if value == character
-                    && key_event.kind == KeyEventKind::Press
-                    && key_event.modifiers == Modifiers::CTRL
-        )
+        if key_event.kind != KeyEventKind::Press {
+            return false;
+        }
+
+        // Standard form: Char('k') with CTRL modifier
+        if key_event.modifiers == Modifiers::CTRL
+            && matches!(key_event.code, KeyCode::Char(value) if value == character)
+        {
+            return true;
+        }
+
+        // Control character form: some terminals (e.g. Ghostty) send Ctrl+K as
+        // the raw control character 0x0B instead of Char('k') + CTRL modifier.
+        // Control characters are calculated as: character & 0x1F
+        if key_event.modifiers.is_empty() {
+            let control_char = (character.to_ascii_lowercase() as u8 & 0x1F) as char;
+            if matches!(key_event.code, KeyCode::Char(value) if value == control_char) {
+                return true;
+            }
+        }
+
+        false
     }
 
     pub(super) fn enter_interactive(&mut self, now: Instant) -> bool {

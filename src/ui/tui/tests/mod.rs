@@ -1491,6 +1491,20 @@ fn ctrl_k_opens_command_palette() {
 }
 
 #[test]
+fn ctrl_k_control_character_opens_command_palette() {
+    let mut app = fixture_app();
+
+    // Ghostty and some other terminals send Ctrl+K as the raw control character
+    // 0x0B (ASCII 11) instead of Char('k') with CTRL modifier
+    let _ = app.handle_key(
+        KeyEvent::new(KeyCode::Char('\x0b'))
+            .with_kind(KeyEventKind::Press),
+    );
+
+    assert!(app.command_palette.is_visible());
+}
+
+#[test]
 fn ctrl_k_is_blocked_while_modal_is_open() {
     let mut app = fixture_app();
     app.open_create_dialog();
