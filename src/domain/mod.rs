@@ -69,14 +69,14 @@ impl AgentType {
 
     pub const fn exit_command(self) -> Option<&'static str> {
         match self {
-            Self::Claude => Some("/exit\n"),
+            Self::Claude => Some("/exit"),
             _ => None,
         }
     }
 
     pub const fn resume_command_pattern(self) -> Option<&'static str> {
         match self {
-            Self::Claude => Some(r"(claude\s+--resume\s+\S+)"),
+            Self::Claude => Some(r"(claude\s+--resume\s+\S+(?:[ \t]+\S+)*)"),
             _ => None,
         }
     }

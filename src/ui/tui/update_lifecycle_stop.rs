@@ -156,12 +156,18 @@ impl GroveApp {
         let session_name = session_name_for_workspace_ref(&workspace);
         let workspace_name = workspace.name.clone();
         let workspace_path = workspace.path.clone();
+        let skip_permissions = self.launch_skip_permissions;
 
         self.restart_in_flight = true;
         self.show_info_toast("restarting agent...");
 
         self.queue_cmd(Cmd::task(move || {
-            let result = execute_graceful_restart(&session_name, &exit_command, &resume_pattern);
+            let result = execute_graceful_restart(
+                &session_name,
+                &exit_command,
+                &resume_pattern,
+                skip_permissions,
+            );
             Msg::GracefulRestartCompleted(GracefulRestartCompletion {
                 workspace_name,
                 workspace_path,
@@ -236,6 +242,7 @@ fn execute_graceful_restart(
     session_name: &str,
     exit_command: &str,
     resume_pattern: &str,
+    skip_permissions: bool,
 ) -> Result<(), String> {
     use std::thread;
     use std::time::{Duration, Instant};
@@ -243,7 +250,7 @@ fn execute_graceful_restart(
     let regex =
         regex::Regex::new(resume_pattern).map_err(|e| format!("invalid resume pattern: {e}"))?;
 
-    // Send exit command via tmux send-keys -l (literal mode)
+    // Send exit command text literally, then press Enter via key name
     let send_status = std::process::Command::new("tmux")
         .args(["send-keys", "-l", "-t", session_name, exit_command])
         .output()
@@ -256,14 +263,29 @@ fn execute_graceful_restart(
         ));
     }
 
+    let enter_status = std::process::Command::new("tmux")
+        .args(["send-keys", "-t", session_name, "Enter"])
+        .output()
+        .map_err(|e| format!("failed to send Enter: {e}"))?;
+
+    if !enter_status.status.success() {
+        return Err(format!(
+            "tmux send-keys Enter failed: {}",
+            String::from_utf8_lossy(&enter_status.stderr).trim()
+        ));
+    }
+
     // Poll for resume command in pane output
     let timeout = Duration::from_secs(15);
     let poll_interval = Duration::from_millis(500);
     let start = Instant::now();
+    let mut last_output = String::new();
 
     loop {
         if start.elapsed() > timeout {
-            return Err("timeout waiting for resume command".to_string());
+            return Err(format!(
+                "timeout waiting for resume command. last pane output:\n{last_output}"
+            ));
         }
 
         thread::sleep(poll_interval);
@@ -281,12 +303,19 @@ fn execute_graceful_restart(
         }
 
         let output = String::from_utf8_lossy(&capture.stdout);
+        last_output = output.to_string();
 
         if let Some(captures) = regex.captures(&output)
             && let Some(resume_cmd) = captures.get(1)
         {
-            let resume_command = format!("{}\n", resume_cmd.as_str());
+            let mut resume_command = resume_cmd.as_str().trim().to_string();
 
+            // Inject permissions flag if the original session used skip-permissions
+            if skip_permissions && !resume_command.contains("--dangerously-skip-permissions") {
+                resume_command = format!("{resume_command} --dangerously-skip-permissions");
+            }
+
+            // Send resume command text literally, then press Enter via key name
             let resume_status = std::process::Command::new("tmux")
                 .args(["send-keys", "-l", "-t", session_name, &resume_command])
                 .output()
@@ -296,6 +325,18 @@ fn execute_graceful_restart(
                 return Err(format!(
                     "tmux send-keys for resume failed: {}",
                     String::from_utf8_lossy(&resume_status.stderr).trim()
+                ));
+            }
+
+            let enter_status = std::process::Command::new("tmux")
+                .args(["send-keys", "-t", session_name, "Enter"])
+                .output()
+                .map_err(|e| format!("failed to send Enter for resume: {e}"))?;
+
+            if !enter_status.status.success() {
+                return Err(format!(
+                    "tmux send-keys Enter for resume failed: {}",
+                    String::from_utf8_lossy(&enter_status.stderr).trim()
                 ));
             }
 
@@ -331,6 +372,19 @@ mod tests {
         assert_eq!(
             captures.get(1).unwrap().as_str(),
             "claude --resume abc123-def456-ghi789"
+        );
+    }
+
+    #[test]
+    fn claude_resume_pattern_captures_additional_flags() {
+        let pattern = AgentType::Claude.resume_command_pattern().unwrap();
+        let regex = regex::Regex::new(pattern).unwrap();
+
+        let output = "To resume:\nclaude --resume 01j8k9m2n3 --continue\n$ ";
+        let captures = regex.captures(output).unwrap();
+        assert_eq!(
+            captures.get(1).unwrap().as_str(),
+            "claude --resume 01j8k9m2n3 --continue"
         );
     }
 }

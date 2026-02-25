@@ -107,7 +107,7 @@ fn agent_type_cycles_all_variants() {
 
 #[test]
 fn claude_agent_supports_graceful_restart() {
-    assert_eq!(AgentType::Claude.exit_command(), Some("/exit\n"));
+    assert_eq!(AgentType::Claude.exit_command(), Some("/exit"));
     assert!(AgentType::Claude.resume_command_pattern().is_some());
 }
 
@@ -139,4 +139,17 @@ fn claude_resume_pattern_does_not_match_unrelated_output() {
 
     let output = "Working on your task...\nDone!\n$";
     assert!(regex.captures(output).is_none());
+}
+
+#[test]
+fn claude_resume_pattern_captures_trailing_flags() {
+    let pattern = AgentType::Claude.resume_command_pattern().unwrap();
+    let regex = regex::Regex::new(pattern).unwrap();
+
+    let output =
+        "Session saved. To resume this conversation, run:\nclaude --resume abc123 --continue\n$";
+    let captures = regex.captures(output);
+    assert!(captures.is_some());
+    let matched = captures.unwrap().get(1).unwrap().as_str();
+    assert_eq!(matched, "claude --resume abc123 --continue");
 }
