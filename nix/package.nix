@@ -4,6 +4,9 @@
     overlays.default = final: prev: {
       grove = inputs.self.packages.${final.stdenv.hostPlatform.system}.default;
     };
+
+    homeManagerModules.grove = import ./hm-module.nix;
+    homeManagerModules.default = import ./hm-module.nix;
   };
 
   perSystem = { config, self', inputs', pkgs, system, lib, ... }:
