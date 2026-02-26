@@ -12,23 +12,24 @@ use super::{
     AppDependencies, ClipboardAccess, CommandTmuxInput, CreateDialogField, CreateDialogTab,
     CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
     DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
-    HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
-    LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField,
-    MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS, PendingAutoStartWorkspace,
-    PendingResizeVerification, PreviewPollCompletion, PreviewTab, ProjectAddDialogField,
-    ProjectDefaultsDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
-    StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
-    StopDialogField, TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField,
-    WORKSPACE_ITEM_HEIGHT, WorkspaceAttention, WorkspaceShellLaunchCompletion,
-    WorkspaceStatusCapture, ansi_16_color, ansi_lines_to_styled_lines, parse_cursor_metadata,
-    ui_theme, usize_to_u64,
+    HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW,
+    LaunchDialogField, LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture,
+    MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
+    PendingAutoStartWorkspace, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
+    ProjectAddDialogField, ProjectDefaultsDialogField, RefreshWorkspacesCompletion,
+    SettingsDialogField, StartAgentCompletion, StartAgentConfigField, StartAgentConfigState,
+    StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput, UiCommand,
+    UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
+    WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, ansi_16_color,
+    ansi_lines_to_styled_lines, decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme,
+    usize_to_u64,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;
 use crate::application::workspace_lifecycle::{
     BranchMode, CreateWorkspaceRequest, CreateWorkspaceResult,
 };
-use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+use crate::domain::{AgentType, PullRequest, PullRequestStatus, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
 use crate::infrastructure::config::ProjectConfig;
 use crate::infrastructure::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
@@ -734,8 +735,8 @@ fn workspace_age_renders_in_preview_header_not_sidebar_row() {
         };
         let sidebar_text = row_text(frame, sidebar_row, sidebar_x_start, sidebar_x_end);
         assert!(
-            sidebar_text.starts_with("▸ "),
-            "sidebar row should keep selection marker, got: {sidebar_text}"
+            sidebar_text.starts_with("│ "),
+            "sidebar row should render inside a selected workspace block, got: {sidebar_text}"
         );
         assert!(
             !sidebar_text.contains(expected_age.as_str()),
@@ -773,8 +774,8 @@ fn selected_workspace_row_has_selection_marker() {
         };
         let rendered_row = row_text(frame, selected_row, x_start, x_end);
         assert!(
-            rendered_row.starts_with("▸ "),
-            "selected row should start with selection marker, got: {rendered_row}"
+            rendered_row.starts_with("│ ") && rendered_row.ends_with("│"),
+            "selected row should render inside a clear selected block, got: {rendered_row}"
         );
     });
 }
@@ -791,14 +792,15 @@ fn sidebar_row_omits_duplicate_workspace_and_branch_text() {
         let Some(row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
             panic!("feature row should be rendered");
         };
-        let row_text = row_text(frame, row, x_start, x_end);
+        let rendered_row_text = row_text(frame, row, x_start, x_end);
+        let metadata_row_text = row_text(frame, row.saturating_add(1), x_start, x_end);
         assert!(
-            !row_text.contains("feature-a · feature-a"),
-            "row should not duplicate workspace and branch when they match, got: {row_text}"
+            !rendered_row_text.contains("feature-a · feature-a"),
+            "row should not duplicate workspace and branch when they match, got: {rendered_row_text}"
         );
         assert!(
-            row_text.contains("feature-a · Codex"),
-            "row should include workspace and agent labels, got: {row_text}"
+            metadata_row_text.contains("Codex"),
+            "metadata row should include agent label, got: {metadata_row_text}"
         );
     });
 }
@@ -821,19 +823,153 @@ fn sidebar_row_shows_deleting_indicator_for_in_flight_delete() {
         let Some(feature_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
             panic!("feature row should be rendered");
         };
-        let feature_row_text = row_text(frame, feature_row, x_start, x_end);
+        let feature_row_text = row_text(frame, feature_row.saturating_add(1), x_start, x_end);
         assert!(
             feature_row_text.contains(" · De"),
-            "feature row should include deleting indicator, got: {feature_row_text}"
+            "feature metadata row should include deleting indicator, got: {feature_row_text}"
         );
 
         let Some(base_row) = find_row_containing(frame, "base", x_start, x_end) else {
             panic!("base row should be rendered");
         };
-        let base_row_text = row_text(frame, base_row, x_start, x_end);
+        let base_row_text = row_text(frame, base_row.saturating_add(1), x_start, x_end);
         assert!(
             !base_row_text.contains(" · De"),
-            "base row should not include deleting indicator, got: {base_row_text}"
+            "base metadata row should not include deleting indicator, got: {base_row_text}"
+        );
+    });
+}
+
+#[test]
+fn sidebar_second_line_shows_pull_request_status_icons() {
+    let mut app = fixture_app();
+    app.state.workspaces[1].pull_requests = vec![
+        PullRequest {
+            number: 101,
+            url: "https://github.com/acme/grove/pull/101".to_string(),
+            status: PullRequestStatus::Open,
+        },
+        PullRequest {
+            number: 102,
+            url: "https://github.com/acme/grove/pull/102".to_string(),
+            status: PullRequestStatus::Merged,
+        },
+        PullRequest {
+            number: 103,
+            url: "https://github.com/acme/grove/pull/103".to_string(),
+            status: PullRequestStatus::Closed,
+        },
+    ];
+
+    let layout = GroveApp::view_layout_for_size(140, 24, app.sidebar_width_pct, false);
+    let x_start = layout.sidebar.x.saturating_add(1);
+    let x_end = layout.sidebar.right().saturating_sub(1);
+    let theme = ui_theme();
+
+    with_rendered_frame(&app, 140, 24, |frame| {
+        let Some(row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+            panic!("feature row should be rendered");
+        };
+        let metadata_row = row.saturating_add(1);
+        let metadata_text = row_text(frame, metadata_row, x_start, x_end);
+        assert!(
+            metadata_text.contains("PRs:"),
+            "metadata row should include PR label, got: {metadata_text}"
+        );
+        assert!(
+            metadata_text.contains(" #101")
+                && metadata_text.contains(" #102")
+                && metadata_text.contains(" #103"),
+            "metadata row should include PR ids with status icons, got: {metadata_text}"
+        );
+
+        let Some(open_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, '') else {
+            panic!("open PR icon should render");
+        };
+        assert_row_fg(
+            frame,
+            metadata_row,
+            open_col,
+            open_col.saturating_add(1),
+            theme.teal,
+        );
+
+        let Some(merged_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, '')
+        else {
+            panic!("merged PR icon should render");
+        };
+        assert_row_fg(
+            frame,
+            metadata_row,
+            merged_col,
+            merged_col.saturating_add(1),
+            theme.mauve,
+        );
+
+        let Some(closed_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, '')
+        else {
+            panic!("closed PR icon should render");
+        };
+        assert_row_fg(
+            frame,
+            metadata_row,
+            closed_col,
+            closed_col.saturating_add(1),
+            theme.red,
+        );
+    });
+}
+
+#[test]
+fn workspace_pr_token_registers_link_hit_data() {
+    let mut app = fixture_app();
+    app.state.workspaces[1].pull_requests = vec![PullRequest {
+        number: 321,
+        url: "https://github.com/acme/grove/pull/321".to_string(),
+        status: PullRequestStatus::Open,
+    }];
+
+    let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+    let x_start = layout.sidebar.x.saturating_add(1);
+    let x_end = layout.sidebar.right().saturating_sub(1);
+
+    with_rendered_frame(&app, 120, 24, |frame| {
+        let Some(row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+            panic!("feature row should be rendered");
+        };
+        let metadata_row = row.saturating_add(1);
+        let Some(icon_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, '') else {
+            panic!("PR icon should render");
+        };
+        let Some((hit_id, _region, hit_data)) = frame.hit_test(icon_col, metadata_row) else {
+            panic!("PR icon should have hit target");
+        };
+        assert_eq!(hit_id, HitId::new(HIT_ID_WORKSPACE_PR_LINK));
+        assert_eq!(decode_workspace_pr_hit_data(hit_data), Some((1, 0)));
+    });
+}
+
+#[test]
+fn base_workspace_hides_pull_request_list() {
+    let mut app = fixture_app();
+    app.state.workspaces[0].pull_requests = vec![PullRequest {
+        number: 777,
+        url: "https://github.com/acme/grove/pull/777".to_string(),
+        status: PullRequestStatus::Open,
+    }];
+
+    let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+    let x_start = layout.sidebar.x.saturating_add(1);
+    let x_end = layout.sidebar.right().saturating_sub(1);
+
+    with_rendered_frame(&app, 120, 24, |frame| {
+        let Some(base_row) = find_row_containing(frame, "base", x_start, x_end) else {
+            panic!("base row should render");
+        };
+        let metadata_text = row_text(frame, base_row.saturating_add(1), x_start, x_end);
+        assert!(
+            !metadata_text.contains("PRs:"),
+            "base workspace should hide PR list, got: {metadata_text}"
         );
     });
 }
@@ -2773,6 +2909,46 @@ fn mouse_workspace_selection_uses_row_hit_data_after_render() {
             MouseEventKind::Down(MouseButton::Left),
             sidebar_inner.x,
             second_row_y,
+        )),
+    );
+
+    assert_eq!(app.state.selected_index, 1);
+}
+
+#[test]
+fn mouse_click_on_workspace_pr_link_selects_workspace() {
+    let mut app = fixture_app();
+    app.state.selected_index = 0;
+    app.state.workspaces[1].pull_requests = vec![PullRequest {
+        number: 500,
+        url: "https://github.com/acme/grove/pull/500".to_string(),
+        status: PullRequestStatus::Open,
+    }];
+
+    let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+    let x_start = layout.sidebar.x.saturating_add(1);
+    let x_end = layout.sidebar.right().saturating_sub(1);
+    let mut target = None;
+    with_rendered_frame(&app, 120, 24, |frame| {
+        let Some(feature_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+            panic!("feature row should be rendered");
+        };
+        let metadata_row = feature_row.saturating_add(1);
+        let Some(icon_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, '') else {
+            panic!("PR icon should be rendered");
+        };
+        target = Some((icon_col, metadata_row));
+    });
+    let Some((target_x, target_y)) = target else {
+        panic!("PR target should be captured");
+    };
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            target_x,
+            target_y,
         )),
     );
 

@@ -29,7 +29,7 @@ pub(super) const WORKSPACE_SKIP_PERMISSIONS_FILENAME: &str = ".grove/skip_permis
 pub(super) const HEADER_HEIGHT: u16 = 1;
 pub(super) const STATUS_HEIGHT: u16 = 1;
 pub(super) const DIVIDER_WIDTH: u16 = 1;
-pub(super) const WORKSPACE_ITEM_HEIGHT: u16 = 1;
+pub(super) const WORKSPACE_ITEM_HEIGHT: u16 = 3;
 pub(super) const PREVIEW_METADATA_ROWS: u16 = 2;
 pub(super) const TICK_EARLY_TOLERANCE_MS: u64 = 5;
 pub(super) const HIT_ID_HEADER: u32 = 1;
@@ -51,6 +51,7 @@ pub(super) const HIT_ID_UPDATE_FROM_BASE_DIALOG: u32 = 16;
 pub(super) const HIT_ID_PROJECT_DEFAULTS_DIALOG: u32 = 17;
 pub(super) const HIT_ID_STOP_DIALOG: u32 = 18;
 pub(super) const HIT_ID_CONFIRM_DIALOG: u32 = 19;
+pub(super) const HIT_ID_WORKSPACE_PR_LINK: u32 = 20;
 pub(super) const MAX_PENDING_INPUT_TRACES: usize = 256;
 pub(super) const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 pub(super) const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
@@ -64,6 +65,22 @@ pub(super) const AGENT_ENV_SEPARATOR: char = ';';
 
 pub(super) fn usize_to_u64(value: usize) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
+}
+
+pub(super) fn encode_workspace_pr_hit_data(
+    workspace_index: usize,
+    pull_request_index: usize,
+) -> Option<u64> {
+    let workspace = u32::try_from(workspace_index).ok()?;
+    let pull_request = u32::try_from(pull_request_index).ok()?;
+    Some((u64::from(workspace) << 32) | u64::from(pull_request))
+}
+
+pub(super) fn decode_workspace_pr_hit_data(data: u64) -> Option<(usize, usize)> {
+    let workspace = usize::try_from(data >> 32).ok()?;
+    let mask = u64::from(u32::MAX);
+    let pull_request = usize::try_from(data & mask).ok()?;
+    Some((workspace, pull_request))
 }
 
 pub(super) fn parse_setup_commands(raw: &str) -> Vec<String> {
@@ -191,6 +208,7 @@ pub(super) fn ui_theme() -> UiTheme {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum HitRegion {
     WorkspaceList,
+    WorkspacePullRequest,
     Preview,
     Divider,
     StatusLine,
