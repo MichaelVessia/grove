@@ -6,8 +6,8 @@ edition = "2024"
 [dependencies]
 arboard = "3.6.1"
 dirs = "6.0.0"
-ftui = { git = "https://github.com/Dicklesworthstone/frankentui.git", rev = "3813bb17282ec561bf9c3f716b8b243c41436261", default-features = false, features = ["runtime", "crossterm"] }
-ftui-extras = { git = "https://github.com/Dicklesworthstone/frankentui.git", rev = "3813bb17282ec561bf9c3f716b8b243c41436261", default-features = false, features = ["text-effects"] }
+ftui = { git = "https://github.com/Dicklesworthstone/frankentui.git", tag = "v0.2.0", default-features = false, features = ["runtime", "crossterm"] }
+ftui-extras = { git = "https://github.com/Dicklesworthstone/frankentui.git", tag = "v0.2.0", default-features = false, features = ["text-effects"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 toml = "0.9.8"
