@@ -303,6 +303,11 @@ impl GroveApp {
             return (false, self.handle_interactive_key(key_event));
         }
 
+        if Self::is_ctrl_char_key(&key_event, 'c') && !self.modal_open() {
+            self.open_quit_dialog();
+            return (false, Cmd::None);
+        }
+
         if Self::is_ctrl_modal_nav_key(&key_event) && self.dispatch_dialog_key(&key_event) {
             return (false, Cmd::None);
         }

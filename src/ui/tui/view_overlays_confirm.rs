@@ -24,8 +24,8 @@ impl GroveApp {
                 theme.yellow,
             ),
             ConfirmDialogAction::QuitApp => (
-                "Quit Grove?",
-                "Exit Grove now?".to_string(),
+                "Are you sure?",
+                "Quit Grove now?".to_string(),
                 "Agent sessions persist in tmux, you can resume after reopen".to_string(),
                 theme.red,
             ),
@@ -54,7 +54,7 @@ impl GroveApp {
         lines.extend(modal_wrapped_hint_rows(
             content_width,
             theme,
-            "Tab/C-n next, S-Tab/C-p prev, Enter yes, Esc cancel",
+            "Tab/C-n next, S-Tab/C-p prev, Enter select, Esc cancel",
         ));
         let body = FtText::from_lines(lines);
         render_modal_dialog(

@@ -50,7 +50,7 @@ impl GroveApp {
 
         self.set_confirm_dialog(ConfirmDialogState {
             action: ConfirmDialogAction::QuitApp,
-            focused_field: ConfirmDialogField::ConfirmButton,
+            focused_field: ConfirmDialogField::CancelButton,
         });
         self.log_dialog_event_with_fields(
             "confirm",

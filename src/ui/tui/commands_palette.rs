@@ -264,8 +264,8 @@ impl UiCommand {
             Self::Quit => Some(PaletteCommandSpec {
                 id: "palette:quit",
                 title: "Quit Grove",
-                description: "Open confirm dialog to exit application (q)",
-                tags: &["quit", "exit", "q"],
+                description: "Open confirm dialog to exit application (q, Ctrl+C prompts)",
+                tags: &["quit", "exit", "q", "ctrl+c"],
                 category: "System",
             }),
         }

@@ -1743,11 +1743,14 @@ fn q_opens_quit_dialog_when_not_interactive() {
         Msg::Key(KeyEvent::new(KeyCode::Char('q')).with_kind(KeyEventKind::Press)),
     );
     assert!(!matches!(cmd, Cmd::Quit));
-    assert!(app.confirm_dialog().is_some());
+    assert_eq!(
+        app.confirm_dialog().map(|dialog| dialog.focused_field),
+        Some(crate::ui::tui::ConfirmDialogField::CancelButton)
+    );
 }
 
 #[test]
-fn enter_confirms_quit_dialog_and_quits() {
+fn enter_on_default_no_cancels_quit_dialog() {
     let mut app = fixture_app();
     let open_cmd = ftui::Model::update(
         &mut app,
@@ -1759,6 +1762,24 @@ fn enter_confirms_quit_dialog_and_quits() {
     let confirm_cmd = ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+    assert!(!matches!(confirm_cmd, Cmd::Quit));
+    assert!(app.confirm_dialog().is_none());
+}
+
+#[test]
+fn y_confirms_quit_dialog_and_quits() {
+    let mut app = fixture_app();
+    let open_cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('q')).with_kind(KeyEventKind::Press)),
+    );
+    assert!(!matches!(open_cmd, Cmd::Quit));
+    assert!(app.confirm_dialog().is_some());
+
+    let confirm_cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('y')).with_kind(KeyEventKind::Press)),
     );
     assert!(matches!(confirm_cmd, Cmd::Quit));
     assert!(app.confirm_dialog().is_none());
@@ -1807,6 +1828,24 @@ fn ctrl_d_quits_when_idle_via_action_mapper() {
         ),
     );
     assert!(matches!(cmd, Cmd::Quit));
+}
+
+#[test]
+fn ctrl_c_opens_quit_dialog_when_not_interactive() {
+    let mut app = fixture_app();
+    let cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('c'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert!(!matches!(cmd, Cmd::Quit));
+    assert_eq!(
+        app.confirm_dialog().map(|dialog| dialog.focused_field),
+        Some(crate::ui::tui::ConfirmDialogField::CancelButton)
+    );
 }
 
 #[test]
@@ -1871,9 +1910,9 @@ fn ctrl_c_with_task_running_does_not_quit() {
     );
 
     assert!(!matches!(cmd, Cmd::Quit));
-    assert!(
-        app.status_bar_line()
-            .contains("cannot cancel running lifecycle task")
+    assert_eq!(
+        app.confirm_dialog().map(|dialog| dialog.focused_field),
+        Some(crate::ui::tui::ConfirmDialogField::CancelButton)
     );
 }
 

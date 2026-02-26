@@ -59,7 +59,7 @@ impl UiCommand {
     pub(super) fn help_hint_label(self, context: HelpHintContext) -> Option<&'static str> {
         match (self, context) {
             (UiCommand::OpenHelp, HelpHintContext::Global) => Some("? help"),
-            (UiCommand::Quit, HelpHintContext::Global) => Some("q quit (confirm)"),
+            (UiCommand::Quit, HelpHintContext::Global) => Some("q quit (confirm, Ctrl+C prompts)"),
             (UiCommand::ToggleFocus, HelpHintContext::Global) => Some("Tab/h/l switch pane"),
             (UiCommand::ToggleSidebar, HelpHintContext::Global) => Some("\\ toggle sidebar"),
             (UiCommand::ToggleMouseCapture, HelpHintContext::Global) => {
