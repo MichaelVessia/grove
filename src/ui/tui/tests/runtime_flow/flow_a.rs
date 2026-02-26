@@ -1055,6 +1055,18 @@ fn project_dialog_reorder_enter_saves_project_order() {
         path: PathBuf::from("/repos/site"),
         defaults: Default::default(),
     });
+    let mut site_workspace = Workspace::try_new(
+        "site".to_string(),
+        PathBuf::from("/repos/site"),
+        "main".to_string(),
+        Some(1_700_000_300),
+        AgentType::Claude,
+        WorkspaceStatus::Main,
+        true,
+    )
+    .expect("workspace should be valid");
+    site_workspace.project_path = Some(PathBuf::from("/repos/site"));
+    app.state.workspaces.push(site_workspace);
 
     ftui::Model::update(
         &mut app,
@@ -1089,6 +1101,30 @@ fn project_dialog_reorder_enter_saves_project_order() {
         crate::infrastructure::config::load_from_path(&app.config_path).expect("config loads");
     assert_eq!(loaded.projects[0].name, "site");
     assert_eq!(loaded.projects[1].name, "grove");
+    assert_eq!(
+        app.state
+            .workspaces
+            .iter()
+            .map(|workspace| workspace.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["site", "grove", "feature-a"]
+    );
+    assert_eq!(app.state.selected_index, 1);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Up).with_kind(KeyEventKind::Press)),
+    );
+    assert_eq!(
+        app.state
+            .selected_workspace()
+            .map(|workspace| workspace.name.as_str()),
+        Some("site")
+    );
 }
 
 #[test]

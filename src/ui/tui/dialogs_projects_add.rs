@@ -117,6 +117,40 @@ impl GroveApp {
         }
     }
 
+    fn reorder_workspaces_for_project_order(&mut self) {
+        if self.state.workspaces.is_empty() {
+            return;
+        }
+
+        let selected_workspace_path = self
+            .state
+            .selected_workspace()
+            .map(|workspace| workspace.path.clone());
+        let projects = &self.projects;
+        self.state.workspaces.sort_by_key(|workspace| {
+            workspace
+                .project_path
+                .as_ref()
+                .and_then(|workspace_project_path| {
+                    projects.iter().position(|project| {
+                        refer_to_same_location(
+                            project.path.as_path(),
+                            workspace_project_path.as_path(),
+                        )
+                    })
+                })
+                .unwrap_or(usize::MAX)
+        });
+
+        if let Some(selected_workspace_path) = selected_workspace_path
+            && let Some(index) = self.state.workspaces.iter().position(|workspace| {
+                refer_to_same_location(workspace.path.as_path(), selected_workspace_path.as_path())
+            })
+        {
+            self.state.selected_index = index;
+        }
+    }
+
     pub(super) fn save_project_reorder_from_dialog(&mut self) {
         if !self.project_reorder_active() {
             return;
@@ -126,6 +160,7 @@ impl GroveApp {
             return;
         }
 
+        self.reorder_workspaces_for_project_order();
         if let Some(dialog) = self.project_dialog_mut() {
             dialog.reorder = None;
         }
