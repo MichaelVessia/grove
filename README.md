@@ -79,6 +79,29 @@ Use as an overlay in another flake:
 }
 ```
 
+Use with Home Manager:
+
+```nix
+{
+  inputs.grove.url = "github:MichaelVessia/grove";
+
+  # In your Home Manager config:
+  imports = [ inputs.grove.homeManagerModules.grove ];
+
+  programs.grove = {
+    enable = true;
+    # Optional: override tool paths
+    environment = {
+      GROVE_CLAUDE_CMD = lib.getExe pkgs.claude-code;
+      GROVE_LAZYGIT_CMD = lib.getExe pkgs.lazygit;
+    };
+  };
+}
+```
+
+Available environment overrides: `GROVE_CLAUDE_CMD`, `GROVE_CODEX_CMD`,
+`GROVE_OPENCODE_CMD`, `GROVE_LAZYGIT_CMD`.
+
 ### Option 2, Devbox
 
 Add Grove to your `devbox.json`:
