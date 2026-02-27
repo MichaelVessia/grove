@@ -62,6 +62,20 @@ docs/
 cat docs/PRD.md
 ```
 
+## Local Checks
+
+```bash
+# Fast local checks (pre-commit hook)
+make precommit
+
+# Full checks (CI parity)
+make ci
+```
+
+- For local code changes, run `make precommit` before handoff.
+- Treat `make precommit` as required minimum validation for local edits.
+- Use `make ci` only when explicitly requested or when validating full CI parity.
+
 ## Runtime Parity
 
 - Any change that touches session lifecycle, capture, polling, key forwarding,
