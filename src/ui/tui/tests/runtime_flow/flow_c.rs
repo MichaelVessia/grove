@@ -1044,7 +1044,7 @@ fn shell_contains_list_preview_and_status_placeholders() {
     assert!(content.contains("Preview Pane"));
     assert!(content.contains("Status:"));
     assert!(content.contains("feature-a | feature-a | Codex | /repos/grove-feature-a"));
-    assert!(content.contains("Press 'n' to create a workspace, hit 's' to open agent"));
+    assert!(content.contains("Preparing session for grove..."));
 }
 
 #[test]

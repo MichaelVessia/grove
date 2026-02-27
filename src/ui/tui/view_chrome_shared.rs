@@ -104,10 +104,6 @@ impl GroveApp {
     }
 
     pub(super) fn workspace_display_name(workspace: &Workspace) -> String {
-        if workspace.is_main {
-            "base".to_string()
-        } else {
-            workspace.name.clone()
-        }
+        workspace.name.clone()
     }
 }

@@ -766,7 +766,8 @@ fn workspace_age_renders_in_preview_header_not_sidebar_row() {
     let preview_x_end = layout.preview.right().saturating_sub(1);
 
     with_rendered_frame(&app, 160, 24, |frame| {
-        let Some(sidebar_row) = find_row_containing(frame, "base", sidebar_x_start, sidebar_x_end)
+        let Some(sidebar_row) =
+            find_row_containing(frame, "grove · main", sidebar_x_start, sidebar_x_end)
         else {
             panic!("sidebar workspace row should be rendered");
         };
@@ -782,7 +783,7 @@ fn workspace_age_renders_in_preview_header_not_sidebar_row() {
 
         let Some(preview_row) = find_row_containing(
             frame,
-            "base · main · Claude",
+            "grove · main · Claude",
             preview_x_start,
             preview_x_end,
         ) else {
@@ -866,7 +867,7 @@ fn sidebar_row_shows_deleting_indicator_for_in_flight_delete() {
             "feature metadata row should include deleting indicator, got: {feature_row_text}"
         );
 
-        let Some(base_row) = find_row_containing(frame, "base", x_start, x_end) else {
+        let Some(base_row) = find_row_containing(frame, "grove", x_start, x_end) else {
             panic!("base row should be rendered");
         };
         let base_row_text = row_text(frame, base_row.saturating_add(1), x_start, x_end);
@@ -1000,7 +1001,7 @@ fn base_workspace_hides_pull_request_list() {
     let x_end = layout.sidebar.right().saturating_sub(1);
 
     with_rendered_frame(&app, 120, 24, |frame| {
-        let Some(base_row) = find_row_containing(frame, "base", x_start, x_end) else {
+        let Some(base_row) = find_row_containing(frame, "grove", x_start, x_end) else {
             panic!("base row should render");
         };
         let metadata_text = row_text(frame, base_row.saturating_add(1), x_start, x_end);
@@ -1015,7 +1016,7 @@ fn base_workspace_hides_pull_request_list() {
 fn shell_lines_show_workspace_and_agent_labels_without_status_badges() {
     let app = fixture_app();
     let lines = app.shell_lines(12);
-    let Some(base_line) = lines.iter().find(|line| line.contains("base | main")) else {
+    let Some(base_line) = lines.iter().find(|line| line.contains("grove | main")) else {
         panic!("base workspace shell line should be present");
     };
     let Some(feature_line) = lines
@@ -1411,14 +1412,6 @@ fn create_dialog_selected_agent_row_uses_highlight_background() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
     );
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-    );
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-    );
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let dialog_width = frame.width().saturating_sub(8).min(90);
@@ -1433,7 +1426,7 @@ fn create_dialog_selected_agent_row_uses_highlight_background() {
             (y_start..y_end).find(|&row| row_text(frame, row, x_start, x_end).contains(needle))
         };
 
-        let Some(selected_row) = find_dialog_row("Claude") else {
+        let Some(selected_row) = find_dialog_row("[Agent] Claude") else {
             panic!("selected agent row should be rendered");
         };
         assert_row_bg(frame, selected_row, x_start, x_end, ui_theme().surface1);
@@ -1476,7 +1469,7 @@ fn create_dialog_unfocused_agent_row_uses_base_background() {
         };
         assert_row_bg(frame, name_row, x_start, x_end, ui_theme().surface1);
 
-        let Some(selected_agent_row) = find_dialog_row("Claude") else {
+        let Some(selected_agent_row) = find_dialog_row("[Agent] Claude") else {
             panic!("selected agent row should be rendered");
         };
         assert_row_bg(frame, selected_agent_row, x_start, x_end, ui_theme().base);
@@ -1667,7 +1660,7 @@ fn status_row_ignores_toast_and_shows_compact_footer() {
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(!status_text.contains("Agent started"));
         assert!(status_text.contains("project: grove"));
-        assert!(status_text.contains("workspace: base"));
+        assert!(status_text.contains("workspace: grove"));
         assert!(status_text.contains("? help"));
         assert!(status_text.contains("Ctrl+K palette"));
     });
@@ -1684,7 +1677,7 @@ fn status_row_keeps_compact_footer_in_preview_mode() {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(status_text.contains("project: grove"));
-        assert!(status_text.contains("workspace: base"));
+        assert!(status_text.contains("workspace: grove"));
         assert!(status_text.contains("? help"));
         assert!(status_text.contains("Ctrl+K palette"));
     });
@@ -2659,7 +2652,7 @@ fn status_row_keeps_compact_footer_in_interactive_mode() {
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(status_text.contains("Interactive"));
         assert!(status_text.contains("project: grove"));
-        assert!(status_text.contains("workspace: base"));
+        assert!(status_text.contains("workspace: grove"));
         assert!(status_text.contains("? help"));
         assert!(status_text.contains("Ctrl+K palette"));
         assert!(!status_text.contains("Esc Esc/Ctrl+\\ exit"));
