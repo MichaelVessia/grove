@@ -57,6 +57,17 @@ command -v git tmux lazygit
 
 ## Install
 
+Most contributors only need one of these:
+
+```bash
+# run without installing
+nix run github:MichaelVessia/grove
+
+# or run from this repo
+direnv allow   # or: nix develop
+make tui
+```
+
 ### Option 1, Nix flake (recommended)
 
 Run directly:
@@ -141,14 +152,25 @@ target/release/grove
 ## Quick Start
 
 ```bash
-# nix dev shell sets this automatically, run once if outside nix shell
+# one-time in this clone, if outside nix shell
 git config --local core.hooksPath .githooks
 
-# run quality gates
-make ci
+# enter dev env (pick one)
+direnv allow   # or: nix develop
 
-# run app
-cargo run
+# fast checks, then launch
+make precommit
+make tui
+```
+
+## Common Commands
+
+```bash
+make tui        # launch TUI
+make debug-tui  # launch TUI with debug record enabled
+make precommit  # cargo fmt --check + cargo check
+make ci         # precommit + clippy + tests
+make test       # run tests
 ```
 
 Inside Grove:
@@ -235,15 +257,6 @@ workspace_init_command = "direnv allow"
 claude = ["CLAUDE_CONFIG_DIR=~/.claude-work"]
 codex = ["CODEX_CONFIG_DIR=~/.codex-work"]
 opencode = []
-```
-
-## Development Commands
-
-```bash
-make fmt
-make clippy
-make test
-make ci
 ```
 
 ## Credits
