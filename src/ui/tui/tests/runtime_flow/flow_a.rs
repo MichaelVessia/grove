@@ -67,6 +67,32 @@ fn preview_poll_change_emits_output_changed_event() {
 }
 
 #[test]
+fn preview_poll_capture_completed_logs_scrollback_lines() {
+    let (mut app, _commands, _captures, _cursor_captures, events) =
+        fixture_app_with_tmux_and_events(
+            WorkspaceStatus::Active,
+            vec![Ok("line one\nline two\n".to_string())],
+            Vec::new(),
+        );
+    app.state.selected_index = 1;
+
+    force_tick_due(&mut app);
+    ftui::Model::update(&mut app, Msg::Tick);
+
+    let capture_event = recorded_events(&events)
+        .into_iter()
+        .find(|event| event.kind == "capture_completed")
+        .expect("capture_completed event should exist");
+    let Value::Object(data) = capture_event.data else {
+        panic!("capture_completed data should be an object");
+    };
+    assert_eq!(
+        data.get("scrollback_lines"),
+        Some(&Value::from(usize_to_u64(200)))
+    );
+}
+
+#[test]
 fn tick_queues_async_preview_poll_with_background_io() {
     let config_path = unique_config_path("background-poll");
     let mut app = GroveApp::from_parts(
@@ -237,6 +263,7 @@ fn switching_workspace_drops_in_flight_capture_for_previous_session() {
             generation: 1,
             live_capture: Some(LivePreviewCapture {
                 session: "grove-ws-feature-a".to_string(),
+                scrollback_lines: 600,
                 include_escape_sequences: false,
                 capture_ms: 1,
                 total_ms: 1,
@@ -264,6 +291,7 @@ fn switching_workspace_drops_in_flight_capture_for_previous_session() {
             generation: 2,
             live_capture: Some(LivePreviewCapture {
                 session: "grove-ws-grove".to_string(),
+                scrollback_lines: 600,
                 include_escape_sequences: false,
                 capture_ms: 1,
                 total_ms: 1,
@@ -312,6 +340,7 @@ fn async_preview_capture_failure_sets_toast_message() {
             generation: 1,
             live_capture: Some(LivePreviewCapture {
                 session: "grove-ws-feature-a".to_string(),
+                scrollback_lines: 600,
                 include_escape_sequences: false,
                 capture_ms: 2,
                 total_ms: 2,
@@ -340,6 +369,7 @@ fn stale_preview_poll_result_is_dropped_by_generation() {
             generation: 1,
             live_capture: Some(LivePreviewCapture {
                 session: "grove-ws-feature-a".to_string(),
+                scrollback_lines: 600,
                 include_escape_sequences: false,
                 capture_ms: 1,
                 total_ms: 1,
@@ -362,6 +392,7 @@ fn stale_preview_poll_result_is_dropped_by_generation() {
             generation: 2,
             live_capture: Some(LivePreviewCapture {
                 session: "grove-ws-feature-a".to_string(),
+                scrollback_lines: 600,
                 include_escape_sequences: false,
                 capture_ms: 1,
                 total_ms: 1,
@@ -385,6 +416,7 @@ fn preview_poll_uses_cleaned_change_for_status_lane() {
             generation: 1,
             live_capture: Some(LivePreviewCapture {
                 session: "grove-ws-feature-a".to_string(),
+                scrollback_lines: 600,
                 include_escape_sequences: true,
                 capture_ms: 1,
                 total_ms: 1,
@@ -402,6 +434,7 @@ fn preview_poll_uses_cleaned_change_for_status_lane() {
             generation: 2,
             live_capture: Some(LivePreviewCapture {
                 session: "grove-ws-feature-a".to_string(),
+                scrollback_lines: 600,
                 include_escape_sequences: true,
                 capture_ms: 1,
                 total_ms: 1,
@@ -436,6 +469,7 @@ fn preview_poll_waiting_prompt_sets_waiting_status() {
             generation: 1,
             live_capture: Some(LivePreviewCapture {
                 session: "grove-ws-feature-a".to_string(),
+                scrollback_lines: 600,
                 include_escape_sequences: true,
                 capture_ms: 1,
                 total_ms: 1,
@@ -472,6 +506,7 @@ fn preview_poll_ignores_done_pattern_embedded_in_control_sequence() {
             generation: 1,
             live_capture: Some(LivePreviewCapture {
                 session: "grove-ws-feature-a".to_string(),
+                scrollback_lines: 600,
                 include_escape_sequences: true,
                 capture_ms: 1,
                 total_ms: 1,
@@ -682,6 +717,7 @@ fn preview_poll_missing_session_marks_workspace_orphaned_idle() {
             generation: 1,
             live_capture: Some(LivePreviewCapture {
                 session: "grove-ws-feature-a".to_string(),
+                scrollback_lines: 600,
                 include_escape_sequences: true,
                 capture_ms: 1,
                 total_ms: 1,

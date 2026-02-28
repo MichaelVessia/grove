@@ -75,6 +75,7 @@ impl GroveApp {
         }
 
         let live_preview = self.prepare_live_preview_session();
+        let live_scrollback_lines = self.live_preview_scrollback_lines();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = self.status_poll_targets_for_async_preview(live_preview.as_ref());
         if !status_poll_targets.is_empty() {
@@ -94,6 +95,7 @@ impl GroveApp {
         self.queue_cmd(self.schedule_async_preview_poll(
             self.poll_generation,
             live_preview,
+            live_scrollback_lines,
             cursor_session,
             status_poll_targets,
         ));
@@ -118,6 +120,7 @@ impl GroveApp {
                 include_escape_sequences: true,
             })
         });
+        let live_scrollback_lines = self.live_preview_scrollback_lines();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = Vec::new();
 
@@ -133,6 +136,7 @@ impl GroveApp {
         self.queue_cmd(self.schedule_async_preview_poll(
             self.poll_generation,
             live_preview,
+            live_scrollback_lines,
             cursor_session,
             status_poll_targets,
         ));
@@ -160,6 +164,7 @@ impl GroveApp {
                 had_live_capture = true;
                 self.apply_live_preview_capture(
                     &live_capture.session,
+                    live_capture.scrollback_lines,
                     live_capture.include_escape_sequences,
                     live_capture.capture_ms,
                     live_capture.total_ms,

@@ -1078,6 +1078,47 @@ fn active_workspace_without_recent_activity_uses_static_indicators() {
 }
 
 #[test]
+fn live_preview_scrollback_lines_uses_idle_window_when_inactive() {
+    let (app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+    assert_eq!(
+        app.live_preview_scrollback_lines(),
+        super::LIVE_PREVIEW_IDLE_SCROLLBACK_LINES
+    );
+}
+
+#[test]
+fn live_preview_scrollback_lines_uses_full_window_with_recent_activity() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.output_changing = true;
+
+    assert_eq!(
+        app.live_preview_scrollback_lines(),
+        super::LIVE_PREVIEW_SCROLLBACK_LINES
+    );
+}
+
+#[test]
+fn live_preview_scrollback_lines_uses_full_window_in_interactive_mode() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.interactive = Some(InteractiveState::new(
+        "%0".to_string(),
+        "grove-ws-feature-a".to_string(),
+        Instant::now(),
+        34,
+        78,
+    ));
+
+    assert_eq!(
+        app.live_preview_scrollback_lines(),
+        super::LIVE_PREVIEW_SCROLLBACK_LINES
+    );
+}
+
+#[test]
 fn active_workspace_with_recent_activity_window_animates_indicators() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());

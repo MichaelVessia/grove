@@ -316,6 +316,8 @@ struct ReplayPreviewPollCompletion {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct ReplayLivePreviewCapture {
     session: String,
+    #[serde(default = "default_live_preview_scrollback_lines")]
+    scrollback_lines: usize,
     include_escape_sequences: bool,
     capture_ms: u64,
     total_ms: u64,
@@ -1065,10 +1067,15 @@ impl ReplayPreviewPollCompletion {
     }
 }
 
+fn default_live_preview_scrollback_lines() -> usize {
+    LIVE_PREVIEW_SCROLLBACK_LINES
+}
+
 impl ReplayLivePreviewCapture {
     fn from_capture(capture: &LivePreviewCapture) -> Self {
         Self {
             session: capture.session.clone(),
+            scrollback_lines: capture.scrollback_lines,
             include_escape_sequences: capture.include_escape_sequences,
             capture_ms: capture.capture_ms,
             total_ms: capture.total_ms,
@@ -1079,6 +1086,7 @@ impl ReplayLivePreviewCapture {
     fn to_capture(&self) -> LivePreviewCapture {
         LivePreviewCapture {
             session: self.session.clone(),
+            scrollback_lines: self.scrollback_lines,
             include_escape_sequences: self.include_escape_sequences,
             capture_ms: self.capture_ms,
             total_ms: self.total_ms,

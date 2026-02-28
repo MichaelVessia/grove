@@ -1863,7 +1863,7 @@ fn resize_in_interactive_mode_immediately_resizes_and_polls() {
         calls
             .borrow()
             .iter()
-            .any(|call| call == "capture:grove-ws-feature-a:600:true")
+            .any(|call| { call == &format!("capture:grove-ws-feature-a:{}:true", 200) })
     );
 }
 
@@ -2709,7 +2709,7 @@ fn codex_live_preview_capture_keeps_tmux_escape_output() {
         calls
             .borrow()
             .iter()
-            .any(|call| call == "capture:grove-ws-feature-a:600:true")
+            .any(|call| { call == &format!("capture:grove-ws-feature-a:{}:true", 200) })
     );
 }
 
@@ -2736,7 +2736,7 @@ fn claude_live_preview_capture_keeps_tmux_escape_output() {
         calls
             .borrow()
             .iter()
-            .any(|call| call == "capture:grove-ws-feature-a:600:true")
+            .any(|call| { call == &format!("capture:grove-ws-feature-a:{}:true", 200) })
     );
 }
 

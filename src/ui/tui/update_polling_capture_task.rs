@@ -1,11 +1,28 @@
 use super::*;
 
 impl GroveApp {
+    pub(super) fn live_preview_scrollback_lines(&self) -> usize {
+        if self.interactive.is_some() {
+            return LIVE_PREVIEW_SCROLLBACK_LINES;
+        }
+
+        if self.pending_input_depth() > 0
+            || self.output_changing
+            || self.agent_output_changing
+            || self.has_recent_agent_activity()
+        {
+            return LIVE_PREVIEW_SCROLLBACK_LINES;
+        }
+
+        LIVE_PREVIEW_IDLE_SCROLLBACK_LINES
+    }
+
     pub(super) fn poll_preview_sync(&mut self) {
         let live_preview = self.prepare_live_preview_session();
         let has_live_preview = live_preview.is_some();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = self.status_poll_targets_for_async_preview(live_preview.as_ref());
+        let live_scrollback_lines = self.live_preview_scrollback_lines();
         if !status_poll_targets.is_empty() {
             self.last_workspace_status_poll_at = Some(Instant::now());
         }
@@ -16,7 +33,7 @@ impl GroveApp {
                 .tmux_input
                 .capture_output(
                     &live_preview_target.session_name,
-                    600,
+                    live_scrollback_lines,
                     live_preview_target.include_escape_sequences,
                 )
                 .map_err(|error| error.to_string());
@@ -24,6 +41,7 @@ impl GroveApp {
                 Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
             self.apply_live_preview_capture(
                 &live_preview_target.session_name,
+                live_scrollback_lines,
                 live_preview_target.include_escape_sequences,
                 capture_ms,
                 capture_ms,
@@ -64,6 +82,7 @@ impl GroveApp {
         &self,
         generation: u64,
         live_preview: Option<LivePreviewTarget>,
+        live_scrollback_lines: usize,
         cursor_session: Option<String>,
         status_poll_targets: Vec<WorkspaceStatusTarget>,
     ) -> Cmd<Msg> {
@@ -72,7 +91,7 @@ impl GroveApp {
                 let capture_started_at = Instant::now();
                 let result = CommandTmuxInput::capture_session_output(
                     &target.session_name,
-                    600,
+                    live_scrollback_lines,
                     target.include_escape_sequences,
                 )
                 .map_err(|error| error.to_string());
@@ -81,6 +100,7 @@ impl GroveApp {
                 );
                 LivePreviewCapture {
                     session: target.session_name,
+                    scrollback_lines: live_scrollback_lines,
                     include_escape_sequences: target.include_escape_sequences,
                     capture_ms,
                     total_ms: capture_ms,

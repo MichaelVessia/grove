@@ -4,6 +4,7 @@ impl GroveApp {
     pub(super) fn apply_live_preview_capture(
         &mut self,
         session_name: &str,
+        scrollback_lines: usize,
         include_escape_sequences: bool,
         capture_ms: u64,
         base_total_ms: u64,
@@ -82,6 +83,10 @@ impl GroveApp {
                 self.event_log.log(
                     LogEvent::new("preview_poll", "capture_completed")
                         .with_data("session", Value::from(session_name.to_string()))
+                        .with_data(
+                            "scrollback_lines",
+                            Value::from(usize_to_u64(scrollback_lines)),
+                        )
                         .with_data("capture_ms", Value::from(capture_ms))
                         .with_data("apply_capture_ms", Value::from(apply_capture_ms))
                         .with_data(
@@ -264,6 +269,10 @@ impl GroveApp {
                 self.event_log.log(
                     LogEvent::new("preview_poll", "capture_failed")
                         .with_data("session", Value::from(session_name.to_string()))
+                        .with_data(
+                            "scrollback_lines",
+                            Value::from(usize_to_u64(scrollback_lines)),
+                        )
                         .with_data("capture_ms", Value::from(capture_ms))
                         .with_data(
                             "include_escape_sequences",

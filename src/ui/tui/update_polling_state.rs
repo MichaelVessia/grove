@@ -196,7 +196,7 @@ impl GroveApp {
         self.agent_activity_frames.push_back(changed);
     }
 
-    fn has_recent_agent_activity(&self) -> bool {
+    pub(super) fn has_recent_agent_activity(&self) -> bool {
         self.agent_activity_frames.contains(&true)
     }
 

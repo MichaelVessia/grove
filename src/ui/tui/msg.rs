@@ -35,6 +35,7 @@ pub(super) struct PreviewPollCompletion {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct LivePreviewCapture {
     pub(super) session: String,
+    pub(super) scrollback_lines: usize,
     pub(super) include_escape_sequences: bool,
     pub(super) capture_ms: u64,
     pub(super) total_ms: u64,
