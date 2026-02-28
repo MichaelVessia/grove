@@ -123,20 +123,14 @@ mod dialogs_projects_key;
 mod dialogs_projects_state;
 #[path = "dialogs/dialogs_settings.rs"]
 mod dialogs_settings;
-#[path = "dialogs/dialogs_state_create_edit.rs"]
-mod dialogs_state_create_edit;
-#[path = "dialogs/dialogs_state_lifecycle.rs"]
-mod dialogs_state_lifecycle;
-#[path = "dialogs/dialogs_state_project_settings.rs"]
-mod dialogs_state_project_settings;
+#[path = "dialogs/state.rs"]
+mod dialogs_state;
 #[path = "dialogs/dialogs_stop.rs"]
 mod dialogs_stop;
 #[path = "dialogs/dialogs_update_from_base.rs"]
 mod dialogs_update_from_base;
 use dialogs::*;
-use dialogs_state_create_edit::*;
-use dialogs_state_lifecycle::*;
-use dialogs_state_project_settings::*;
+use dialogs_state::*;
 #[path = "commands/commands.rs"]
 mod commands;
 #[path = "commands/commands_hints.rs"]
