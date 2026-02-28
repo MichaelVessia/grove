@@ -7,6 +7,8 @@ Minimal workspace manager for AI coding agents (Rust + FrankenTUI).
 Grove helps you run many agent tasks in parallel, each in its own git worktree
 and tmux session, with one fast keyboard-first TUI.
 
+![Grove TUI screenshot](docs/assets/grove-screenshot.png)
+
 ## What Grove Is
 
 Grove is a focused workspace manager for AI coding agents, built with Rust and
