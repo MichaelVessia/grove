@@ -115,10 +115,14 @@ mod dialogs_edit;
 mod dialogs_launch;
 #[path = "dialogs/dialogs_merge.rs"]
 mod dialogs_merge;
-#[path = "dialogs/dialogs_projects_add.rs"]
-mod dialogs_projects_add;
+#[path = "dialogs/dialogs_projects_crud.rs"]
+mod dialogs_projects_crud;
+#[path = "dialogs/dialogs_projects_defaults.rs"]
+mod dialogs_projects_defaults;
 #[path = "dialogs/dialogs_projects_key.rs"]
 mod dialogs_projects_key;
+#[path = "dialogs/dialogs_projects_reorder.rs"]
+mod dialogs_projects_reorder;
 #[path = "dialogs/dialogs_projects_state.rs"]
 mod dialogs_projects_state;
 #[path = "dialogs/dialogs_settings.rs"]
