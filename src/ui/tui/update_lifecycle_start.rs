@@ -79,9 +79,6 @@ impl GroveApp {
         if let Err(error) = write_workspace_skip_permissions(&workspace.path, skip_permissions) {
             self.last_tmux_error = Some(format!("skip permissions marker persist failed: {error}"));
         }
-        if let Err(error) = self.save_runtime_config() {
-            self.last_tmux_error = Some(format!("skip permissions config persist failed: {error}"));
-        }
         if let Err(error) = write_workspace_init_command(&workspace.path, init_command.as_deref()) {
             self.last_tmux_error = Some(format!("init command marker persist failed: {error}"));
         }

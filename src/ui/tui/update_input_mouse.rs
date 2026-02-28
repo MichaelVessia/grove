@@ -387,8 +387,6 @@ impl GroveApp {
     }
 
     pub(super) fn persist_sidebar_ratio(&mut self) {
-        if let Err(error) = self.save_runtime_config() {
-            self.last_tmux_error = Some(format!("sidebar ratio persist failed: {error}"));
-        }
+        // Global settings are loaded from config.toml and intentionally not written at runtime.
     }
 }

@@ -2841,7 +2841,7 @@ fn tick_polls_cursor_metadata_and_renders_overlay() {
 }
 
 #[test]
-fn divider_ratio_persists_across_app_instances() {
+fn divider_ratio_changes_are_session_only() {
     let config_path = unique_config_path("persist");
     let (mut app, _commands, _captures, _cursor_captures) = fixture_app_with_tmux_and_config_path(
         WorkspaceStatus::Idle,
@@ -2875,9 +2875,7 @@ fn divider_ratio_persists_across_app_instances() {
     );
 
     assert_eq!(app.sidebar_width_pct, 52);
-    let saved = crate::infrastructure::config::load_from_path(&config_path)
-        .expect("config should be readable");
-    assert_eq!(saved.sidebar_width_pct, 52);
+    assert!(!config_path.exists());
 
     let (app_reloaded, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux_and_config_path(
@@ -2887,7 +2885,7 @@ fn divider_ratio_persists_across_app_instances() {
             config_path.clone(),
         );
 
-    assert_eq!(app_reloaded.sidebar_width_pct, 52);
+    assert_eq!(app_reloaded.sidebar_width_pct, 33);
     let _ = fs::remove_file(config_path);
 }
 

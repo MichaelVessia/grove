@@ -14,27 +14,14 @@ impl GroveApp {
 
     fn save_projects_config_to_path(
         config_path: &Path,
-        sidebar_width_pct: u16,
-        launch_skip_permissions: bool,
         projects: &[ProjectConfig],
         attention_acks: &[WorkspaceAttentionAckConfig],
     ) -> Result<(), String> {
-        let config = GroveConfig {
-            sidebar_width_pct,
-            projects: projects.to_vec(),
-            attention_acks: attention_acks.to_vec(),
-            launch_skip_permissions,
-        };
-        crate::infrastructure::config::save_to_path(config_path, &config)
-    }
-
-    fn save_projects_config(&self) -> Result<(), String> {
-        Self::save_projects_config_to_path(
-            &self.config_path,
-            self.sidebar_width_pct,
-            self.launch_skip_permissions,
-            &self.projects,
-            &self.workspace_attention_acks_for_config(),
+        let projects_path = crate::infrastructure::config::projects_path_for(config_path);
+        crate::infrastructure::config::save_projects_to_path(
+            &projects_path,
+            projects,
+            attention_acks,
         )
     }
 
@@ -243,8 +230,6 @@ impl GroveApp {
         if !self.tmux_input.supports_background_launch() {
             let result = Self::save_projects_config_to_path(
                 &self.config_path,
-                self.sidebar_width_pct,
-                self.launch_skip_permissions,
                 &updated_projects,
                 &self.workspace_attention_acks_for_config(),
             );
@@ -258,15 +243,11 @@ impl GroveApp {
         }
 
         let config_path = self.config_path.clone();
-        let sidebar_width_pct = self.sidebar_width_pct;
-        let launch_skip_permissions = self.launch_skip_permissions;
         let attention_acks = self.workspace_attention_acks_for_config();
         self.project_delete_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let result = Self::save_projects_config_to_path(
                 &config_path,
-                sidebar_width_pct,
-                launch_skip_permissions,
                 &updated_projects,
                 &attention_acks,
             );

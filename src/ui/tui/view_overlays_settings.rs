@@ -35,7 +35,7 @@ impl GroveApp {
         lines.extend(modal_wrapped_hint_rows(
             content_width,
             theme,
-            "Saved to ~/.config/grove/config.toml",
+            "Global settings are read-only, edit ~/.config/grove/config.toml",
         ));
         let body = FtText::from_lines(lines);
 

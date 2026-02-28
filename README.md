@@ -183,22 +183,43 @@ tail -f .grove/debug-record-*.jsonl
 
 ## Configuration
 
-Config file path:
+Config file paths:
 
-- Linux/macOS: `~/.config/grove/config.toml` (via XDG when available)
+- Linux/macOS (via XDG when available):
+  - `~/.config/grove/config.toml`, global settings only
+  - `~/.config/grove/projects.toml`, projects + mutable runtime state
 
-Current config model includes:
+One-time migration prompt for existing single-file users:
+- [docs/config-migration-prompt.md](docs/config-migration-prompt.md)
 
+Grove behavior:
+- Reads `config.toml`, does not write it at runtime
+- Reads and writes `projects.toml` for mutable state
+- `sidebar_width_pct` and `launch_skip_permissions` are immutable at runtime,
+  edit `config.toml` to persist changes
+
+`config.toml` includes:
 - `sidebar_width_pct`
 - `launch_skip_permissions`
+
+`launch_skip_permissions` behavior:
+- Controls default unsafe-mode launch behavior for Claude/Codex/OpenCode
+- Workspace-specific `.grove/skip_permissions` marker overrides it
+- Agent session inference can override it when marker is absent
+
+`projects.toml` includes:
 - `projects` list (`name`, `path`, `defaults`)
+- `attention_acks`
 - per-project `defaults.agent_env` for agent-specific env vars used at launch
 
-Example:
+Example `config.toml`:
 
 ```toml
 sidebar_width_pct = 33
 launch_skip_permissions = false
+```
+
+Example `projects.toml`:
 
 [[projects]]
 name = "grove"
@@ -206,8 +227,7 @@ path = "/path/to/repo"
 
 [projects.defaults]
 base_branch = "main"
-setup_commands = ["direnv allow"]
-auto_run_setup_commands = true
+workspace_init_command = "direnv allow"
 
 [projects.defaults.agent_env]
 claude = ["CLAUDE_CONFIG_DIR=~/.claude-work"]

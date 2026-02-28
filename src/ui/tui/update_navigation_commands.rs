@@ -204,10 +204,6 @@ impl GroveApp {
             }
             UiCommand::ToggleUnsafe => {
                 self.launch_skip_permissions = !self.launch_skip_permissions;
-                if let Err(error) = self.save_runtime_config() {
-                    self.last_tmux_error =
-                        Some(format!("skip permissions config persist failed: {error}"));
-                }
             }
             UiCommand::OpenHelp => {
                 self.open_keybind_help();

@@ -13,7 +13,7 @@ multiple TUI processes.
 
 Adopt a first-class multi-project model in runtime config and bootstrap flow.
 
-- Persist configured projects in `~/.config/grove/config.toml`.
+- Persist configured projects in `~/.config/grove/projects.toml`.
 - Bootstrap and reconcile workspace sets per project.
 - Include project context in workspace/session identity paths.
 

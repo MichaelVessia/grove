@@ -67,12 +67,7 @@ impl GroveApp {
             return;
         }
 
-        if let Err(error) = self.save_runtime_config() {
-            self.show_error_toast(format!("settings save failed: {error}"));
-            return;
-        }
-
         self.close_active_dialog();
-        self.show_success_toast("settings saved");
+        self.show_info_toast("settings are read-only, edit ~/.config/grove/config.toml");
     }
 }

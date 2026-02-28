@@ -2436,7 +2436,7 @@ fn manual_refresh_completion_shows_error_toast() {
 }
 
 #[test]
-fn settings_dialog_save_persists_config() {
+fn settings_dialog_save_does_not_write_global_config() {
     let mut app = fixture_app();
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
@@ -2445,9 +2445,11 @@ fn settings_dialog_save_persists_config() {
     let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
 
     assert!(app.settings_dialog().is_none());
-    let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
-        .expect("config should load");
-    assert_eq!(loaded.sidebar_width_pct, 33);
+    assert!(!app.config_path.exists());
+    assert!(
+        app.status_bar_line()
+            .contains("settings are read-only, edit ~/.config/grove/config.toml")
+    );
 }
 
 #[test]

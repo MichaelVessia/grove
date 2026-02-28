@@ -63,7 +63,13 @@ fn ensure_current_repo_project(config: &mut GroveConfig, config_path: &Path) -> 
         path: repo_root,
         defaults: Default::default(),
     });
-    crate::infrastructure::config::save_to_path(config_path, config).err()
+    let projects_path = crate::infrastructure::config::projects_path_for(config_path);
+    crate::infrastructure::config::save_projects_to_path(
+        &projects_path,
+        &config.projects,
+        &config.attention_acks,
+    )
+    .err()
 }
 
 pub(super) fn load_runtime_config() -> (GroveConfig, PathBuf, Option<String>) {

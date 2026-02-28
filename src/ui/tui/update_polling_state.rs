@@ -44,19 +44,12 @@ impl GroveApp {
         entries
     }
 
-    pub(super) fn runtime_config_snapshot(&self) -> GroveConfig {
-        GroveConfig {
-            sidebar_width_pct: self.sidebar_width_pct,
-            projects: self.projects.clone(),
-            attention_acks: self.workspace_attention_acks_for_config(),
-            launch_skip_permissions: self.launch_skip_permissions,
-        }
-    }
-
-    pub(super) fn save_runtime_config(&self) -> Result<(), String> {
-        crate::infrastructure::config::save_to_path(
-            &self.config_path,
-            &self.runtime_config_snapshot(),
+    pub(super) fn save_projects_config(&self) -> Result<(), String> {
+        let projects_path = crate::infrastructure::config::projects_path_for(&self.config_path);
+        crate::infrastructure::config::save_projects_to_path(
+            &projects_path,
+            &self.projects,
+            &self.workspace_attention_acks_for_config(),
         )
     }
 
@@ -68,7 +61,7 @@ impl GroveApp {
         if selected_workspace_matches {
             self.workspace_attention.remove(workspace_path);
             if self.acknowledge_workspace_attention_for_path(workspace_path)
-                && let Err(error) = self.save_runtime_config()
+                && let Err(error) = self.save_projects_config()
             {
                 self.last_tmux_error = Some(format!("attention ack persist failed: {error}"));
             }
@@ -102,7 +95,7 @@ impl GroveApp {
     pub(super) fn clear_attention_for_workspace_path(&mut self, workspace_path: &Path) {
         self.workspace_attention.remove(workspace_path);
         if self.acknowledge_workspace_attention_for_path(workspace_path)
-            && let Err(error) = self.save_runtime_config()
+            && let Err(error) = self.save_projects_config()
         {
             self.last_tmux_error = Some(format!("attention ack persist failed: {error}"));
         }

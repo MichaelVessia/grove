@@ -2353,7 +2353,7 @@ fn start_key_rejects_invalid_project_agent_env_defaults() {
 }
 
 #[test]
-fn unsafe_toggle_persists_launch_skip_permissions_config() {
+fn unsafe_toggle_updates_launch_skip_permissions_for_session() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
     focus_agent_preview_tab(&mut app);
@@ -2363,9 +2363,8 @@ fn unsafe_toggle_persists_launch_skip_permissions_config() {
         Msg::Key(KeyEvent::new(KeyCode::Char('!')).with_kind(KeyEventKind::Press)),
     );
 
-    let loaded =
-        crate::infrastructure::config::load_from_path(&app.config_path).expect("config loads");
-    assert!(loaded.launch_skip_permissions);
+    assert!(app.launch_skip_permissions);
+    assert!(!app.config_path.exists());
 }
 
 #[test]
@@ -2390,9 +2389,8 @@ fn start_key_persists_workspace_skip_permissions_marker() {
     let marker = fs::read_to_string(workspace_dir.join(".grove/skip_permissions"))
         .expect("skip marker should exist after start");
     assert_eq!(marker, "true\n");
-    let loaded =
-        crate::infrastructure::config::load_from_path(&app.config_path).expect("config loads");
-    assert!(loaded.launch_skip_permissions);
+    assert!(app.launch_skip_permissions);
+    assert!(!app.config_path.exists());
 
     let _ = fs::remove_dir_all(workspace_dir);
 }
