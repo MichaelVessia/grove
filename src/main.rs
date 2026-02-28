@@ -10,6 +10,10 @@ struct CliArgs {
     print_hello: bool,
     event_log_path: Option<PathBuf>,
     debug_record: bool,
+    replay_trace_path: Option<PathBuf>,
+    replay_snapshot_path: Option<PathBuf>,
+    replay_emit_test_name: Option<String>,
+    replay_invariant_only: bool,
 }
 
 fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io::Result<CliArgs> {
@@ -33,8 +37,49 @@ fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io::Result<Cli
             "--debug-record" => {
                 cli.debug_record = true;
             }
+            "replay" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "replay requires a trace path",
+                    ));
+                };
+                cli.replay_trace_path = Some(PathBuf::from(path));
+            }
+            "--snapshot" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--snapshot requires a file path",
+                    ));
+                };
+                cli.replay_snapshot_path = Some(PathBuf::from(path));
+            }
+            "--emit-test" => {
+                let Some(name) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--emit-test requires a fixture name",
+                    ));
+                };
+                cli.replay_emit_test_name = Some(name);
+            }
+            "--invariant-only" => {
+                cli.replay_invariant_only = true;
+            }
             _ => {}
         }
+    }
+
+    if cli.replay_trace_path.is_none()
+        && (cli.replay_snapshot_path.is_some()
+            || cli.replay_emit_test_name.is_some()
+            || cli.replay_invariant_only)
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "replay flags require `replay <trace-path>`",
+        ));
     }
 
     Ok(cli)
@@ -88,6 +133,25 @@ fn ensure_event_log_parent_directory(path: &Path) -> std::io::Result<()> {
 
 fn main() -> std::io::Result<()> {
     let cli = parse_cli_args(std::env::args().skip(1))?;
+
+    if let Some(trace_path) = cli.replay_trace_path.as_ref() {
+        if let Some(name) = cli.replay_emit_test_name.as_deref() {
+            let fixture_path = grove::ui::tui::emit_replay_fixture(trace_path, name)?;
+            println!("replay fixture written: {}", fixture_path.display());
+        }
+
+        let options = grove::ui::tui::ReplayOptions {
+            invariant_only: cli.replay_invariant_only,
+            snapshot_path: cli.replay_snapshot_path.clone(),
+        };
+        let outcome = grove::ui::tui::replay_debug_record(trace_path, &options)?;
+        println!(
+            "replay ok: steps={} states={} frames={}",
+            outcome.steps_replayed, outcome.states_compared, outcome.frames_compared
+        );
+        return Ok(());
+    }
+
     let app_start_ts = now_millis();
     let debug_record_path = if cli.debug_record {
         Some(debug_record_path(app_start_ts)?)

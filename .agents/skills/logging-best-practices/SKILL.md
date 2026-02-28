@@ -1,16 +1,21 @@
 ---
 name: logging-best-practices
 description: >
-  Debug record logging best practices for Grove's Rust TUI. Covers how to add
-  new events to the NDJSON debug record system, wide event design, frame-level
-  data capture, and when to log what. Use when adding new log events, reviewing
-  logging code, or designing instrumentation for new features.
-  Trigger phrases: "how to log", "add logging", "add event", "debug record",
-  "event log", "instrumentation", "telemetry".
+  Instrumentation best practices for Grove's NDJSON event logging. Use when
+  adding/changing log events, event fields, or logging schema in runtime code.
+  Not for replay triage, use `replay-debug` for trace analysis and divergence
+  debugging.
+  Trigger phrases: "how to log", "add logging", "add event",
+  "instrumentation", "telemetry", "event schema".
 allowed-tools: Read, Grep, Glob
 ---
 
 # Grove Logging Best Practices
+
+This skill is for instrumentation design.
+
+If the task is reproducing a bug from an existing trace, use
+`.agents/skills/replay-debug/SKILL.md` instead.
 
 ## Architecture Overview
 
@@ -20,8 +25,11 @@ event is written to `.grove/debug-record-{app_start_ts}-{pid}.jsonl`. When
 disabled, a `NullEventLogger` discards all events at zero cost.
 
 Key files:
-- `src/event_log.rs` -- `Event` struct, `EventLogger` trait, `FileEventLogger`, `NullEventLogger`
-- `src/tui.rs` -- all `.event_log.log(...)` call sites, `log_frame_render()`
+- `src/infrastructure/event_log.rs` -- `Event`, `EventLogger`, `FileEventLogger`, `NullEventLogger`
+- `src/ui/tui/logging_state.rs` -- state/dialog/tmux/toast event helpers
+- `src/ui/tui/logging_input.rs` -- input pipeline logging helpers
+- `src/ui/tui/logging_frame.rs` -- per-frame debug record payload
+- `src/ui/tui/update.rs` -- update timing + message handling logging
 - `src/main.rs` -- `--debug-record` flag parsing, path generation
 
 ## Core Principles
@@ -95,9 +103,8 @@ All logging goes through `self.event_log.log()` which dispatches to either
 - Don't do expensive computation solely for logging. If you need to compute
   something expensive (like hashing frame lines), and it's only useful for
   logging, consider whether it should be part of the normal frame path.
-- Frame line extraction in `log_frame_render()` is an exception: it walks the
-  terminal buffer and is only called when debug recording is active (guarded
-  by `debug_record_start_ts.is_some()`).
+- Frame line extraction in `log_frame_render()` is an exception, it walks the
+  terminal buffer and is only called when debug recording is active.
 
 ### 6. Sequence Numbers for Correlation (HIGH)
 
@@ -171,8 +178,8 @@ to reproduce (command, session, error message).
 
 ## Adding a New Event
 
-1. Choose `event` category and `kind` name. Check existing events in this
-   document and `src/tui.rs` to avoid duplicating a category.
+1. Choose `event` category and `kind` name. Check existing events in
+   `src/ui/tui/` to avoid category drift.
 
 2. Build the event at the boundary (completion of the operation, not the start):
 
@@ -190,9 +197,8 @@ self.event_log.log(
 4. Include queue/pipeline state if the event is part of a flow
    (`pending_depth`, `seq`).
 
-5. Update the event type reference table in
-   `.agents/skills/grove-debug/SKILL.md` so the debug analyzer skill
-   knows about the new event.
+5. If the new event changes replay interpretation, also update
+   `.agents/skills/replay-debug/SKILL.md`.
 
 ## Anti-Patterns
 

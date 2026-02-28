@@ -197,13 +197,29 @@ Inside Grove:
 - `--event-log <path>`, write event log to explicit file (`relative/path` is stored under `.grove/relative/path`)
 - `--debug-record`, write continuous debug record to
   `.grove/debug-record-*.jsonl`
+- `replay <trace-path>`, headless replay of a debug-record trace
+- `replay <trace-path> --invariant-only`, replay with state/invariant checks only
+- `replay <trace-path> --snapshot <path>`, write replay snapshot JSON
+- `replay <trace-path> --emit-test <name>`, copy trace into `tests/fixtures/replay/<name>.jsonl`
 
 Example:
 
 ```bash
 cargo run -- --debug-record
 tail -f .grove/debug-record-*.jsonl
+
+# replay a saved trace
+cargo run -- replay .grove/debug-record-*.jsonl
+
+# replay and emit a snapshot for diffs
+cargo run -- replay .grove/debug-record-*.jsonl --snapshot .grove/replay-snapshot.json
+
+# promote a trace into a fixture input
+cargo run -- replay .grove/debug-record-*.jsonl --emit-test flow-a
 ```
+
+Detailed replay workflow:
+- [docs/debug-replay.md](docs/debug-replay.md)
 
 ## Configuration
 

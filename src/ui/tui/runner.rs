@@ -41,6 +41,7 @@ fn run_with_logger(
     }
 
     let app = GroveApp::new(event_log, debug_record_start_ts);
+    app.record_replay_bootstrap();
 
     let config = program_config();
     Program::with_config(app, config)?.run()

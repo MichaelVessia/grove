@@ -130,6 +130,8 @@ mod selection;
 use selection::{TextSelectionPoint, TextSelectionState};
 mod runner;
 pub use runner::{run_with_debug_record, run_with_event_log};
+mod replay;
+pub use replay::{ReplayOptions, emit_replay_fixture, replay_debug_record};
 mod text;
 use text::{
     ansi_line_to_plain_text, chrome_bar_line, keybind_hint_spans, line_visual_width,
@@ -325,6 +327,7 @@ struct GroveApp {
     fast_animation_frame: usize,
     poll_generation: u64,
     debug_record_start_ts: Option<u64>,
+    replay_msg_seq_counter: u64,
     frame_render_seq: RefCell<u64>,
     last_frame_hash: RefCell<u64>,
     input_seq_counter: u64,

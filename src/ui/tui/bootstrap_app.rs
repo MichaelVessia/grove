@@ -172,6 +172,7 @@ impl GroveApp {
             fast_animation_frame: 0,
             poll_generation: 0,
             debug_record_start_ts,
+            replay_msg_seq_counter: 0,
             frame_render_seq: RefCell::new(0),
             last_frame_hash: RefCell::new(0),
             input_seq_counter: 1,

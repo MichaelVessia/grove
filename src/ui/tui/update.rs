@@ -3,6 +3,7 @@ use super::*;
 impl GroveApp {
     pub(super) fn update_model(&mut self, msg: Msg) -> Cmd<Msg> {
         let update_started_at = Instant::now();
+        let replay_seq = self.record_replay_msg_received(&msg);
         let msg_kind = Self::msg_kind(&msg);
         let before = self.capture_transition_snapshot();
         let cmd = match msg {
@@ -96,6 +97,7 @@ impl GroveApp {
             Msg::Noop => Cmd::None,
         };
         self.emit_transition_events(&before);
+        self.record_replay_state_after_update(replay_seq);
         self.event_log.log(
             LogEvent::new("update_timing", "message_handled")
                 .with_data("msg_kind", Value::from(msg_kind))

@@ -138,6 +138,10 @@ impl GroveApp {
                 "frame_cursor_has_position".to_string(),
                 Value::from(frame.cursor_position.is_some()),
             ),
+            (
+                "replay_seq".to_string(),
+                Value::from(self.replay_msg_seq_counter),
+            ),
         ];
         if let Some((cursor_col, cursor_row)) = frame.cursor_position {
             frame_fields.push(("frame_cursor_col".to_string(), Value::from(cursor_col)));

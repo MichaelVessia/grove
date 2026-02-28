@@ -19,6 +19,10 @@ fn cli_parser_reads_event_log_and_print_hello() {
             print_hello: true,
             event_log_path: Some(PathBuf::from("/tmp/events.jsonl")),
             debug_record: false,
+            replay_trace_path: None,
+            replay_snapshot_path: None,
+            replay_emit_test_name: None,
+            replay_invariant_only: false,
         }
     );
 }
@@ -40,8 +44,46 @@ fn cli_parser_reads_debug_record_flag() {
             print_hello: false,
             event_log_path: None,
             debug_record: true,
+            replay_trace_path: None,
+            replay_snapshot_path: None,
+            replay_emit_test_name: None,
+            replay_invariant_only: false,
         }
     );
+}
+
+#[test]
+fn cli_parser_reads_replay_options() {
+    let parsed = parse_cli_args(vec![
+        "replay".to_string(),
+        "/tmp/debug-record.jsonl".to_string(),
+        "--snapshot".to_string(),
+        "/tmp/replay-snapshot.json".to_string(),
+        "--emit-test".to_string(),
+        "flow-a".to_string(),
+        "--invariant-only".to_string(),
+    ])
+    .expect("replay arguments should parse");
+
+    assert_eq!(
+        parsed,
+        CliArgs {
+            print_hello: false,
+            event_log_path: None,
+            debug_record: false,
+            replay_trace_path: Some(PathBuf::from("/tmp/debug-record.jsonl")),
+            replay_snapshot_path: Some(PathBuf::from("/tmp/replay-snapshot.json")),
+            replay_emit_test_name: Some("flow-a".to_string()),
+            replay_invariant_only: true,
+        }
+    );
+}
+
+#[test]
+fn cli_parser_rejects_replay_flags_without_replay_subcommand() {
+    let error = parse_cli_args(vec!["--snapshot".to_string(), "/tmp/out.json".to_string()])
+        .expect_err("replay-only flags without replay should fail");
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
 }
 
 #[test]

@@ -48,11 +48,14 @@ Specific mapping:
 
 ```text
 docs/PRD.md               -- full product requirements + technical implementation
+docs/debug-replay.md      -- human + agent replay debugging workflow
 docs/
   adr/
 .reference/
   frankentui/             -- TUI framework (Rust, Elm architecture)
   sidecar/                -- reference app (Go, Bubble Tea)
+.agents/skills/
+  replay-debug/           -- project skill for debug-record replay workflows
 ```
 
 ## Workflow
@@ -87,3 +90,17 @@ make ci
 - Whenever adding or changing a keybind or command, update both the Keybind
   Help modal content and the Command Palette actions so UI discoverability
   stays in sync.
+
+## Replay Debugging
+
+- For runtime race, polling, interactive input, or rendering regressions,
+  capture a debug record first, then replay it.
+- Human runbook:
+  - `docs/debug-replay.md`
+- Project skill:
+  - `.agents/skills/replay-debug/SKILL.md`
+- Default replay commands:
+  - `cargo run -- --debug-record`
+  - `cargo run -- replay <trace-path>`
+  - `cargo run -- replay <trace-path> --snapshot <path>`
+  - `cargo run -- replay <trace-path> --emit-test <name>`
