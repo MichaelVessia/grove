@@ -12,7 +12,7 @@ clippy:
 test:
 	cargo test
 
-precommit: fmt check
+precommit: fmt check clippy
 
 ci: fmt clippy test
 

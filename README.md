@@ -168,8 +168,8 @@ make tui
 ```bash
 make tui        # launch TUI
 make debug-tui  # launch TUI with debug record enabled
-make precommit  # cargo fmt --check + cargo check
-make ci         # precommit + clippy + tests
+make precommit  # cargo fmt --check + cargo check + cargo clippy -D warnings
+make ci         # cargo fmt --check + cargo clippy -D warnings + cargo test
 make test       # run tests
 ```
 
