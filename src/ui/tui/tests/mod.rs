@@ -13,8 +13,8 @@ use super::{
     CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
     DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
     HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW,
-    LaunchDialogField, LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture,
-    MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
+    HelpHintContext, LaunchDialogField, LaunchDialogState, LazygitLaunchCompletion,
+    LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
     PendingAutoStartWorkspace, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
     ProjectAddDialogField, ProjectDefaultsDialogField, RefreshWorkspacesCompletion,
     SettingsDialogField, StartAgentCompletion, StartAgentConfigField, StartAgentConfigState,
@@ -2373,6 +2373,33 @@ fn ui_command_palette_ids_are_unique_and_roundtrip() {
             spec.id
         );
         assert_eq!(UiCommand::from_palette_id(spec.id), Some(*command));
+    }
+}
+
+#[test]
+fn ui_command_help_hint_labels_match_context_command_lists() {
+    let contexts = [
+        HelpHintContext::Global,
+        HelpHintContext::Workspace,
+        HelpHintContext::List,
+        HelpHintContext::PreviewAgent,
+        HelpHintContext::PreviewShell,
+        HelpHintContext::PreviewGit,
+    ];
+
+    for context in contexts {
+        let listed = UiCommand::help_hints_for(context);
+        for command in UiCommand::all() {
+            let is_listed = listed
+                .iter()
+                .any(|listed_command| listed_command == command);
+            let has_label = command.help_hint_label(context).is_some();
+            assert_eq!(
+                is_listed, has_label,
+                "context {:?} command {:?} should have list/label parity",
+                context, command
+            );
+        }
     }
 }
 

@@ -159,6 +159,41 @@ fn build_shell_launch_plan_with_workspace_init_runs_guard_when_command_is_empty(
 }
 
 #[test]
+fn workspace_init_guard_recovers_stale_lock_dirs() {
+    let request = shell_launch_request_for_workspace(
+        &fixture_workspace("feature", false),
+        "grove-ws-feature-shell".to_string(),
+        String::new(),
+        Some("echo init".to_string()),
+        Some(120),
+        Some(40),
+    );
+    let plan = build_shell_launch_plan(&request);
+    let guard = &plan.launch_cmd[4];
+
+    assert!(
+        guard.contains("lock_stale_checks=0"),
+        "expected stale lock counter, got {guard}"
+    );
+    assert!(
+        guard.contains("if [ -f") && guard.contains("/pid ]"),
+        "expected pid probe for lock holder, got {guard}"
+    );
+    assert!(
+        guard.contains("kill -0"),
+        "expected liveness check before stale cleanup, got {guard}"
+    );
+    assert!(
+        guard.contains("rm -rf") && guard.contains(".lock"),
+        "expected stale lock cleanup, got {guard}"
+    );
+    assert!(
+        guard.contains("echo \"$$\" >") && guard.contains("/pid"),
+        "expected pid file write when lock acquired, got {guard}"
+    );
+}
+
+#[test]
 fn build_shell_launch_plan_with_direnv_init_wraps_run_command_in_direnv_exec() {
     let request = shell_launch_request_for_workspace(
         &fixture_workspace("feature", false),

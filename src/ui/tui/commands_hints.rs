@@ -66,15 +66,13 @@ impl UiCommand {
             (UiCommand::ToggleMouseCapture, HelpHintContext::Global) => {
                 Some("M toggle mouse capture")
             }
-            (UiCommand::ResizeSidebarNarrower, HelpHintContext::Global)
-            | (UiCommand::ResizeSidebarWider, HelpHintContext::Global) => {
+            (UiCommand::ResizeSidebarNarrower, HelpHintContext::Global) => {
                 Some("Alt+Left/Right or Alt+H/L resize (Alt+B/F fallback)")
             }
             (UiCommand::FocusList, HelpHintContext::Global) => Some("Esc list pane"),
             (UiCommand::MoveSelectionDown, HelpHintContext::Global) => Some("Alt+J/K workspace"),
             (UiCommand::PreviousTab, HelpHintContext::Global) => Some("Alt+[ prev tab"),
             (UiCommand::NextTab, HelpHintContext::Global) => Some("Alt+] next tab"),
-            (UiCommand::FocusPreview, HelpHintContext::Global) => Some("l preview pane"),
             (UiCommand::OpenPreview, HelpHintContext::Global) => Some("Enter open/attach"),
             (UiCommand::OpenCommandPalette, HelpHintContext::Global) => {
                 Some("Ctrl+K command palette")

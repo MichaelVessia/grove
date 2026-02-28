@@ -1185,10 +1185,28 @@ fn workspace_init_guard_script(workspace_path: &Path, workspace_init_command: &s
     let quoted_lock_dir = shell_quote(lock_dir.to_string_lossy().as_ref());
     let quoted_stamp_file = shell_quote(stamp_file.to_string_lossy().as_ref());
     format!(
-        "mkdir -p {quoted_grove_dir}
+        "lock_stale_checks=0
+mkdir -p {quoted_grove_dir}
 if [ ! -f {quoted_stamp_file} ]; then
-  while ! mkdir {quoted_lock_dir} 2>/dev/null; do sleep 0.1; done
-  trap 'rmdir {quoted_lock_dir} 2>/dev/null || true' EXIT
+  while ! mkdir {quoted_lock_dir} 2>/dev/null; do
+    lock_pid=\"\"
+    if [ -f {quoted_lock_dir}/pid ]; then
+      lock_pid=\"$(cat {quoted_lock_dir}/pid 2>/dev/null || true)\"
+    fi
+    if [ -n \"$lock_pid\" ] && kill -0 \"$lock_pid\" 2>/dev/null; then
+      lock_stale_checks=0
+      sleep 0.1
+      continue
+    fi
+    lock_stale_checks=$((lock_stale_checks + 1))
+    if [ \"$lock_stale_checks\" -ge 20 ]; then
+      rm -rf {quoted_lock_dir} 2>/dev/null || true
+      lock_stale_checks=0
+    fi
+    sleep 0.1
+  done
+  echo \"$$\" > {quoted_lock_dir}/pid
+  trap 'rm -f {quoted_lock_dir}/pid; rmdir {quoted_lock_dir} 2>/dev/null || true' EXIT
   if [ ! -f {quoted_stamp_file} ]; then
     {workspace_init_command}
     init_status=$?

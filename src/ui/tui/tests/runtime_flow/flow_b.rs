@@ -1863,7 +1863,7 @@ fn resize_in_interactive_mode_immediately_resizes_and_polls() {
         calls
             .borrow()
             .iter()
-            .any(|call| { call == &format!("capture:grove-ws-feature-a:{}:true", 200) })
+            .any(|call| { call == &format!("capture:grove-ws-feature-a:{}:true", 600) })
     );
 }
 
