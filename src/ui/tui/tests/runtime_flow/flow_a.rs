@@ -540,66 +540,29 @@ fn background_poll_transition_from_waiting_to_active_clears_attention() {
 }
 
 #[test]
-fn selecting_workspace_clears_attention_for_selected_workspace() {
-    let mut app = fixture_app();
+fn selecting_workspace_does_not_clear_attention() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 0;
-
-    ftui::Model::update(
-        &mut app,
-        Msg::PreviewPollCompleted(PreviewPollCompletion {
-            generation: 1,
-            live_capture: None,
-            cursor_capture: None,
-            workspace_status_captures: vec![WorkspaceStatusCapture {
-                workspace_name: "feature-a".to_string(),
-                workspace_path: PathBuf::from("/repos/grove-feature-a"),
-                session_name: "grove-ws-feature-a".to_string(),
-                supported_agent: true,
-                capture_ms: 1,
-                result: Ok("Approve command? [y/n]".to_string()),
-            }],
-        }),
-    );
     app.workspace_attention.insert(
         PathBuf::from("/repos/grove-feature-a"),
         super::WorkspaceAttention::NeedsAttention,
-    );
-    assert!(
-        app.workspace_attention
-            .contains_key(&PathBuf::from("/repos/grove-feature-a"))
     );
 
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('j'))));
     assert_eq!(app.state.selected_index, 1);
     assert!(
-        !app.workspace_attention
+        app.workspace_attention
             .contains_key(&PathBuf::from("/repos/grove-feature-a"))
     );
 }
 
 #[test]
-fn entering_interactive_clears_attention_for_selected_workspace() {
-    let mut app = fixture_app();
+fn entering_interactive_does_not_clear_attention() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 1;
     app.state.mode = UiMode::Preview;
     app.state.focus = PaneFocus::Preview;
     app.state.workspaces[1].status = WorkspaceStatus::Active;
-
-    ftui::Model::update(
-        &mut app,
-        Msg::PreviewPollCompleted(PreviewPollCompletion {
-            generation: 1,
-            live_capture: Some(LivePreviewCapture {
-                session: "grove-ws-feature-a".to_string(),
-                include_escape_sequences: true,
-                capture_ms: 1,
-                total_ms: 1,
-                result: Ok("Approve command? [y/n]".to_string()),
-            }),
-            cursor_capture: None,
-            workspace_status_captures: Vec::new(),
-        }),
-    );
     app.workspace_attention.insert(
         PathBuf::from("/repos/grove-feature-a"),
         super::WorkspaceAttention::NeedsAttention,
@@ -607,7 +570,7 @@ fn entering_interactive_clears_attention_for_selected_workspace() {
 
     assert!(app.enter_interactive(Instant::now()));
     assert!(
-        !app.workspace_attention
+        app.workspace_attention
             .contains_key(&PathBuf::from("/repos/grove-feature-a"))
     );
 }

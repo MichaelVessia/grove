@@ -54,20 +54,6 @@ impl GroveApp {
     }
 
     fn refresh_workspace_attention_for_path(&mut self, workspace_path: &Path) {
-        let selected_workspace_matches = self
-            .state
-            .selected_workspace()
-            .is_some_and(|workspace| workspace.path == workspace_path);
-        if selected_workspace_matches {
-            self.workspace_attention.remove(workspace_path);
-            if self.acknowledge_workspace_attention_for_path(workspace_path)
-                && let Err(error) = self.save_projects_config()
-            {
-                self.last_tmux_error = Some(format!("attention ack persist failed: {error}"));
-            }
-            return;
-        }
-
         let Some(marker) = self.current_attention_marker_for_workspace_path(workspace_path) else {
             self.workspace_attention.remove(workspace_path);
             return;
@@ -99,13 +85,6 @@ impl GroveApp {
         {
             self.last_tmux_error = Some(format!("attention ack persist failed: {error}"));
         }
-    }
-
-    pub(super) fn clear_attention_for_selected_workspace(&mut self) {
-        let Some(workspace_path) = self.selected_workspace_path() else {
-            return;
-        };
-        self.clear_attention_for_workspace_path(&workspace_path);
     }
 
     pub(super) fn track_workspace_status_transition(

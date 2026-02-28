@@ -1192,7 +1192,7 @@ fn waiting_workspace_row_has_no_status_badge_or_input_banner() {
 }
 
 #[test]
-fn working_workspace_row_hides_attention_indicator() {
+fn working_workspace_row_shows_attention_indicator_when_present() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 1;
@@ -1213,8 +1213,8 @@ fn working_workspace_row_hides_attention_indicator() {
         };
         let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
         assert!(
-            !sidebar_row_text.contains(" ! "),
-            "working workspace should hide attention indicator, got: {sidebar_row_text}"
+            sidebar_row_text.contains(" ! "),
+            "working workspace should show attention indicator, got: {sidebar_row_text}"
         );
     });
 }

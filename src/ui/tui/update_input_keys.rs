@@ -30,7 +30,6 @@ impl GroveApp {
     }
 
     pub(super) fn handle_workspace_selection_changed(&mut self) {
-        self.clear_attention_for_selected_workspace();
         if self.interactive.is_some() {
             self.exit_interactive_to_list();
         }

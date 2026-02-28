@@ -256,12 +256,9 @@ impl GroveApp {
                     workspace.status,
                     is_selected,
                 );
-                let (attention_symbol, attention_color) = if is_working {
-                    (" ", theme.overlay0)
-                } else {
-                    self.workspace_attention_indicator(workspace.path.as_path())
-                        .unwrap_or((" ", theme.overlay0))
-                };
+                let (attention_symbol, attention_color) = self
+                    .workspace_attention_indicator(workspace.path.as_path())
+                    .unwrap_or((" ", theme.overlay0));
                 let row_background = if is_selected {
                     if self.state.focus == PaneFocus::WorkspaceList && !self.modal_open() {
                         Some(theme.surface1)

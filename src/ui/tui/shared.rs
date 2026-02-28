@@ -19,6 +19,7 @@ macro_rules! cyclic_field_nav {
     };
 }
 
+use std::path::PathBuf;
 use std::time::Instant;
 
 use ftui::PackedRgba;
@@ -286,6 +287,7 @@ pub(super) struct PendingResizeVerification {
 pub(super) struct QueuedInteractiveSend {
     pub(super) command: Vec<String>,
     pub(super) target_session: String,
+    pub(super) attention_ack_workspace_path: Option<PathBuf>,
     pub(super) action_kind: String,
     pub(super) trace_context: Option<InputTraceContext>,
     pub(super) literal_chars: Option<u64>,

@@ -218,7 +218,6 @@ impl GroveApp {
         self.last_tmux_error = None;
         self.state.mode = UiMode::Preview;
         self.state.focus = PaneFocus::Preview;
-        self.clear_attention_for_selected_workspace();
         self.clear_preview_selection();
         self.sync_interactive_session_geometry();
         self.poll_preview();

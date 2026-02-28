@@ -58,6 +58,11 @@ impl GroveApp {
         match self.tmux_input.paste_buffer(target_session, &text) {
             Ok(()) => {
                 self.last_tmux_error = None;
+                if let Some(workspace_path) =
+                    self.attention_workspace_path_for_session(target_session)
+                {
+                    self.clear_attention_for_workspace_path(&workspace_path);
+                }
             }
             Err(error) => {
                 let message = error.to_string();

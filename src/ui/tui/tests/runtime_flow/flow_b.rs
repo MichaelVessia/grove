@@ -851,6 +851,45 @@ fn alt_x_does_not_exit_interactive_or_open_stop_dialog() {
 }
 
 #[test]
+fn interactive_send_clears_attention_for_agent_workspace() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+    app.interactive = Some(InteractiveState::new(
+        "%0".to_string(),
+        "grove-ws-feature-a".to_string(),
+        Instant::now(),
+        34,
+        78,
+    ));
+    app.workspace_attention.insert(
+        PathBuf::from("/repos/grove-feature-a"),
+        WorkspaceAttention::NeedsAttention,
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert_eq!(
+        commands.borrow().as_slice(),
+        &[vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-l".to_string(),
+            "-t".to_string(),
+            "grove-ws-feature-a".to_string(),
+            "x".to_string(),
+        ]]
+    );
+    assert!(
+        !app.workspace_attention
+            .contains_key(&PathBuf::from("/repos/grove-feature-a"))
+    );
+}
+
+#[test]
 fn stop_dialog_blocks_navigation_and_escape_cancels() {
     let mut app = fixture_app();
     app.state.selected_index = 1;

@@ -1,6 +1,17 @@
 use super::*;
 
 impl GroveApp {
+    pub(super) fn attention_workspace_path_for_session(
+        &self,
+        session_name: &str,
+    ) -> Option<PathBuf> {
+        self.state
+            .workspaces
+            .iter()
+            .find(|workspace| session_name_for_workspace_ref(workspace) == session_name)
+            .map(|workspace| workspace.path.clone())
+    }
+
     fn queue_interactive_send(&mut self, send: QueuedInteractiveSend) -> Cmd<Msg> {
         self.pending_interactive_sends.push_back(send);
         self.dispatch_next_interactive_send()
@@ -41,6 +52,7 @@ impl GroveApp {
             send:
                 QueuedInteractiveSend {
                     target_session,
+                    attention_ack_workspace_path,
                     action_kind,
                     trace_context,
                     literal_chars,
@@ -68,6 +80,9 @@ impl GroveApp {
         }
 
         self.last_tmux_error = None;
+        if let Some(workspace_path) = attention_ack_workspace_path {
+            self.clear_attention_for_workspace_path(&workspace_path);
+        }
         if let Some(trace_context) = trace_context {
             let forwarded_at = Instant::now();
             self.track_pending_interactive_input(trace_context, &target_session, forwarded_at);
@@ -119,11 +134,14 @@ impl GroveApp {
         } else {
             None
         };
+        let attention_ack_workspace_path =
+            self.attention_workspace_path_for_session(target_session);
 
         if self.tmux_input.supports_background_send() {
             return self.queue_interactive_send(QueuedInteractiveSend {
                 command,
                 target_session: target_session.to_string(),
+                attention_ack_workspace_path,
                 action_kind: Self::interactive_action_kind(action).to_string(),
                 trace_context,
                 literal_chars,
@@ -134,6 +152,9 @@ impl GroveApp {
         match self.execute_tmux_command(&command) {
             Ok(()) => {
                 self.last_tmux_error = None;
+                if let Some(workspace_path) = attention_ack_workspace_path {
+                    self.clear_attention_for_workspace_path(&workspace_path);
+                }
                 if let Some(trace_context) = trace_context {
                     let forwarded_at = Instant::now();
                     let send_duration_ms = Self::duration_millis(
