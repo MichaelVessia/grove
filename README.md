@@ -245,6 +245,7 @@ launch_skip_permissions = false
 
 Example `projects.toml`:
 
+```toml
 [[projects]]
 name = "grove"
 path = "/path/to/repo"
