@@ -131,11 +131,11 @@ mod dialogs_stop;
 mod dialogs_update_from_base;
 use dialogs::*;
 use dialogs_state::*;
-#[path = "commands/commands.rs"]
+#[path = "commands/catalog.rs"]
 mod commands;
-#[path = "commands/commands_hints.rs"]
+#[path = "commands/help.rs"]
 mod commands_hints;
-#[path = "commands/commands_palette.rs"]
+#[path = "commands/palette.rs"]
 mod commands_palette;
 use commands::*;
 mod msg;
