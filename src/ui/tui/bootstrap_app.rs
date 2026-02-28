@@ -165,6 +165,7 @@ impl GroveApp {
             next_tick_due_at: None,
             next_tick_interval_ms: None,
             next_poll_due_at: None,
+            last_workspace_status_poll_at: None,
             preview_poll_in_flight: false,
             preview_poll_requested: false,
             next_visual_due_at: None,

@@ -5,10 +5,10 @@ impl GroveApp {
         let live_preview = self.prepare_live_preview_session();
         let has_live_preview = live_preview.is_some();
         let cursor_session = self.interactive_target_session();
-        let status_poll_targets = workspace_status_targets_for_polling_with_live_preview(
-            &self.state.workspaces,
-            live_preview.as_ref(),
-        );
+        let status_poll_targets = self.status_poll_targets_for_async_preview(live_preview.as_ref());
+        if !status_poll_targets.is_empty() {
+            self.last_workspace_status_poll_at = Some(Instant::now());
+        }
 
         if let Some(live_preview_target) = live_preview {
             let capture_started_at = Instant::now();

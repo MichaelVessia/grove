@@ -140,6 +140,23 @@ fn async_preview_polls_workspace_status_targets_when_live_preview_missing() {
 }
 
 #[test]
+fn async_preview_rate_limits_background_workspace_status_targets() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 1;
+    app.state.workspaces[0].status = WorkspaceStatus::Active;
+
+    let live_preview = app.prepare_live_preview_session();
+    assert!(live_preview.is_some());
+
+    let initial_targets = app.status_poll_targets_for_async_preview(live_preview.as_ref());
+    assert_eq!(initial_targets.len(), 1);
+    app.last_workspace_status_poll_at = Some(Instant::now());
+
+    let throttled_targets = app.status_poll_targets_for_async_preview(live_preview.as_ref());
+    assert!(throttled_targets.is_empty());
+}
+
+#[test]
 fn prepare_live_preview_session_launches_shell_from_list_mode() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());

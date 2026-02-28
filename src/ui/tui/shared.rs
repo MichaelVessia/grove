@@ -60,6 +60,7 @@ pub(super) const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 pub(super) const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
 pub(super) const TOAST_TICK_INTERVAL_MS: u64 = 100;
 pub(super) const PREVIEW_POLL_IN_FLIGHT_TICK_MS: u64 = 20;
+pub(super) const WORKSPACE_STATUS_POLL_INTERVAL_MS: u64 = 2_000;
 pub(super) const LAZYGIT_COMMAND: &str = "lazygit";
 pub(super) const AGENT_ACTIVITY_WINDOW_FRAMES: usize = 6;
 pub(super) const LOCAL_TYPING_SUPPRESS_MS: u64 = 400;

@@ -5,7 +5,35 @@ impl GroveApp {
         &self,
         live_preview: Option<&LivePreviewTarget>,
     ) -> Vec<WorkspaceStatusTarget> {
-        workspace_status_targets_for_polling_with_live_preview(&self.state.workspaces, live_preview)
+        let targets = workspace_status_targets_for_polling_with_live_preview(
+            &self.state.workspaces,
+            live_preview,
+        );
+        if targets.is_empty() {
+            return targets;
+        }
+
+        let Some(last_polled_at) = self.last_workspace_status_poll_at else {
+            return targets;
+        };
+        let since_last = Instant::now().saturating_duration_since(last_polled_at);
+        if since_last >= Duration::from_millis(WORKSPACE_STATUS_POLL_INTERVAL_MS) {
+            return targets;
+        }
+
+        self.event_log.log(
+            LogEvent::new("preview_poll", "status_capture_rate_limited")
+                .with_data(
+                    "since_last_ms",
+                    Value::from(Self::duration_millis(since_last)),
+                )
+                .with_data(
+                    "min_interval_ms",
+                    Value::from(WORKSPACE_STATUS_POLL_INTERVAL_MS),
+                )
+                .with_data("target_count", Value::from(usize_to_u64(targets.len()))),
+        );
+        Vec::new()
     }
 
     pub(super) fn selected_live_preview_session_if_ready(&self) -> Option<String> {
@@ -49,6 +77,9 @@ impl GroveApp {
         let live_preview = self.prepare_live_preview_session();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = self.status_poll_targets_for_async_preview(live_preview.as_ref());
+        if !status_poll_targets.is_empty() {
+            self.last_workspace_status_poll_at = Some(Instant::now());
+        }
 
         if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
             self.preview_poll_requested = false;
