@@ -178,8 +178,6 @@ mod update_input_interactive_send;
 mod update_input_key_events;
 #[path = "update/update_input_keybinding.rs"]
 mod update_input_keybinding;
-#[path = "update/update_input_keys.rs"]
-mod update_input_keys;
 #[path = "update/update_input_mouse.rs"]
 mod update_input_mouse;
 #[path = "update/update_lifecycle_create.rs"]
@@ -198,16 +196,12 @@ mod update_navigation_commands;
 mod update_navigation_palette;
 #[path = "update/update_navigation_preview.rs"]
 mod update_navigation_preview;
-#[path = "update/update_navigation_summary.rs"]
-mod update_navigation_summary;
 #[path = "update/update_polling_capture_cursor.rs"]
 mod update_polling_capture_cursor;
 #[path = "update/update_polling_capture_dispatch.rs"]
 mod update_polling_capture_dispatch;
 #[path = "update/update_polling_capture_live.rs"]
 mod update_polling_capture_live;
-#[path = "update/update_polling_capture_scroll.rs"]
-mod update_polling_capture_scroll;
 #[path = "update/update_polling_capture_task.rs"]
 mod update_polling_capture_task;
 #[path = "update/update_polling_capture_workspace.rs"]
