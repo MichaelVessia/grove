@@ -174,10 +174,10 @@ impl Model for GroveApp {
     }
 
     fn update(&mut self, msg: Msg) -> Cmd<Self::Message> {
-        self.update_model(msg)
+        app::update(self, msg)
     }
 
     fn view(&self, frame: &mut Frame) {
-        self.render_model(frame);
+        app::view(self, frame);
     }
 }

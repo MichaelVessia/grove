@@ -149,6 +149,8 @@ mod commands_hints;
 #[path = "commands/palette.rs"]
 mod commands_palette;
 use commands::*;
+#[path = "app/mod.rs"]
+mod app;
 mod msg;
 use msg::*;
 #[path = "logging/logging_frame.rs"]
