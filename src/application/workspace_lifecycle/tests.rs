@@ -702,6 +702,46 @@ fn delete_workspace_records_branch_delete_failure_as_warning() {
 }
 
 #[test]
+fn delete_workspace_without_project_path_uses_current_directory() {
+    let temp = TestDir::new("delete-cwd-fallback");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    init_git_repo(&repo_root);
+
+    let workspace_path = temp.path.join("grove-feature-z");
+    run_git(
+        &repo_root,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feature-z",
+            workspace_path.to_string_lossy().as_ref(),
+            "HEAD",
+        ],
+    );
+
+    let original_cwd = std::env::current_dir().expect("cwd should be available");
+    std::env::set_current_dir(&repo_root).expect("should switch cwd to repo");
+    let request = DeleteWorkspaceRequest {
+        project_name: None,
+        project_path: None,
+        workspace_name: "feature-z".to_string(),
+        branch: "feature-z".to_string(),
+        workspace_path: workspace_path.clone(),
+        is_missing: false,
+        delete_local_branch: true,
+        kill_tmux_sessions: false,
+    };
+    let (result, warnings) = delete_workspace(request);
+    std::env::set_current_dir(&original_cwd).expect("should restore cwd");
+
+    assert_eq!(result, Ok(()));
+    assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    assert!(!workspace_path.exists(), "workspace path should be removed");
+}
+
+#[test]
 fn merge_workspace_merges_branch_and_cleans_up_when_requested() {
     let temp = TestDir::new("merge-cleanup");
     let repo_root = temp.path.join("grove");

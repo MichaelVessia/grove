@@ -149,3 +149,73 @@ fn replay_debug_record_replays_minimal_trace() {
 
     let _ = fs::remove_file(trace_path);
 }
+
+#[test]
+fn replay_debug_record_writes_snapshot_when_requested() {
+    let bootstrap = minimal_bootstrap();
+    let mut app = app_from_bootstrap(&bootstrap);
+    app.replay_msg_seq_counter = 1;
+    let _ = Model::update(&mut app, Msg::Noop);
+    let expected_state = ReplayStateSnapshot::from_app(&app);
+
+    let trace_path = unique_temp_path("snapshot-trace", "jsonl");
+    let snapshot_path = unique_temp_path("snapshot-output", "json");
+    let bootstrap_json =
+        serde_json::to_value(&bootstrap).expect("bootstrap snapshot should encode");
+    let msg_json = serde_json::to_value(ReplayMsg::Noop).expect("message should encode");
+    let state_json = serde_json::to_value(&expected_state).expect("state snapshot should encode");
+
+    let lines = [
+        json!({
+            "ts": 1,
+            "event": "replay",
+            "kind": "bootstrap",
+            "data": {
+                "schema_version": REPLAY_SCHEMA_VERSION,
+                "bootstrap": bootstrap_json,
+            }
+        })
+        .to_string(),
+        json!({
+            "ts": 2,
+            "event": "replay",
+            "kind": "msg_received",
+            "data": {
+                "schema_version": REPLAY_SCHEMA_VERSION,
+                "seq": 1,
+                "msg": msg_json,
+            }
+        })
+        .to_string(),
+        json!({
+            "ts": 3,
+            "event": "replay",
+            "kind": "state_after_update",
+            "data": {
+                "schema_version": REPLAY_SCHEMA_VERSION,
+                "seq": 1,
+                "state": state_json,
+            }
+        })
+        .to_string(),
+    ];
+    fs::write(&trace_path, format!("{}\n", lines.join("\n"))).expect("trace should write");
+
+    let outcome = replay_debug_record(
+        &trace_path,
+        &ReplayOptions {
+            invariant_only: true,
+            snapshot_path: Some(snapshot_path.clone()),
+        },
+    )
+    .expect("replay should succeed");
+    assert_eq!(outcome.steps_replayed, 1);
+    assert!(snapshot_path.exists(), "snapshot output should be written");
+
+    let snapshot = fs::read_to_string(&snapshot_path).expect("snapshot output should be readable");
+    assert!(snapshot.contains("\"schema_version\": 1"));
+    assert!(snapshot.contains("\"steps\""));
+
+    let _ = fs::remove_file(trace_path);
+    let _ = fs::remove_file(snapshot_path);
+}
