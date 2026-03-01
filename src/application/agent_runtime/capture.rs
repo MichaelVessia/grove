@@ -233,12 +233,15 @@ fn strip_partial_mouse_sequences(input: &str) -> String {
     let mut index = 0usize;
 
     while index < bytes.len() {
-        if let Some(end) = parse_mouse_fragment_end(bytes, index) {
+        let byte = bytes[index];
+        if matches!(byte, b'[' | b'M' | b'm')
+            && let Some(end) = parse_mouse_fragment_end(bytes, index)
+        {
             index = end;
             continue;
         }
 
-        output.push(bytes[index]);
+        output.push(byte);
         index += 1;
     }
 
