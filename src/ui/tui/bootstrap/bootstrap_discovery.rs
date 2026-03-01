@@ -4,10 +4,11 @@ use std::process::Command;
 
 use serde::Deserialize;
 
+use crate::application::workspace_discovery::discover_bootstrap_data;
 use crate::domain::{PullRequest, PullRequestStatus, Workspace};
 use crate::infrastructure::adapters::{
     BootstrapData, CommandGitAdapter, CommandMultiplexerAdapter, CommandSystemAdapter,
-    DiscoveryState, MultiplexerAdapter, bootstrap_data,
+    DiscoveryState, MultiplexerAdapter,
 };
 use crate::infrastructure::config::ProjectConfig;
 
@@ -58,7 +59,7 @@ pub(super) fn bootstrap_data_for_projects(projects: &[ProjectConfig]) -> Bootstr
     for project in projects {
         let git = CommandGitAdapter::for_repo(project.path.clone());
         let system = CommandSystemAdapter::for_repo(project.path.clone());
-        let bootstrap = bootstrap_data(&git, &static_multiplexer, &system);
+        let bootstrap = discover_bootstrap_data(&git, &static_multiplexer, &system);
         if let DiscoveryState::Error(message) = &bootstrap.discovery_state {
             errors.push(format!("{}: {message}", project.name));
         }

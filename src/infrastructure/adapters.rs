@@ -1,13 +1,12 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::application::agent_runtime::{TMUX_SESSION_PREFIX, reconcile_with_sessions};
-use crate::application::workspace_lifecycle::{
-    WorkspaceMarkerError, read_workspace_agent_marker, read_workspace_markers,
-};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+
+const TMUX_SESSION_PREFIX: &str = "grove-ws-";
 
 pub trait GitAdapter {
     fn list_workspaces(&self) -> Result<Vec<Workspace>, GitAdapterError>;
@@ -54,7 +53,7 @@ pub(crate) struct BootstrapData {
 
 pub(crate) fn bootstrap_data(
     git: &impl GitAdapter,
-    multiplexer: &impl MultiplexerAdapter,
+    _multiplexer: &impl MultiplexerAdapter,
     system: &impl SystemAdapter,
 ) -> BootstrapData {
     let repo_name = system.repo_name();
@@ -65,17 +64,11 @@ pub(crate) fn bootstrap_data(
             workspaces,
             discovery_state: DiscoveryState::Empty,
         },
-        Ok(workspaces) => {
-            let running_sessions = multiplexer.running_sessions();
-            let reconciled =
-                reconcile_with_sessions(&workspaces, &running_sessions, &HashSet::new());
-
-            BootstrapData {
-                repo_name,
-                workspaces: reconciled.workspaces,
-                discovery_state: DiscoveryState::Ready,
-            }
-        }
+        Ok(workspaces) => BootstrapData {
+            repo_name,
+            workspaces,
+            discovery_state: DiscoveryState::Ready,
+        },
         Err(error) => BootstrapData {
             repo_name,
             workspaces: Vec::new(),
@@ -392,46 +385,70 @@ fn workspace_sort(left: &Workspace, right: &Workspace) -> Ordering {
 }
 
 fn marker_metadata(path: &Path) -> Result<Option<MarkerMetadata>, GitAdapterError> {
-    match read_workspace_markers(path) {
-        Ok(markers) => Ok(Some(MarkerMetadata {
-            agent: markers.agent,
-            base_branch: Some(markers.base_branch),
-            supported_agent: true,
-        })),
-        Err(WorkspaceMarkerError::MissingAgentMarker) => Ok(None),
-        Err(WorkspaceMarkerError::MissingBaseMarker)
-        | Err(WorkspaceMarkerError::InvalidAgentMarker(_))
-        | Err(WorkspaceMarkerError::EmptyBaseBranch) => Ok(Some(MarkerMetadata {
-            agent: AgentType::Claude,
-            base_branch: None,
-            supported_agent: false,
-        })),
-        Err(WorkspaceMarkerError::Io(error)) => Err(GitAdapterError::ParseError(format!(
-            "failed reading workspace markers in '{}': {error}",
+    let Some(agent_value) = read_marker_file(path, ".grove/agent")? else {
+        return Ok(None);
+    };
+    let Some(agent) = AgentType::from_marker(agent_value.trim()) else {
+        return Ok(Some(unsupported_marker_metadata()));
+    };
+
+    let Some(base_value) = read_marker_file(path, ".grove/base")? else {
+        return Ok(Some(unsupported_marker_metadata()));
+    };
+    let base_branch = base_value.trim().to_string();
+    if base_branch.is_empty() {
+        return Ok(Some(unsupported_marker_metadata()));
+    }
+
+    Ok(Some(MarkerMetadata {
+        agent,
+        base_branch: Some(base_branch),
+        supported_agent: true,
+    }))
+}
+
+fn main_workspace_metadata(path: &Path) -> Result<MarkerMetadata, GitAdapterError> {
+    match read_marker_file(path, ".grove/agent")? {
+        Some(value) => {
+            if let Some(agent) = AgentType::from_marker(value.trim()) {
+                return Ok(MarkerMetadata {
+                    agent,
+                    base_branch: None,
+                    supported_agent: true,
+                });
+            }
+            Ok(default_main_marker_metadata())
+        }
+        None => Ok(default_main_marker_metadata()),
+    }
+}
+
+fn read_marker_file(path: &Path, relative_marker: &str) -> Result<Option<String>, GitAdapterError> {
+    let marker_path = path.join(relative_marker);
+    match fs::read_to_string(&marker_path) {
+        Ok(content) => Ok(Some(content)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(GitAdapterError::ParseError(format!(
+            "failed reading marker '{}' in '{}': {error}",
+            relative_marker,
             path.display()
         ))),
     }
 }
 
-fn main_workspace_metadata(path: &Path) -> Result<MarkerMetadata, GitAdapterError> {
-    match read_workspace_agent_marker(path) {
-        Ok(agent) => Ok(MarkerMetadata {
-            agent,
-            base_branch: None,
-            supported_agent: true,
-        }),
-        Err(WorkspaceMarkerError::MissingAgentMarker)
-        | Err(WorkspaceMarkerError::MissingBaseMarker)
-        | Err(WorkspaceMarkerError::InvalidAgentMarker(_))
-        | Err(WorkspaceMarkerError::EmptyBaseBranch) => Ok(MarkerMetadata {
-            agent: AgentType::Claude,
-            base_branch: None,
-            supported_agent: true,
-        }),
-        Err(WorkspaceMarkerError::Io(error)) => Err(GitAdapterError::ParseError(format!(
-            "failed reading workspace agent marker in '{}': {error}",
-            path.display()
-        ))),
+fn unsupported_marker_metadata() -> MarkerMetadata {
+    MarkerMetadata {
+        agent: AgentType::Claude,
+        base_branch: None,
+        supported_agent: false,
+    }
+}
+
+fn default_main_marker_metadata() -> MarkerMetadata {
+    MarkerMetadata {
+        agent: AgentType::Claude,
+        base_branch: None,
+        supported_agent: true,
     }
 }
 

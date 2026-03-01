@@ -234,7 +234,7 @@ fn bootstrap_data_reports_ready_for_successful_discovery() {
     assert_eq!(data.repo_name, "grove");
     assert_eq!(data.workspaces.len(), 2);
     assert_eq!(data.discovery_state, DiscoveryState::Ready);
-    assert_eq!(data.workspaces[1].status, WorkspaceStatus::Active);
+    assert_eq!(data.workspaces[1].status, WorkspaceStatus::Idle);
 }
 
 #[test]
