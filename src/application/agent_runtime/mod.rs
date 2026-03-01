@@ -8,6 +8,7 @@ use std::time::Duration;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
 mod agents;
+pub mod facade;
 
 pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
 const GROVE_LAUNCHER_SCRIPT_PATH: &str = ".grove/start.sh";

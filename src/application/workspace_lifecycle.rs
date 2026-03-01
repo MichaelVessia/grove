@@ -8,6 +8,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[path = "workspace_lifecycle/facade.rs"]
+pub mod facade;
+
 const GROVE_DIR: &str = ".grove";
 const GROVE_AGENT_MARKER_FILE: &str = ".grove/agent";
 const GROVE_BASE_MARKER_FILE: &str = ".grove/base";

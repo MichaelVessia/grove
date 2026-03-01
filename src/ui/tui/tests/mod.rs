@@ -24,7 +24,7 @@ use super::{
     ansi_lines_to_styled_lines, decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme,
     usize_to_u64,
 };
-use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
+use crate::application::agent_runtime::facade::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;
 use crate::application::workspace_lifecycle::{
     BranchMode, CreateWorkspaceRequest, CreateWorkspaceResult,
