@@ -2594,6 +2594,47 @@ mod tests {
     }
 
     #[test]
+    fn ui_command_keybound_commands_are_discoverable() {
+        let contexts = [
+            HelpHintContext::Global,
+            HelpHintContext::Workspace,
+            HelpHintContext::List,
+            HelpHintContext::PreviewAgent,
+            HelpHintContext::PreviewShell,
+            HelpHintContext::PreviewGit,
+        ];
+        for command in UiCommand::all() {
+            if command.keybindings().is_empty() {
+                continue;
+            }
+            let has_help_hint = contexts
+                .iter()
+                .any(|context| command.help_hint_label(*context).is_some());
+            assert!(
+                has_help_hint || command.palette_spec().is_some(),
+                "keybound command {:?} must be discoverable in help and/or palette",
+                command
+            );
+        }
+    }
+
+    #[test]
+    fn ui_command_keybinding_specs_have_no_duplicates_per_command() {
+        for command in UiCommand::all() {
+            let keybindings = command.keybindings();
+            for (index, left) in keybindings.iter().enumerate() {
+                for right in keybindings.iter().skip(index + 1) {
+                    assert_ne!(
+                        left, right,
+                        "duplicate keybinding spec for command {:?}",
+                        command
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn uppercase_s_opens_settings_dialog() {
         let mut app = fixture_app();
 

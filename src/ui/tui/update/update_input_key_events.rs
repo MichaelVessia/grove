@@ -33,25 +33,12 @@ impl GroveApp {
     }
 
     fn global_workspace_navigation_command(key_event: &KeyEvent) -> Option<UiCommand> {
-        if !key_event.modifiers.contains(Modifiers::ALT) {
-            return None;
-        }
-
-        match key_event.code {
-            KeyCode::Char('j') | KeyCode::Char('J') => Some(UiCommand::MoveSelectionDown),
-            KeyCode::Char('k') | KeyCode::Char('K') => Some(UiCommand::MoveSelectionUp),
-            KeyCode::Char('[') => Some(UiCommand::PreviousTab),
-            KeyCode::Char(']') => Some(UiCommand::NextTab),
-            KeyCode::Char('b') | KeyCode::Char('B') => Some(UiCommand::ResizeSidebarNarrower),
-            KeyCode::Char('f') | KeyCode::Char('F') => Some(UiCommand::ResizeSidebarWider),
-            KeyCode::Char('h') | KeyCode::Char('H') | KeyCode::Left => {
-                Some(UiCommand::ResizeSidebarNarrower)
+        for command in UiCommand::all() {
+            if command.matches_keybinding(key_event, KeybindingScope::GlobalNavigation) {
+                return Some(*command);
             }
-            KeyCode::Char('l') | KeyCode::Char('L') | KeyCode::Right => {
-                Some(UiCommand::ResizeSidebarWider)
-            }
-            _ => None,
         }
+        None
     }
 
     fn apply_paste_to_create_dialog(&mut self, text: &str) -> bool {
@@ -172,96 +159,50 @@ impl GroveApp {
         let can_enter_interactive = self.can_enter_interactive_session();
 
         for command in UiCommand::all() {
-            let matches = match command {
-                UiCommand::ToggleFocus => {
-                    matches!(
-                        key_event.code,
-                        KeyCode::Tab | KeyCode::Char('h') | KeyCode::Char('l')
-                    )
-                }
-                UiCommand::ToggleSidebar => matches!(key_event.code, KeyCode::Char('\\')),
-                UiCommand::OpenPreview => match key_event.code {
-                    KeyCode::Enter => !in_preview_focus || !can_enter_interactive,
-                    _ => false,
-                },
-                UiCommand::EnterInteractive => {
-                    matches!(key_event.code, KeyCode::Enter)
-                        && in_preview_focus
-                        && can_enter_interactive
-                }
-                UiCommand::FocusPreview => false,
-                UiCommand::FocusList => matches!(key_event.code, KeyCode::Escape),
-                UiCommand::MoveSelectionUp => {
-                    matches!(key_event.code, KeyCode::Char('k') | KeyCode::Up) && !in_preview_focus
-                }
-                UiCommand::MoveSelectionDown => {
-                    matches!(key_event.code, KeyCode::Char('j') | KeyCode::Down)
-                        && !in_preview_focus
-                }
-                UiCommand::ScrollUp => {
-                    matches!(key_event.code, KeyCode::Char('k') | KeyCode::Up) && in_preview_scroll
-                }
-                UiCommand::ScrollDown => {
-                    matches!(key_event.code, KeyCode::Char('j') | KeyCode::Down)
-                        && in_preview_scroll
-                }
-                UiCommand::PageUp => matches!(key_event.code, KeyCode::PageUp) && in_preview_scroll,
-                UiCommand::PageDown => {
-                    matches!(key_event.code, KeyCode::PageDown) && in_preview_scroll
-                }
-                UiCommand::ScrollBottom => {
-                    matches!(key_event.code, KeyCode::Char('G') | KeyCode::End) && in_preview_scroll
-                }
-                UiCommand::PreviousTab => {
-                    matches!(key_event.code, KeyCode::Char('[')) && in_preview_focus
-                }
-                UiCommand::NextTab => {
-                    matches!(key_event.code, KeyCode::Char(']')) && in_preview_focus
-                }
-                UiCommand::ResizeSidebarNarrower | UiCommand::ResizeSidebarWider => false,
-                UiCommand::NewWorkspace => {
-                    matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N'))
-                }
-                UiCommand::EditWorkspace => {
-                    matches!(key_event.code, KeyCode::Char('e') | KeyCode::Char('E'))
-                }
-                UiCommand::StartAgent => matches!(key_event.code, KeyCode::Char('s')),
-                UiCommand::StopAgent => {
-                    matches!(key_event.code, KeyCode::Char('x'))
-                        && (self.state.mode == UiMode::Preview
-                            || self.state.focus == PaneFocus::Preview)
-                        && self.preview_tab == PreviewTab::Agent
-                }
-                UiCommand::RestartAgent => {
-                    matches!(key_event.code, KeyCode::Char('r'))
-                        && (self.state.mode == UiMode::Preview
-                            || self.state.focus == PaneFocus::Preview)
-                        && self.preview_tab == PreviewTab::Agent
-                }
-                UiCommand::DeleteWorkspace => matches!(key_event.code, KeyCode::Char('D')),
-                UiCommand::MergeWorkspace => matches!(key_event.code, KeyCode::Char('m')),
-                UiCommand::UpdateFromBase => matches!(key_event.code, KeyCode::Char('u')),
-                UiCommand::RefreshWorkspaces => matches!(key_event.code, KeyCode::Char('R')),
-                UiCommand::OpenProjects => {
-                    matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'))
-                }
-                UiCommand::ReorderProjects => false,
-                UiCommand::DeleteProject => false,
-                UiCommand::OpenSettings => matches!(key_event.code, KeyCode::Char('S')),
-                UiCommand::ToggleMouseCapture => matches!(key_event.code, KeyCode::Char('M')),
-                UiCommand::ToggleUnsafe => matches!(key_event.code, KeyCode::Char('!')),
-                UiCommand::OpenHelp => matches!(key_event.code, KeyCode::Char('?')),
-                UiCommand::OpenCommandPalette => Self::is_ctrl_char_key(key_event, 'k'),
-                UiCommand::Quit => {
-                    matches!(key_event.code, KeyCode::Char('q')) && key_event.modifiers.is_empty()
-                }
-            };
-            if matches {
+            if !command.matches_keybinding(key_event, KeybindingScope::NonInteractive) {
+                continue;
+            }
+            if self.non_interactive_command_enabled(
+                *command,
+                in_preview_focus,
+                in_preview_scroll,
+                can_enter_interactive,
+            ) {
                 return Some(*command);
             }
         }
 
         None
+    }
+
+    fn non_interactive_command_enabled(
+        &self,
+        command: UiCommand,
+        in_preview_focus: bool,
+        in_preview_scroll: bool,
+        can_enter_interactive: bool,
+    ) -> bool {
+        match command {
+            UiCommand::OpenPreview => !in_preview_focus || !can_enter_interactive,
+            UiCommand::EnterInteractive => in_preview_focus && can_enter_interactive,
+            UiCommand::MoveSelectionUp | UiCommand::MoveSelectionDown => !in_preview_focus,
+            UiCommand::ScrollUp
+            | UiCommand::ScrollDown
+            | UiCommand::PageUp
+            | UiCommand::PageDown
+            | UiCommand::ScrollBottom => in_preview_scroll,
+            UiCommand::PreviousTab | UiCommand::NextTab => in_preview_focus,
+            UiCommand::StopAgent | UiCommand::RestartAgent => {
+                (self.state.mode == UiMode::Preview || self.state.focus == PaneFocus::Preview)
+                    && self.preview_tab == PreviewTab::Agent
+            }
+            UiCommand::ResizeSidebarNarrower
+            | UiCommand::ResizeSidebarWider
+            | UiCommand::FocusPreview
+            | UiCommand::ReorderProjects
+            | UiCommand::DeleteProject => false,
+            _ => true,
+        }
     }
 
     fn handle_non_interactive_key(&mut self, key_event: KeyEvent) -> bool {
@@ -321,7 +262,9 @@ impl GroveApp {
             return (false, Cmd::None);
         }
 
-        if Self::is_ctrl_char_key(&key_event, 'k') {
+        if UiCommand::OpenCommandPalette
+            .matches_keybinding(&key_event, KeybindingScope::NonInteractive)
+        {
             return (
                 self.execute_ui_command(UiCommand::OpenCommandPalette),
                 Cmd::None,
