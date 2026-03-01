@@ -1,10 +1,20 @@
-use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+use crate::domain::Workspace;
+
+#[path = "adapters/metadata.rs"]
+mod metadata;
+#[path = "adapters/parser.rs"]
+mod parser;
+#[path = "adapters/workspace.rs"]
+mod workspace;
+
+#[cfg(test)]
+use parser::{parse_branch_activity, parse_worktree_porcelain};
+#[cfg(test)]
+use workspace::{build_workspaces, workspace_name_from_path};
 
 const TMUX_SESSION_PREFIX: &str = "grove-ws-";
 
@@ -135,12 +145,12 @@ impl GitAdapter for CommandGitAdapter {
             "--format=%(refname:short) %(committerdate:unix)",
             "refs/heads",
         ])?;
-        let activity_by_branch = parse_branch_activity(&activity_raw);
+        let activity_by_branch = parser::parse_branch_activity(&activity_raw);
 
         let porcelain_raw = self.run_git(&["worktree", "list", "--porcelain"])?;
-        let parsed_worktrees = parse_worktree_porcelain(&porcelain_raw)?;
+        let parsed_worktrees = parser::parse_worktree_porcelain(&porcelain_raw)?;
 
-        build_workspaces(
+        workspace::build_workspaces(
             &parsed_worktrees,
             &repo_root,
             &repo_name,
@@ -217,301 +227,6 @@ impl SystemAdapter for CommandSystemAdapter {
             })
             .unwrap_or_else(|| "unknown".to_string())
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ParsedWorktree {
-    path: PathBuf,
-    branch: Option<String>,
-    is_detached: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct MarkerMetadata {
-    agent: AgentType,
-    base_branch: Option<String>,
-    supported_agent: bool,
-}
-
-fn parse_worktree_porcelain(input: &str) -> Result<Vec<ParsedWorktree>, GitAdapterError> {
-    let mut worktrees = Vec::new();
-    let mut current_path: Option<PathBuf> = None;
-    let mut current_branch: Option<String> = None;
-    let mut current_is_detached = false;
-
-    for line in input.lines() {
-        if line.trim().is_empty() {
-            push_current_worktree(
-                &mut worktrees,
-                &mut current_path,
-                &mut current_branch,
-                &mut current_is_detached,
-            )?;
-            continue;
-        }
-
-        if let Some(path) = line.strip_prefix("worktree ") {
-            push_current_worktree(
-                &mut worktrees,
-                &mut current_path,
-                &mut current_branch,
-                &mut current_is_detached,
-            )?;
-            current_path = Some(PathBuf::from(path));
-            continue;
-        }
-
-        if current_path.is_none() {
-            return Err(GitAdapterError::ParseError(
-                "encountered metadata before any worktree line".to_string(),
-            ));
-        }
-
-        if let Some(branch_ref) = line.strip_prefix("branch ") {
-            current_branch = Some(short_branch_name(branch_ref));
-            current_is_detached = false;
-            continue;
-        }
-
-        if line == "detached" {
-            current_branch = None;
-            current_is_detached = true;
-        }
-    }
-
-    push_current_worktree(
-        &mut worktrees,
-        &mut current_path,
-        &mut current_branch,
-        &mut current_is_detached,
-    )?;
-
-    Ok(worktrees)
-}
-
-fn push_current_worktree(
-    worktrees: &mut Vec<ParsedWorktree>,
-    current_path: &mut Option<PathBuf>,
-    current_branch: &mut Option<String>,
-    current_is_detached: &mut bool,
-) -> Result<(), GitAdapterError> {
-    let path = match current_path.take() {
-        Some(path) => path,
-        None => {
-            if current_branch.is_some() || *current_is_detached {
-                return Err(GitAdapterError::ParseError(
-                    "worktree metadata was present without a path".to_string(),
-                ));
-            }
-            return Ok(());
-        }
-    };
-
-    worktrees.push(ParsedWorktree {
-        path,
-        branch: current_branch.take(),
-        is_detached: *current_is_detached,
-    });
-    *current_is_detached = false;
-
-    Ok(())
-}
-
-fn short_branch_name(branch_ref: &str) -> String {
-    branch_ref
-        .strip_prefix("refs/heads/")
-        .unwrap_or(branch_ref)
-        .to_string()
-}
-
-fn parse_branch_activity(input: &str) -> HashMap<String, i64> {
-    let mut activity = HashMap::new();
-
-    for line in input.lines() {
-        if let Some((branch, timestamp)) = line.rsplit_once(' ')
-            && let Ok(unix_secs) = timestamp.parse::<i64>()
-        {
-            activity.insert(branch.to_string(), unix_secs);
-        }
-    }
-
-    activity
-}
-
-fn workspace_name_from_path(path: &Path, repo_name: &str, is_main: bool) -> String {
-    let directory_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| path.display().to_string());
-
-    if is_main {
-        return repo_name.to_string();
-    }
-
-    let repo_prefix = format!("{repo_name}-");
-    directory_name
-        .strip_prefix(&repo_prefix)
-        .unwrap_or(&directory_name)
-        .to_string()
-}
-
-fn workspace_status(is_main: bool, branch: &Option<String>, is_detached: bool) -> WorkspaceStatus {
-    if is_main {
-        return WorkspaceStatus::Main;
-    }
-    if is_detached || branch.is_none() {
-        return WorkspaceStatus::Unknown;
-    }
-
-    WorkspaceStatus::Idle
-}
-
-fn workspace_sort(left: &Workspace, right: &Workspace) -> Ordering {
-    match (left.is_main, right.is_main) {
-        (true, false) => return Ordering::Less,
-        (false, true) => return Ordering::Greater,
-        _ => {}
-    }
-
-    let activity_order = right
-        .last_activity_unix_secs
-        .cmp(&left.last_activity_unix_secs);
-    if activity_order != Ordering::Equal {
-        return activity_order;
-    }
-
-    left.name.cmp(&right.name)
-}
-
-fn marker_metadata(path: &Path) -> Result<Option<MarkerMetadata>, GitAdapterError> {
-    let Some(agent_value) = read_marker_file(path, ".grove/agent")? else {
-        return Ok(None);
-    };
-    let Some(agent) = AgentType::from_marker(agent_value.trim()) else {
-        return Ok(Some(unsupported_marker_metadata()));
-    };
-
-    let Some(base_value) = read_marker_file(path, ".grove/base")? else {
-        return Ok(Some(unsupported_marker_metadata()));
-    };
-    let base_branch = base_value.trim().to_string();
-    if base_branch.is_empty() {
-        return Ok(Some(unsupported_marker_metadata()));
-    }
-
-    Ok(Some(MarkerMetadata {
-        agent,
-        base_branch: Some(base_branch),
-        supported_agent: true,
-    }))
-}
-
-fn main_workspace_metadata(path: &Path) -> Result<MarkerMetadata, GitAdapterError> {
-    match read_marker_file(path, ".grove/agent")? {
-        Some(value) => {
-            if let Some(agent) = AgentType::from_marker(value.trim()) {
-                return Ok(MarkerMetadata {
-                    agent,
-                    base_branch: None,
-                    supported_agent: true,
-                });
-            }
-            Ok(default_main_marker_metadata())
-        }
-        None => Ok(default_main_marker_metadata()),
-    }
-}
-
-fn read_marker_file(path: &Path, relative_marker: &str) -> Result<Option<String>, GitAdapterError> {
-    let marker_path = path.join(relative_marker);
-    match fs::read_to_string(&marker_path) {
-        Ok(content) => Ok(Some(content)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(GitAdapterError::ParseError(format!(
-            "failed reading marker '{}' in '{}': {error}",
-            relative_marker,
-            path.display()
-        ))),
-    }
-}
-
-fn unsupported_marker_metadata() -> MarkerMetadata {
-    MarkerMetadata {
-        agent: AgentType::Claude,
-        base_branch: None,
-        supported_agent: false,
-    }
-}
-
-fn default_main_marker_metadata() -> MarkerMetadata {
-    MarkerMetadata {
-        agent: AgentType::Claude,
-        base_branch: None,
-        supported_agent: true,
-    }
-}
-
-fn build_workspaces(
-    parsed_worktrees: &[ParsedWorktree],
-    repo_root: &Path,
-    repo_name: &str,
-    activity_by_branch: &HashMap<String, i64>,
-) -> Result<Vec<Workspace>, GitAdapterError> {
-    let mut workspaces = Vec::new();
-
-    for entry in parsed_worktrees {
-        let is_main = entry.path == repo_root;
-        let branch = entry
-            .branch
-            .clone()
-            .unwrap_or_else(|| "(detached)".to_string());
-        let last_activity_unix_secs = entry
-            .branch
-            .as_ref()
-            .and_then(|branch_name| activity_by_branch.get(branch_name).copied());
-
-        let metadata = if is_main {
-            Some(main_workspace_metadata(&entry.path)?)
-        } else {
-            marker_metadata(&entry.path)?
-        };
-
-        let Some(metadata) = metadata else {
-            continue;
-        };
-
-        let status = if metadata.supported_agent {
-            workspace_status(is_main, &entry.branch, entry.is_detached)
-        } else {
-            WorkspaceStatus::Unsupported
-        };
-
-        let workspace = Workspace::try_new(
-            workspace_name_from_path(&entry.path, repo_name, is_main),
-            entry.path.clone(),
-            branch,
-            last_activity_unix_secs,
-            metadata.agent,
-            status,
-            is_main,
-        )
-        .map_err(|error| {
-            GitAdapterError::ParseError(format!(
-                "worktree '{}' failed validation: {error:?}",
-                entry.path.display()
-            ))
-        })?
-        .with_project_context(repo_name.to_string(), repo_root.to_path_buf())
-        .with_base_branch(metadata.base_branch)
-        .with_supported_agent(metadata.supported_agent);
-
-        workspaces.push(workspace);
-    }
-
-    workspaces.sort_by(workspace_sort);
-
-    Ok(workspaces)
 }
 
 #[cfg(test)]
