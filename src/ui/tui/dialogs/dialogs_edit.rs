@@ -186,7 +186,7 @@ impl GroveApp {
         );
         self.state.mode = UiMode::List;
         self.state.focus = PaneFocus::WorkspaceList;
-        self.last_tmux_error = None;
+        self.session.last_tmux_error = None;
     }
 
     fn select_next_edit_dialog_agent(dialog: &mut EditDialogState) {
@@ -269,7 +269,7 @@ impl GroveApp {
         }
 
         self.close_active_dialog();
-        self.last_tmux_error = None;
+        self.session.last_tmux_error = None;
         if dialog.is_main && dialog.was_running {
             self.show_info_toast("base workspace switched, restart agent to apply agent change");
         } else if dialog.is_main {

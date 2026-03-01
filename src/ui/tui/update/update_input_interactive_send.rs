@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn attention_workspace_path_for_session(
@@ -13,18 +13,18 @@ impl GroveApp {
     }
 
     fn queue_interactive_send(&mut self, send: QueuedInteractiveSend) -> Cmd<Msg> {
-        self.pending_interactive_sends.push_back(send);
+        self.session.pending_interactive_sends.push_back(send);
         self.dispatch_next_interactive_send()
     }
 
     fn dispatch_next_interactive_send(&mut self) -> Cmd<Msg> {
-        if self.interactive_send_in_flight {
+        if self.session.interactive_send_in_flight {
             return Cmd::None;
         }
-        let Some(send) = self.pending_interactive_sends.pop_front() else {
+        let Some(send) = self.session.pending_interactive_sends.pop_front() else {
             return Cmd::None;
         };
-        self.interactive_send_in_flight = true;
+        self.session.interactive_send_in_flight = true;
         let command = send.command.clone();
         Cmd::task(move || {
             let started_at = Instant::now();
@@ -61,9 +61,9 @@ impl GroveApp {
             tmux_send_ms,
             error,
         } = completion;
-        self.interactive_send_in_flight = false;
+        self.session.interactive_send_in_flight = false;
         if let Some(error) = error {
-            self.last_tmux_error = Some(error.clone());
+            self.session.last_tmux_error = Some(error.clone());
             self.log_tmux_error(error.clone());
             if let Some(trace_context) = trace_context {
                 self.log_input_event_with_fields(
@@ -79,7 +79,7 @@ impl GroveApp {
             return self.dispatch_next_interactive_send();
         }
 
-        self.last_tmux_error = None;
+        self.session.last_tmux_error = None;
         if let Some(workspace_path) = attention_ack_workspace_path {
             self.clear_attention_for_workspace_path(&workspace_path);
         }
@@ -92,7 +92,7 @@ impl GroveApp {
                 ("tmux_send_ms".to_string(), Value::from(tmux_send_ms)),
                 (
                     "queue_depth".to_string(),
-                    Value::from(usize_to_u64(self.pending_interactive_inputs.len())),
+                    Value::from(usize_to_u64(self.session.pending_interactive_inputs.len())),
                 ),
             ];
             if let Some(literal_chars) = literal_chars {
@@ -151,7 +151,7 @@ impl GroveApp {
         let send_started_at = Instant::now();
         match self.execute_tmux_command(&command) {
             Ok(()) => {
-                self.last_tmux_error = None;
+                self.session.last_tmux_error = None;
                 if let Some(workspace_path) = attention_ack_workspace_path {
                     self.clear_attention_for_workspace_path(&workspace_path);
                 }
@@ -178,7 +178,9 @@ impl GroveApp {
                         ("tmux_send_ms".to_string(), Value::from(send_duration_ms)),
                         (
                             "queue_depth".to_string(),
-                            Value::from(usize_to_u64(self.pending_interactive_inputs.len())),
+                            Value::from(usize_to_u64(
+                                self.session.pending_interactive_inputs.len(),
+                            )),
                         ),
                     ];
                     if let Some(literal_chars) = literal_chars {
@@ -193,7 +195,7 @@ impl GroveApp {
             }
             Err(error) => {
                 let message = error.to_string();
-                self.last_tmux_error = Some(message.clone());
+                self.session.last_tmux_error = Some(message.clone());
                 self.log_tmux_error(message);
                 if let Some(trace_context) = trace_context {
                     self.log_input_event_with_fields(

@@ -1,4 +1,4 @@
-use super::*;
+use super::view_prelude::*;
 use ftui::widgets::virtualized::{RenderItem, VirtualizedList};
 
 include!("view_chrome_sidebar/model.rs");

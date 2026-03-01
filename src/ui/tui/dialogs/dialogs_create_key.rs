@@ -2,7 +2,7 @@ use super::*;
 
 impl GroveApp {
     pub(super) fn handle_create_dialog_key(&mut self, key_event: KeyEvent) {
-        if self.create_in_flight {
+        if self.dialogs.create_in_flight {
             return;
         }
 
@@ -75,8 +75,11 @@ impl GroveApp {
             }
             KeyCode::Left | KeyCode::Right => {}
             KeyCode::Up => {
-                if self.create_base_branch_dropdown_visible() && self.create_branch_index > 0 {
-                    self.create_branch_index = self.create_branch_index.saturating_sub(1);
+                if self.create_base_branch_dropdown_visible()
+                    && self.dialogs.create_branch_index > 0
+                {
+                    self.dialogs.create_branch_index =
+                        self.dialogs.create_branch_index.saturating_sub(1);
                     return;
                 }
                 if self
@@ -100,10 +103,11 @@ impl GroveApp {
             }
             KeyCode::Down => {
                 if self.create_base_branch_dropdown_visible()
-                    && self.create_branch_index.saturating_add(1)
-                        < self.create_branch_filtered.len()
+                    && self.dialogs.create_branch_index.saturating_add(1)
+                        < self.dialogs.create_branch_filtered.len()
                 {
-                    self.create_branch_index = self.create_branch_index.saturating_add(1);
+                    self.dialogs.create_branch_index =
+                        self.dialogs.create_branch_index.saturating_add(1);
                     return;
                 }
                 if self
@@ -176,14 +180,16 @@ impl GroveApp {
                 }
                 if focused_field == Some(CreateDialogField::BaseBranch) {
                     if character == 'j'
-                        && self.create_branch_index.saturating_add(1)
-                            < self.create_branch_filtered.len()
+                        && self.dialogs.create_branch_index.saturating_add(1)
+                            < self.dialogs.create_branch_filtered.len()
                     {
-                        self.create_branch_index = self.create_branch_index.saturating_add(1);
+                        self.dialogs.create_branch_index =
+                            self.dialogs.create_branch_index.saturating_add(1);
                         return;
                     }
-                    if character == 'k' && self.create_branch_index > 0 {
-                        self.create_branch_index = self.create_branch_index.saturating_sub(1);
+                    if character == 'k' && self.dialogs.create_branch_index > 0 {
+                        self.dialogs.create_branch_index =
+                            self.dialogs.create_branch_index.saturating_sub(1);
                         return;
                     }
                 }
@@ -293,7 +299,7 @@ impl GroveApp {
         self.create_dialog().is_some_and(|dialog| {
             dialog.tab == CreateDialogTab::Manual
                 && dialog.focused_field == CreateDialogField::BaseBranch
-                && !self.create_branch_filtered.is_empty()
+                && !self.dialogs.create_branch_filtered.is_empty()
         })
     }
 
@@ -302,8 +308,9 @@ impl GroveApp {
             return false;
         }
         let Some(selected_branch) = self
+            .dialogs
             .create_branch_filtered
-            .get(self.create_branch_index)
+            .get(self.dialogs.create_branch_index)
             .cloned()
         else {
             return false;

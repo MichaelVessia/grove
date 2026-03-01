@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn copy_interactive_capture(&mut self) {
@@ -31,7 +31,7 @@ impl GroveApp {
         let text = match self.read_clipboard_or_cached_text() {
             Ok(text) => text,
             Err(error) => {
-                self.last_tmux_error = Some(error.clone());
+                self.session.last_tmux_error = Some(error.clone());
                 if let Some(trace_context) = trace_context {
                     self.log_input_event_with_fields(
                         "paste_clipboard_missing",
@@ -57,7 +57,7 @@ impl GroveApp {
 
         match self.tmux_input.paste_buffer(target_session, &text) {
             Ok(()) => {
-                self.last_tmux_error = None;
+                self.session.last_tmux_error = None;
                 if let Some(workspace_path) =
                     self.attention_workspace_path_for_session(target_session)
                 {
@@ -66,7 +66,7 @@ impl GroveApp {
             }
             Err(error) => {
                 let message = error.to_string();
-                self.last_tmux_error = Some(message.clone());
+                self.session.last_tmux_error = Some(message.clone());
                 self.log_tmux_error(message.clone());
                 if let Some(trace_context) = trace_context {
                     self.log_input_event_with_fields(

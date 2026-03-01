@@ -26,7 +26,7 @@ impl GroveApp {
     }
 
     pub(super) fn delete_selected_project_from_dialog(&mut self) {
-        if self.project_delete_in_flight {
+        if self.dialogs.project_delete_in_flight {
             self.show_info_toast("project delete already in progress");
             return;
         }
@@ -38,7 +38,7 @@ impl GroveApp {
     }
 
     pub(super) fn delete_selected_workspace_project(&mut self) {
-        if self.project_delete_in_flight {
+        if self.dialogs.project_delete_in_flight {
             self.show_info_toast("project delete already in progress");
             return;
         }
@@ -98,7 +98,7 @@ impl GroveApp {
 
         let config_path = self.config_path.clone();
         let attention_acks = self.workspace_attention_acks_for_config();
-        self.project_delete_in_flight = true;
+        self.dialogs.project_delete_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let result = Self::save_projects_config_to_path(
                 &config_path,

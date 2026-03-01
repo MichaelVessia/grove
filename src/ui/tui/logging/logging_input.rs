@@ -7,7 +7,7 @@ impl GroveApp {
         seq: u64,
         fields: impl IntoIterator<Item = (String, Value)>,
     ) {
-        self.event_log.log(
+        self.telemetry.event_log.log(
             LogEvent::new("input", kind)
                 .with_data("seq", Value::from(seq))
                 .with_data_fields(fields),
@@ -57,7 +57,8 @@ impl GroveApp {
         target_session: &str,
         forwarded_at: Instant,
     ) {
-        self.pending_interactive_inputs
+        self.session
+            .pending_interactive_inputs
             .push_back(PendingInteractiveInput {
                 seq: trace_context.seq,
                 session: target_session.to_string(),
@@ -65,11 +66,11 @@ impl GroveApp {
                 forwarded_at,
             });
 
-        if self.pending_interactive_inputs.len() <= MAX_PENDING_INPUT_TRACES {
+        if self.session.pending_interactive_inputs.len() <= MAX_PENDING_INPUT_TRACES {
             return;
         }
 
-        if let Some(dropped) = self.pending_interactive_inputs.pop_front() {
+        if let Some(dropped) = self.session.pending_interactive_inputs.pop_front() {
             self.log_input_event_with_fields(
                 "pending_input_dropped",
                 dropped.seq,
@@ -77,7 +78,7 @@ impl GroveApp {
                     ("session".to_string(), Value::from(dropped.session)),
                     (
                         "queue_depth".to_string(),
-                        Value::from(usize_to_u64(self.pending_interactive_inputs.len())),
+                        Value::from(usize_to_u64(self.session.pending_interactive_inputs.len())),
                     ),
                 ],
             );
@@ -85,12 +86,14 @@ impl GroveApp {
     }
 
     pub(super) fn clear_pending_inputs_for_session(&mut self, target_session: &str) {
-        self.pending_interactive_inputs
+        self.session
+            .pending_interactive_inputs
             .retain(|input| input.session != target_session);
     }
 
     pub(super) fn clear_pending_sends_for_session(&mut self, target_session: &str) {
-        self.pending_interactive_sends
+        self.session
+            .pending_interactive_sends
             .retain(|send| send.target_session != target_session);
     }
 
@@ -101,7 +104,7 @@ impl GroveApp {
         let mut retained = VecDeque::new();
         let mut drained = Vec::new();
 
-        while let Some(input) = self.pending_interactive_inputs.pop_front() {
+        while let Some(input) = self.session.pending_interactive_inputs.pop_front() {
             if input.session == target_session {
                 drained.push(input);
             } else {
@@ -109,30 +112,31 @@ impl GroveApp {
             }
         }
 
-        self.pending_interactive_inputs = retained;
+        self.session.pending_interactive_inputs = retained;
         drained
     }
 
     pub(super) fn pending_input_depth(&self) -> u64 {
-        usize_to_u64(self.pending_interactive_inputs.len())
+        usize_to_u64(self.session.pending_interactive_inputs.len())
     }
 
     pub(super) fn oldest_pending_input_age_ms(&self, now: Instant) -> u64 {
-        self.pending_interactive_inputs
+        self.session
+            .pending_interactive_inputs
             .front()
             .map(|trace| Self::duration_millis(now.saturating_duration_since(trace.received_at)))
             .unwrap_or(0)
     }
 
     pub(super) fn schedule_interactive_debounced_poll(&mut self, now: Instant) {
-        if self.interactive.is_none() {
+        if self.session.interactive.is_none() {
             return;
         }
 
-        self.interactive_poll_due_at =
+        self.polling.interactive_poll_due_at =
             Some(now + Duration::from_millis(INTERACTIVE_KEYSTROKE_DEBOUNCE_MS));
-        let next_generation = self.poll_generation.saturating_add(1);
-        self.event_log.log(
+        let next_generation = self.polling.poll_generation.saturating_add(1);
+        self.telemetry.event_log.log(
             LogEvent::new("tick", "interactive_debounce_scheduled")
                 .with_data("generation", Value::from(next_generation))
                 .with_data("due_in_ms", Value::from(INTERACTIVE_KEYSTROKE_DEBOUNCE_MS))

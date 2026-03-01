@@ -2,11 +2,14 @@ use super::*;
 
 impl GroveApp {
     pub(super) fn workspace_delete_requested(&self, workspace_path: &Path) -> bool {
-        self.delete_requested_workspaces.contains(workspace_path)
+        self.dialogs
+            .delete_requested_workspaces
+            .contains(workspace_path)
     }
 
     fn queue_or_start_delete_workspace(&mut self, queued_delete: QueuedDeleteWorkspace) {
         if !self
+            .dialogs
             .delete_requested_workspaces
             .insert(queued_delete.workspace_path.clone())
         {
@@ -17,9 +20,11 @@ impl GroveApp {
             return;
         }
 
-        if self.delete_in_flight {
+        if self.dialogs.delete_in_flight {
             let queued_workspace_name = queued_delete.workspace_name.clone();
-            self.pending_delete_workspaces.push_back(queued_delete);
+            self.dialogs
+                .pending_delete_workspaces
+                .push_back(queued_delete);
             self.show_info_toast(format!(
                 "workspace '{}' delete queued",
                 queued_workspace_name
@@ -34,8 +39,8 @@ impl GroveApp {
         let request = queued_delete.request;
         let workspace_name = queued_delete.workspace_name;
         let workspace_path = queued_delete.workspace_path;
-        self.delete_in_flight = true;
-        self.delete_in_flight_workspace = Some(workspace_path.clone());
+        self.dialogs.delete_in_flight = true;
+        self.dialogs.delete_in_flight_workspace = Some(workspace_path.clone());
         self.queue_cmd(Cmd::task(move || {
             let (result, warnings) = delete_workspace(request);
             Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
@@ -48,13 +53,13 @@ impl GroveApp {
     }
 
     pub(super) fn start_next_queued_delete_workspace(&mut self) {
-        if let Some(queued_delete) = self.pending_delete_workspaces.pop_front() {
+        if let Some(queued_delete) = self.dialogs.pending_delete_workspaces.pop_front() {
             self.launch_delete_workspace_task(queued_delete);
             return;
         }
 
-        self.delete_in_flight = false;
-        self.delete_in_flight_workspace = None;
+        self.dialogs.delete_in_flight = false;
+        self.dialogs.delete_in_flight_workspace = None;
     }
 
     pub(super) fn handle_delete_dialog_key(&mut self, key_event: KeyEvent) {
@@ -200,7 +205,7 @@ impl GroveApp {
         );
         self.state.mode = UiMode::List;
         self.state.focus = PaneFocus::WorkspaceList;
-        self.last_tmux_error = None;
+        self.session.last_tmux_error = None;
     }
     fn confirm_delete_dialog(&mut self) {
         let Some(dialog) = self.take_delete_dialog() else {

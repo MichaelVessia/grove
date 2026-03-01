@@ -1,4 +1,4 @@
-use super::*;
+use super::view_prelude::*;
 
 impl GroveApp {
     #[cfg(test)]

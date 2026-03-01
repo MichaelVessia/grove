@@ -10,8 +10,6 @@ use std::process::Command;
 mod create;
 #[path = "workspace_lifecycle/delete.rs"]
 mod delete;
-#[path = "workspace_lifecycle/facade.rs"]
-pub mod facade;
 #[path = "workspace_lifecycle/git_ops.rs"]
 mod git_ops;
 #[path = "workspace_lifecycle/markers.rs"]
@@ -207,6 +205,10 @@ pub trait SetupCommandRunner {
     fn run(&self, context: &SetupCommandContext, command: &str) -> Result<(), String>;
 }
 
+pub trait SessionTerminator {
+    fn stop_workspace_sessions(&self, project_name: Option<&str>, workspace_name: &str);
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetupScriptContext {
     pub script_path: PathBuf,
@@ -322,7 +324,7 @@ impl SetupCommandRunner for CommandSetupCommandRunner {
 #[derive(Debug, Clone, Copy, Default)]
 struct NoopSessionTerminator;
 
-impl facade::SessionTerminator for NoopSessionTerminator {
+impl SessionTerminator for NoopSessionTerminator {
     fn stop_workspace_sessions(&self, _project_name: Option<&str>, _workspace_name: &str) {}
 }
 
@@ -354,7 +356,16 @@ pub fn create_workspace_with_template(
 }
 
 pub fn delete_workspace(request: DeleteWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
-    facade::delete_workspace(request, &NoopSessionTerminator)
+    delete_workspace_with_terminator(request, &NoopSessionTerminator)
+}
+
+pub fn delete_workspace_with_terminator(
+    request: DeleteWorkspaceRequest,
+    session_terminator: &impl SessionTerminator,
+) -> (Result<(), String>, Vec<String>) {
+    delete_workspace_with_session_stopper(request, |project_name, workspace_name| {
+        session_terminator.stop_workspace_sessions(project_name, workspace_name);
+    })
 }
 
 pub(crate) fn delete_workspace_with_session_stopper(
@@ -365,7 +376,16 @@ pub(crate) fn delete_workspace_with_session_stopper(
 }
 
 pub fn merge_workspace(request: MergeWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
-    facade::merge_workspace(request, &NoopSessionTerminator)
+    merge_workspace_with_terminator(request, &NoopSessionTerminator)
+}
+
+pub fn merge_workspace_with_terminator(
+    request: MergeWorkspaceRequest,
+    session_terminator: &impl SessionTerminator,
+) -> (Result<(), String>, Vec<String>) {
+    merge_workspace_with_session_stopper(request, |project_name, workspace_name| {
+        session_terminator.stop_workspace_sessions(project_name, workspace_name);
+    })
 }
 
 pub(crate) fn merge_workspace_with_session_stopper(
@@ -378,7 +398,16 @@ pub(crate) fn merge_workspace_with_session_stopper(
 pub fn update_workspace_from_base(
     request: UpdateWorkspaceFromBaseRequest,
 ) -> (Result<(), String>, Vec<String>) {
-    facade::update_workspace_from_base(request, &NoopSessionTerminator)
+    update_workspace_from_base_with_terminator(request, &NoopSessionTerminator)
+}
+
+pub fn update_workspace_from_base_with_terminator(
+    request: UpdateWorkspaceFromBaseRequest,
+    session_terminator: &impl SessionTerminator,
+) -> (Result<(), String>, Vec<String>) {
+    update_workspace_from_base_with_session_stopper(request, |project_name, workspace_name| {
+        session_terminator.stop_workspace_sessions(project_name, workspace_name);
+    })
 }
 
 pub(crate) fn update_workspace_from_base_with_session_stopper(

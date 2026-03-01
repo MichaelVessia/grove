@@ -78,13 +78,16 @@ impl GroveApp {
             .create_dialog_selected_project()
             .map(|project| load_local_branches(&project.path).unwrap_or_default())
             .unwrap_or_default();
-        self.create_branch_all = branches;
+        self.dialogs.create_branch_all = branches;
         if !self
+            .dialogs
             .create_branch_all
             .iter()
             .any(|branch| branch == &selected_base_branch)
         {
-            self.create_branch_all.insert(0, selected_base_branch);
+            self.dialogs
+                .create_branch_all
+                .insert(0, selected_base_branch);
         }
         self.refresh_create_branch_filtered();
     }
@@ -129,7 +132,7 @@ impl GroveApp {
         );
         self.state.mode = UiMode::List;
         self.state.focus = PaneFocus::WorkspaceList;
-        self.last_tmux_error = None;
+        self.session.last_tmux_error = None;
     }
 
     pub(super) fn next_agent(agent: AgentType) -> AgentType {
@@ -141,9 +144,9 @@ impl GroveApp {
     }
 
     pub(super) fn clear_create_branch_picker(&mut self) {
-        self.create_branch_all.clear();
-        self.create_branch_filtered.clear();
-        self.create_branch_index = 0;
+        self.dialogs.create_branch_all.clear();
+        self.dialogs.create_branch_filtered.clear();
+        self.dialogs.create_branch_index = 0;
     }
 
     pub(super) fn refresh_create_branch_filtered(&mut self) {
@@ -151,13 +154,15 @@ impl GroveApp {
             .create_dialog()
             .map(|dialog| dialog.base_branch.clone())
             .unwrap_or_default();
-        self.create_branch_filtered = filter_branches(&query, &self.create_branch_all);
-        if self.create_branch_filtered.is_empty() {
-            self.create_branch_index = 0;
+        self.dialogs.create_branch_filtered =
+            filter_branches(&query, &self.dialogs.create_branch_all);
+        if self.dialogs.create_branch_filtered.is_empty() {
+            self.dialogs.create_branch_index = 0;
             return;
         }
-        if self.create_branch_index >= self.create_branch_filtered.len() {
-            self.create_branch_index = self.create_branch_filtered.len().saturating_sub(1);
+        if self.dialogs.create_branch_index >= self.dialogs.create_branch_filtered.len() {
+            self.dialogs.create_branch_index =
+                self.dialogs.create_branch_filtered.len().saturating_sub(1);
         }
     }
 }

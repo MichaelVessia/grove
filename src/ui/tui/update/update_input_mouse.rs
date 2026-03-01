@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     const PREVIEW_MOUSE_SCROLL_LINES: i32 = 3;
@@ -225,7 +225,7 @@ impl GroveApp {
     }
 
     pub(super) fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {
-        if let Some(state) = self.interactive.as_mut() {
+        if let Some(state) = self.session.interactive.as_mut() {
             state.note_mouse_event(Instant::now());
         }
 
@@ -236,7 +236,10 @@ impl GroveApp {
             .with_data("kind", Value::from(format!("{:?}", mouse_event.kind)))
             .with_data("region", Value::from(Self::hit_region_name(region)))
             .with_data("modal_open", Value::from(self.modal_open()))
-            .with_data("interactive", Value::from(self.interactive.is_some()))
+            .with_data(
+                "interactive",
+                Value::from(self.session.interactive.is_some()),
+            )
             .with_data("divider_drag_active", Value::from(self.divider_drag_active))
             .with_data("focus", Value::from(self.state.focus.name()))
             .with_data("mode", Value::from(self.state.mode.name()));
@@ -251,7 +254,7 @@ impl GroveApp {
                 .with_data("mapped_col", Value::from(usize_to_u64(point.col)));
             event = self.add_selection_point_snapshot_fields(event, "mapped_", point);
         }
-        self.event_log.log(event);
+        self.telemetry.event_log.log(event);
 
         if self.modal_open() {
             if matches!(mouse_event.kind, MouseEventKind::Down(MouseButton::Left))
@@ -275,7 +278,7 @@ impl GroveApp {
                         i32::from(mouse_event.x).saturating_sub(i32::from(layout.divider.x));
                 }
                 HitRegion::WorkspaceList => {
-                    if self.interactive.is_some() {
+                    if self.session.interactive.is_some() {
                         self.exit_interactive_to_list();
                     } else {
                         reduce(&mut self.state, Action::EnterListMode);
@@ -289,7 +292,7 @@ impl GroveApp {
                     }
                 }
                 HitRegion::WorkspacePullRequest => {
-                    if self.interactive.is_some() {
+                    if self.session.interactive.is_some() {
                         self.exit_interactive_to_list();
                     } else {
                         reduce(&mut self.state, Action::EnterListMode);
@@ -300,16 +303,16 @@ impl GroveApp {
                     if let Some(next_tab) =
                         self.preview_tab_at_pointer(mouse_event.x, mouse_event.y)
                     {
-                        if self.interactive.is_some() {
+                        if self.session.interactive.is_some() {
                             self.exit_interactive_to_list();
                         }
                         reduce(&mut self.state, Action::EnterPreviewMode);
                         self.select_preview_tab(next_tab);
                         self.clear_preview_selection();
                     } else {
-                        let interactive_before_click = self.interactive.is_some();
+                        let interactive_before_click = self.session.interactive.is_some();
                         self.enter_preview_or_interactive();
-                        if self.interactive.is_some() {
+                        if self.session.interactive.is_some() {
                             if interactive_before_click {
                                 self.prepare_preview_selection_drag(mouse_event.x, mouse_event.y);
                             } else {
@@ -328,12 +331,12 @@ impl GroveApp {
                         i32::from(mouse_event.x).saturating_sub(self.divider_drag_pointer_offset);
                     let ratio = self.sidebar_ratio_for_drag_pointer(drag_pointer);
                     self.set_sidebar_ratio(ratio);
-                } else if self.interactive.is_some() {
+                } else if self.session.interactive.is_some() {
                     self.update_preview_selection_drag(mouse_event.x, mouse_event.y);
                 }
             }
             MouseEventKind::Moved => {
-                if self.interactive.is_some() && !self.divider_drag_active {
+                if self.session.interactive.is_some() && !self.divider_drag_active {
                     self.update_preview_selection_drag(mouse_event.x, mouse_event.y);
                 }
             }
@@ -344,7 +347,7 @@ impl GroveApp {
             }
             MouseEventKind::ScrollUp => {
                 if matches!(region, HitRegion::WorkspaceList) {
-                    if self.interactive.is_some() {
+                    if self.session.interactive.is_some() {
                         self.exit_interactive_to_list();
                     } else {
                         reduce(&mut self.state, Action::EnterListMode);
@@ -364,7 +367,7 @@ impl GroveApp {
             }
             MouseEventKind::ScrollDown => {
                 if matches!(region, HitRegion::WorkspaceList) {
-                    if self.interactive.is_some() {
+                    if self.session.interactive.is_some() {
                         self.exit_interactive_to_list();
                     } else {
                         reduce(&mut self.state, Action::EnterListMode);

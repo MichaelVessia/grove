@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn handle_tick_msg(&mut self) -> Cmd<Msg> {
@@ -6,10 +6,12 @@ impl GroveApp {
         let pending_before = self.pending_input_depth();
         let oldest_pending_before_ms = self.oldest_pending_input_age_ms(now);
         let late_by_ms = self
+            .polling
             .next_tick_due_at
             .map(|due_at| Self::duration_millis(now.saturating_duration_since(due_at)))
             .unwrap_or(0);
         let early_by_ms = self
+            .polling
             .next_tick_due_at
             .map(|due_at| Self::duration_millis(due_at.saturating_duration_since(now)))
             .unwrap_or(0);
@@ -17,12 +19,12 @@ impl GroveApp {
             .notifications
             .tick(Duration::from_millis(TOAST_TICK_INTERVAL_MS));
         if !self.tick_is_due(now) {
-            self.event_log.log(
+            self.telemetry.event_log.log(
                 LogEvent::new("tick", "skipped")
                     .with_data("reason", Value::from("not_due"))
                     .with_data(
                         "interval_ms",
-                        Value::from(self.next_tick_interval_ms.unwrap_or(0)),
+                        Value::from(self.polling.next_tick_interval_ms.unwrap_or(0)),
                     )
                     .with_data("late_by_ms", Value::from(late_by_ms))
                     .with_data("early_by_ms", Value::from(early_by_ms))
@@ -36,31 +38,34 @@ impl GroveApp {
         }
 
         let poll_due = self
+            .polling
             .next_poll_due_at
             .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at));
         let visual_due = self
+            .polling
             .next_visual_due_at
             .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at));
 
-        self.next_tick_due_at = None;
-        self.next_tick_interval_ms = None;
+        self.polling.next_tick_due_at = None;
+        self.polling.next_tick_interval_ms = None;
         if visual_due {
-            self.next_visual_due_at = None;
+            self.polling.next_visual_due_at = None;
             self.advance_visual_animation();
         }
         if poll_due {
-            self.next_poll_due_at = None;
+            self.polling.next_poll_due_at = None;
             if self
+                .polling
                 .interactive_poll_due_at
                 .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at))
             {
-                self.interactive_poll_due_at = None;
+                self.polling.interactive_poll_due_at = None;
             }
             self.poll_preview();
         }
 
         let pending_after = self.pending_input_depth();
-        self.event_log.log(
+        self.telemetry.event_log.log(
             LogEvent::new("tick", "processed")
                 .with_data("late_by_ms", Value::from(late_by_ms))
                 .with_data("early_by_ms", Value::from(early_by_ms))

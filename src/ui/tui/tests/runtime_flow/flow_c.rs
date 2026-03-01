@@ -53,7 +53,7 @@ fn mouse_click_preview_tab_switches_tabs() {
     assert_eq!(app.preview_tab, PreviewTab::Shell);
     assert_eq!(app.state.mode, UiMode::Preview);
     assert_eq!(app.state.focus, PaneFocus::Preview);
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn mouse_click_preview_tab_exits_interactive_and_switches_tabs() {
     );
 
     assert_eq!(app.preview_tab, PreviewTab::Git);
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
     assert_eq!(app.state.mode, UiMode::Preview);
     assert_eq!(app.state.focus, PaneFocus::Preview);
 }
@@ -112,7 +112,7 @@ fn mouse_click_preview_enters_interactive_mode() {
         )),
     );
 
-    assert!(app.interactive.is_some());
+    assert!(app.session.interactive.is_some());
     assert_eq!(app.state.mode, UiMode::Preview);
     assert_eq!(app.state.focus, PaneFocus::Preview);
 }
@@ -148,7 +148,7 @@ fn mouse_workspace_click_exits_interactive_without_selection_change() {
     );
 
     assert_eq!(app.state.selected_index, 1);
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
     assert_eq!(app.state.mode, UiMode::List);
     assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
 }
@@ -1235,7 +1235,8 @@ fn git_tab_queues_async_lazygit_launch_when_supported() {
     assert_eq!(app.preview_tab, PreviewTab::Git);
     assert!(cmd_contains_task(&cmd));
     assert!(
-        app.lazygit_sessions
+        app.session
+            .lazygit_sessions
             .in_flight
             .contains("grove-ws-grove-git")
     );
@@ -1245,7 +1246,7 @@ fn git_tab_queues_async_lazygit_launch_when_supported() {
 fn git_tab_launches_lazygit_with_dedicated_tmux_session() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-    let lazygit_command = app.lazygit_command.clone();
+    let lazygit_command = app.session.lazygit_command.clone();
 
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
@@ -1294,7 +1295,8 @@ fn git_tab_launches_lazygit_with_dedicated_tmux_session() {
 #[test]
 fn lazygit_launch_completion_success_marks_session_ready() {
     let mut app = fixture_app();
-    app.lazygit_sessions
+    app.session
+        .lazygit_sessions
         .in_flight
         .insert("grove-ws-grove-git".to_string());
 
@@ -1307,19 +1309,31 @@ fn lazygit_launch_completion_success_marks_session_ready() {
         }),
     );
 
-    assert!(app.lazygit_sessions.ready.contains("grove-ws-grove-git"));
     assert!(
-        !app.lazygit_sessions
+        app.session
+            .lazygit_sessions
+            .ready
+            .contains("grove-ws-grove-git")
+    );
+    assert!(
+        !app.session
+            .lazygit_sessions
             .in_flight
             .contains("grove-ws-grove-git")
     );
-    assert!(!app.lazygit_sessions.failed.contains("grove-ws-grove-git"));
+    assert!(
+        !app.session
+            .lazygit_sessions
+            .failed
+            .contains("grove-ws-grove-git")
+    );
 }
 
 #[test]
 fn lazygit_launch_completion_failure_marks_session_failed() {
     let mut app = fixture_app();
-    app.lazygit_sessions
+    app.session
+        .lazygit_sessions
         .in_flight
         .insert("grove-ws-grove-git".to_string());
 
@@ -1332,9 +1346,15 @@ fn lazygit_launch_completion_failure_marks_session_failed() {
         }),
     );
 
-    assert!(app.lazygit_sessions.failed.contains("grove-ws-grove-git"));
     assert!(
-        !app.lazygit_sessions
+        app.session
+            .lazygit_sessions
+            .failed
+            .contains("grove-ws-grove-git")
+    );
+    assert!(
+        !app.session
+            .lazygit_sessions
             .in_flight
             .contains("grove-ws-grove-git")
     );
@@ -1344,7 +1364,8 @@ fn lazygit_launch_completion_failure_marks_session_failed() {
 #[test]
 fn lazygit_launch_completion_duplicate_session_marks_session_ready() {
     let mut app = fixture_app();
-    app.lazygit_sessions
+    app.session
+        .lazygit_sessions
         .in_flight
         .insert("grove-ws-grove-git".to_string());
 
@@ -1359,20 +1380,32 @@ fn lazygit_launch_completion_duplicate_session_marks_session_ready() {
         }),
     );
 
-    assert!(app.lazygit_sessions.ready.contains("grove-ws-grove-git"));
     assert!(
-        !app.lazygit_sessions
+        app.session
+            .lazygit_sessions
+            .ready
+            .contains("grove-ws-grove-git")
+    );
+    assert!(
+        !app.session
+            .lazygit_sessions
             .in_flight
             .contains("grove-ws-grove-git")
     );
-    assert!(!app.lazygit_sessions.failed.contains("grove-ws-grove-git"));
+    assert!(
+        !app.session
+            .lazygit_sessions
+            .failed
+            .contains("grove-ws-grove-git")
+    );
     assert!(!app.status_bar_line().contains("lazygit launch failed"));
 }
 
 #[test]
 fn workspace_shell_launch_completion_success_marks_session_ready() {
     let mut app = fixture_app();
-    app.shell_sessions
+    app.session
+        .shell_sessions
         .in_flight
         .insert("grove-ws-feature-a-shell".to_string());
 
@@ -1386,17 +1419,20 @@ fn workspace_shell_launch_completion_success_marks_session_ready() {
     );
 
     assert!(
-        app.shell_sessions
+        app.session
+            .shell_sessions
             .ready
             .contains("grove-ws-feature-a-shell")
     );
     assert!(
-        !app.shell_sessions
+        !app.session
+            .shell_sessions
             .in_flight
             .contains("grove-ws-feature-a-shell")
     );
     assert!(
-        !app.shell_sessions
+        !app.session
+            .shell_sessions
             .failed
             .contains("grove-ws-feature-a-shell")
     );
@@ -1409,7 +1445,8 @@ fn workspace_shell_launch_completion_success_polls_from_list_mode() {
     app.state.mode = UiMode::List;
     app.state.focus = PaneFocus::WorkspaceList;
     app.preview_tab = PreviewTab::Agent;
-    app.shell_sessions
+    app.session
+        .shell_sessions
         .in_flight
         .insert("grove-ws-feature-a-shell".to_string());
 
@@ -1428,7 +1465,8 @@ fn workspace_shell_launch_completion_success_polls_from_list_mode() {
 #[test]
 fn workspace_shell_launch_completion_duplicate_session_marks_session_ready() {
     let mut app = fixture_app();
-    app.shell_sessions
+    app.session
+        .shell_sessions
         .in_flight
         .insert("grove-ws-feature-a-shell".to_string());
 
@@ -1444,17 +1482,20 @@ fn workspace_shell_launch_completion_duplicate_session_marks_session_ready() {
     );
 
     assert!(
-        app.shell_sessions
+        app.session
+            .shell_sessions
             .ready
             .contains("grove-ws-feature-a-shell")
     );
     assert!(
-        !app.shell_sessions
+        !app.session
+            .shell_sessions
             .in_flight
             .contains("grove-ws-feature-a-shell")
     );
     assert!(
-        !app.shell_sessions
+        !app.session
+            .shell_sessions
             .failed
             .contains("grove-ws-feature-a-shell")
     );
@@ -1475,7 +1516,8 @@ fn enter_on_git_tab_attaches_to_lazygit_session() {
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
 
     assert_eq!(
-        app.interactive
+        app.session
+            .interactive
             .as_ref()
             .map(|state| state.target_session.as_str()),
         Some("grove-ws-grove-git")
@@ -1642,14 +1684,14 @@ fn frame_debug_record_includes_interactive_cursor_snapshot() {
         Box::new(event_log),
         Some(1_771_023_000_124),
     );
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%1".to_string(),
         "grove-ws-feature-a".to_string(),
         Instant::now(),
         3,
         80,
     ));
-    if let Some(state) = app.interactive.as_mut() {
+    if let Some(state) = app.session.interactive.as_mut() {
         state.update_cursor(1, 2, true, 3, 80);
     }
     app.preview.lines = vec![

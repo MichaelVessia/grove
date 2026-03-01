@@ -292,21 +292,21 @@ impl Widget for OverlayModalContent<'_> {
 macro_rules! active_dialog_accessors {
     ($get:ident, $get_mut:ident, $set:ident, $variant:ident, $ty:ty) => {
         pub(super) fn $get(&self) -> Option<&$ty> {
-            match self.active_dialog.as_ref() {
+            match self.dialogs.active_dialog.as_ref() {
                 Some(ActiveDialog::$variant(dialog)) => Some(dialog),
                 _ => None,
             }
         }
 
         pub(super) fn $get_mut(&mut self) -> Option<&mut $ty> {
-            match self.active_dialog.as_mut() {
+            match self.dialogs.active_dialog.as_mut() {
                 Some(ActiveDialog::$variant(dialog)) => Some(dialog),
                 _ => None,
             }
         }
 
         pub(super) fn $set(&mut self, dialog: $ty) {
-            self.active_dialog = Some(ActiveDialog::$variant(dialog));
+            self.dialogs.active_dialog = Some(ActiveDialog::$variant(dialog));
         }
     };
 }
@@ -314,11 +314,11 @@ macro_rules! active_dialog_accessors {
 macro_rules! active_dialog_take_accessor {
     ($take:ident, $variant:ident, $ty:ty) => {
         pub(super) fn $take(&mut self) -> Option<$ty> {
-            let active_dialog = self.active_dialog.take()?;
+            let active_dialog = self.dialogs.active_dialog.take()?;
             match active_dialog {
                 ActiveDialog::$variant(dialog) => Some(dialog),
                 other => {
-                    self.active_dialog = Some(other);
+                    self.dialogs.active_dialog = Some(other);
                     None
                 }
             }
@@ -328,11 +328,11 @@ macro_rules! active_dialog_take_accessor {
 
 impl GroveApp {
     pub(super) fn close_active_dialog(&mut self) {
-        self.active_dialog = None;
+        self.dialogs.active_dialog = None;
     }
 
     pub(super) fn active_dialog_kind(&self) -> Option<&'static str> {
-        match self.active_dialog.as_ref() {
+        match self.dialogs.active_dialog.as_ref() {
             Some(ActiveDialog::Launch(_)) => Some("launch"),
             Some(ActiveDialog::Stop(_)) => Some("stop"),
             Some(ActiveDialog::Confirm(_)) => Some("confirm"),
@@ -435,7 +435,7 @@ impl GroveApp {
     pub(super) fn handle_keybind_help_key(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Escape | KeyCode::Enter | KeyCode::Char('?') => {
-                self.keybind_help_open = false;
+                self.dialogs.keybind_help_open = false;
             }
             _ => {}
         }

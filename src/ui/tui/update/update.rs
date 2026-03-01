@@ -45,7 +45,7 @@ impl GroveApp {
                 self.viewport_width = width;
                 self.viewport_height = height;
                 self.sync_interactive_session_geometry();
-                if self.interactive.is_some() {
+                if self.session.interactive.is_some() {
                     self.poll_preview();
                 }
                 Cmd::None
@@ -105,7 +105,7 @@ impl GroveApp {
         };
         self.emit_transition_events(&before);
         self.record_replay_state_after_update(replay_seq);
-        self.event_log.log(
+        self.telemetry.event_log.log(
             LogEvent::new("update_timing", "message_handled")
                 .with_data("msg_kind", Value::from(msg_kind))
                 .with_data(

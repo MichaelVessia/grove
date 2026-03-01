@@ -1,6 +1,6 @@
 impl GroveApp {
     pub(super) fn render_keybind_help_overlay(&self, frame: &mut Frame, area: Rect) {
-        if !self.keybind_help_open {
+        if !self.dialogs.keybind_help_open {
             return;
         }
         if area.width < Self::KEYBIND_HELP_MIN_WIDTH.saturating_add(2)

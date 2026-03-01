@@ -1,4 +1,4 @@
-use super::*;
+use super::view_prelude::*;
 
 impl GroveApp {
     fn workspace_attention_color(&self, attention: WorkspaceAttention) -> PackedRgba {
@@ -53,7 +53,7 @@ impl GroveApp {
     }
 
     fn activity_effect_time(&self) -> f64 {
-        self.fast_animation_frame as f64 * (FAST_ANIMATION_INTERVAL_MS as f64 / 1000.0)
+        self.polling.fast_animation_frame as f64 * (FAST_ANIMATION_INTERVAL_MS as f64 / 1000.0)
     }
 
     pub(super) fn render_activity_effect_label(

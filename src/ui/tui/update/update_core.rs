@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn selected_workspace_name(&self) -> Option<String> {
@@ -18,11 +18,11 @@ impl GroveApp {
             return;
         }
 
-        self.deferred_cmds.push(cmd);
+        self.telemetry.deferred_cmds.push(cmd);
     }
 
     pub(super) fn merge_deferred_cmds(&mut self, cmd: Cmd<Msg>) -> Cmd<Msg> {
-        let deferred_cmds = std::mem::take(&mut self.deferred_cmds);
+        let deferred_cmds = std::mem::take(&mut self.telemetry.deferred_cmds);
         if deferred_cmds.is_empty() {
             return cmd;
         }
@@ -42,8 +42,8 @@ impl GroveApp {
     }
 
     pub(super) fn next_input_seq(&mut self) -> u64 {
-        let seq = self.input_seq_counter;
-        self.input_seq_counter = self.input_seq_counter.saturating_add(1);
+        let seq = self.telemetry.input_seq_counter;
+        self.telemetry.input_seq_counter = self.telemetry.input_seq_counter.saturating_add(1);
         seq
     }
 

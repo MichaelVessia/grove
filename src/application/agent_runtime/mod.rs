@@ -6,7 +6,6 @@ use crate::domain::{AgentType, Workspace};
 mod agents;
 pub mod capture;
 pub mod execution;
-pub mod facade;
 pub mod launch_plan;
 pub mod polling;
 pub mod reconciliation;
@@ -69,6 +68,7 @@ use status::{
 };
 #[cfg(test)]
 use status::{detect_status, detect_waiting_prompt};
+pub(crate) use status::{detect_status_with_session_override, latest_assistant_attention_marker};
 
 pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
 const GROVE_LAUNCHER_SCRIPT_PATH: &str = ".grove/start.sh";

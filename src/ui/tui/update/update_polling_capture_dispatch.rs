@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn status_poll_targets_for_async_preview(
@@ -13,7 +13,7 @@ impl GroveApp {
             return targets;
         }
 
-        let Some(last_polled_at) = self.last_workspace_status_poll_at else {
+        let Some(last_polled_at) = self.polling.last_workspace_status_poll_at else {
             return targets;
         };
         let since_last = Instant::now().saturating_duration_since(last_polled_at);
@@ -21,7 +21,7 @@ impl GroveApp {
             return targets;
         }
 
-        self.event_log.log(
+        self.telemetry.event_log.log(
             LogEvent::new("preview_poll", "status_capture_rate_limited")
                 .with_data(
                     "since_last_ms",
@@ -41,7 +41,8 @@ impl GroveApp {
             PreviewTab::Git => {
                 let workspace = self.state.selected_workspace()?;
                 let session_name = git_session_name_for_workspace(workspace);
-                self.lazygit_sessions
+                self.session
+                    .lazygit_sessions
                     .is_ready(&session_name)
                     .then_some(session_name)
             }
@@ -69,8 +70,8 @@ impl GroveApp {
             self.poll_preview_sync();
             return;
         }
-        if self.preview_poll_in_flight {
-            self.preview_poll_requested = true;
+        if self.polling.preview_poll_in_flight {
+            self.polling.preview_poll_requested = true;
             return;
         }
 
@@ -79,21 +80,21 @@ impl GroveApp {
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = self.status_poll_targets_for_async_preview(live_preview.as_ref());
         if !status_poll_targets.is_empty() {
-            self.last_workspace_status_poll_at = Some(Instant::now());
+            self.polling.last_workspace_status_poll_at = Some(Instant::now());
         }
 
         if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
-            self.preview_poll_requested = false;
+            self.polling.preview_poll_requested = false;
             self.clear_agent_activity_tracking();
             self.refresh_preview_summary();
             return;
         }
 
-        self.poll_generation = self.poll_generation.saturating_add(1);
-        self.preview_poll_in_flight = true;
-        self.preview_poll_requested = false;
+        self.polling.poll_generation = self.polling.poll_generation.saturating_add(1);
+        self.polling.preview_poll_in_flight = true;
+        self.polling.preview_poll_requested = false;
         self.queue_cmd(self.schedule_async_preview_poll(
-            self.poll_generation,
+            self.polling.poll_generation,
             live_preview,
             live_scrollback_lines,
             cursor_session,
@@ -102,7 +103,7 @@ impl GroveApp {
     }
 
     pub(super) fn poll_preview_prioritized(&mut self) {
-        if !self.tmux_input.supports_background_poll() || !self.preview_poll_in_flight {
+        if !self.tmux_input.supports_background_poll() || !self.polling.preview_poll_in_flight {
             self.poll_preview();
             return;
         }
@@ -125,16 +126,16 @@ impl GroveApp {
         let status_poll_targets = Vec::new();
 
         if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
-            self.preview_poll_requested = false;
+            self.polling.preview_poll_requested = false;
             self.clear_agent_activity_tracking();
             self.refresh_preview_summary();
             return;
         }
 
-        self.poll_generation = self.poll_generation.saturating_add(1);
-        self.preview_poll_requested = false;
+        self.polling.poll_generation = self.polling.poll_generation.saturating_add(1);
+        self.polling.preview_poll_requested = false;
         self.queue_cmd(self.schedule_async_preview_poll(
-            self.poll_generation,
+            self.polling.poll_generation,
             live_preview,
             live_scrollback_lines,
             cursor_session,
@@ -143,18 +144,21 @@ impl GroveApp {
     }
 
     pub(super) fn handle_preview_poll_completed(&mut self, completion: PreviewPollCompletion) {
-        if completion.generation < self.poll_generation {
-            self.event_log.log(
+        if completion.generation < self.polling.poll_generation {
+            self.telemetry.event_log.log(
                 LogEvent::new("preview_poll", "stale_result_dropped")
                     .with_data("generation", Value::from(completion.generation))
-                    .with_data("latest_generation", Value::from(self.poll_generation)),
+                    .with_data(
+                        "latest_generation",
+                        Value::from(self.polling.poll_generation),
+                    ),
             );
             return;
         }
 
-        self.preview_poll_in_flight = false;
-        if completion.generation > self.poll_generation {
-            self.poll_generation = completion.generation;
+        self.polling.preview_poll_in_flight = false;
+        if completion.generation > self.polling.poll_generation {
+            self.polling.poll_generation = completion.generation;
         }
 
         let mut had_live_capture = false;
@@ -176,7 +180,7 @@ impl GroveApp {
                 if let Some(selected_session) = selected_live_session {
                     event = event.with_data("selected_session", Value::from(selected_session));
                 }
-                self.event_log.log(event);
+                self.telemetry.event_log.log(event);
                 self.clear_agent_activity_tracking();
                 if self
                     .selected_live_preview_session_for_completion()
@@ -210,8 +214,8 @@ impl GroveApp {
             self.apply_cursor_capture_result(cursor_capture);
         }
 
-        if self.preview_poll_requested {
-            self.preview_poll_requested = false;
+        if self.polling.preview_poll_requested {
+            self.polling.preview_poll_requested = false;
             self.poll_preview();
         }
     }

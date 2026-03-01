@@ -1,4 +1,4 @@
-use super::*;
+use super::view_prelude::*;
 
 impl GroveApp {
     pub(super) fn prepare_preview_selection_drag(&mut self, x: u16, y: u16) {
@@ -141,7 +141,7 @@ impl GroveApp {
         let copied_from_selection = selected_lines.is_some();
         let mut lines = selected_lines.unwrap_or_else(|| self.visible_preview_output_lines());
         if lines.is_empty() {
-            self.last_tmux_error = Some("no output to copy".to_string());
+            self.session.last_tmux_error = Some("no output to copy".to_string());
             self.show_info_toast("No output to copy");
             return;
         }
@@ -150,12 +150,12 @@ impl GroveApp {
             lines.pop();
         }
         if lines.is_empty() {
-            self.last_tmux_error = Some("no output to copy".to_string());
+            self.session.last_tmux_error = Some("no output to copy".to_string());
             self.show_info_toast("No output to copy");
             return;
         }
         let text = lines.join("\n");
-        self.event_log.log(
+        self.telemetry.event_log.log(
             LogEvent::new("selection", "interactive_copy_payload")
                 .with_data("from_selection", Value::from(copied_from_selection))
                 .with_data("line_count", Value::from(usize_to_u64(lines.len())))
@@ -168,11 +168,11 @@ impl GroveApp {
         self.copied_text = Some(text.clone());
         match self.clipboard.write_text(&text) {
             Ok(()) => {
-                self.last_tmux_error = None;
+                self.session.last_tmux_error = None;
                 self.show_success_toast(format!("Copied {} line(s)", lines.len()));
             }
             Err(error) => {
-                self.last_tmux_error = Some(format!("clipboard write failed: {error}"));
+                self.session.last_tmux_error = Some(format!("clipboard write failed: {error}"));
                 self.show_error_toast(format!("Copy failed: {error}"));
             }
         }

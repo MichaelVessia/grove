@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedGitHubPullRequest {
@@ -9,7 +9,7 @@ struct ParsedGitHubPullRequest {
 
 impl GroveApp {
     pub(super) fn confirm_create_dialog(&mut self) {
-        if self.create_in_flight {
+        if self.dialogs.create_in_flight {
             return;
         }
 
@@ -94,7 +94,7 @@ impl GroveApp {
             return;
         }
 
-        self.pending_create_start_config = Some(dialog.start_config.clone());
+        self.dialogs.pending_create_start_config = Some(dialog.start_config.clone());
         let repo_root = project.path;
         if !self.tmux_input.supports_background_launch() {
             let git = CommandGitRunner;
@@ -112,7 +112,7 @@ impl GroveApp {
             return;
         }
 
-        self.create_in_flight = true;
+        self.dialogs.create_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let git = CommandGitRunner;
             let setup = CommandSetupScriptRunner;
@@ -133,11 +133,15 @@ impl GroveApp {
         &mut self,
         completion: CreateWorkspaceCompletion,
     ) {
-        self.create_in_flight = false;
+        self.dialogs.create_in_flight = false;
         let fallback_skip_permissions = self.launch_skip_permissions;
-        let start_config = self.pending_create_start_config.take().unwrap_or_else(|| {
-            StartAgentConfigState::new(String::new(), String::new(), fallback_skip_permissions)
-        });
+        let start_config = self
+            .dialogs
+            .pending_create_start_config
+            .take()
+            .unwrap_or_else(|| {
+                StartAgentConfigState::new(String::new(), String::new(), fallback_skip_permissions)
+            });
         let workspace_name = completion.request.workspace_name;
         match completion.result {
             Ok(result) => {
@@ -147,15 +151,16 @@ impl GroveApp {
                     &result.workspace_path,
                     trimmed_nonempty(&start_config.init_command).as_deref(),
                 ) {
-                    self.last_tmux_error =
+                    self.session.last_tmux_error =
                         Some(format!("init command marker persist failed: {error}"));
                 }
-                self.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
+                self.dialogs.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
                     workspace_path: result.workspace_path.clone(),
                     start_config: start_config.clone(),
                 });
                 self.launch_skip_permissions = start_config.skip_permissions;
-                self.pending_auto_launch_shell_workspace_path = Some(result.workspace_path.clone());
+                self.session.pending_auto_launch_shell_workspace_path =
+                    Some(result.workspace_path.clone());
                 self.refresh_workspaces(Some(result.workspace_path));
                 self.state.mode = UiMode::List;
                 self.state.focus = PaneFocus::WorkspaceList;

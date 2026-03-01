@@ -1,4 +1,4 @@
-use super::*;
+use super::view_prelude::*;
 
 impl GroveApp {
     const KEYBIND_HELP_MIN_WIDTH: u16 = 56;

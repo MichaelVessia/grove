@@ -377,8 +377,8 @@ fn focus_agent_preview_tab(app: &mut GroveApp) {
 
 fn force_tick_due(app: &mut GroveApp) {
     let now = Instant::now();
-    app.next_tick_due_at = Some(now);
-    app.next_poll_due_at = Some(now);
+    app.polling.next_tick_due_at = Some(now);
+    app.polling.next_poll_due_at = Some(now);
 }
 
 fn cmd_contains_task(cmd: &Cmd<Msg>) -> bool {
@@ -631,9 +631,9 @@ proptest::proptest! {
                 app.delete_dialog().is_some(),
                 app.merge_dialog().is_some(),
                 app.update_from_base_dialog().is_some(),
-                app.keybind_help_open,
-                app.command_palette.is_visible(),
-                app.interactive.is_some(),
+                app.dialogs.keybind_help_open,
+                app.dialogs.command_palette.is_visible(),
+                app.session.interactive.is_some(),
             ]
                 .iter()
                 .filter(|is_active| **is_active)
@@ -836,9 +836,10 @@ fn sidebar_row_shows_deleting_indicator_for_in_flight_delete() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
     app.state.selected_index = 1;
     app.sidebar_width_pct = 60;
-    app.delete_in_flight = true;
-    app.delete_in_flight_workspace = Some(app.state.workspaces[1].path.clone());
-    app.delete_requested_workspaces
+    app.dialogs.delete_in_flight = true;
+    app.dialogs.delete_in_flight_workspace = Some(app.state.workspaces[1].path.clone());
+    app.dialogs
+        .delete_requested_workspaces
         .insert(app.state.workspaces[1].path.clone());
 
     let layout = GroveApp::view_layout_for_size(160, 24, app.sidebar_width_pct, false);
@@ -1036,8 +1037,8 @@ fn active_workspace_without_recent_activity_uses_static_indicators() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 1;
-    app.output_changing = false;
-    app.agent_output_changing = false;
+    app.polling.output_changing = false;
+    app.polling.agent_output_changing = false;
     assert!(!app.status_is_visually_working(
         Some(app.state.workspaces[1].path.as_path()),
         WorkspaceStatus::Active,
@@ -1080,7 +1081,7 @@ fn live_preview_scrollback_lines_uses_idle_window_when_inactive() {
 fn live_preview_scrollback_lines_uses_full_window_with_recent_activity() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-    app.output_changing = true;
+    app.polling.output_changing = true;
 
     assert_eq!(
         app.live_preview_scrollback_lines(),
@@ -1092,7 +1093,7 @@ fn live_preview_scrollback_lines_uses_full_window_with_recent_activity() {
 fn live_preview_scrollback_lines_uses_full_window_in_interactive_mode() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%0".to_string(),
         "grove-ws-feature-a".to_string(),
         Instant::now(),
@@ -1111,8 +1112,8 @@ fn active_workspace_with_recent_activity_window_animates_indicators() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 1;
-    app.output_changing = false;
-    app.agent_output_changing = false;
+    app.polling.output_changing = false;
+    app.polling.agent_output_changing = false;
     app.push_agent_activity_frame(true);
     assert!(app.status_is_visually_working(
         Some(app.state.workspaces[1].path.as_path()),
@@ -1138,8 +1139,8 @@ fn active_workspace_with_recent_activity_animates_indicators() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 1;
-    app.output_changing = true;
-    app.agent_output_changing = true;
+    app.polling.output_changing = true;
+    app.polling.agent_output_changing = true;
     assert!(app.status_is_visually_working(
         Some(app.state.workspaces[1].path.as_path()),
         WorkspaceStatus::Active,
@@ -1164,8 +1165,8 @@ fn active_workspace_activity_window_expires_after_inactive_frames() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 1;
-    app.output_changing = false;
-    app.agent_output_changing = false;
+    app.polling.output_changing = false;
+    app.polling.agent_output_changing = false;
     app.push_agent_activity_frame(true);
     for _ in 0..super::AGENT_ACTIVITY_WINDOW_FRAMES {
         app.push_agent_activity_frame(false);
@@ -1225,8 +1226,8 @@ fn working_workspace_row_shows_attention_indicator_when_present() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 1;
-    app.output_changing = true;
-    app.agent_output_changing = true;
+    app.polling.output_changing = true;
+    app.polling.agent_output_changing = true;
     app.workspace_attention.insert(
         PathBuf::from("/repos/grove-feature-a"),
         WorkspaceAttention::NeedsAttention,
@@ -1305,14 +1306,14 @@ fn activity_spinner_does_not_shift_header_or_status_layout() {
     let (mut idle_app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     idle_app.state.selected_index = 1;
-    idle_app.output_changing = false;
-    idle_app.agent_output_changing = false;
+    idle_app.polling.output_changing = false;
+    idle_app.polling.agent_output_changing = false;
 
     let (mut active_app, _commands2, _captures2, _cursor_captures2) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     active_app.state.selected_index = 1;
-    active_app.output_changing = true;
-    active_app.agent_output_changing = true;
+    active_app.polling.output_changing = true;
+    active_app.polling.agent_output_changing = true;
 
     with_rendered_frame(&idle_app, 80, 24, |idle_frame| {
         with_rendered_frame(&active_app, 80, 24, |active_frame| {
@@ -1340,8 +1341,8 @@ fn interactive_input_echo_does_not_trigger_activity_spinner() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 1;
-    app.output_changing = true;
-    app.agent_output_changing = false;
+    app.polling.output_changing = true;
+    app.polling.agent_output_changing = false;
     assert!(!app.status_is_visually_working(
         Some(app.state.workspaces[1].path.as_path()),
         WorkspaceStatus::Active,
@@ -1757,7 +1758,7 @@ fn question_key_opens_keybind_help_modal() {
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('?')).with_kind(KeyEventKind::Press));
 
-    assert!(app.keybind_help_open);
+    assert!(app.dialogs.keybind_help_open);
 }
 
 #[test]
@@ -1802,17 +1803,17 @@ fn uppercase_m_toggles_mouse_capture_and_emits_runtime_command() {
 #[test]
 fn keybind_help_modal_closes_on_escape() {
     let mut app = fixture_app();
-    app.keybind_help_open = true;
+    app.dialogs.keybind_help_open = true;
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press));
 
-    assert!(!app.keybind_help_open);
+    assert!(!app.dialogs.keybind_help_open);
 }
 
 #[test]
 fn keybind_help_modal_blocks_navigation_keys() {
     let mut app = fixture_app();
-    app.keybind_help_open = true;
+    app.dialogs.keybind_help_open = true;
     let selected_before = app.state.selected_index;
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press));
@@ -1830,7 +1831,7 @@ fn ctrl_k_opens_command_palette() {
             .with_kind(KeyEventKind::Press),
     );
 
-    assert!(app.command_palette.is_visible());
+    assert!(app.dialogs.command_palette.is_visible());
 }
 
 #[test]
@@ -1839,7 +1840,7 @@ fn ctrl_k_control_character_opens_command_palette() {
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('\u{0b}')).with_kind(KeyEventKind::Press));
 
-    assert!(app.command_palette.is_visible());
+    assert!(app.dialogs.command_palette.is_visible());
 }
 
 #[test]
@@ -1855,13 +1856,13 @@ fn ctrl_k_is_blocked_while_modal_is_open() {
     );
 
     assert!(app.create_dialog().is_some());
-    assert!(!app.command_palette.is_visible());
+    assert!(!app.dialogs.command_palette.is_visible());
 }
 
 #[test]
 fn ctrl_k_is_blocked_in_interactive_mode() {
     let mut app = fixture_app();
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%0".to_string(),
         "grove-ws-feature-a".to_string(),
         Instant::now(),
@@ -1875,8 +1876,8 @@ fn ctrl_k_is_blocked_in_interactive_mode() {
             .with_kind(KeyEventKind::Press),
     );
 
-    assert!(app.interactive.is_some());
-    assert!(!app.command_palette.is_visible());
+    assert!(app.session.interactive.is_some());
+    assert!(!app.dialogs.command_palette.is_visible());
 }
 
 #[test]
@@ -1889,12 +1890,12 @@ fn command_palette_blocks_background_navigation_keys() {
             .with_modifiers(Modifiers::CTRL)
             .with_kind(KeyEventKind::Press),
     );
-    assert!(app.command_palette.is_visible());
+    assert!(app.dialogs.command_palette.is_visible());
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press));
 
     assert_eq!(app.state.selected_index, selected_before);
-    assert_eq!(app.command_palette.query(), "j");
+    assert_eq!(app.dialogs.command_palette.query(), "j");
 }
 
 #[test]
@@ -1906,7 +1907,7 @@ fn command_palette_enter_executes_selected_action() {
             .with_modifiers(Modifiers::CTRL)
             .with_kind(KeyEventKind::Press),
     );
-    assert!(app.command_palette.is_visible());
+    assert!(app.dialogs.command_palette.is_visible());
 
     for character in ['n', 'e', 'w'] {
         let _ =
@@ -1914,7 +1915,7 @@ fn command_palette_enter_executes_selected_action() {
     }
     let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
 
-    assert!(!app.command_palette.is_visible());
+    assert!(!app.dialogs.command_palette.is_visible());
     assert!(app.create_dialog().is_some());
 }
 
@@ -1922,9 +1923,9 @@ fn command_palette_enter_executes_selected_action() {
 fn command_palette_ctrl_n_moves_selection_down() {
     let mut app = fixture_app();
     app.open_command_palette();
-    assert!(app.command_palette.is_visible());
-    assert!(app.command_palette.result_count() > 1);
-    assert_eq!(app.command_palette.selected_index(), 0);
+    assert!(app.dialogs.command_palette.is_visible());
+    assert!(app.dialogs.command_palette.result_count() > 1);
+    assert_eq!(app.dialogs.command_palette.selected_index(), 0);
 
     let _ = app.handle_key(
         KeyEvent::new(KeyCode::Char('n'))
@@ -1932,31 +1933,31 @@ fn command_palette_ctrl_n_moves_selection_down() {
             .with_kind(KeyEventKind::Press),
     );
 
-    assert_eq!(app.command_palette.query(), "");
-    assert_eq!(app.command_palette.selected_index(), 1);
+    assert_eq!(app.dialogs.command_palette.query(), "");
+    assert_eq!(app.dialogs.command_palette.selected_index(), 1);
 }
 
 #[test]
 fn command_palette_repeat_down_arrow_moves_selection_down() {
     let mut app = fixture_app();
     app.open_command_palette();
-    assert!(app.command_palette.is_visible());
-    assert!(app.command_palette.result_count() > 1);
-    assert_eq!(app.command_palette.selected_index(), 0);
+    assert!(app.dialogs.command_palette.is_visible());
+    assert!(app.dialogs.command_palette.result_count() > 1);
+    assert_eq!(app.dialogs.command_palette.selected_index(), 0);
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Down).with_kind(KeyEventKind::Repeat));
 
-    assert_eq!(app.command_palette.query(), "");
-    assert_eq!(app.command_palette.selected_index(), 1);
+    assert_eq!(app.dialogs.command_palette.query(), "");
+    assert_eq!(app.dialogs.command_palette.selected_index(), 1);
 }
 
 #[test]
 fn command_palette_repeat_ctrl_n_moves_selection_down() {
     let mut app = fixture_app();
     app.open_command_palette();
-    assert!(app.command_palette.is_visible());
-    assert!(app.command_palette.result_count() > 1);
-    assert_eq!(app.command_palette.selected_index(), 0);
+    assert!(app.dialogs.command_palette.is_visible());
+    assert!(app.dialogs.command_palette.result_count() > 1);
+    assert_eq!(app.dialogs.command_palette.selected_index(), 0);
 
     let _ = app.handle_key(
         KeyEvent::new(KeyCode::Char('n'))
@@ -1964,16 +1965,16 @@ fn command_palette_repeat_ctrl_n_moves_selection_down() {
             .with_kind(KeyEventKind::Repeat),
     );
 
-    assert_eq!(app.command_palette.query(), "");
-    assert_eq!(app.command_palette.selected_index(), 1);
+    assert_eq!(app.dialogs.command_palette.query(), "");
+    assert_eq!(app.dialogs.command_palette.selected_index(), 1);
 }
 
 #[test]
 fn command_palette_ctrl_p_moves_selection_up() {
     let mut app = fixture_app();
     app.open_command_palette();
-    assert!(app.command_palette.is_visible());
-    assert!(app.command_palette.result_count() > 2);
+    assert!(app.dialogs.command_palette.is_visible());
+    assert!(app.dialogs.command_palette.result_count() > 2);
 
     let _ = app.handle_key(
         KeyEvent::new(KeyCode::Char('n'))
@@ -1985,7 +1986,7 @@ fn command_palette_ctrl_p_moves_selection_up() {
             .with_modifiers(Modifiers::CTRL)
             .with_kind(KeyEventKind::Press),
     );
-    assert_eq!(app.command_palette.selected_index(), 2);
+    assert_eq!(app.dialogs.command_palette.selected_index(), 2);
 
     let _ = app.handle_key(
         KeyEvent::new(KeyCode::Char('p'))
@@ -1993,8 +1994,8 @@ fn command_palette_ctrl_p_moves_selection_up() {
             .with_kind(KeyEventKind::Press),
     );
 
-    assert_eq!(app.command_palette.query(), "");
-    assert_eq!(app.command_palette.selected_index(), 1);
+    assert_eq!(app.dialogs.command_palette.query(), "");
+    assert_eq!(app.dialogs.command_palette.selected_index(), 1);
 }
 
 #[test]
@@ -2027,13 +2028,13 @@ fn open_command_palette_sizes_page_navigation_to_viewport_height() {
     let mut app = fixture_app();
     app.viewport_height = 16;
     app.open_command_palette();
-    assert!(app.command_palette.is_visible());
+    assert!(app.dialogs.command_palette.is_visible());
     let expected_jump = GroveApp::command_palette_max_visible_for_height(app.viewport_height);
-    assert!(app.command_palette.result_count() > expected_jump);
+    assert!(app.dialogs.command_palette.result_count() > expected_jump);
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::PageDown).with_kind(KeyEventKind::Press));
 
-    assert_eq!(app.command_palette.selected_index(), expected_jump);
+    assert_eq!(app.dialogs.command_palette.selected_index(), expected_jump);
 }
 
 #[test]
@@ -2063,7 +2064,7 @@ fn command_palette_overlay_uses_near_full_width() {
 fn command_palette_keeps_keybind_visible_on_narrow_width() {
     let mut app = fixture_app();
     app.open_command_palette();
-    app.command_palette.set_query("toggle pane focus");
+    app.dialogs.command_palette.set_query("toggle pane focus");
 
     with_rendered_frame(&app, 60, 24, |frame| {
         let has_keybind = (0..frame.height())
@@ -2258,7 +2259,8 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
             .any(|id| id == &palette_id(UiCommand::StartAgent))
     );
 
-    app.shell_sessions
+    app.session
+        .shell_sessions
         .ready
         .insert("grove-ws-feature-a-shell".to_string());
     let preview_ids_with_shell: Vec<String> = app
@@ -2409,7 +2411,7 @@ fn uppercase_r_refreshes_workspaces_from_list_mode() {
         Msg::Key(KeyEvent::new(KeyCode::Char('R')).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.refresh_in_flight);
+    assert!(app.dialogs.refresh_in_flight);
     assert!(cmd_contains_task(&cmd));
     assert!(app.status_bar_line().contains("refreshing workspaces"));
 }
@@ -2422,30 +2424,30 @@ fn uppercase_r_is_debounced_after_recent_manual_refresh() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('R')).with_kind(KeyEventKind::Press)),
     );
-    assert!(app.refresh_in_flight);
+    assert!(app.dialogs.refresh_in_flight);
 
     app.apply_refresh_workspaces_completion(RefreshWorkspacesCompletion {
         preferred_workspace_path: None,
         bootstrap: fixture_bootstrap(WorkspaceStatus::Idle),
     });
-    assert!(!app.refresh_in_flight);
+    assert!(!app.dialogs.refresh_in_flight);
 
     let cmd = ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('R')).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(!app.refresh_in_flight);
+    assert!(!app.dialogs.refresh_in_flight);
     assert!(!cmd_contains_task(&cmd));
     assert!(app.status_bar_line().contains("refresh throttled"));
 
-    app.last_manual_refresh_requested_at = Some(Instant::now() - Duration::from_secs(11));
+    app.dialogs.last_manual_refresh_requested_at = Some(Instant::now() - Duration::from_secs(11));
     let cmd_after_cooldown = ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('R')).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.refresh_in_flight);
+    assert!(app.dialogs.refresh_in_flight);
     assert!(cmd_contains_task(&cmd_after_cooldown));
 }
 
@@ -2457,14 +2459,14 @@ fn manual_refresh_completion_shows_success_toast() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('R')).with_kind(KeyEventKind::Press)),
     );
-    assert!(app.refresh_in_flight);
+    assert!(app.dialogs.refresh_in_flight);
 
     app.apply_refresh_workspaces_completion(RefreshWorkspacesCompletion {
         preferred_workspace_path: None,
         bootstrap: fixture_bootstrap(WorkspaceStatus::Idle),
     });
 
-    assert!(!app.refresh_in_flight);
+    assert!(!app.dialogs.refresh_in_flight);
     assert!(app.status_bar_line().contains("workspace refresh complete"));
 }
 
@@ -2476,7 +2478,7 @@ fn manual_refresh_completion_shows_error_toast() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('R')).with_kind(KeyEventKind::Press)),
     );
-    assert!(app.refresh_in_flight);
+    assert!(app.dialogs.refresh_in_flight);
 
     app.apply_refresh_workspaces_completion(RefreshWorkspacesCompletion {
         preferred_workspace_path: None,
@@ -2487,7 +2489,7 @@ fn manual_refresh_completion_shows_error_toast() {
         },
     });
 
-    assert!(!app.refresh_in_flight);
+    assert!(!app.dialogs.refresh_in_flight);
     assert!(app.status_bar_line().contains("workspace refresh failed"));
 }
 
@@ -2529,7 +2531,7 @@ fn command_tmux_input_uses_background_launch_mode() {
 #[test]
 fn keybind_help_overlay_renders_when_help_modal_open() {
     let mut app = fixture_app();
-    app.keybind_help_open = true;
+    app.dialogs.keybind_help_open = true;
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let status_text = (0..frame.height())
@@ -2550,7 +2552,7 @@ fn keybind_help_overlay_renders_when_help_modal_open() {
 #[test]
 fn keybind_help_lists_interactive_reserved_keys() {
     let mut app = fixture_app();
-    app.keybind_help_open = true;
+    app.dialogs.keybind_help_open = true;
 
     with_rendered_frame(&app, 160, 28, |frame| {
         let has_shift_tab = (0..frame.height())
@@ -2572,7 +2574,7 @@ fn keybind_help_lists_interactive_reserved_keys() {
 #[test]
 fn keybind_help_lists_mouse_capture_toggle() {
     let mut app = fixture_app();
-    app.keybind_help_open = true;
+    app.dialogs.keybind_help_open = true;
 
     with_rendered_frame(&app, 160, 28, |frame| {
         let has_mouse_toggle = (0..frame.height())
@@ -2584,7 +2586,7 @@ fn keybind_help_lists_mouse_capture_toggle() {
 #[test]
 fn keybind_help_lists_projects_modal_shortcuts_without_truncation() {
     let mut app = fixture_app();
-    app.keybind_help_open = true;
+    app.dialogs.keybind_help_open = true;
 
     with_rendered_frame(&app, 160, 32, |frame| {
         let has_projects_remove = (0..frame.height())
@@ -2596,7 +2598,7 @@ fn keybind_help_lists_projects_modal_shortcuts_without_truncation() {
 #[test]
 fn keybind_help_uses_available_height_to_show_footer() {
     let mut app = fixture_app();
-    app.keybind_help_open = true;
+    app.dialogs.keybind_help_open = true;
 
     with_rendered_frame(&app, 160, 32, |frame| {
         let has_close_hint = (0..frame.height()).any(|row| {
@@ -2697,7 +2699,7 @@ fn create_dialog_wrapped_hint_rows_keep_hint_style() {
 #[test]
 fn status_row_keeps_compact_footer_in_interactive_mode() {
     let mut app = fixture_app();
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%0".to_string(),
         "grove-ws-feature-a".to_string(),
         Instant::now(),
@@ -2973,7 +2975,7 @@ fn interactive_preview_border_is_teal_and_shows_insert_label() {
     let mut app = fixture_app();
     app.state.mode = UiMode::Preview;
     app.state.focus = PaneFocus::Preview;
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%1".to_string(),
         "grove-ws-feature-a".to_string(),
         Instant::now(),
@@ -3003,7 +3005,7 @@ fn interactive_preview_border_is_teal_and_shows_insert_label() {
 fn codex_interactive_preview_keeps_ansi_colors() {
     let mut app = fixture_app();
     app.state.selected_index = 1;
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%1".to_string(),
         "grove-ws-feature-a".to_string(),
         Instant::now(),

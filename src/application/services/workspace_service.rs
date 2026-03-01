@@ -1,12 +1,17 @@
 use std::path::Path;
 
 use crate::application::agent_runtime::kill_workspace_session_commands;
-use crate::application::workspace_lifecycle::facade;
-use crate::application::workspace_lifecycle::facade::SessionTerminator;
 use crate::application::workspace_lifecycle::{
     CreateWorkspaceRequest, CreateWorkspaceResult, DeleteWorkspaceRequest, GitCommandRunner,
-    MergeWorkspaceRequest, SetupCommandRunner, SetupScriptRunner, UpdateWorkspaceFromBaseRequest,
-    WorkspaceLifecycleError, WorkspaceSetupTemplate,
+    MergeWorkspaceRequest, SessionTerminator, SetupCommandRunner, SetupScriptRunner,
+    UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError, WorkspaceSetupTemplate,
+    create_workspace_with_template as lifecycle_create_workspace_with_template,
+    delete_workspace_with_terminator as lifecycle_delete_workspace_with_terminator,
+    merge_workspace_with_terminator as lifecycle_merge_workspace_with_terminator,
+    update_workspace_from_base_with_terminator as lifecycle_update_workspace_from_base_with_terminator,
+    workspace_lifecycle_error_message as lifecycle_workspace_lifecycle_error_message,
+    write_workspace_agent_marker as lifecycle_write_workspace_agent_marker,
+    write_workspace_base_marker as lifecycle_write_workspace_base_marker,
 };
 use crate::domain::AgentType;
 use crate::infrastructure::process::execute_command;
@@ -85,7 +90,7 @@ impl WorkspaceService for CommandWorkspaceService {
         S: SetupScriptRunner,
         C: SetupCommandRunner,
     {
-        facade::create_workspace_with_template(
+        lifecycle_create_workspace_with_template(
             repo_root,
             request,
             setup_template,
@@ -99,22 +104,22 @@ impl WorkspaceService for CommandWorkspaceService {
         &self,
         request: DeleteWorkspaceRequest,
     ) -> (Result<(), String>, Vec<String>) {
-        facade::delete_workspace(request, &RuntimeSessionTerminator)
+        lifecycle_delete_workspace_with_terminator(request, &RuntimeSessionTerminator)
     }
 
     fn merge_workspace(&self, request: MergeWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
-        facade::merge_workspace(request, &RuntimeSessionTerminator)
+        lifecycle_merge_workspace_with_terminator(request, &RuntimeSessionTerminator)
     }
 
     fn update_workspace_from_base(
         &self,
         request: UpdateWorkspaceFromBaseRequest,
     ) -> (Result<(), String>, Vec<String>) {
-        facade::update_workspace_from_base(request, &RuntimeSessionTerminator)
+        lifecycle_update_workspace_from_base_with_terminator(request, &RuntimeSessionTerminator)
     }
 
     fn workspace_lifecycle_error_message(&self, error: &WorkspaceLifecycleError) -> String {
-        facade::workspace_lifecycle_error_message(error)
+        lifecycle_workspace_lifecycle_error_message(error)
     }
 
     fn write_workspace_agent_marker(
@@ -122,7 +127,7 @@ impl WorkspaceService for CommandWorkspaceService {
         workspace_path: &Path,
         agent: AgentType,
     ) -> Result<(), WorkspaceLifecycleError> {
-        facade::write_workspace_agent_marker(workspace_path, agent)
+        lifecycle_write_workspace_agent_marker(workspace_path, agent)
     }
 
     fn write_workspace_base_marker(
@@ -130,7 +135,7 @@ impl WorkspaceService for CommandWorkspaceService {
         workspace_path: &Path,
         base_branch: &str,
     ) -> Result<(), WorkspaceLifecycleError> {
-        facade::write_workspace_base_marker(workspace_path, base_branch)
+        lifecycle_write_workspace_base_marker(workspace_path, base_branch)
     }
 }
 

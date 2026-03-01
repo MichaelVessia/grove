@@ -1,6 +1,6 @@
 impl GroveApp {
     pub(super) fn render_command_palette_overlay(&self, frame: &mut Frame, area: Rect) {
-        if !self.command_palette.is_visible() {
+        if !self.dialogs.command_palette.is_visible() {
             return;
         }
         if area.width < 16 || area.height < 7 {
@@ -22,11 +22,11 @@ impl GroveApp {
         let visible_window = Self::command_palette_max_visible_for_height(self.viewport_height)
             .max(1)
             .min(max_visible_from_height);
-        let result_count = self.command_palette.result_count();
+        let result_count = self.dialogs.command_palette.result_count();
         let selected_index = if result_count == 0 {
             0
         } else {
-            self.command_palette
+            self.dialogs.command_palette
                 .selected_index()
                 .min(result_count.saturating_sub(1))
         };
@@ -64,7 +64,7 @@ impl GroveApp {
         }
 
         let query_area = Rect::new(inner.x, inner.y, inner.width, 1);
-        let query = self.command_palette.query();
+        let query = self.dialogs.command_palette.query();
         let mut query_spans = vec![FtSpan::styled(
             "> ",
             Style::new().fg(theme.blue).bg(theme.base).bold(),
@@ -124,7 +124,7 @@ impl GroveApp {
             return;
         }
 
-        let results: Vec<_> = self.command_palette.results().collect();
+        let results: Vec<_> = self.dialogs.command_palette.results().collect();
         let visible_rows =
             usize::from(list_area.height).min(results.len().saturating_sub(scroll_offset));
         let visible_end = scroll_offset

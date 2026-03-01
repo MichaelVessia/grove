@@ -1,9 +1,17 @@
 use std::path::Path;
 
-use crate::application::agent_runtime::facade;
 use crate::application::agent_runtime::{
     CommandExecutionMode, LaunchRequest, LivePreviewTarget, SessionActivity,
     SessionExecutionResult, ShellLaunchRequest, WorkspaceStatusTarget,
+    detect_status_with_session_override as runtime_detect_status_with_session_override,
+    execute_launch_request_with_result_for_mode as runtime_execute_launch_request_with_result_for_mode,
+    execute_restart_workspace_in_pane_with_result as runtime_execute_restart_workspace_in_pane_with_result,
+    execute_shell_launch_request_for_mode as runtime_execute_shell_launch_request_for_mode,
+    execute_stop_workspace_with_result_for_mode as runtime_execute_stop_workspace_with_result_for_mode,
+    latest_assistant_attention_marker as runtime_latest_assistant_attention_marker,
+    launch_request_for_workspace as runtime_launch_request_for_workspace,
+    shell_launch_request_for_workspace as runtime_shell_launch_request_for_workspace,
+    workspace_status_targets_for_polling_with_live_preview as runtime_workspace_status_targets_for_polling_with_live_preview,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
@@ -92,7 +100,7 @@ impl RuntimeService for CommandRuntimeService {
         &self,
         request: RuntimeLaunchRequestInput<'_>,
     ) -> LaunchRequest {
-        facade::launch_request_for_workspace(
+        runtime_launch_request_for_workspace(
             request.workspace,
             request.prompt,
             request.workspace_init_command,
@@ -112,7 +120,7 @@ impl RuntimeService for CommandRuntimeService {
         capture_cols: Option<u16>,
         capture_rows: Option<u16>,
     ) -> ShellLaunchRequest {
-        facade::shell_launch_request_for_workspace(
+        runtime_shell_launch_request_for_workspace(
             workspace,
             session_name,
             command,
@@ -127,7 +135,7 @@ impl RuntimeService for CommandRuntimeService {
         request: &ShellLaunchRequest,
         mode: CommandExecutionMode<'a>,
     ) -> (String, Result<(), String>) {
-        facade::execute_shell_launch_request_for_mode(request, mode)
+        runtime_execute_shell_launch_request_for_mode(request, mode)
     }
 
     fn execute_launch_request_with_result_for_mode<'a>(
@@ -135,7 +143,7 @@ impl RuntimeService for CommandRuntimeService {
         request: &LaunchRequest,
         mode: CommandExecutionMode<'a>,
     ) -> SessionExecutionResult {
-        facade::execute_launch_request_with_result_for_mode(request, mode)
+        runtime_execute_launch_request_with_result_for_mode(request, mode)
     }
 
     fn execute_stop_workspace_with_result_for_mode<'a>(
@@ -143,7 +151,7 @@ impl RuntimeService for CommandRuntimeService {
         workspace: &Workspace,
         mode: CommandExecutionMode<'a>,
     ) -> SessionExecutionResult {
-        facade::execute_stop_workspace_with_result_for_mode(workspace, mode)
+        runtime_execute_stop_workspace_with_result_for_mode(workspace, mode)
     }
 
     fn execute_restart_workspace_in_pane_with_result(
@@ -152,7 +160,7 @@ impl RuntimeService for CommandRuntimeService {
         skip_permissions: bool,
         agent_env: Vec<(String, String)>,
     ) -> SessionExecutionResult {
-        facade::execute_restart_workspace_in_pane_with_result(
+        runtime_execute_restart_workspace_in_pane_with_result(
             workspace,
             skip_permissions,
             agent_env,
@@ -164,14 +172,14 @@ impl RuntimeService for CommandRuntimeService {
         workspaces: &[Workspace],
         live_preview: Option<&LivePreviewTarget>,
     ) -> Vec<WorkspaceStatusTarget> {
-        facade::workspace_status_targets_for_polling_with_live_preview(workspaces, live_preview)
+        runtime_workspace_status_targets_for_polling_with_live_preview(workspaces, live_preview)
     }
 
     fn detect_status_with_session_override(
         &self,
         request: RuntimeStatusDetectionInput<'_>,
     ) -> WorkspaceStatus {
-        facade::detect_status_with_session_override(
+        runtime_detect_status_with_session_override(
             request.output,
             request.session_activity,
             request.is_main,
@@ -187,7 +195,7 @@ impl RuntimeService for CommandRuntimeService {
         agent: AgentType,
         workspace_path: &Path,
     ) -> Option<String> {
-        facade::latest_assistant_attention_marker(agent, workspace_path)
+        runtime_latest_assistant_attention_marker(agent, workspace_path)
     }
 }
 

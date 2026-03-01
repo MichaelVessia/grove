@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn poll_interactive_cursor_sync(&mut self, target_session: &str) {
@@ -24,14 +24,14 @@ impl GroveApp {
             return;
         };
 
-        let needs_resize = self.interactive.as_ref().is_some_and(|state| {
+        let needs_resize = self.session.interactive.as_ref().is_some_and(|state| {
             state.pane_width != pane_width || state.pane_height != pane_height
         });
         if !needs_resize {
             return;
         }
 
-        if let Some(state) = self.interactive.as_mut() {
+        if let Some(state) = self.session.interactive.as_mut() {
             state.update_cursor(
                 state.cursor_row,
                 state.cursor_col,
@@ -46,13 +46,13 @@ impl GroveApp {
             .resize_session(&target_session, pane_width, pane_height)
         {
             let message = error.to_string();
-            self.last_tmux_error = Some(message.clone());
+            self.session.last_tmux_error = Some(message.clone());
             self.log_tmux_error(message);
-            self.pending_resize_verification = None;
+            self.session.pending_resize_verification = None;
             return;
         }
 
-        self.pending_resize_verification = Some(PendingResizeVerification {
+        self.session.pending_resize_verification = Some(PendingResizeVerification {
             session: target_session,
             expected_width: pane_width,
             expected_height: pane_height,
@@ -64,7 +64,7 @@ impl GroveApp {
         let raw_metadata = match cursor_capture.result {
             Ok(raw_metadata) => raw_metadata,
             Err(error) => {
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("preview_poll", "cursor_capture_failed")
                         .with_data("session", Value::from(cursor_capture.session))
                         .with_data("duration_ms", Value::from(cursor_capture.capture_ms))
@@ -76,7 +76,7 @@ impl GroveApp {
         let metadata = match parse_cursor_metadata(&raw_metadata) {
             Some(metadata) => metadata,
             None => {
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("preview_poll", "cursor_parse_failed")
                         .with_data("session", Value::from(cursor_capture.session))
                         .with_data("capture_ms", Value::from(cursor_capture.capture_ms))
@@ -96,7 +96,7 @@ impl GroveApp {
             return;
         };
         if interactive_session != session {
-            self.event_log.log(
+            self.telemetry.event_log.log(
                 LogEvent::new("preview_poll", "cursor_session_mismatch_dropped")
                     .with_data("captured_session", Value::from(session))
                     .with_data("interactive_session", Value::from(interactive_session)),
@@ -105,7 +105,7 @@ impl GroveApp {
         }
 
         let changed = {
-            let Some(state) = self.interactive.as_mut() else {
+            let Some(state) = self.session.interactive.as_mut() else {
                 return;
             };
             state.update_cursor(
@@ -123,7 +123,7 @@ impl GroveApp {
         );
         let parse_duration_ms =
             Self::duration_millis(Instant::now().saturating_duration_since(parse_started_at));
-        self.event_log.log(
+        self.telemetry.event_log.log(
             LogEvent::new("preview_poll", "cursor_capture_completed")
                 .with_data("session", Value::from(session))
                 .with_data("capture_ms", Value::from(cursor_capture.capture_ms))
@@ -143,7 +143,7 @@ impl GroveApp {
         pane_width: u16,
         pane_height: u16,
     ) {
-        let Some(pending) = self.pending_resize_verification.clone() else {
+        let Some(pending) = self.session.pending_resize_verification.clone() else {
             return;
         };
         if pending.session != session {
@@ -151,12 +151,12 @@ impl GroveApp {
         }
 
         if pending.expected_width == pane_width && pending.expected_height == pane_height {
-            self.pending_resize_verification = None;
+            self.session.pending_resize_verification = None;
             return;
         }
 
         if pending.retried {
-            self.event_log.log(
+            self.telemetry.event_log.log(
                 LogEvent::new("preview_poll", "resize_verify_failed")
                     .with_data("session", Value::from(session.to_string()))
                     .with_data("expected_width", Value::from(pending.expected_width))
@@ -164,11 +164,11 @@ impl GroveApp {
                     .with_data("actual_width", Value::from(pane_width))
                     .with_data("actual_height", Value::from(pane_height)),
             );
-            self.pending_resize_verification = None;
+            self.session.pending_resize_verification = None;
             return;
         }
 
-        self.event_log.log(
+        self.telemetry.event_log.log(
             LogEvent::new("preview_poll", "resize_verify_retry")
                 .with_data("session", Value::from(session.to_string()))
                 .with_data("expected_width", Value::from(pending.expected_width))
@@ -176,7 +176,7 @@ impl GroveApp {
                 .with_data("actual_width", Value::from(pane_width))
                 .with_data("actual_height", Value::from(pane_height)),
         );
-        self.pending_resize_verification = Some(PendingResizeVerification {
+        self.session.pending_resize_verification = Some(PendingResizeVerification {
             retried: true,
             ..pending.clone()
         });
@@ -185,9 +185,9 @@ impl GroveApp {
                 .resize_session(session, pending.expected_width, pending.expected_height)
         {
             let message = error.to_string();
-            self.last_tmux_error = Some(message.clone());
+            self.session.last_tmux_error = Some(message.clone());
             self.log_tmux_error(message);
-            self.pending_resize_verification = None;
+            self.session.pending_resize_verification = None;
             return;
         }
 

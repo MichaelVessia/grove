@@ -42,10 +42,11 @@ fn delete_dialog_confirm_queues_background_task() {
 
     assert!(cmd_contains_task(&cmd));
     assert!(app.delete_dialog().is_none());
-    assert!(app.delete_in_flight);
-    assert_eq!(app.delete_in_flight_workspace, Some(deleting_path));
+    assert!(app.dialogs.delete_in_flight);
+    assert_eq!(app.dialogs.delete_in_flight_workspace, Some(deleting_path));
     assert!(
-        app.delete_requested_workspaces
+        app.dialogs
+            .delete_requested_workspaces
             .contains(&app.state.workspaces[1].path)
     );
 }
@@ -78,18 +79,20 @@ fn delete_dialog_confirm_queues_additional_delete_request_when_one_is_in_flight(
     );
 
     assert!(!cmd_contains_task(&second_cmd));
-    assert!(app.delete_in_flight);
+    assert!(app.dialogs.delete_in_flight);
     assert_eq!(
-        app.delete_in_flight_workspace,
+        app.dialogs.delete_in_flight_workspace,
         Some(first_workspace_path.clone())
     );
-    assert_eq!(app.pending_delete_workspaces.len(), 1);
+    assert_eq!(app.dialogs.pending_delete_workspaces.len(), 1);
     assert!(
-        app.delete_requested_workspaces
+        app.dialogs
+            .delete_requested_workspaces
             .contains(&first_workspace_path)
     );
     assert!(
-        app.delete_requested_workspaces
+        app.dialogs
+            .delete_requested_workspaces
             .contains(&second_workspace_path)
     );
 }
@@ -130,18 +133,20 @@ fn delete_workspace_completion_starts_next_queued_delete_request() {
     );
 
     assert!(cmd_contains_task(&completion_cmd));
-    assert!(app.delete_in_flight);
+    assert!(app.dialogs.delete_in_flight);
     assert_eq!(
-        app.delete_in_flight_workspace,
+        app.dialogs.delete_in_flight_workspace,
         Some(second_workspace_path.clone())
     );
-    assert!(app.pending_delete_workspaces.is_empty());
+    assert!(app.dialogs.pending_delete_workspaces.is_empty());
     assert!(
-        !app.delete_requested_workspaces
+        !app.dialogs
+            .delete_requested_workspaces
             .contains(&first_workspace_path)
     );
     assert!(
-        app.delete_requested_workspaces
+        app.dialogs
+            .delete_requested_workspaces
             .contains(&second_workspace_path)
     );
 }
@@ -150,9 +155,10 @@ fn delete_workspace_completion_starts_next_queued_delete_request() {
 fn delete_workspace_completion_clears_in_flight_workspace_marker() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
     let deleting_path = app.state.workspaces[1].path.clone();
-    app.delete_in_flight = true;
-    app.delete_in_flight_workspace = Some(deleting_path.clone());
-    app.delete_requested_workspaces
+    app.dialogs.delete_in_flight = true;
+    app.dialogs.delete_in_flight_workspace = Some(deleting_path.clone());
+    app.dialogs
+        .delete_requested_workspaces
         .insert(deleting_path.clone());
 
     let _ = ftui::Model::update(
@@ -165,9 +171,13 @@ fn delete_workspace_completion_clears_in_flight_workspace_marker() {
         }),
     );
 
-    assert!(!app.delete_in_flight);
-    assert!(app.delete_in_flight_workspace.is_none());
-    assert!(!app.delete_requested_workspaces.contains(&deleting_path));
+    assert!(!app.dialogs.delete_in_flight);
+    assert!(app.dialogs.delete_in_flight_workspace.is_none());
+    assert!(
+        !app.dialogs
+            .delete_requested_workspaces
+            .contains(&deleting_path)
+    );
 }
 
 #[test]
@@ -226,7 +236,7 @@ fn merge_dialog_confirm_queues_background_task() {
 
     assert!(cmd_contains_task(&cmd));
     assert!(app.merge_dialog().is_none());
-    assert!(app.merge_in_flight);
+    assert!(app.dialogs.merge_in_flight);
 }
 
 #[test]
@@ -345,7 +355,7 @@ fn update_dialog_confirm_queues_background_task() {
 
     assert!(cmd_contains_task(&cmd));
     assert!(app.update_from_base_dialog().is_none());
-    assert!(app.update_from_base_in_flight);
+    assert!(app.dialogs.update_from_base_in_flight);
 }
 
 #[test]
@@ -550,7 +560,7 @@ fn create_dialog_ctrl_n_and_ctrl_p_move_focus_from_base_branch() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
     );
-    app.create_branch_all = vec![
+    app.dialogs.create_branch_all = vec![
         "main".to_string(),
         "develop".to_string(),
         "release".to_string(),
@@ -600,7 +610,7 @@ fn create_dialog_base_branch_dropdown_selects_with_enter() {
         Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
     );
 
-    app.create_branch_all = vec![
+    app.dialogs.create_branch_all = vec![
         "main".to_string(),
         "develop".to_string(),
         "release".to_string(),
@@ -818,7 +828,7 @@ fn alt_x_does_not_exit_interactive_or_open_stop_dialog() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 1;
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%0".to_string(),
         "grove-ws-feature-a".to_string(),
         Instant::now(),
@@ -835,7 +845,7 @@ fn alt_x_does_not_exit_interactive_or_open_stop_dialog() {
         ),
     );
 
-    assert!(app.interactive.is_some());
+    assert!(app.session.interactive.is_some());
     assert!(app.stop_dialog().is_none());
     assert_eq!(
         commands.borrow().as_slice(),
@@ -855,7 +865,7 @@ fn interactive_send_clears_attention_for_agent_workspace() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 1;
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%0".to_string(),
         "grove-ws-feature-a".to_string(),
         Instant::now(),
@@ -1431,7 +1441,7 @@ fn stop_agent_completed_updates_workspace_status_and_exits_interactive() {
     app.state.focus = PaneFocus::Preview;
     app.preview.lines = vec!["stale-preview".to_string()];
     app.preview.render_lines = app.preview.lines.clone();
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%0".to_string(),
         "grove-ws-feature-a".to_string(),
         Instant::now(),
@@ -1455,7 +1465,7 @@ fn stop_agent_completed_updates_workspace_status_and_exits_interactive() {
             .map(|workspace| workspace.status),
         Some(WorkspaceStatus::Idle)
     );
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
     assert_eq!(app.state.mode, UiMode::List);
     assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
     let preview_text = app.preview.lines.join("\n");
@@ -1634,7 +1644,7 @@ fn enter_on_active_workspace_starts_interactive_mode() {
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.interactive.is_some());
+    assert!(app.session.interactive.is_some());
     assert_eq!(app.mode_label(), "Interactive");
 }
 
@@ -1649,9 +1659,10 @@ fn enter_on_active_main_workspace_starts_interactive_mode() {
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.interactive.is_some());
+    assert!(app.session.interactive.is_some());
     assert_eq!(
-        app.interactive
+        app.session
+            .interactive
             .as_ref()
             .map(|state| state.target_session.as_str()),
         Some("grove-ws-grove")
@@ -1703,7 +1714,8 @@ fn enter_on_main_workspace_in_shell_tab_launches_shell_and_enters_interactive_mo
         ]
     );
     assert_eq!(
-        app.interactive
+        app.session
+            .interactive
             .as_ref()
             .map(|state| state.target_session.as_str()),
         Some("grove-ws-grove-shell")
@@ -1772,7 +1784,8 @@ fn enter_on_idle_workspace_launches_shell_session_and_enters_interactive_mode() 
         ]
     );
     assert_eq!(
-        app.interactive
+        app.session
+            .interactive
             .as_ref()
             .map(|state| state.target_session.as_str()),
         Some("grove-ws-feature-a-shell")
@@ -1875,14 +1888,14 @@ fn resize_verify_retries_once_then_stops() {
         vec![Ok("1 0 0 70 20".to_string())],
     );
     app.state.selected_index = 1;
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%0".to_string(),
         "grove-ws-feature-a".to_string(),
         Instant::now(),
         34,
         78,
     ));
-    app.pending_resize_verification = Some(PendingResizeVerification {
+    app.session.pending_resize_verification = Some(PendingResizeVerification {
         session: "grove-ws-feature-a".to_string(),
         expected_width: 78,
         expected_height: 34,
@@ -1909,7 +1922,7 @@ fn resize_verify_retries_once_then_stops() {
         .filter(|call| *call == "resize:grove-ws-feature-a:78:34")
         .count();
     assert_eq!(resize_retries, 1);
-    assert!(app.pending_resize_verification.is_none());
+    assert!(app.session.pending_resize_verification.is_none());
 }
 
 #[test]
@@ -1917,14 +1930,14 @@ fn preview_poll_drops_cursor_capture_for_non_interactive_session() {
     let (mut app, _commands, _captures, _cursor_captures, events) =
         fixture_app_with_tmux_and_events(WorkspaceStatus::Active, Vec::new(), Vec::new());
     app.state.selected_index = 1;
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%0".to_string(),
         "grove-ws-feature-a".to_string(),
         Instant::now(),
         20,
         80,
     ));
-    if let Some(state) = app.interactive.as_mut() {
+    if let Some(state) = app.session.interactive.as_mut() {
         state.update_cursor(3, 4, true, 20, 80);
     }
 
@@ -1943,6 +1956,7 @@ fn preview_poll_drops_cursor_capture_for_non_interactive_session() {
     );
 
     let state = app
+        .session
         .interactive
         .as_ref()
         .expect("interactive state should remain active");
@@ -1964,7 +1978,7 @@ fn interactive_keys_forward_to_tmux_session() {
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 1;
     assert!(app.enter_interactive(Instant::now()));
-    assert!(app.interactive.is_some());
+    assert!(app.session.interactive.is_some());
 
     let cmd = ftui::Model::update(
         &mut app,
@@ -1972,7 +1986,7 @@ fn interactive_keys_forward_to_tmux_session() {
     );
 
     assert!(!matches!(cmd, Cmd::Quit));
-    assert!(app.next_tick_due_at.is_some());
+    assert!(app.polling.next_tick_due_at.is_some());
     assert_eq!(
         commands.borrow().as_slice(),
         &[vec![
@@ -1992,7 +2006,7 @@ fn interactive_shift_tab_forwards_to_tmux_session() {
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 1;
     assert!(app.enter_interactive(Instant::now()));
-    assert!(app.interactive.is_some());
+    assert!(app.session.interactive.is_some());
 
     let cmd = ftui::Model::update(
         &mut app,
@@ -2000,7 +2014,7 @@ fn interactive_shift_tab_forwards_to_tmux_session() {
     );
 
     assert!(!matches!(cmd, Cmd::Quit));
-    assert!(app.next_tick_due_at.is_some());
+    assert!(app.polling.next_tick_due_at.is_some());
     assert_eq!(
         commands.borrow().as_slice(),
         &[vec![
@@ -2019,7 +2033,7 @@ fn interactive_shift_enter_forwards_to_tmux_session() {
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 1;
     assert!(app.enter_interactive(Instant::now()));
-    assert!(app.interactive.is_some());
+    assert!(app.session.interactive.is_some());
 
     let cmd = ftui::Model::update(
         &mut app,
@@ -2031,7 +2045,7 @@ fn interactive_shift_enter_forwards_to_tmux_session() {
     );
 
     assert!(!matches!(cmd, Cmd::Quit));
-    assert!(app.next_tick_due_at.is_some());
+    assert!(app.polling.next_tick_due_at.is_some());
     assert_eq!(
         commands.borrow().as_slice(),
         &[vec![
@@ -2059,7 +2073,7 @@ fn interactive_filters_split_mouse_bracket_fragment() {
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
 
-    let Some(state) = app.interactive.as_mut() else {
+    let Some(state) = app.session.interactive.as_mut() else {
         panic!("interactive state should be active");
     };
     state.note_mouse_event(Instant::now());
@@ -2086,7 +2100,7 @@ fn interactive_filters_split_mouse_fragment_without_opening_bracket() {
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
 
-    let Some(state) = app.interactive.as_mut() else {
+    let Some(state) = app.session.interactive.as_mut() else {
         panic!("interactive state should be active");
     };
     state.note_mouse_event(Instant::now());
@@ -2113,7 +2127,7 @@ fn interactive_filters_boundary_marker_before_split_mouse_fragment() {
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
 
-    let Some(state) = app.interactive.as_mut() else {
+    let Some(state) = app.session.interactive.as_mut() else {
         panic!("interactive state should be active");
     };
     state.note_mouse_event(Instant::now());
@@ -2180,7 +2194,7 @@ fn double_escape_exits_interactive_mode() {
         Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
     assert_eq!(app.state.mode, UiMode::List);
     assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
     assert_eq!(
@@ -2218,7 +2232,7 @@ fn ctrl_backslash_exits_interactive_mode() {
         ),
     );
 
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
     assert_eq!(app.state.mode, UiMode::List);
     assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
     assert!(commands.borrow().is_empty());
@@ -2243,7 +2257,7 @@ fn ctrl_backslash_control_character_exits_interactive_mode() {
         Msg::Key(KeyEvent::new(KeyCode::Char('\u{1c}')).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
     assert_eq!(app.state.mode, UiMode::List);
     assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
     assert!(commands.borrow().is_empty());
@@ -2272,7 +2286,7 @@ fn ctrl_four_exits_interactive_mode() {
         ),
     );
 
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
     assert_eq!(app.state.mode, UiMode::List);
     assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
     assert!(commands.borrow().is_empty());
@@ -2288,7 +2302,7 @@ fn alt_k_exits_interactive_and_selects_previous_workspace() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
-    assert!(app.interactive.is_some());
+    assert!(app.session.interactive.is_some());
 
     ftui::Model::update(
         &mut app,
@@ -2299,7 +2313,7 @@ fn alt_k_exits_interactive_and_selects_previous_workspace() {
         ),
     );
 
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
     assert_eq!(app.state.mode, UiMode::List);
     assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
     assert_eq!(app.state.selected_index, 0);
@@ -2317,7 +2331,7 @@ fn alt_bracket_exits_interactive_and_switches_to_git_tab() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
-    assert!(app.interactive.is_some());
+    assert!(app.session.interactive.is_some());
 
     ftui::Model::update(
         &mut app,
@@ -2336,7 +2350,7 @@ fn alt_bracket_exits_interactive_and_switches_to_git_tab() {
         ),
     );
 
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
     assert_eq!(app.state.mode, UiMode::Preview);
     assert_eq!(app.state.focus, PaneFocus::Preview);
     assert_eq!(app.preview_tab, PreviewTab::Git);
@@ -2392,6 +2406,7 @@ fn interactive_key_does_not_postpone_existing_due_tick() {
     );
     assert!(matches!(first_cmd, Cmd::Tick(_)));
     let first_due = app
+        .polling
         .next_tick_due_at
         .expect("first key should schedule a due tick");
 
@@ -2402,6 +2417,7 @@ fn interactive_key_does_not_postpone_existing_due_tick() {
         Msg::Key(KeyEvent::new(KeyCode::Char('y')).with_kind(KeyEventKind::Press)),
     );
     let second_due = app
+        .polling
         .next_tick_due_at
         .expect("second key should retain an existing due tick");
 
@@ -2476,7 +2492,7 @@ fn interactive_update_flow_sequences_tick_copy_paste_and_exit() {
             "exec:tmux send-keys -t grove-ws-feature-a Escape".to_string(),
         ]
     );
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
 }
 
 #[test]
@@ -2622,8 +2638,8 @@ fn tick_logs_skip_reason_when_not_due() {
         fixture_app_with_tmux_and_events(WorkspaceStatus::Active, Vec::new(), Vec::new());
     clear_recorded_events(&events);
 
-    app.next_tick_due_at = Some(Instant::now() + Duration::from_secs(10));
-    app.next_tick_interval_ms = Some(10_000);
+    app.polling.next_tick_due_at = Some(Instant::now() + Duration::from_secs(10));
+    app.polling.next_tick_interval_ms = Some(10_000);
     ftui::Model::update(&mut app, Msg::Tick);
 
     let recorded = recorded_events(&events);
@@ -2772,7 +2788,7 @@ fn stale_tick_before_due_is_ignored() {
     );
 
     app.state.selected_index = 1;
-    app.next_tick_due_at = Some(Instant::now() + Duration::from_secs(5));
+    app.polling.next_tick_due_at = Some(Instant::now() + Duration::from_secs(5));
 
     let cmd = ftui::Model::update(&mut app, Msg::Tick);
 
@@ -2784,8 +2800,8 @@ fn stale_tick_before_due_is_ignored() {
 fn in_flight_preview_poll_schedules_short_tick_for_task_results() {
     let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 1;
-    app.preview_poll_in_flight = true;
-    app.next_tick_due_at = Some(Instant::now() + Duration::from_secs(5));
+    app.polling.preview_poll_in_flight = true;
+    app.polling.next_tick_due_at = Some(Instant::now() + Duration::from_secs(5));
 
     let cmd = app.schedule_next_tick();
     let Cmd::Tick(interval) = cmd else {
@@ -2869,7 +2885,7 @@ fn tick_polls_cursor_metadata_and_renders_overlay() {
 
     let rendered = app.shell_lines(8).join("\n");
     assert_eq!(
-        app.interactive.as_ref().map(|state| (
+        app.session.interactive.as_ref().map(|state| (
             state.cursor_row,
             state.cursor_col,
             state.pane_height
@@ -2985,7 +3001,7 @@ fn mouse_workspace_switch_exits_interactive_mode() {
     );
 
     assert_eq!(app.state.selected_index, 0);
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
     assert_eq!(app.state.mode, UiMode::List);
     assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
 }

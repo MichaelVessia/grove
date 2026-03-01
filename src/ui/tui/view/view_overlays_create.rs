@@ -1,4 +1,4 @@
-use super::*;
+use super::view_prelude::*;
 
 impl GroveApp {
     fn create_dialog_mode_tabs_row(
@@ -155,7 +155,7 @@ impl GroveApp {
             )]));
         }
         if dialog.tab == CreateDialogTab::Manual && focused(CreateDialogField::BaseBranch) {
-            if self.create_branch_all.is_empty() {
+            if self.dialogs.create_branch_all.is_empty() {
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(
                     pad_or_truncate_to_display_width(
                         "  [Branches] Loading branches...",
@@ -163,7 +163,7 @@ impl GroveApp {
                     ),
                     Style::new().fg(theme.overlay0),
                 )]));
-            } else if self.create_branch_filtered.is_empty() {
+            } else if self.dialogs.create_branch_filtered.is_empty() {
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(
                     pad_or_truncate_to_display_width(
                         "  [Branches] No matching branches",
@@ -173,11 +173,11 @@ impl GroveApp {
                 )]));
             } else {
                 let max_dropdown = 4usize;
-                for (index, branch) in self.create_branch_filtered.iter().enumerate() {
+                for (index, branch) in self.dialogs.create_branch_filtered.iter().enumerate() {
                     if index >= max_dropdown {
                         break;
                     }
-                    let is_selected = index == self.create_branch_index;
+                    let is_selected = index == self.dialogs.create_branch_index;
                     let prefix = if is_selected { "▸" } else { " " };
                     let line = pad_or_truncate_to_display_width(
                         format!("{prefix} [Branches] {branch}").as_str(),
@@ -195,12 +195,12 @@ impl GroveApp {
                         )]));
                     }
                 }
-                if self.create_branch_filtered.len() > max_dropdown {
+                if self.dialogs.create_branch_filtered.len() > max_dropdown {
                     lines.push(FtLine::from_spans(vec![FtSpan::styled(
                         pad_or_truncate_to_display_width(
                             format!(
                                 "  [Branches] ... and {} more",
-                                self.create_branch_filtered.len() - max_dropdown
+                                self.dialogs.create_branch_filtered.len() - max_dropdown
                             )
                             .as_str(),
                             content_width,

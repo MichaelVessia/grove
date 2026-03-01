@@ -1,4 +1,4 @@
-use super::*;
+use super::view_prelude::*;
 
 impl GroveApp {
     fn footer_dialog_state_label(kind: &str) -> &'static str {
@@ -24,11 +24,11 @@ impl GroveApp {
             DiscoveryState::Ready => {}
         }
 
-        if self.command_palette.is_visible() {
+        if self.dialogs.command_palette.is_visible() {
             return "Palette".to_string();
         }
 
-        if self.keybind_help_open {
+        if self.dialogs.keybind_help_open {
             return "Help".to_string();
         }
 
@@ -36,7 +36,7 @@ impl GroveApp {
             return format!("Dialog: {}", Self::footer_dialog_state_label(dialog_kind));
         }
 
-        if self.interactive.is_some() {
+        if self.session.interactive.is_some() {
             return "Interactive".to_string();
         }
 
@@ -100,8 +100,8 @@ impl GroveApp {
                         dialog.start_config.init_command.replace('\n', "\\n"),
                     );
                 }
-                if self.interactive.is_some() {
-                    if let Some(message) = &self.last_tmux_error {
+                if self.session.interactive.is_some() {
+                    if let Some(message) = &self.session.last_tmux_error {
                         return format!(
                             "Status: INSERT, unsafe={}, tmux error: {message}",
                             self.unsafe_label()

@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     const SIDEBAR_KEYBOARD_RESIZE_STEP_PCT: i16 = 2;
@@ -47,13 +47,13 @@ impl GroveApp {
             && let Some(workspace) = self.state.selected_workspace()
         {
             let session_name = git_session_name_for_workspace(workspace);
-            self.lazygit_sessions.retry_failed(&session_name);
+            self.session.lazygit_sessions.retry_failed(&session_name);
         }
         if matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
             && let Some(workspace) = self.state.selected_workspace()
         {
             let session_name = shell_session_name_for_workspace(workspace);
-            self.shell_sessions.retry_failed(&session_name);
+            self.session.shell_sessions.retry_failed(&session_name);
         }
         self.poll_preview();
     }

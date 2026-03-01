@@ -1,4 +1,4 @@
-use super::*;
+use super::view_prelude::*;
 
 impl GroveApp {
     pub(super) fn view_layout_for_size(
@@ -127,7 +127,7 @@ impl GroveApp {
         &self,
         preview_height: usize,
     ) -> Option<(usize, usize, bool)> {
-        let interactive = self.interactive.as_ref()?;
+        let interactive = self.session.interactive.as_ref()?;
         if self.preview.lines.is_empty() {
             return None;
         }

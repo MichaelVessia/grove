@@ -197,7 +197,7 @@ impl GroveApp {
             self.handle_project_defaults_dialog_key(key_event);
             return;
         }
-        if self.project_delete_in_flight {
+        if self.dialogs.project_delete_in_flight {
             return;
         }
         let ctrl_n = key_event.modifiers == Modifiers::CTRL

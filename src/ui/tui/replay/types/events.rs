@@ -87,7 +87,7 @@ impl ClipboardAccess for ReplayClipboard {
 
 impl GroveApp {
     pub(super) fn replay_enabled(&self) -> bool {
-        self.debug_record_start_ts.is_some()
+        self.telemetry.debug_record_start_ts.is_some()
     }
 
     pub(super) fn record_replay_bootstrap(&self) {
@@ -100,7 +100,7 @@ impl GroveApp {
             return;
         };
 
-        self.event_log.log(
+        self.telemetry.event_log.log(
             LogEvent::new("replay", "bootstrap")
                 .with_data("schema_version", Value::from(REPLAY_SCHEMA_VERSION))
                 .with_data("bootstrap", snapshot),
@@ -112,15 +112,15 @@ impl GroveApp {
             return 0;
         }
 
-        self.replay_msg_seq_counter = self.replay_msg_seq_counter.saturating_add(1);
-        let seq = self.replay_msg_seq_counter;
+        self.telemetry.replay_msg_seq_counter = self.telemetry.replay_msg_seq_counter.saturating_add(1);
+        let seq = self.telemetry.replay_msg_seq_counter;
 
         let replay_msg = ReplayMsg::from_msg(msg);
         let Ok(encoded) = serde_json::to_value(replay_msg) else {
             return seq;
         };
 
-        self.event_log.log(
+        self.telemetry.event_log.log(
             LogEvent::new("replay", "msg_received")
                 .with_data("schema_version", Value::from(REPLAY_SCHEMA_VERSION))
                 .with_data("seq", Value::from(seq))
@@ -139,7 +139,7 @@ impl GroveApp {
             return;
         };
 
-        self.event_log.log(
+        self.telemetry.event_log.log(
             LogEvent::new("replay", "state_after_update")
                 .with_data("schema_version", Value::from(REPLAY_SCHEMA_VERSION))
                 .with_data("seq", Value::from(seq))

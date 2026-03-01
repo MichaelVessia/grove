@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn project_agent_env_for_workspace(
@@ -67,7 +67,7 @@ impl GroveApp {
         init_command: Option<String>,
         skip_permissions: bool,
     ) {
-        if self.start_in_flight || self.restart_in_flight {
+        if self.dialogs.start_in_flight || self.dialogs.restart_in_flight {
             return;
         }
         if !workspace_can_start_agent(Some(&workspace)) {
@@ -77,10 +77,12 @@ impl GroveApp {
 
         self.launch_skip_permissions = skip_permissions;
         if let Err(error) = write_workspace_skip_permissions(&workspace.path, skip_permissions) {
-            self.last_tmux_error = Some(format!("skip permissions marker persist failed: {error}"));
+            self.session.last_tmux_error =
+                Some(format!("skip permissions marker persist failed: {error}"));
         }
         if let Err(error) = write_workspace_init_command(&workspace.path, init_command.as_deref()) {
-            self.last_tmux_error = Some(format!("init command marker persist failed: {error}"));
+            self.session.last_tmux_error =
+                Some(format!("init command marker persist failed: {error}"));
         }
         let agent_env = match self.project_agent_env_for_workspace(&workspace) {
             Ok(agent_env) => agent_env,
@@ -108,7 +110,7 @@ impl GroveApp {
                 CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
             );
             if let Some(error) = completion.result.as_ref().err() {
-                self.last_tmux_error = Some(error.clone());
+                self.session.last_tmux_error = Some(error.clone());
                 self.show_error_toast("agent start failed");
                 return;
             }
@@ -117,7 +119,7 @@ impl GroveApp {
             return;
         }
 
-        self.start_in_flight = true;
+        self.dialogs.start_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let completion = execute_launch_request_with_result_for_mode(
                 &request,
@@ -133,7 +135,7 @@ impl GroveApp {
         init_command: Option<String>,
         skip_permissions: bool,
     ) {
-        if self.start_in_flight || self.restart_in_flight {
+        if self.dialogs.start_in_flight || self.dialogs.restart_in_flight {
             return;
         }
 
@@ -167,7 +169,7 @@ impl GroveApp {
     }
 
     pub(super) fn apply_start_agent_completion(&mut self, completion: StartAgentCompletion) {
-        self.start_in_flight = false;
+        self.dialogs.start_in_flight = false;
         match completion.result {
             Ok(()) => {
                 self.clear_status_tracking_for_workspace_path(&completion.workspace_path);
@@ -190,17 +192,17 @@ impl GroveApp {
                         false,
                     );
                 }
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("agent_lifecycle", "agent_started")
                         .with_data("workspace", Value::from(completion.workspace_name))
                         .with_data("session", Value::from(completion.session_name)),
                 );
-                self.last_tmux_error = None;
+                self.session.last_tmux_error = None;
                 self.show_success_toast("agent started");
                 self.poll_preview();
             }
             Err(error) => {
-                self.last_tmux_error = Some(error.clone());
+                self.session.last_tmux_error = Some(error.clone());
                 self.log_tmux_error(error);
                 self.show_error_toast("agent start failed");
             }

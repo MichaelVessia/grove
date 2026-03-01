@@ -1,4 +1,4 @@
-use super::*;
+use super::view_prelude::*;
 
 impl GroveApp {
     pub(super) fn render_header(&self, frame: &mut Frame, area: Rect) {
@@ -17,7 +17,7 @@ impl GroveApp {
             FtSpan::styled(" ".to_string(), base_style),
             FtSpan::styled(format!(" {} ", self.repo_name), repo_style),
         ];
-        if self.command_palette.is_visible() {
+        if self.dialogs.command_palette.is_visible() {
             left.push(FtSpan::styled(
                 " [Palette] ".to_string(),
                 Style::new().bg(theme.surface1).fg(theme.mauve).bold(),

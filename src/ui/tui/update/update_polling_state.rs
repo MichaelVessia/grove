@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     fn current_attention_marker_for_workspace_path(&self, workspace_path: &Path) -> Option<String> {
@@ -83,7 +83,7 @@ impl GroveApp {
         if self.acknowledge_workspace_attention_for_path(workspace_path)
             && let Err(error) = self.save_projects_config()
         {
-            self.last_tmux_error = Some(format!("attention ack persist failed: {error}"));
+            self.session.last_tmux_error = Some(format!("attention ack persist failed: {error}"));
         }
     }
 
@@ -123,6 +123,7 @@ impl GroveApp {
         let status = self.selected_workspace_status();
 
         let since_last_key = self
+            .session
             .interactive
             .as_ref()
             .map_or(Duration::from_secs(60), |interactive| {
@@ -133,9 +134,9 @@ impl GroveApp {
             status,
             true,
             self.state.focus == PaneFocus::Preview,
-            self.interactive.is_some(),
+            self.session.interactive.is_some(),
             since_last_key,
-            self.output_changing,
+            self.polling.output_changing,
         )
     }
 
@@ -146,9 +147,9 @@ impl GroveApp {
     }
 
     pub(super) fn clear_agent_activity_tracking(&mut self) {
-        self.output_changing = false;
-        self.agent_output_changing = false;
-        self.agent_activity_frames.clear();
+        self.polling.output_changing = false;
+        self.polling.agent_output_changing = false;
+        self.polling.agent_activity_frames.clear();
     }
 
     fn workspace_status_tracking_key(workspace_path: &Path) -> String {
@@ -157,13 +158,13 @@ impl GroveApp {
 
     pub(super) fn clear_status_tracking_for_workspace_path(&mut self, workspace_path: &Path) {
         let key = Self::workspace_status_tracking_key(workspace_path);
-        self.workspace_status_digests.remove(&key);
-        self.workspace_output_changing.remove(&key);
+        self.polling.workspace_status_digests.remove(&key);
+        self.polling.workspace_output_changing.remove(&key);
     }
 
     pub(super) fn clear_status_tracking(&mut self) {
-        self.workspace_status_digests.clear();
-        self.workspace_output_changing.clear();
+        self.polling.workspace_status_digests.clear();
+        self.polling.workspace_output_changing.clear();
     }
 
     pub(super) fn capture_changed_cleaned_for_workspace(
@@ -172,32 +173,35 @@ impl GroveApp {
         output: &str,
     ) -> (bool, String) {
         let key = Self::workspace_status_tracking_key(workspace_path);
-        let previous_digest = self.workspace_status_digests.get(&key);
+        let previous_digest = self.polling.workspace_status_digests.get(&key);
         let change = evaluate_capture_change(previous_digest, output);
-        self.workspace_status_digests
+        self.polling
+            .workspace_status_digests
             .insert(key.clone(), change.digest);
-        self.workspace_output_changing
+        self.polling
+            .workspace_output_changing
             .insert(key, change.changed_cleaned);
         (change.changed_cleaned, change.cleaned_output)
     }
 
     fn workspace_output_changing(&self, workspace_path: &Path) -> bool {
         let key = Self::workspace_status_tracking_key(workspace_path);
-        self.workspace_output_changing
+        self.polling
+            .workspace_output_changing
             .get(&key)
             .copied()
             .unwrap_or(false)
     }
 
     pub(super) fn push_agent_activity_frame(&mut self, changed: bool) {
-        if self.agent_activity_frames.len() >= AGENT_ACTIVITY_WINDOW_FRAMES {
-            self.agent_activity_frames.pop_front();
+        if self.polling.agent_activity_frames.len() >= AGENT_ACTIVITY_WINDOW_FRAMES {
+            self.polling.agent_activity_frames.pop_front();
         }
-        self.agent_activity_frames.push_back(changed);
+        self.polling.agent_activity_frames.push_back(changed);
     }
 
     pub(super) fn has_recent_agent_activity(&self) -> bool {
-        self.agent_activity_frames.contains(&true)
+        self.polling.agent_activity_frames.contains(&true)
     }
 
     fn visual_tick_interval(&self) -> Option<Duration> {
@@ -216,7 +220,7 @@ impl GroveApp {
     }
 
     pub(super) fn advance_visual_animation(&mut self) {
-        self.fast_animation_frame = self.fast_animation_frame.wrapping_add(1);
+        self.polling.fast_animation_frame = self.polling.fast_animation_frame.wrapping_add(1);
     }
 
     pub(super) fn status_is_visually_working(
@@ -226,10 +230,14 @@ impl GroveApp {
         is_selected: bool,
     ) -> bool {
         if is_selected
-            && self.interactive.as_ref().is_some_and(|interactive| {
-                Instant::now().saturating_duration_since(interactive.last_key_time)
-                    < Duration::from_millis(LOCAL_TYPING_SUPPRESS_MS)
-            })
+            && self
+                .session
+                .interactive
+                .as_ref()
+                .is_some_and(|interactive| {
+                    Instant::now().saturating_duration_since(interactive.last_key_time)
+                        < Duration::from_millis(LOCAL_TYPING_SUPPRESS_MS)
+                })
         {
             return false;
         }
@@ -240,7 +248,7 @@ impl GroveApp {
                     return true;
                 }
                 if is_selected {
-                    return self.agent_output_changing || self.has_recent_agent_activity();
+                    return self.polling.agent_output_changing || self.has_recent_agent_activity();
                 }
                 false
             }
@@ -258,14 +266,14 @@ impl GroveApp {
         let scheduled_at = Instant::now();
         let mut poll_due_at = scheduled_at + self.next_poll_interval();
         let mut source = "adaptive_poll";
-        if let Some(interactive_due_at) = self.interactive_poll_due_at
+        if let Some(interactive_due_at) = self.polling.interactive_poll_due_at
             && interactive_due_at < poll_due_at
         {
             poll_due_at = interactive_due_at;
             source = "interactive_debounce";
         }
 
-        if let Some(existing_poll_due_at) = self.next_poll_due_at
+        if let Some(existing_poll_due_at) = self.polling.next_poll_due_at
             && existing_poll_due_at <= poll_due_at
         {
             if existing_poll_due_at > scheduled_at {
@@ -276,12 +284,12 @@ impl GroveApp {
                 source = "overdue_poll";
             }
         }
-        self.next_poll_due_at = Some(poll_due_at);
+        self.polling.next_poll_due_at = Some(poll_due_at);
 
-        self.next_visual_due_at = if let Some(interval) = self.visual_tick_interval() {
+        self.polling.next_visual_due_at = if let Some(interval) = self.visual_tick_interval() {
             let candidate = scheduled_at + interval;
             Some(
-                if let Some(existing_visual_due_at) = self.next_visual_due_at {
+                if let Some(existing_visual_due_at) = self.polling.next_visual_due_at {
                     if existing_visual_due_at <= candidate && existing_visual_due_at > scheduled_at
                     {
                         existing_visual_due_at
@@ -298,13 +306,13 @@ impl GroveApp {
 
         let mut due_at = poll_due_at;
         let mut trigger = "poll";
-        if let Some(visual_due_at) = self.next_visual_due_at
+        if let Some(visual_due_at) = self.polling.next_visual_due_at
             && visual_due_at < due_at
         {
             due_at = visual_due_at;
             trigger = "visual";
         }
-        if self.preview_poll_in_flight {
+        if self.polling.preview_poll_in_flight {
             let in_flight_due_at =
                 scheduled_at + Duration::from_millis(PREVIEW_POLL_IN_FLIGHT_TICK_MS);
             if in_flight_due_at < due_at {
@@ -314,11 +322,11 @@ impl GroveApp {
             }
         }
 
-        if let Some(existing_due_at) = self.next_tick_due_at
+        if let Some(existing_due_at) = self.polling.next_tick_due_at
             && existing_due_at <= due_at
             && existing_due_at > scheduled_at
         {
-            self.event_log.log(
+            self.telemetry.event_log.log(
                 LogEvent::new("tick", "retained")
                     .with_data("source", Value::from(source))
                     .with_data("trigger", Value::from(trigger))
@@ -339,9 +347,9 @@ impl GroveApp {
 
         let interval = due_at.saturating_duration_since(scheduled_at);
         let interval_ms = Self::duration_millis(interval);
-        self.next_tick_due_at = Some(due_at);
-        self.next_tick_interval_ms = Some(interval_ms);
-        self.event_log.log(
+        self.polling.next_tick_due_at = Some(due_at);
+        self.polling.next_tick_interval_ms = Some(interval_ms);
+        self.telemetry.event_log.log(
             LogEvent::new("tick", "scheduled")
                 .with_data("source", Value::from(source))
                 .with_data("trigger", Value::from(trigger))
@@ -356,7 +364,7 @@ impl GroveApp {
     }
 
     pub(super) fn tick_is_due(&self, now: Instant) -> bool {
-        let Some(due_at) = self.next_tick_due_at else {
+        let Some(due_at) = self.polling.next_tick_due_at else {
             return true;
         };
 

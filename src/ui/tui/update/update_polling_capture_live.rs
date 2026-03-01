@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn apply_live_preview_capture(
@@ -27,9 +27,10 @@ impl GroveApp {
                 let drain_pending_inputs_ms = Self::duration_millis(
                     Instant::now().saturating_duration_since(drain_started_at),
                 );
-                self.output_changing = update.changed_cleaned;
-                self.agent_output_changing = update.changed_cleaned && consumed_inputs.is_empty();
-                self.push_agent_activity_frame(self.agent_output_changing);
+                self.polling.output_changing = update.changed_cleaned;
+                self.polling.agent_output_changing =
+                    update.changed_cleaned && consumed_inputs.is_empty();
+                self.push_agent_activity_frame(self.polling.agent_output_changing);
                 let mut workspace_status_eval_ms = 0;
                 let mut workspace_status_changed = false;
                 let mut status_detect_ms = 0;
@@ -76,11 +77,11 @@ impl GroveApp {
                         false,
                     );
                 }
-                self.last_tmux_error = None;
+                self.session.last_tmux_error = None;
                 let pipeline_process_ms = Self::duration_millis(
                     Instant::now().saturating_duration_since(processing_started_at),
                 );
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("preview_poll", "capture_completed")
                         .with_data("session", Value::from(session_name.to_string()))
                         .with_data(
@@ -219,7 +220,7 @@ impl GroveApp {
                             );
                         }
                     }
-                    self.event_log.log(output_event);
+                    self.telemetry.event_log.log(output_event);
                 }
             }
             Err(message) => {
@@ -227,8 +228,8 @@ impl GroveApp {
                 let capture_error_indicates_missing_session =
                     tmux_capture_error_indicates_missing_session(&message);
                 if capture_error_indicates_missing_session {
-                    self.lazygit_sessions.remove_ready(session_name);
-                    self.shell_sessions.remove_ready(session_name);
+                    self.session.lazygit_sessions.remove_ready(session_name);
+                    self.session.shell_sessions.remove_ready(session_name);
                     let selected_workspace_index = self
                         .state
                         .selected_workspace()
@@ -259,14 +260,15 @@ impl GroveApp {
                         self.clear_status_tracking_for_workspace_path(&workspace_path);
                     }
                     if self
+                        .session
                         .interactive
                         .as_ref()
                         .is_some_and(|interactive| interactive.target_session == session_name)
                     {
-                        self.interactive = None;
+                        self.session.interactive = None;
                     }
                 }
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("preview_poll", "capture_failed")
                         .with_data("session", Value::from(session_name.to_string()))
                         .with_data(
@@ -281,9 +283,9 @@ impl GroveApp {
                         .with_data("error", Value::from(message.clone())),
                 );
                 if capture_error_indicates_missing_session {
-                    self.last_tmux_error = None;
+                    self.session.last_tmux_error = None;
                 } else {
-                    self.last_tmux_error = Some(message.clone());
+                    self.session.last_tmux_error = Some(message.clone());
                     self.log_tmux_error(message);
                     self.show_error_toast("preview capture failed");
                 }
@@ -301,14 +303,14 @@ impl GroveApp {
         let changed = self.preview.scroll(delta, Instant::now(), viewport_height);
         if changed {
             let offset = usize_to_u64(self.preview.offset);
-            self.event_log.log(
+            self.telemetry.event_log.log(
                 LogEvent::new("preview_update", "scrolled")
                     .with_data("delta", Value::from(i64::from(delta)))
                     .with_data("offset", Value::from(offset)),
             );
         }
         if old_auto_scroll != self.preview.auto_scroll {
-            self.event_log.log(
+            self.telemetry.event_log.log(
                 LogEvent::new("preview_update", "autoscroll_toggled")
                     .with_data("enabled", Value::from(self.preview.auto_scroll))
                     .with_data("offset", Value::from(usize_to_u64(self.preview.offset)))
@@ -322,7 +324,7 @@ impl GroveApp {
         let old_auto_scroll = self.preview.auto_scroll;
         self.preview.jump_to_bottom();
         if old_offset != self.preview.offset {
-            self.event_log.log(
+            self.telemetry.event_log.log(
                 LogEvent::new("preview_update", "scrolled")
                     .with_data("delta", Value::from("jump_bottom"))
                     .with_data("offset", Value::from(usize_to_u64(self.preview.offset)))
@@ -330,7 +332,7 @@ impl GroveApp {
             );
         }
         if old_auto_scroll != self.preview.auto_scroll {
-            self.event_log.log(
+            self.telemetry.event_log.log(
                 LogEvent::new("preview_update", "autoscroll_toggled")
                     .with_data("enabled", Value::from(self.preview.auto_scroll))
                     .with_data("offset", Value::from(usize_to_u64(self.preview.offset))),

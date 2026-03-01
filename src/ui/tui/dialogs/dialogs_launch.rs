@@ -2,7 +2,7 @@ use super::*;
 
 impl GroveApp {
     pub(super) fn handle_launch_dialog_key(&mut self, key_event: KeyEvent) {
-        if self.start_in_flight || self.restart_in_flight {
+        if self.dialogs.start_in_flight || self.dialogs.restart_in_flight {
             return;
         }
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -102,7 +102,7 @@ impl GroveApp {
     }
 
     pub(super) fn open_start_dialog(&mut self) {
-        if self.start_in_flight || self.restart_in_flight {
+        if self.dialogs.start_in_flight || self.dialogs.restart_in_flight {
             self.show_info_toast("agent lifecycle already in progress");
             return;
         }
@@ -154,6 +154,6 @@ impl GroveApp {
                 ),
             ],
         );
-        self.last_tmux_error = None;
+        self.session.last_tmux_error = None;
     }
 }

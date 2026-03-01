@@ -2,7 +2,7 @@ use super::*;
 
 impl GroveApp {
     pub(super) fn handle_stop_dialog_key(&mut self, key_event: KeyEvent) {
-        if self.stop_in_flight || self.restart_in_flight {
+        if self.dialogs.stop_in_flight || self.dialogs.restart_in_flight {
             return;
         }
 
@@ -91,10 +91,10 @@ impl GroveApp {
         if self.modal_open() {
             return;
         }
-        if self.interactive.is_some() {
+        if self.session.interactive.is_some() {
             self.exit_interactive_to_list();
         }
-        if self.stop_in_flight || self.restart_in_flight {
+        if self.dialogs.stop_in_flight || self.dialogs.restart_in_flight {
             self.show_info_toast("agent lifecycle already in progress");
             return;
         }
@@ -129,11 +129,11 @@ impl GroveApp {
         );
         self.state.mode = UiMode::List;
         self.state.focus = PaneFocus::WorkspaceList;
-        self.last_tmux_error = None;
+        self.session.last_tmux_error = None;
     }
 
     fn confirm_stop_dialog(&mut self) {
-        if self.stop_in_flight || self.restart_in_flight {
+        if self.dialogs.stop_in_flight || self.dialogs.restart_in_flight {
             return;
         }
 

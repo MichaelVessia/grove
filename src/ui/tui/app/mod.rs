@@ -1,15 +1,15 @@
-use ftui::Cmd;
-use ftui::render::frame::Frame;
+mod model;
+mod msg;
+mod update;
+mod view;
 
-use super::{GroveApp, Msg};
+use model::AppModel;
+use msg::AppMsg;
 
-pub(super) type AppModel = GroveApp;
-pub(super) type AppMsg = Msg;
-
-pub(super) fn update(model: &mut AppModel, msg: AppMsg) -> Cmd<AppMsg> {
-    model.update_model(msg)
+pub(super) fn update(model: &mut AppModel, msg: AppMsg) -> ftui::Cmd<AppMsg> {
+    update::update(model, msg)
 }
 
-pub(super) fn view(model: &AppModel, frame: &mut Frame) {
-    model.render_model(frame);
+pub(super) fn view(model: &AppModel, frame: &mut ftui::render::frame::Frame) {
+    view::view(model, frame);
 }

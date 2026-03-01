@@ -1,20 +1,24 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     fn take_pending_restart_for_workspace(&mut self, workspace_path: &Path) -> bool {
         if self
+            .session
             .pending_restart_workspace_path
             .as_ref()
             .is_some_and(|pending_path| pending_path == workspace_path)
         {
-            self.pending_restart_workspace_path = None;
+            self.session.pending_restart_workspace_path = None;
             return true;
         }
         false
     }
 
     pub(super) fn restart_workspace_agent_for_path(&mut self, workspace_path: &Path) {
-        if self.start_in_flight || self.stop_in_flight || self.restart_in_flight {
+        if self.dialogs.start_in_flight
+            || self.dialogs.stop_in_flight
+            || self.dialogs.restart_in_flight
+        {
             self.show_info_toast("agent lifecycle already in progress");
             return;
         }
@@ -39,12 +43,12 @@ impl GroveApp {
             return;
         }
 
-        self.pending_restart_workspace_path = Some(workspace.path.clone());
+        self.session.pending_restart_workspace_path = Some(workspace.path.clone());
         self.stop_workspace_agent(workspace);
     }
 
     fn restart_workspace_agent_in_pane(&mut self, workspace: Workspace) {
-        if self.restart_in_flight {
+        if self.dialogs.restart_in_flight {
             return;
         }
 
@@ -80,7 +84,7 @@ impl GroveApp {
             return;
         }
 
-        self.restart_in_flight = true;
+        self.dialogs.restart_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let completion = execute_restart_workspace_in_pane_with_result(
                 &workspace,
@@ -92,7 +96,7 @@ impl GroveApp {
     }
 
     pub(super) fn stop_workspace_agent(&mut self, workspace: Workspace) {
-        if self.stop_in_flight || self.restart_in_flight {
+        if self.dialogs.stop_in_flight || self.dialogs.restart_in_flight {
             return;
         }
 
@@ -108,7 +112,7 @@ impl GroveApp {
             );
             if let Some(error) = completion.result.as_ref().err() {
                 self.take_pending_restart_for_workspace(&workspace.path);
-                self.last_tmux_error = Some(error.clone());
+                self.session.last_tmux_error = Some(error.clone());
                 self.show_error_toast("agent stop failed");
                 return;
             }
@@ -117,7 +121,7 @@ impl GroveApp {
             return;
         }
 
-        self.stop_in_flight = true;
+        self.dialogs.stop_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let completion = execute_stop_workspace_with_result_for_mode(
                 &workspace,
@@ -128,16 +132,17 @@ impl GroveApp {
     }
 
     pub(super) fn apply_stop_agent_completion(&mut self, completion: StopAgentCompletion) {
-        self.stop_in_flight = false;
+        self.dialogs.stop_in_flight = false;
         let should_restart = self.take_pending_restart_for_workspace(&completion.workspace_path);
         match completion.result {
             Ok(()) => {
                 if self
+                    .session
                     .interactive
                     .as_ref()
                     .is_some_and(|state| state.target_session == completion.session_name)
                 {
-                    self.interactive = None;
+                    self.session.interactive = None;
                 }
 
                 if let Some(workspace_index) = self
@@ -169,12 +174,12 @@ impl GroveApp {
                 self.state.mode = UiMode::List;
                 self.state.focus = PaneFocus::WorkspaceList;
                 self.refresh_preview_summary();
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("agent_lifecycle", "agent_stopped")
                         .with_data("workspace", Value::from(completion.workspace_name))
                         .with_data("session", Value::from(completion.session_name)),
                 );
-                self.last_tmux_error = None;
+                self.session.last_tmux_error = None;
                 if should_restart {
                     self.restart_workspace_agent_by_path(&completion.workspace_path);
                 } else {
@@ -183,7 +188,7 @@ impl GroveApp {
                 self.poll_preview();
             }
             Err(error) => {
-                self.last_tmux_error = Some(error.clone());
+                self.session.last_tmux_error = Some(error.clone());
                 self.log_tmux_error(error);
                 self.show_error_toast("agent stop failed");
             }
@@ -191,7 +196,7 @@ impl GroveApp {
     }
 
     pub(super) fn apply_restart_agent_completion(&mut self, completion: RestartAgentCompletion) {
-        self.restart_in_flight = false;
+        self.dialogs.restart_in_flight = false;
         match completion.result {
             Ok(()) => {
                 self.clear_status_tracking_for_workspace_path(&completion.workspace_path);
@@ -215,17 +220,17 @@ impl GroveApp {
                         false,
                     );
                 }
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("agent_lifecycle", "agent_restarted")
                         .with_data("workspace", Value::from(completion.workspace_name))
                         .with_data("session", Value::from(completion.session_name)),
                 );
-                self.last_tmux_error = None;
+                self.session.last_tmux_error = None;
                 self.show_success_toast("agent restarted");
                 self.poll_preview();
             }
             Err(error) => {
-                self.last_tmux_error = Some(error.clone());
+                self.session.last_tmux_error = Some(error.clone());
                 self.log_tmux_error(error);
                 self.show_error_toast("agent restart failed");
             }

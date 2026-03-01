@@ -1,4 +1,4 @@
-use super::*;
+use super::view_prelude::*;
 
 impl GroveApp {
     pub(super) fn add_selection_point_snapshot_fields(
@@ -77,7 +77,10 @@ impl GroveApp {
             .with_data("x", Value::from(x))
             .with_data("y", Value::from(y))
             .with_data("mapped", Value::from(point.is_some()))
-            .with_data("interactive", Value::from(self.interactive.is_some()))
+            .with_data(
+                "interactive",
+                Value::from(self.session.interactive.is_some()),
+            )
             .with_data("mode", Value::from(self.state.mode.name()))
             .with_data("focus", Value::from(self.state.focus.name()))
             .with_data(
@@ -115,7 +118,7 @@ impl GroveApp {
             }
         }
 
-        self.event_log.log(event);
+        self.telemetry.event_log.log(event);
     }
 
     pub(super) fn log_preview_drag_finished(
@@ -132,7 +135,10 @@ impl GroveApp {
                 "has_selection",
                 Value::from(self.preview_selection.has_selection()),
             )
-            .with_data("interactive", Value::from(self.interactive.is_some()));
+            .with_data(
+                "interactive",
+                Value::from(self.session.interactive.is_some()),
+            );
 
         if let Some(point) = point {
             event = event
@@ -178,6 +184,6 @@ impl GroveApp {
                 );
         }
 
-        self.event_log.log(event);
+        self.telemetry.event_log.log(event);
     }
 }

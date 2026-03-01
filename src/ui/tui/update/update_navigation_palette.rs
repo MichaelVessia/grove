@@ -1,14 +1,14 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     const COMMAND_PALETTE_MAX_VISIBLE_ROWS: usize = 30;
 
     fn has_non_palette_modal_open(&self) -> bool {
-        self.active_dialog.is_some() || self.keybind_help_open
+        self.dialogs.active_dialog.is_some() || self.dialogs.keybind_help_open
     }
 
     fn can_open_command_palette(&self) -> bool {
-        !self.has_non_palette_modal_open() && self.interactive.is_none()
+        !self.has_non_palette_modal_open() && self.session.interactive.is_none()
     }
 
     fn palette_action(
@@ -45,7 +45,8 @@ impl GroveApp {
     }
 
     fn refresh_command_palette_actions(&mut self) {
-        self.command_palette
+        self.dialogs
+            .command_palette
             .replace_actions(self.build_command_palette_actions());
     }
 
@@ -69,10 +70,10 @@ impl GroveApp {
             return;
         }
 
-        self.command_palette =
+        self.dialogs.command_palette =
             CommandPalette::new().with_max_visible(self.command_palette_max_visible());
         self.refresh_command_palette_actions();
-        self.command_palette.open();
+        self.dialogs.command_palette.open();
     }
 
     fn palette_command_enabled(&self, command: UiCommand) -> bool {
@@ -109,20 +110,20 @@ impl GroveApp {
             }
             UiCommand::StartAgent => {
                 self.preview_agent_tab_is_focused()
-                    && !self.start_in_flight
-                    && !self.restart_in_flight
+                    && !self.dialogs.start_in_flight
+                    && !self.dialogs.restart_in_flight
                     && workspace_can_start_agent(self.state.selected_workspace())
             }
             UiCommand::StopAgent => {
-                !self.stop_in_flight
-                    && !self.restart_in_flight
+                !self.dialogs.stop_in_flight
+                    && !self.dialogs.restart_in_flight
                     && workspace_can_stop_agent(self.state.selected_workspace())
             }
             UiCommand::RestartAgent => {
                 self.preview_agent_tab_is_focused()
-                    && !self.start_in_flight
-                    && !self.stop_in_flight
-                    && !self.restart_in_flight
+                    && !self.dialogs.start_in_flight
+                    && !self.dialogs.stop_in_flight
+                    && !self.dialogs.restart_in_flight
                     && workspace_can_stop_agent(self.state.selected_workspace())
             }
             UiCommand::DeleteWorkspace => {
@@ -131,7 +132,7 @@ impl GroveApp {
                 })
             }
             UiCommand::DeleteProject => {
-                !self.project_delete_in_flight
+                !self.dialogs.project_delete_in_flight
                     && self.state.selected_workspace().is_some_and(|workspace| {
                         workspace
                             .project_path
@@ -144,16 +145,17 @@ impl GroveApp {
                     })
             }
             UiCommand::MergeWorkspace => {
-                !self.merge_in_flight
+                !self.dialogs.merge_in_flight
                     && self
                         .state
                         .selected_workspace()
                         .is_some_and(|workspace| !workspace.is_main)
             }
             UiCommand::UpdateFromBase => {
-                !self.update_from_base_in_flight && self.state.selected_workspace().is_some()
+                !self.dialogs.update_from_base_in_flight
+                    && self.state.selected_workspace().is_some()
             }
-            UiCommand::RefreshWorkspaces => !self.refresh_in_flight,
+            UiCommand::RefreshWorkspaces => !self.dialogs.refresh_in_flight,
             UiCommand::FocusPreview | UiCommand::OpenCommandPalette => false,
         }
     }
@@ -165,6 +167,6 @@ impl GroveApp {
     }
 
     pub(super) fn modal_open(&self) -> bool {
-        self.has_non_palette_modal_open() || self.command_palette.is_visible()
+        self.has_non_palette_modal_open() || self.dialogs.command_palette.is_visible()
     }
 }

@@ -51,16 +51,16 @@ impl ReplayStateSnapshot {
             mode: ReplayMode::from_mode(app.state.mode),
             preview_tab: ReplayPreviewTab::from_preview_tab(app.preview_tab),
             interactive_session: app.interactive_target_session(),
-            poll_generation: app.poll_generation,
+            poll_generation: app.polling.poll_generation,
             preview_offset: app.preview.offset,
             preview_auto_scroll: app.preview.auto_scroll,
             preview_line_count: app.preview.render_lines.len(),
             preview_line_hash,
-            output_changing: app.output_changing,
+            output_changing: app.polling.output_changing,
             pending_input_depth: app.pending_input_depth(),
             active_modal: app.active_dialog_kind().map(str::to_string),
-            keybind_help_open: app.keybind_help_open,
-            command_palette_open: app.command_palette.is_visible(),
+            keybind_help_open: app.dialogs.keybind_help_open,
+            command_palette_open: app.dialogs.command_palette.is_visible(),
         }
     }
 }

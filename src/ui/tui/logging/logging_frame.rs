@@ -38,21 +38,21 @@ impl GroveApp {
     }
 
     pub(super) fn log_frame_render(&self, frame: &mut Frame) {
-        let Some(app_start_ts) = self.debug_record_start_ts else {
+        let Some(app_start_ts) = self.telemetry.debug_record_start_ts else {
             return;
         };
 
         let lines = Self::frame_buffer_lines(frame);
         let frame_hash = Self::frame_lines_hash(&lines);
         let previous_hash = {
-            let mut hash_ref = self.last_frame_hash.borrow_mut();
+            let mut hash_ref = self.telemetry.last_frame_hash.borrow_mut();
             let previous = *hash_ref;
             *hash_ref = frame_hash;
             previous
         };
         let frame_changed = frame_hash != previous_hash;
         let non_empty_line_count = lines.iter().filter(|line| !line.is_empty()).count();
-        let mut seq = self.frame_render_seq.borrow_mut();
+        let mut seq = self.telemetry.frame_render_seq.borrow_mut();
         *seq = seq.saturating_add(1);
         let seq_value = *seq;
 
@@ -62,12 +62,14 @@ impl GroveApp {
             .map(|workspace| workspace.name.clone())
             .unwrap_or_default();
         let interactive_session = self
+            .session
             .interactive
             .as_ref()
             .map(|state| state.target_session.clone())
             .unwrap_or_default();
         let pending_input_depth = self.pending_input_depth();
         let oldest_pending_input_seq = self
+            .session
             .pending_interactive_inputs
             .front()
             .map(|trace| trace.seq)
@@ -116,7 +118,7 @@ impl GroveApp {
             ),
             (
                 "output_changing".to_string(),
-                Value::from(self.output_changing),
+                Value::from(self.polling.output_changing),
             ),
             (
                 "pending_input_depth".to_string(),
@@ -140,14 +142,14 @@ impl GroveApp {
             ),
             (
                 "replay_seq".to_string(),
-                Value::from(self.replay_msg_seq_counter),
+                Value::from(self.telemetry.replay_msg_seq_counter),
             ),
         ];
         if let Some((cursor_col, cursor_row)) = frame.cursor_position {
             frame_fields.push(("frame_cursor_col".to_string(), Value::from(cursor_col)));
             frame_fields.push(("frame_cursor_row".to_string(), Value::from(cursor_row)));
         }
-        if let Some(interactive) = self.interactive.as_ref() {
+        if let Some(interactive) = self.session.interactive.as_ref() {
             frame_fields.push((
                 "interactive_cursor_visible".to_string(),
                 Value::from(interactive.cursor_visible),

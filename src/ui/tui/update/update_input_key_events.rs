@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     fn is_ctrl_modal_nav_key(key_event: &KeyEvent) -> bool {
@@ -119,7 +119,7 @@ impl GroveApp {
         let input_seq = self.next_input_seq();
         let received_at = Instant::now();
         let (target_session, bracketed) = {
-            let Some(state) = self.interactive.as_mut() else {
+            let Some(state) = self.session.interactive.as_mut() else {
                 return Cmd::None;
             };
             state.bracketed_paste = paste_event.bracketed;
@@ -156,7 +156,7 @@ impl GroveApp {
             && let Some(workspace) = self.state.selected_workspace()
         {
             let session_name = shell_session_name_for_workspace(workspace);
-            self.shell_sessions.retry_failed(&session_name);
+            self.session.shell_sessions.retry_failed(&session_name);
         }
         if !self.enter_interactive(Instant::now()) {
             reduce(&mut self.state, Action::EnterPreviewMode);
@@ -328,11 +328,11 @@ impl GroveApp {
             );
         }
 
-        if self.command_palette.is_visible() {
+        if self.dialogs.command_palette.is_visible() {
             let event = Event::Key(Self::normalize_command_palette_key_event(
                 Self::remap_command_palette_nav_key(key_event),
             ));
-            if let Some(action) = self.command_palette.handle_event(&event) {
+            if let Some(action) = self.dialogs.command_palette.handle_event(&event) {
                 return match action {
                     PaletteAction::Dismiss => (false, Cmd::None),
                     PaletteAction::Execute(id) => {
@@ -346,7 +346,7 @@ impl GroveApp {
         if !self.modal_open()
             && let Some(command) = Self::global_workspace_navigation_command(&key_event)
         {
-            if self.interactive.is_some()
+            if self.session.interactive.is_some()
                 && matches!(
                     command,
                     UiCommand::MoveSelectionDown
@@ -361,7 +361,7 @@ impl GroveApp {
             return (self.execute_ui_command(command), Cmd::None);
         }
 
-        if self.interactive.is_some() {
+        if self.session.interactive.is_some() {
             return (false, self.handle_interactive_key(key_event));
         }
 
@@ -389,7 +389,7 @@ impl GroveApp {
         if self.dispatch_dialog_key(&key_event) {
             return (false, Cmd::None);
         }
-        if self.keybind_help_open {
+        if self.dialogs.keybind_help_open {
             self.handle_keybind_help_key(key_event);
             return (false, Cmd::None);
         }
@@ -414,7 +414,7 @@ impl GroveApp {
         if self.modal_open() {
             return;
         }
-        self.keybind_help_open = true;
+        self.dialogs.keybind_help_open = true;
     }
 
     pub(super) fn move_selection(&mut self, action: Action) {
@@ -426,7 +426,7 @@ impl GroveApp {
     }
 
     pub(super) fn handle_workspace_selection_changed(&mut self) {
-        if self.interactive.is_some() {
+        if self.session.interactive.is_some() {
             self.exit_interactive_to_list();
         }
         self.preview.jump_to_bottom();

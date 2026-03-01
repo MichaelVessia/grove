@@ -130,12 +130,12 @@ fn tick_queues_async_poll_for_background_workspace_statuses_only() {
 fn poll_preview_marks_request_when_background_poll_is_in_flight() {
     let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 1;
-    app.preview_poll_in_flight = true;
+    app.polling.preview_poll_in_flight = true;
 
     app.poll_preview();
 
-    assert!(app.preview_poll_requested);
-    assert!(app.deferred_cmds.is_empty());
+    assert!(app.polling.preview_poll_requested);
+    assert!(app.telemetry.deferred_cmds.is_empty());
 }
 
 #[test]
@@ -176,7 +176,7 @@ fn async_preview_rate_limits_background_workspace_status_targets() {
 
     let initial_targets = app.status_poll_targets_for_async_preview(live_preview.as_ref());
     assert_eq!(initial_targets.len(), 1);
-    app.last_workspace_status_poll_at = Some(Instant::now());
+    app.polling.last_workspace_status_poll_at = Some(Instant::now());
 
     let throttled_targets = app.status_poll_targets_for_async_preview(live_preview.as_ref());
     assert!(throttled_targets.is_empty());
@@ -200,7 +200,8 @@ fn prepare_live_preview_session_launches_shell_from_list_mode() {
     );
     assert!(live_preview.is_some_and(|target| target.include_escape_sequences));
     assert!(
-        app.shell_sessions
+        app.session
+            .shell_sessions
             .ready
             .contains("grove-ws-feature-a-shell")
     );
@@ -222,9 +223,9 @@ fn prepare_live_preview_session_launches_shell_from_list_mode() {
 fn preview_poll_completion_runs_deferred_background_poll_request() {
     let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 1;
-    app.poll_generation = 1;
-    app.preview_poll_in_flight = true;
-    app.preview_poll_requested = true;
+    app.polling.poll_generation = 1;
+    app.polling.preview_poll_in_flight = true;
+    app.polling.preview_poll_requested = true;
 
     let cmd = ftui::Model::update(
         &mut app,
@@ -236,8 +237,8 @@ fn preview_poll_completion_runs_deferred_background_poll_request() {
         }),
     );
 
-    assert!(app.preview_poll_in_flight);
-    assert!(!app.preview_poll_requested);
+    assert!(app.polling.preview_poll_in_flight);
+    assert!(!app.polling.preview_poll_requested);
     assert!(cmd_contains_task(&cmd));
 }
 
@@ -246,15 +247,15 @@ fn switching_workspace_drops_in_flight_capture_for_previous_session() {
     let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 1;
     app.preview.apply_capture("stale-feature-output\n");
-    app.poll_generation = 1;
-    app.preview_poll_in_flight = true;
+    app.polling.poll_generation = 1;
+    app.polling.preview_poll_in_flight = true;
 
     let switch_cmd = ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('k'))));
 
     assert_eq!(app.state.selected_index, 0);
     assert!(cmd_contains_task(&switch_cmd));
-    assert!(!app.preview_poll_requested);
-    assert_eq!(app.poll_generation, 2);
+    assert!(!app.polling.preview_poll_requested);
+    assert_eq!(app.polling.poll_generation, 2);
     assert_ne!(app.preview.lines, vec!["stale-feature-output".to_string()]);
 
     let stale_cmd = ftui::Model::update(
@@ -274,8 +275,8 @@ fn switching_workspace_drops_in_flight_capture_for_previous_session() {
         }),
     );
 
-    assert!(app.preview_poll_in_flight);
-    assert!(!app.preview_poll_requested);
+    assert!(app.polling.preview_poll_in_flight);
+    assert!(!app.polling.preview_poll_requested);
     assert!(!cmd_contains_task(&stale_cmd));
     assert!(
         app.preview
@@ -302,7 +303,7 @@ fn switching_workspace_drops_in_flight_capture_for_previous_session() {
         }),
     );
 
-    assert!(!app.preview_poll_in_flight);
+    assert!(!app.polling.preview_poll_in_flight);
     assert_eq!(app.preview.lines, vec!["fresh-main-output".to_string()]);
 }
 
@@ -314,15 +315,15 @@ fn switching_to_active_workspace_keeps_existing_preview_until_fresh_capture() {
     }
     app.state.selected_index = 1;
     app.preview.apply_capture("feature-live-output\n");
-    app.poll_generation = 1;
-    app.preview_poll_in_flight = true;
+    app.polling.poll_generation = 1;
+    app.polling.preview_poll_in_flight = true;
 
     let switch_cmd = ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('k'))));
 
     assert_eq!(app.state.selected_index, 0);
     assert!(cmd_contains_task(&switch_cmd));
-    assert!(!app.preview_poll_requested);
-    assert_eq!(app.poll_generation, 2);
+    assert!(!app.polling.preview_poll_requested);
+    assert_eq!(app.polling.poll_generation, 2);
     assert_eq!(app.preview.lines, vec!["feature-live-output".to_string()]);
 }
 
@@ -361,7 +362,7 @@ fn stale_preview_poll_result_is_dropped_by_generation() {
     app.state.selected_index = 1;
     app.preview.lines = vec!["initial".to_string()];
     app.preview.render_lines = vec!["initial".to_string()];
-    app.poll_generation = 2;
+    app.polling.poll_generation = 2;
 
     ftui::Model::update(
         &mut app,
@@ -426,7 +427,7 @@ fn preview_poll_uses_cleaned_change_for_status_lane() {
             workspace_status_captures: Vec::new(),
         }),
     );
-    assert!(app.output_changing);
+    assert!(app.polling.output_changing);
 
     ftui::Model::update(
         &mut app,
@@ -445,7 +446,7 @@ fn preview_poll_uses_cleaned_change_for_status_lane() {
         }),
     );
 
-    assert!(!app.output_changing);
+    assert!(!app.polling.output_changing);
     let capture = app
         .preview
         .recent_captures
@@ -699,7 +700,7 @@ fn preview_poll_non_selected_missing_session_marks_orphaned_idle() {
 fn preview_poll_missing_session_marks_workspace_orphaned_idle() {
     let mut app = fixture_app();
     app.state.selected_index = 1;
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%1".to_string(),
         "grove-ws-feature-a".to_string(),
         Instant::now(),
@@ -743,7 +744,7 @@ fn preview_poll_missing_session_marks_workspace_orphaned_idle() {
             .map(|workspace| workspace.is_orphaned),
         Some(true)
     );
-    assert!(app.interactive.is_none());
+    assert!(app.session.interactive.is_none());
 }
 
 #[test]
@@ -1295,14 +1296,14 @@ fn project_dialog_ctrl_x_queues_background_project_delete() {
         ),
     );
 
-    assert!(app.project_delete_in_flight);
+    assert!(app.dialogs.project_delete_in_flight);
     assert!(cmd_contains_task(&cmd));
 }
 
 #[test]
 fn project_delete_completion_clears_in_flight_and_applies_projects() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
-    app.project_delete_in_flight = true;
+    app.dialogs.project_delete_in_flight = true;
     let kept = ProjectConfig {
         name: "grove".to_string(),
         path: PathBuf::from("/repos/grove"),
@@ -1319,7 +1320,7 @@ fn project_delete_completion_clears_in_flight_and_applies_projects() {
         }),
     );
 
-    assert!(!app.project_delete_in_flight);
+    assert!(!app.dialogs.project_delete_in_flight);
     assert_eq!(app.projects, vec![kept]);
 }
 
@@ -1577,15 +1578,17 @@ fn create_workspace_completed_success_queues_refresh_task_in_background_mode() {
     );
 
     assert!(cmd_contains_task(&cmd));
-    assert!(app.refresh_in_flight);
+    assert!(app.dialogs.refresh_in_flight);
     assert_eq!(
-        app.pending_auto_start_workspace
+        app.dialogs
+            .pending_auto_start_workspace
             .as_ref()
             .map(|pending| pending.workspace_path.clone()),
         Some(PathBuf::from("/repos/grove-feature-x"))
     );
     assert_eq!(
-        app.pending_auto_start_workspace
+        app.dialogs
+            .pending_auto_start_workspace
             .as_ref()
             .map(|pending| pending.start_config.clone()),
         Some(StartAgentConfigState::new(
@@ -1595,7 +1598,7 @@ fn create_workspace_completed_success_queues_refresh_task_in_background_mode() {
         ))
     );
     assert_eq!(
-        app.pending_auto_launch_shell_workspace_path,
+        app.session.pending_auto_launch_shell_workspace_path,
         Some(PathBuf::from("/repos/grove-feature-x"))
     );
 }
@@ -1603,7 +1606,7 @@ fn create_workspace_completed_success_queues_refresh_task_in_background_mode() {
 #[test]
 fn refresh_workspace_completion_autostarts_agent_for_new_workspace() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
-    app.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
+    app.dialogs.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
         workspace_path: PathBuf::from("/repos/grove-feature-a"),
         start_config: StartAgentConfigState::new(String::new(), String::new(), true),
     });
@@ -1617,11 +1620,12 @@ fn refresh_workspace_completion_autostarts_agent_for_new_workspace() {
     );
 
     assert!(cmd_contains_task(&cmd));
-    assert!(app.start_in_flight);
-    assert!(app.pending_auto_start_workspace.is_none());
+    assert!(app.dialogs.start_in_flight);
+    assert!(app.dialogs.pending_auto_start_workspace.is_none());
     assert!(app.launch_skip_permissions);
     assert!(
-        !app.shell_sessions
+        !app.session
+            .shell_sessions
             .in_flight
             .contains("grove-ws-feature-a-shell")
     );
@@ -1630,7 +1634,8 @@ fn refresh_workspace_completion_autostarts_agent_for_new_workspace() {
 #[test]
 fn refresh_workspace_completion_auto_launches_shell_for_new_workspace() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
-    app.pending_auto_launch_shell_workspace_path = Some(PathBuf::from("/repos/grove-feature-a"));
+    app.session.pending_auto_launch_shell_workspace_path =
+        Some(PathBuf::from("/repos/grove-feature-a"));
 
     let cmd = ftui::Model::update(
         &mut app,
@@ -1642,11 +1647,16 @@ fn refresh_workspace_completion_auto_launches_shell_for_new_workspace() {
 
     assert!(cmd_contains_task(&cmd));
     assert!(
-        app.shell_sessions
+        app.session
+            .shell_sessions
             .in_flight
             .contains("grove-ws-feature-a-shell")
     );
-    assert!(app.pending_auto_launch_shell_workspace_path.is_none());
+    assert!(
+        app.session
+            .pending_auto_launch_shell_workspace_path
+            .is_none()
+    );
 }
 
 #[test]
@@ -1658,7 +1668,7 @@ fn auto_start_pending_workspace_agent_uses_pending_start_config() {
         fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
     app.state.selected_index = 1;
     app.state.workspaces[1].path = workspace_dir.clone();
-    app.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
+    app.dialogs.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
         workspace_path: workspace_dir.clone(),
         start_config: StartAgentConfigState::new(
             "fix flaky test".to_string(),
@@ -1669,8 +1679,8 @@ fn auto_start_pending_workspace_agent_uses_pending_start_config() {
 
     let _ = app.auto_start_pending_workspace_agent();
 
-    assert!(app.pending_auto_start_workspace.is_none());
-    assert!(!app.start_in_flight);
+    assert!(app.dialogs.pending_auto_start_workspace.is_none());
+    assert!(!app.dialogs.start_in_flight);
     assert!(app.launch_skip_permissions);
     assert_eq!(
         commands.borrow().last(),
@@ -1938,7 +1948,7 @@ fn ctrl_c_dismisses_delete_modal_via_action_mapper() {
 #[test]
 fn ctrl_c_with_task_running_does_not_quit() {
     let mut app = fixture_app();
-    app.start_in_flight = true;
+    app.dialogs.start_in_flight = true;
 
     let cmd = ftui::Model::update(
         &mut app,
@@ -1959,7 +1969,7 @@ fn ctrl_c_with_task_running_does_not_quit() {
 #[test]
 fn ctrl_d_with_task_running_does_not_quit() {
     let mut app = fixture_app();
-    app.start_in_flight = true;
+    app.dialogs.start_in_flight = true;
 
     let cmd = ftui::Model::update(
         &mut app,
@@ -2214,7 +2224,7 @@ fn alt_arrows_hl_bf_and_alt_with_extra_modifier_resize_sidebar_globally() {
 fn alt_resize_keeps_interactive_mode_active() {
     let mut app = fixture_app();
     app.sidebar_width_pct = 33;
-    app.interactive = Some(InteractiveState::new(
+    app.session.interactive = Some(InteractiveState::new(
         "%0".to_string(),
         "grove-ws-feature-a-shell".to_string(),
         Instant::now(),
@@ -2231,7 +2241,7 @@ fn alt_resize_keeps_interactive_mode_active() {
         ),
     );
 
-    assert!(app.interactive.is_some());
+    assert!(app.session.interactive.is_some());
     assert_eq!(app.sidebar_width_pct, 35);
 }
 

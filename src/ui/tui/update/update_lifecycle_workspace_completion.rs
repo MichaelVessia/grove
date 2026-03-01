@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     fn summarize_merge_failure(error: &str) -> String {
@@ -28,12 +28,12 @@ impl GroveApp {
     }
 
     pub(super) fn apply_delete_project_completion(&mut self, completion: DeleteProjectCompletion) {
-        self.project_delete_in_flight = false;
+        self.dialogs.project_delete_in_flight = false;
         match completion.result {
             Ok(()) => {
                 self.projects = completion.projects;
                 self.refresh_project_dialog_filtered();
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("project_lifecycle", "project_deleted")
                         .with_data("project", Value::from(completion.project_name.clone()))
                         .with_data(
@@ -48,7 +48,7 @@ impl GroveApp {
                 ));
             }
             Err(error) => {
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("project_lifecycle", "project_delete_failed")
                         .with_data("project", Value::from(completion.project_name))
                         .with_data(
@@ -66,18 +66,20 @@ impl GroveApp {
         &mut self,
         completion: DeleteWorkspaceCompletion,
     ) {
-        self.delete_requested_workspaces
+        self.dialogs
+            .delete_requested_workspaces
             .remove(&completion.workspace_path);
         if self
+            .dialogs
             .delete_in_flight_workspace
             .as_ref()
             .is_some_and(|workspace_path| workspace_path == &completion.workspace_path)
         {
-            self.delete_in_flight_workspace = None;
+            self.dialogs.delete_in_flight_workspace = None;
         }
         match completion.result {
             Ok(()) => {
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("workspace_lifecycle", "workspace_deleted")
                         .with_data("workspace", Value::from(completion.workspace_name.clone()))
                         .with_data(
@@ -85,7 +87,7 @@ impl GroveApp {
                             Value::from(usize_to_u64(completion.warnings.len())),
                         ),
                 );
-                self.last_tmux_error = None;
+                self.session.last_tmux_error = None;
                 self.refresh_workspaces(None);
                 if completion.warnings.is_empty() {
                     self.show_success_toast(format!(
@@ -100,12 +102,12 @@ impl GroveApp {
                 }
             }
             Err(error) => {
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("workspace_lifecycle", "workspace_delete_failed")
                         .with_data("workspace", Value::from(completion.workspace_name))
                         .with_data("error", Value::from(error.clone())),
                 );
-                self.last_tmux_error = Some(error.clone());
+                self.session.last_tmux_error = Some(error.clone());
                 self.show_error_toast(format!("workspace delete failed: {error}"));
             }
         }
@@ -116,10 +118,10 @@ impl GroveApp {
         &mut self,
         completion: MergeWorkspaceCompletion,
     ) {
-        self.merge_in_flight = false;
+        self.dialogs.merge_in_flight = false;
         match completion.result {
             Ok(()) => {
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("workspace_lifecycle", "workspace_merged")
                         .with_data("workspace", Value::from(completion.workspace_name.clone()))
                         .with_data(
@@ -136,7 +138,7 @@ impl GroveApp {
                             Value::from(usize_to_u64(completion.warnings.len())),
                         ),
                 );
-                self.last_tmux_error = None;
+                self.session.last_tmux_error = None;
                 self.refresh_workspaces(None);
                 if completion.warnings.is_empty() {
                     self.show_success_toast(format!(
@@ -151,7 +153,7 @@ impl GroveApp {
                 }
             }
             Err(error) => {
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("workspace_lifecycle", "workspace_merge_failed")
                         .with_data("workspace", Value::from(completion.workspace_name))
                         .with_data(
@@ -160,7 +162,7 @@ impl GroveApp {
                         )
                         .with_data("error", Value::from(error.clone())),
                 );
-                self.last_tmux_error = Some(error.clone());
+                self.session.last_tmux_error = Some(error.clone());
                 self.show_error_toast(Self::summarize_merge_failure(&error));
             }
         }
@@ -170,10 +172,10 @@ impl GroveApp {
         &mut self,
         completion: UpdateWorkspaceFromBaseCompletion,
     ) {
-        self.update_from_base_in_flight = false;
+        self.dialogs.update_from_base_in_flight = false;
         match completion.result {
             Ok(()) => {
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("workspace_lifecycle", "workspace_updated_from_base")
                         .with_data("workspace", Value::from(completion.workspace_name.clone()))
                         .with_data(
@@ -190,7 +192,7 @@ impl GroveApp {
                             Value::from(usize_to_u64(completion.warnings.len())),
                         ),
                 );
-                self.last_tmux_error = None;
+                self.session.last_tmux_error = None;
                 self.refresh_workspaces(Some(completion.workspace_path));
                 if completion.warnings.is_empty() {
                     self.show_success_toast(format!(
@@ -205,7 +207,7 @@ impl GroveApp {
                 }
             }
             Err(error) => {
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("workspace_lifecycle", "workspace_update_from_base_failed")
                         .with_data("workspace", Value::from(completion.workspace_name))
                         .with_data(
@@ -214,7 +216,7 @@ impl GroveApp {
                         )
                         .with_data("error", Value::from(error.clone())),
                 );
-                self.last_tmux_error = Some(error.clone());
+                self.session.last_tmux_error = Some(error.clone());
                 self.show_error_toast(format!("workspace update failed: {error}"));
             }
         }

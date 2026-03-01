@@ -10,7 +10,7 @@ pub fn replay_debug_record(path: &Path, options: &ReplayOptions) -> io::Result<R
     let mut snapshot_steps = Vec::new();
 
     for message in &trace.messages {
-        app.replay_msg_seq_counter = message.seq;
+        app.telemetry.replay_msg_seq_counter = message.seq;
         let _ = Model::update(&mut app, message.msg.to_msg());
 
         if let Err(error) = verify_invariants(&app) {
@@ -119,7 +119,7 @@ pub(crate) fn app_from_bootstrap(snapshot: &ReplayBootstrapSnapshot) -> GroveApp
     app.sidebar_hidden = snapshot.sidebar_hidden;
     app.mouse_capture_enabled = snapshot.mouse_capture_enabled;
     app.launch_skip_permissions = snapshot.launch_skip_permissions;
-    app.replay_msg_seq_counter = 0;
+    app.telemetry.replay_msg_seq_counter = 0;
     app
 }
 
@@ -133,10 +133,10 @@ fn verify_invariants(app: &GroveApp) -> Result<(), String> {
     }
 
     let active_modal_count = [
-        app.active_dialog.is_some(),
-        app.keybind_help_open,
-        app.command_palette.is_visible(),
-        app.interactive.is_some(),
+        app.dialogs.active_dialog.is_some(),
+        app.dialogs.keybind_help_open,
+        app.dialogs.command_palette.is_visible(),
+        app.session.interactive.is_some(),
     ]
     .into_iter()
     .filter(|active| *active)

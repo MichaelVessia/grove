@@ -1,16 +1,16 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     fn keybinding_task_running(&self) -> bool {
-        self.refresh_in_flight
-            || self.project_delete_in_flight
-            || self.delete_in_flight
-            || self.merge_in_flight
-            || self.update_from_base_in_flight
-            || self.create_in_flight
-            || self.start_in_flight
-            || self.stop_in_flight
-            || self.restart_in_flight
+        self.dialogs.refresh_in_flight
+            || self.dialogs.project_delete_in_flight
+            || self.dialogs.delete_in_flight
+            || self.dialogs.merge_in_flight
+            || self.dialogs.update_from_base_in_flight
+            || self.dialogs.create_in_flight
+            || self.dialogs.start_in_flight
+            || self.dialogs.stop_in_flight
+            || self.dialogs.restart_in_flight
     }
 
     fn keybinding_input_nonempty(&self) -> bool {
@@ -60,8 +60,8 @@ impl GroveApp {
                         self.clear_create_branch_picker();
                     }
                     self.close_active_dialog();
-                } else if self.keybind_help_open {
-                    self.keybind_help_open = false;
+                } else if self.dialogs.keybind_help_open {
+                    self.dialogs.keybind_help_open = false;
                 }
                 false
             }

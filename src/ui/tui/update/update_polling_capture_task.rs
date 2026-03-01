@@ -1,14 +1,14 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn live_preview_scrollback_lines(&self) -> usize {
-        if self.interactive.is_some() {
+        if self.session.interactive.is_some() {
             return LIVE_PREVIEW_SCROLLBACK_LINES;
         }
 
         if self.pending_input_depth() > 0
-            || self.output_changing
-            || self.agent_output_changing
+            || self.polling.output_changing
+            || self.polling.agent_output_changing
             || self.has_recent_agent_activity()
         {
             return LIVE_PREVIEW_SCROLLBACK_LINES;
@@ -24,7 +24,7 @@ impl GroveApp {
         let status_poll_targets = self.status_poll_targets_for_async_preview(live_preview.as_ref());
         let live_scrollback_lines = self.live_preview_scrollback_lines();
         if !status_poll_targets.is_empty() {
-            self.last_workspace_status_poll_at = Some(Instant::now());
+            self.polling.last_workspace_status_poll_at = Some(Instant::now());
         }
 
         if let Some(live_preview_target) = live_preview {

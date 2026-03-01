@@ -91,7 +91,7 @@ fn replay_key_event_round_trip_preserves_code_modifiers_and_kind() {
 fn replay_debug_record_replays_minimal_trace() {
     let bootstrap = minimal_bootstrap();
     let mut app = app_from_bootstrap(&bootstrap);
-    app.replay_msg_seq_counter = 1;
+    app.telemetry.replay_msg_seq_counter = 1;
     let _ = Model::update(&mut app, Msg::Noop);
     let expected_state = ReplayStateSnapshot::from_app(&app);
 
@@ -156,7 +156,7 @@ fn replay_debug_record_replays_minimal_trace() {
 fn replay_debug_record_writes_snapshot_when_requested() {
     let bootstrap = minimal_bootstrap();
     let mut app = app_from_bootstrap(&bootstrap);
-    app.replay_msg_seq_counter = 1;
+    app.telemetry.replay_msg_seq_counter = 1;
     let _ = Model::update(&mut app, Msg::Noop);
     let expected_state = ReplayStateSnapshot::from_app(&app);
 

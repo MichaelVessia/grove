@@ -18,7 +18,7 @@ pub(super) enum ToastSeverity {
 
 impl GroveApp {
     pub(super) fn mode_label(&self) -> &'static str {
-        if self.interactive.is_some() {
+        if self.session.interactive.is_some() {
             return "Interactive";
         }
         self.state.mode.label()
@@ -92,7 +92,8 @@ impl GroveApp {
         kind: &str,
         fields: impl IntoIterator<Item = (String, Value)>,
     ) {
-        self.event_log
+        self.telemetry
+            .event_log
             .log(LogEvent::new(event, kind).with_data_fields(fields));
     }
 
@@ -152,11 +153,11 @@ impl GroveApp {
                     "interactive_exited",
                     [("session".to_string(), Value::from(session.clone()))],
                 );
-                self.interactive_poll_due_at = None;
-                self.pending_resize_verification = None;
-                let pending_before = self.pending_interactive_inputs.len();
+                self.polling.interactive_poll_due_at = None;
+                self.session.pending_resize_verification = None;
+                let pending_before = self.session.pending_interactive_inputs.len();
                 self.clear_pending_inputs_for_session(session);
-                let pending_after = self.pending_interactive_inputs.len();
+                let pending_after = self.session.pending_interactive_inputs.len();
                 self.clear_pending_sends_for_session(session);
                 if pending_before != pending_after {
                     self.log_event_with_fields(

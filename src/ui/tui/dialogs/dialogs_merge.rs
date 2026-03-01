@@ -2,7 +2,7 @@ use super::*;
 
 impl GroveApp {
     pub(super) fn handle_merge_dialog_key(&mut self, key_event: KeyEvent) {
-        if self.merge_in_flight {
+        if self.dialogs.merge_in_flight {
             return;
         }
         let no_modifiers = key_event.modifiers.is_empty();
@@ -105,7 +105,7 @@ impl GroveApp {
         if self.modal_open() {
             return;
         }
-        if self.merge_in_flight {
+        if self.dialogs.merge_in_flight {
             self.show_info_toast("workspace merge already in progress");
             return;
         }
@@ -165,10 +165,10 @@ impl GroveApp {
         );
         self.state.mode = UiMode::List;
         self.state.focus = PaneFocus::WorkspaceList;
-        self.last_tmux_error = None;
+        self.session.last_tmux_error = None;
     }
     fn confirm_merge_dialog(&mut self) {
-        if self.merge_in_flight {
+        if self.dialogs.merge_in_flight {
             return;
         }
 
@@ -234,7 +234,7 @@ impl GroveApp {
             return;
         }
 
-        self.merge_in_flight = true;
+        self.dialogs.merge_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let (result, warnings) = merge_workspace(request);
             Msg::MergeWorkspaceCompleted(MergeWorkspaceCompletion {

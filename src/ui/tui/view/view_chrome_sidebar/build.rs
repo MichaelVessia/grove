@@ -211,7 +211,7 @@ impl GroveApp {
                         line2_width = line2_width.saturating_add(token_width);
                     }
                 }
-                if self.delete_requested_workspaces.contains(&workspace.path) {
+                if self.dialogs.delete_requested_workspaces.contains(&workspace.path) {
                     line2_segments.push(SidebarSegment {
                         text: " · Deleting...".to_string(),
                         style: secondary_style.fg(theme.peach).bold(),

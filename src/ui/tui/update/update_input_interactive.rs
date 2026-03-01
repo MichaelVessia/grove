@@ -1,8 +1,8 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn exit_interactive_to_list(&mut self) {
-        self.interactive = None;
+        self.session.interactive = None;
         reduce(&mut self.state, Action::EnterListMode);
         self.clear_preview_selection();
     }
@@ -56,7 +56,7 @@ impl GroveApp {
         let input_seq = self.next_input_seq();
         if let KeyCode::Char(character) = key_event.code
             && key_event.modifiers.is_empty()
-            && let Some(state) = self.interactive.as_mut()
+            && let Some(state) = self.session.interactive.as_mut()
             && state.should_drop_split_mouse_fragment(character, now)
         {
             self.log_input_event_with_fields(
@@ -97,7 +97,7 @@ impl GroveApp {
         );
 
         let (action, target_session, bracketed_paste) = {
-            let Some(state) = self.interactive.as_mut() else {
+            let Some(state) = self.session.interactive.as_mut() else {
                 return Cmd::None;
             };
             let action = state.handle_key(interactive_key, now);
@@ -207,15 +207,15 @@ impl GroveApp {
             }
         };
 
-        self.interactive = Some(InteractiveState::new(
+        self.session.interactive = Some(InteractiveState::new(
             "%0".to_string(),
             session_name,
             now,
             self.viewport_height,
             self.viewport_width,
         ));
-        self.interactive_poll_due_at = None;
-        self.last_tmux_error = None;
+        self.polling.interactive_poll_due_at = None;
+        self.session.last_tmux_error = None;
         self.state.mode = UiMode::Preview;
         self.state.focus = PaneFocus::Preview;
         self.clear_preview_selection();

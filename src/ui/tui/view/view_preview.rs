@@ -1,4 +1,4 @@
-use super::*;
+use super::view_prelude::*;
 
 impl GroveApp {
     pub(super) fn render_preview_pane(&self, frame: &mut Frame, area: Rect) {
@@ -7,7 +7,7 @@ impl GroveApp {
         }
 
         let preview_focused = self.state.focus == PaneFocus::Preview && !self.modal_open();
-        let interactive_input_active = self.interactive.is_some() && !self.modal_open();
+        let interactive_input_active = self.session.interactive.is_some() && !self.modal_open();
         let theme = ui_theme();
         let (title, border_style) = if interactive_input_active {
             ("Preview · INSERT", Style::new().fg(theme.teal).bold())

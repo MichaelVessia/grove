@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn apply_workspace_status_capture(&mut self, capture: WorkspaceStatusCapture) {
@@ -52,7 +52,7 @@ impl GroveApp {
                 let process_ms = Self::duration_millis(
                     Instant::now().saturating_duration_since(processing_started_at),
                 );
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("preview_poll", "status_capture_completed")
                         .with_data("workspace", Value::from(capture.workspace_name))
                         .with_data(
@@ -105,7 +105,7 @@ impl GroveApp {
                 let process_ms = Self::duration_millis(
                     Instant::now().saturating_duration_since(processing_started_at),
                 );
-                self.event_log.log(
+                self.telemetry.event_log.log(
                     LogEvent::new("preview_poll", "status_capture_failed")
                         .with_data("workspace", Value::from(capture.workspace_name))
                         .with_data(

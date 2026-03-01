@@ -1,4 +1,4 @@
-use super::*;
+use super::view_prelude::*;
 
 impl GroveApp {
     pub(super) fn render_merge_dialog_overlay(&self, frame: &mut Frame, area: Rect) {

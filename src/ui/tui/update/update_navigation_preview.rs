@@ -1,4 +1,4 @@
-use super::*;
+use super::update_prelude::*;
 
 struct SessionLaunchCompletionContext {
     async_launch: bool,
@@ -34,15 +34,15 @@ impl GroveApp {
 
     fn session_tracker(&self, kind: SessionKind) -> &SessionTracker {
         match kind {
-            SessionKind::Lazygit => &self.lazygit_sessions,
-            SessionKind::WorkspaceShell => &self.shell_sessions,
+            SessionKind::Lazygit => &self.session.lazygit_sessions,
+            SessionKind::WorkspaceShell => &self.session.shell_sessions,
         }
     }
 
     fn session_tracker_mut(&mut self, kind: SessionKind) -> &mut SessionTracker {
         match kind {
-            SessionKind::Lazygit => &mut self.lazygit_sessions,
-            SessionKind::WorkspaceShell => &mut self.shell_sessions,
+            SessionKind::Lazygit => &mut self.session.lazygit_sessions,
+            SessionKind::WorkspaceShell => &mut self.session.shell_sessions,
         }
     }
 
@@ -141,7 +141,7 @@ impl GroveApp {
                 completion_fields.push(("reused_existing_session".to_string(), Value::from(true)));
                 completion_fields.push(("error".to_string(), Value::from(error.clone())));
             }
-            self.last_tmux_error = None;
+            self.session.last_tmux_error = None;
             self.session_tracker_mut(kind)
                 .mark_ready(session_name.clone());
             self.log_event_with_fields(
@@ -165,7 +165,7 @@ impl GroveApp {
             "completed",
             completion_fields,
         );
-        self.last_tmux_error = Some(error.clone());
+        self.session.last_tmux_error = Some(error.clone());
         if context.log_tmux_error_on_failure {
             self.log_tmux_error(error);
         }
@@ -265,7 +265,7 @@ impl GroveApp {
         self.ensure_session_for_workspace(
             SessionKind::Lazygit,
             &workspace,
-            self.lazygit_command.clone(),
+            self.session.lazygit_command.clone(),
             false,
             false,
         )
@@ -319,7 +319,8 @@ impl GroveApp {
         }
 
         let session_name = shell_session_name_for_workspace(workspace);
-        self.shell_sessions
+        self.session
+            .shell_sessions
             .is_ready(&session_name)
             .then_some(session_name)
     }
@@ -327,7 +328,8 @@ impl GroveApp {
     pub(super) fn selected_shell_preview_session_if_ready(&self) -> Option<String> {
         let workspace = self.state.selected_workspace()?;
         let session_name = shell_session_name_for_workspace(workspace);
-        self.shell_sessions
+        self.session
+            .shell_sessions
             .is_ready(&session_name)
             .then_some(session_name)
     }
@@ -427,17 +429,22 @@ impl GroveApp {
     }
 
     pub(super) fn interactive_target_session(&self) -> Option<String> {
-        self.interactive
+        self.session
+            .interactive
             .as_ref()
             .map(|state| state.target_session.clone())
     }
 
     fn shell_session_status_summary(&self, workspace: &Workspace) -> Option<String> {
         let shell_session_name = shell_session_name_for_workspace(workspace);
-        if self.shell_sessions.is_in_flight(&shell_session_name) {
+        if self
+            .session
+            .shell_sessions
+            .is_in_flight(&shell_session_name)
+        {
             return Some(format!("Starting shell session for {}...", workspace.name));
         }
-        if self.shell_sessions.is_failed(&shell_session_name) {
+        if self.session.shell_sessions.is_failed(&shell_session_name) {
             return Some(format!(
                 "Shell session failed for {}.\nPress Enter to retry session launch.",
                 workspace.name
