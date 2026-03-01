@@ -190,6 +190,13 @@ fn find_session_for_path_cached(
                     session: session.clone(),
                 },
             );
+            shared::prune_by_oldest(
+                &mut cache,
+                super::super::SESSION_LOOKUP_CACHE_MAX_ENTRIES,
+                Some(super::super::SESSION_LOOKUP_EVICTION_TTL),
+                |entry| entry.checked_at,
+                |entry| entry.checked_at,
+            );
         } else {
             cache.remove(&key);
         }
@@ -270,4 +277,176 @@ fn is_timestamp_recently_updated_ms(updated_ms: i64, threshold: Duration) -> boo
         return false;
     };
     now_ms.saturating_sub(updated_ms).max(0) < threshold_ms
+}
+
+#[cfg(test)]
+fn reset_cache_for_test() {
+    if let Ok(mut cache) = session_lookup_cache().lock() {
+        cache.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    use super::*;
+
+    fn unique_test_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("{prefix}-{}-{nanos}", process::id()));
+        fs::create_dir_all(&path).expect("test directory should be created");
+        path
+    }
+
+    fn create_opencode_db(database_path: &Path, workspace_path: &Path, session_id: &str) {
+        let connection = Connection::open(database_path).expect("database should be created");
+        connection
+            .execute(
+                "CREATE TABLE session (
+                    id TEXT PRIMARY KEY,
+                    directory TEXT NOT NULL,
+                    time_updated INTEGER NOT NULL
+                )",
+                [],
+            )
+            .expect("session table should be created");
+        connection
+            .execute(
+                "CREATE TABLE message (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    data TEXT NOT NULL,
+                    time_created INTEGER NOT NULL,
+                    time_updated INTEGER NOT NULL
+                )",
+                [],
+            )
+            .expect("message table should be created");
+        connection
+            .execute(
+                "INSERT INTO session (id, directory, time_updated) VALUES (?1, ?2, ?3)",
+                (
+                    session_id,
+                    workspace_path.to_string_lossy().to_string(),
+                    1_i64,
+                ),
+            )
+            .expect("session row should be inserted");
+    }
+
+    #[test]
+    fn session_lookup_cache_prunes_oldest_entries_when_over_limit() {
+        reset_cache_for_test();
+        let database_path = PathBuf::from("/tmp/opencode-cache-size.db");
+        let now = Instant::now();
+        let key_oldest = SessionLookupKey {
+            database_path: database_path.clone(),
+            workspace_path: PathBuf::from("/tmp/ws-oldest"),
+        };
+        let key_old = SessionLookupKey {
+            database_path: database_path.clone(),
+            workspace_path: PathBuf::from("/tmp/ws-old"),
+        };
+        let key_new = SessionLookupKey {
+            database_path,
+            workspace_path: PathBuf::from("/tmp/ws-new"),
+        };
+
+        let mut cache = session_lookup_cache()
+            .lock()
+            .expect("session cache lock should succeed");
+        cache.insert(
+            key_oldest.clone(),
+            SessionLookupCacheEntry {
+                checked_at: now - Duration::from_secs(3),
+                session: SessionMetadata {
+                    session_id: "s-oldest".to_string(),
+                    time_updated_ms: 1,
+                },
+            },
+        );
+        cache.insert(
+            key_old.clone(),
+            SessionLookupCacheEntry {
+                checked_at: now - Duration::from_secs(2),
+                session: SessionMetadata {
+                    session_id: "s-old".to_string(),
+                    time_updated_ms: 2,
+                },
+            },
+        );
+        cache.insert(
+            key_new.clone(),
+            SessionLookupCacheEntry {
+                checked_at: now - Duration::from_secs(1),
+                session: SessionMetadata {
+                    session_id: "s-new".to_string(),
+                    time_updated_ms: 3,
+                },
+            },
+        );
+
+        shared::prune_by_oldest(
+            &mut cache,
+            2,
+            Some(Duration::from_secs(60)),
+            |entry| entry.checked_at,
+            |entry| entry.checked_at,
+        );
+
+        assert_eq!(cache.len(), 2);
+        assert!(!cache.contains_key(&key_oldest));
+        assert!(cache.contains_key(&key_old));
+        assert!(cache.contains_key(&key_new));
+    }
+
+    #[test]
+    fn session_lookup_cache_ttl_evicts_stale_entries_and_recomputes() {
+        reset_cache_for_test();
+        let root = unique_test_dir("opencode-session-ttl");
+        let workspace_path = root.join("workspace");
+        let stale_workspace_path = root.join("stale-workspace");
+        fs::create_dir_all(&workspace_path).expect("workspace directory should be created");
+        fs::create_dir_all(&stale_workspace_path).expect("stale workspace should be created");
+        let database_path = root.join("opencode.db");
+        create_opencode_db(&database_path, &workspace_path, "session-1");
+
+        let stale_key = SessionLookupKey {
+            database_path: database_path.clone(),
+            workspace_path: stale_workspace_path,
+        };
+        session_lookup_cache()
+            .lock()
+            .expect("session cache lock should succeed")
+            .insert(
+                stale_key.clone(),
+                SessionLookupCacheEntry {
+                    checked_at: Instant::now()
+                        - super::super::super::SESSION_LOOKUP_EVICTION_TTL
+                        - Duration::from_secs(1),
+                    session: SessionMetadata {
+                        session_id: "stale".to_string(),
+                        time_updated_ms: 0,
+                    },
+                },
+            );
+
+        let found = find_session_for_path_cached(&database_path, &workspace_path);
+
+        assert_eq!(
+            found.map(|session| session.session_id),
+            Some("session-1".to_string())
+        );
+        let cache = session_lookup_cache()
+            .lock()
+            .expect("session cache lock should succeed");
+        assert!(!cache.contains_key(&stale_key));
+    }
 }

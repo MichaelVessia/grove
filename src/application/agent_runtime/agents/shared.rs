@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use crate::domain::WorkspaceStatus;
 
@@ -207,4 +208,36 @@ pub(super) fn cwd_matches(cwd: &Path, workspace_path: &Path) -> bool {
         None => return false,
     };
     cwd == workspace_path || cwd.starts_with(workspace_path)
+}
+
+pub(super) fn prune_by_oldest<K, V, T, C, O>(
+    cache: &mut HashMap<K, V>,
+    max_entries: usize,
+    ttl: Option<Duration>,
+    checked_at: C,
+    oldest_key: O,
+) where
+    K: Clone + Eq + Hash,
+    T: Ord,
+    C: Fn(&V) -> Instant,
+    O: Fn(&V) -> T,
+{
+    if let Some(ttl) = ttl {
+        let now = Instant::now();
+        cache.retain(|_, entry| now.saturating_duration_since(checked_at(entry)) < ttl);
+    }
+
+    let overflow = cache.len().saturating_sub(max_entries);
+    if overflow == 0 {
+        return;
+    }
+
+    let mut entries: Vec<(T, K)> = cache
+        .iter()
+        .map(|(key, value)| (oldest_key(value), key.clone()))
+        .collect();
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    for (_, key) in entries.into_iter().take(overflow) {
+        cache.remove(&key);
+    }
 }
