@@ -1,3 +1,7 @@
+use super::fixtures::replay_config_path;
+use super::trace_parser::parse_replay_trace;
+use super::*;
+
 pub fn replay_debug_record(path: &Path, options: &ReplayOptions) -> io::Result<ReplayOutcome> {
     let trace = parse_replay_trace(path)?;
     let mut app = app_from_bootstrap(&trace.bootstrap);
@@ -85,7 +89,7 @@ pub fn replay_debug_record(path: &Path, options: &ReplayOptions) -> io::Result<R
     })
 }
 
-fn app_from_bootstrap(snapshot: &ReplayBootstrapSnapshot) -> GroveApp {
+pub(crate) fn app_from_bootstrap(snapshot: &ReplayBootstrapSnapshot) -> GroveApp {
     let bootstrap = snapshot.to_bootstrap_data();
     let mut app = GroveApp::from_parts_with_clipboard_and_projects(
         bootstrap,

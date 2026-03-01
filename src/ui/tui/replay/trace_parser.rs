@@ -1,4 +1,6 @@
-fn parse_replay_trace(path: &Path) -> io::Result<ReplayTrace> {
+use super::*;
+
+pub(crate) fn parse_replay_trace(path: &Path) -> io::Result<ReplayTrace> {
     let raw = fs::read_to_string(path)?;
 
     let mut bootstrap = None;

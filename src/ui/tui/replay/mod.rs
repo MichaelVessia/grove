@@ -31,9 +31,11 @@ pub struct ReplayOutcome {
 }
 
 include!("types.rs");
-include!("fixtures.rs");
-include!("trace_parser.rs");
-include!("engine.rs");
+mod engine;
+mod fixtures;
+mod trace_parser;
+pub use engine::replay_debug_record;
+pub use fixtures::emit_replay_fixture;
 
 #[cfg(test)]
 mod tests;

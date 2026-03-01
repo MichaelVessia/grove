@@ -4,10 +4,12 @@ mod render_support {
         "/tests/support/render.rs"
     ));
 }
+mod support;
 
 use self::render_support::{
     assert_row_bg, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
 };
+use self::support::logging::{RecordedEvents, RecordingEventLogger};
 use super::{
     AppDependencies, ClipboardAccess, CommandTmuxInput, CreateDialogField, CreateDialogTab,
     CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
@@ -32,7 +34,7 @@ use crate::application::workspace_lifecycle::{
 use crate::domain::{AgentType, PullRequest, PullRequestStatus, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
 use crate::infrastructure::config::ProjectConfig;
-use crate::infrastructure::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
+use crate::infrastructure::event_log::{Event as LoggedEvent, NullEventLogger};
 use crate::ui::state::{PaneFocus, UiMode};
 use ftui::core::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -55,7 +57,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 type RecordedCommands = Rc<RefCell<Vec<Vec<String>>>>;
 type RecordedCaptures = Rc<RefCell<Vec<Result<String, String>>>>;
 type RecordedCalls = Rc<RefCell<Vec<String>>>;
-type RecordedEvents = Arc<Mutex<Vec<LoggedEvent>>>;
 type FixtureApp = (
     GroveApp,
     RecordedCommands,
@@ -76,19 +77,6 @@ type FixtureAppWithEvents = (
     RecordedCaptures,
     RecordedEvents,
 );
-
-struct RecordingEventLogger {
-    events: RecordedEvents,
-}
-
-impl EventLogger for RecordingEventLogger {
-    fn log(&self, event: LoggedEvent) {
-        let Ok(mut events) = self.events.lock() else {
-            return;
-        };
-        events.push(event);
-    }
-}
 
 #[derive(Clone)]
 struct RecordingTmuxInput {
