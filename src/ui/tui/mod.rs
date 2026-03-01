@@ -39,13 +39,6 @@ use serde_json::Value;
 use crate::application::agent_runtime::capture::{
     evaluate_capture_change, tmux_capture_error_indicates_missing_session,
 };
-use crate::application::agent_runtime::facade::{
-    detect_status_with_session_override, execute_launch_request_with_result_for_mode,
-    execute_restart_workspace_in_pane_with_result, execute_shell_launch_request_for_mode,
-    execute_stop_workspace_with_result_for_mode, latest_assistant_attention_marker,
-    launch_request_for_workspace, shell_launch_request_for_workspace,
-    workspace_status_targets_for_polling_with_live_preview,
-};
 use crate::application::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
     WorkspaceStatusTarget, agent_supports_in_pane_restart, execute_command_with,
@@ -62,7 +55,14 @@ use crate::application::interactive::{
     multiplexer_send_input_command, render_cursor_overlay_ansi,
 };
 use crate::application::preview::PreviewState;
-use crate::application::workspace_lifecycle::facade::{
+use crate::application::services::runtime_service::{
+    detect_status_with_session_override, execute_launch_request_with_result_for_mode,
+    execute_restart_workspace_in_pane_with_result, execute_shell_launch_request_for_mode,
+    execute_stop_workspace_with_result_for_mode, latest_assistant_attention_marker,
+    launch_request_for_workspace, shell_launch_request_for_workspace,
+    workspace_status_targets_for_polling_with_live_preview,
+};
+use crate::application::services::workspace_service::{
     create_workspace_with_template, delete_workspace, merge_workspace, update_workspace_from_base,
     workspace_lifecycle_error_message, write_workspace_agent_marker, write_workspace_base_marker,
 };
