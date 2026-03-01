@@ -1,4 +1,12 @@
-use super::*;
+use std::time::Instant;
+
+use ftui::core::geometry::Rect;
+use ftui::render::frame::Frame;
+use serde_json::Value;
+
+use crate::infrastructure::event_log::Event as LogEvent;
+
+use super::GroveApp;
 
 impl GroveApp {
     pub(super) fn render_model(&self, frame: &mut Frame) {
