@@ -1,5 +1,4 @@
 use crate::domain::AgentType;
-use crate::infrastructure::paths::refer_to_same_location;
 use crate::infrastructure::process::stderr_trimmed;
 use std::fs;
 use std::fs::OpenOptions;
@@ -7,16 +6,24 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[path = "workspace_lifecycle/create.rs"]
+mod create;
+#[path = "workspace_lifecycle/delete.rs"]
+mod delete;
 #[path = "workspace_lifecycle/facade.rs"]
 pub mod facade;
 #[path = "workspace_lifecycle/git_ops.rs"]
 mod git_ops;
 #[path = "workspace_lifecycle/markers.rs"]
 mod markers;
+#[path = "workspace_lifecycle/merge.rs"]
+mod merge;
 #[path = "workspace_lifecycle/paths.rs"]
 mod paths;
 #[path = "workspace_lifecycle/requests.rs"]
 mod requests;
+#[path = "workspace_lifecycle/update.rs"]
+mod update;
 
 const GROVE_DIR: &str = ".grove";
 const GROVE_AGENT_MARKER_FILE: &str = ".grove/agent";
@@ -312,21 +319,20 @@ impl SetupCommandRunner for CommandSetupCommandRunner {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct NoopSessionTerminator;
+
+impl facade::SessionTerminator for NoopSessionTerminator {
+    fn stop_workspace_sessions(&self, _project_name: Option<&str>, _workspace_name: &str) {}
+}
+
 pub fn create_workspace(
     repo_root: &Path,
     request: &CreateWorkspaceRequest,
     git_runner: &impl GitCommandRunner,
     setup_script_runner: &impl SetupScriptRunner,
 ) -> Result<CreateWorkspaceResult, WorkspaceLifecycleError> {
-    let setup_command_runner = CommandSetupCommandRunner;
-    create_workspace_with_template(
-        repo_root,
-        request,
-        None,
-        git_runner,
-        setup_script_runner,
-        &setup_command_runner,
-    )
+    create::create_workspace(repo_root, request, git_runner, setup_script_runner)
 }
 
 pub fn create_workspace_with_template(
@@ -337,277 +343,49 @@ pub fn create_workspace_with_template(
     setup_script_runner: &impl SetupScriptRunner,
     setup_command_runner: &impl SetupCommandRunner,
 ) -> Result<CreateWorkspaceResult, WorkspaceLifecycleError> {
-    request.validate()?;
-
-    let workspace_path = workspace_directory_path(repo_root, &request.workspace_name)?;
-    let workspace_parent = workspace_path
-        .parent()
-        .ok_or(WorkspaceLifecycleError::RepoNameUnavailable)?;
-    fs::create_dir_all(workspace_parent)
-        .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))?;
-    let branch = request.branch_name();
-
-    run_create_worktree_command(repo_root, &workspace_path, request, git_runner)?;
-
-    fs::create_dir_all(&workspace_path)
-        .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))?;
-    write_workspace_markers(
-        &workspace_path,
-        request.agent,
-        &request.marker_base_branch(),
-    )?;
-    ensure_grove_git_exclude_entries(repo_root)?;
-    copy_env_files(repo_root, &workspace_path)?;
-
-    let mut warnings = Vec::new();
-    let setup_script_path = repo_root.join(GROVE_SETUP_SCRIPT_FILE);
-    if setup_script_path.exists() {
-        let context = SetupScriptContext {
-            script_path: setup_script_path,
-            main_worktree_path: repo_root.to_path_buf(),
-            workspace_path: workspace_path.clone(),
-            worktree_branch: branch.clone(),
-        };
-        if let Err(error) = setup_script_runner.run(&context) {
-            warnings.push(format!("setup script failed: {error}"));
-        }
-    }
-
-    if let Some(template) = setup_template
-        && template.auto_run_setup_commands
-    {
-        let context = SetupCommandContext {
-            main_worktree_path: repo_root.to_path_buf(),
-            workspace_path: workspace_path.clone(),
-            worktree_branch: branch.clone(),
-        };
-        for command in template.commands.iter().map(|value| value.trim()) {
-            if command.is_empty() {
-                continue;
-            }
-            if let Err(error) = setup_command_runner.run(&context, command) {
-                warnings.push(format!("setup command '{command}' failed: {error}"));
-            }
-        }
-    }
-
-    Ok(CreateWorkspaceResult {
-        workspace_path,
-        branch,
-        warnings,
-    })
+    create::create_workspace_with_template(
+        repo_root,
+        request,
+        setup_template,
+        git_runner,
+        setup_script_runner,
+        setup_command_runner,
+    )
 }
 
 pub fn delete_workspace(request: DeleteWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
-    facade::delete_workspace(request)
+    facade::delete_workspace(request, &NoopSessionTerminator)
 }
 
 pub(crate) fn delete_workspace_with_session_stopper(
     request: DeleteWorkspaceRequest,
     stop_sessions: impl Fn(Option<&str>, &str),
 ) -> (Result<(), String>, Vec<String>) {
-    let mut warnings = Vec::new();
-    if request.kill_tmux_sessions {
-        stop_sessions(
-            request.project_name.as_deref(),
-            request.workspace_name.as_str(),
-        );
-    }
-
-    let repo_root = match requests::resolve_repo_root(request.project_path.as_ref()) {
-        Ok(path) => path,
-        Err(error) => {
-            return (Err(error), warnings);
-        }
-    };
-
-    if let Err(error) =
-        git_ops::run_delete_worktree_git(&repo_root, &request.workspace_path, request.is_missing)
-    {
-        return (Err(error), warnings);
-    }
-
-    if request.delete_local_branch
-        && let Err(error) = git_ops::run_delete_local_branch_git(&repo_root, &request.branch)
-    {
-        warnings.push(format!("local branch: {error}"));
-    }
-
-    (Ok(()), warnings)
+    delete::delete_workspace_with_session_stopper(request, stop_sessions)
 }
 
 pub fn merge_workspace(request: MergeWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
-    facade::merge_workspace(request)
+    facade::merge_workspace(request, &NoopSessionTerminator)
 }
 
 pub(crate) fn merge_workspace_with_session_stopper(
     request: MergeWorkspaceRequest,
     stop_sessions: impl Fn(Option<&str>, &str),
 ) -> (Result<(), String>, Vec<String>) {
-    let mut warnings = Vec::new();
-
-    if let Err(error) = requests::validate_merge_request(&request) {
-        return (Err(error), warnings);
-    }
-    let repo_root = match requests::resolve_repo_root(request.project_path.as_ref()) {
-        Ok(path) => path,
-        Err(error) => {
-            return (Err(error), warnings);
-        }
-    };
-
-    if let Err(error) = git_ops::ensure_git_worktree_clean(&repo_root) {
-        return (
-            Err(format!("base worktree has uncommitted changes: {error}")),
-            warnings,
-        );
-    }
-    if let Err(error) = git_ops::ensure_git_worktree_clean(&request.workspace_path) {
-        return (
-            Err(format!(
-                "workspace worktree has uncommitted changes: {error}"
-            )),
-            warnings,
-        );
-    }
-
-    if let Err(error) = git_ops::run_git_command(
-        &repo_root,
-        &["switch".to_string(), request.base_branch.clone()],
-    ) {
-        return (Err(format!("git switch failed: {error}")), warnings);
-    }
-
-    if let Err(error) = git_ops::run_git_command(
-        &repo_root,
-        &[
-            "merge".to_string(),
-            "--no-ff".to_string(),
-            request.workspace_branch.clone(),
-        ],
-    ) {
-        let _ = git_ops::run_git_command(&repo_root, &["merge".to_string(), "--abort".to_string()]);
-        return (Err(format!("git merge failed: {error}")), warnings);
-    }
-
-    if request.cleanup_workspace {
-        stop_sessions(
-            request.project_name.as_deref(),
-            request.workspace_name.as_str(),
-        );
-        if let Err(error) =
-            git_ops::run_delete_worktree_git(&repo_root, &request.workspace_path, false)
-        {
-            warnings.push(format!("workspace cleanup: {error}"));
-        }
-    }
-
-    if request.cleanup_local_branch
-        && let Err(error) =
-            git_ops::run_delete_local_branch_git(&repo_root, &request.workspace_branch)
-    {
-        warnings.push(format!("local branch cleanup: {error}"));
-    }
-
-    (Ok(()), warnings)
+    merge::merge_workspace_with_session_stopper(request, stop_sessions)
 }
 
 pub fn update_workspace_from_base(
     request: UpdateWorkspaceFromBaseRequest,
 ) -> (Result<(), String>, Vec<String>) {
-    facade::update_workspace_from_base(request)
+    facade::update_workspace_from_base(request, &NoopSessionTerminator)
 }
 
 pub(crate) fn update_workspace_from_base_with_session_stopper(
     request: UpdateWorkspaceFromBaseRequest,
-    _stop_sessions: impl Fn(Option<&str>, &str),
+    stop_sessions: impl Fn(Option<&str>, &str),
 ) -> (Result<(), String>, Vec<String>) {
-    let warnings = Vec::new();
-
-    if let Err(error) = requests::validate_update_request(&request) {
-        return (Err(error), warnings);
-    }
-    let repo_root = match requests::resolve_repo_root(request.project_path.as_ref()) {
-        Ok(path) => path,
-        Err(error) => {
-            return (Err(error), warnings);
-        }
-    };
-
-    let is_base_workspace_update = request.workspace_branch == request.base_branch
-        && refer_to_same_location(&request.workspace_path, &repo_root);
-
-    if request.workspace_branch == request.base_branch && !is_base_workspace_update {
-        return (
-            Err("workspace branch matches base branch".to_string()),
-            warnings,
-        );
-    }
-
-    if let Err(error) = git_ops::run_git_command(
-        &repo_root,
-        &[
-            "rev-parse".to_string(),
-            "--verify".to_string(),
-            request.base_branch.clone(),
-        ],
-    ) {
-        return (
-            Err(format!(
-                "base branch '{}' is not available: {error}",
-                request.base_branch
-            )),
-            warnings,
-        );
-    }
-
-    if let Err(error) = git_ops::ensure_git_worktree_clean(&request.workspace_path) {
-        return (
-            Err(format!(
-                "workspace worktree has uncommitted changes: {error}"
-            )),
-            warnings,
-        );
-    }
-
-    if let Err(error) = git_ops::run_git_command(
-        &request.workspace_path,
-        &["switch".to_string(), request.workspace_branch.clone()],
-    ) {
-        return (Err(format!("git switch failed: {error}")), warnings);
-    }
-
-    if is_base_workspace_update {
-        if let Err(error) = git_ops::run_git_command(
-            &request.workspace_path,
-            &[
-                "pull".to_string(),
-                "--ff-only".to_string(),
-                "origin".to_string(),
-                request.base_branch.clone(),
-            ],
-        ) {
-            return (Err(format!("git pull failed: {error}")), warnings);
-        }
-        return (Ok(()), warnings);
-    }
-
-    if let Err(error) = git_ops::run_git_command(
-        &request.workspace_path,
-        &[
-            "merge".to_string(),
-            "--no-ff".to_string(),
-            request.base_branch.clone(),
-        ],
-    ) {
-        let _ = git_ops::run_git_command(
-            &request.workspace_path,
-            &["merge".to_string(), "--abort".to_string()],
-        );
-        return (Err(format!("git merge failed: {error}")), warnings);
-    }
-
-    (Ok(()), warnings)
+    update::update_workspace_from_base_with_session_stopper(request, stop_sessions)
 }
 
 pub(crate) fn workspace_directory_path(
@@ -734,63 +512,6 @@ pub fn read_workspace_agent_marker(
     workspace_path: &Path,
 ) -> Result<AgentType, WorkspaceMarkerError> {
     markers::read_workspace_agent_marker(workspace_path)
-}
-
-fn run_create_worktree_command(
-    repo_root: &Path,
-    workspace_path: &Path,
-    request: &CreateWorkspaceRequest,
-    git_runner: &impl GitCommandRunner,
-) -> Result<(), WorkspaceLifecycleError> {
-    let workspace_path_arg = workspace_path.to_string_lossy().to_string();
-    let args = match &request.branch_mode {
-        BranchMode::NewBranch { base_branch } => vec![
-            "worktree".to_string(),
-            "add".to_string(),
-            "-b".to_string(),
-            request.branch_name(),
-            workspace_path_arg,
-            base_branch.clone(),
-        ],
-        BranchMode::ExistingBranch { existing_branch } => vec![
-            "worktree".to_string(),
-            "add".to_string(),
-            workspace_path_arg,
-            existing_branch.clone(),
-        ],
-        BranchMode::PullRequest { number, .. } => {
-            let fetch_args = vec![
-                "fetch".to_string(),
-                "origin".to_string(),
-                format!("pull/{number}/head"),
-            ];
-            git_runner
-                .run(repo_root, &fetch_args)
-                .map_err(WorkspaceLifecycleError::GitCommandFailed)?;
-
-            vec![
-                "worktree".to_string(),
-                "add".to_string(),
-                "-b".to_string(),
-                request.branch_name(),
-                workspace_path_arg,
-                "FETCH_HEAD".to_string(),
-            ]
-        }
-    };
-
-    git_runner
-        .run(repo_root, &args)
-        .map_err(WorkspaceLifecycleError::GitCommandFailed)
-}
-
-fn write_workspace_markers(
-    workspace_path: &Path,
-    agent: AgentType,
-    base_branch: &str,
-) -> Result<(), WorkspaceLifecycleError> {
-    write_workspace_agent_marker(workspace_path, agent)?;
-    write_workspace_base_marker(workspace_path, base_branch)
 }
 
 pub fn write_workspace_agent_marker(

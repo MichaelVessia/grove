@@ -1,12 +1,29 @@
 use std::path::Path;
 
+use crate::application::agent_runtime::kill_workspace_session_commands;
 use crate::application::workspace_lifecycle::facade;
+use crate::application::workspace_lifecycle::facade::SessionTerminator;
 use crate::application::workspace_lifecycle::{
     CreateWorkspaceRequest, CreateWorkspaceResult, DeleteWorkspaceRequest, GitCommandRunner,
     MergeWorkspaceRequest, SetupCommandRunner, SetupScriptRunner, UpdateWorkspaceFromBaseRequest,
     WorkspaceLifecycleError, WorkspaceSetupTemplate,
 };
 use crate::domain::AgentType;
+use crate::infrastructure::process::execute_command;
+
+#[derive(Debug, Clone, Copy, Default)]
+struct RuntimeSessionTerminator;
+
+impl SessionTerminator for RuntimeSessionTerminator {
+    fn stop_workspace_sessions(&self, project_name: Option<&str>, workspace_name: &str) {
+        for command in kill_workspace_session_commands(project_name, workspace_name) {
+            if command.is_empty() {
+                continue;
+            }
+            let _ = execute_command(&command);
+        }
+    }
+}
 
 pub(crate) trait WorkspaceService {
     fn create_workspace_with_template<G, S, C>(
@@ -82,18 +99,18 @@ impl WorkspaceService for CommandWorkspaceService {
         &self,
         request: DeleteWorkspaceRequest,
     ) -> (Result<(), String>, Vec<String>) {
-        facade::delete_workspace(request)
+        facade::delete_workspace(request, &RuntimeSessionTerminator)
     }
 
     fn merge_workspace(&self, request: MergeWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
-        facade::merge_workspace(request)
+        facade::merge_workspace(request, &RuntimeSessionTerminator)
     }
 
     fn update_workspace_from_base(
         &self,
         request: UpdateWorkspaceFromBaseRequest,
     ) -> (Result<(), String>, Vec<String>) {
-        facade::update_workspace_from_base(request)
+        facade::update_workspace_from_base(request, &RuntimeSessionTerminator)
     }
 
     fn workspace_lifecycle_error_message(&self, error: &WorkspaceLifecycleError) -> String {
