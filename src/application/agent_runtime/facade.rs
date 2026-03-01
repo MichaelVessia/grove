@@ -11,14 +11,14 @@ pub fn start_workspace_with_mode(
     request: &LaunchRequest,
     mode: CommandExecutionMode<'_>,
 ) -> SessionExecutionResult {
-    super::execute_launch_request_with_result_for_mode(request, mode)
+    super::execution::start_workspace_with_mode(request, mode)
 }
 
 pub fn stop_workspace_with_mode(
     workspace: &Workspace,
     mode: CommandExecutionMode<'_>,
 ) -> SessionExecutionResult {
-    super::execute_stop_workspace_with_result_for_mode(workspace, mode)
+    super::execution::stop_workspace_with_mode(workspace, mode)
 }
 
 pub fn restart_workspace(
@@ -26,14 +26,14 @@ pub fn restart_workspace(
     skip_permissions: bool,
     agent_env: Vec<(String, String)>,
 ) -> SessionExecutionResult {
-    super::execute_restart_workspace_in_pane_with_result(workspace, skip_permissions, agent_env)
+    super::restart::restart_workspace(workspace, skip_permissions, agent_env)
 }
 
 pub fn poll_targets(
     workspaces: &[Workspace],
     live_preview: Option<&LivePreviewTarget>,
 ) -> Vec<WorkspaceStatusTarget> {
-    super::workspace_status_targets_for_polling_with_live_preview(workspaces, live_preview)
+    super::polling::workspace_status_targets_for_polling_with_live_preview(workspaces, live_preview)
 }
 
 pub(crate) fn detect_workspace_status(
@@ -45,7 +45,7 @@ pub(crate) fn detect_workspace_status(
     agent: AgentType,
     workspace_path: &Path,
 ) -> WorkspaceStatus {
-    super::detect_status_with_session_override(
+    super::status::detect_status_with_session_override(
         output,
         session_activity,
         is_main,
@@ -57,7 +57,7 @@ pub(crate) fn detect_workspace_status(
 }
 
 pub(crate) fn latest_attention_marker(agent: AgentType, workspace_path: &Path) -> Option<String> {
-    super::latest_assistant_attention_marker(agent, workspace_path)
+    super::status::latest_assistant_attention_marker(agent, workspace_path)
 }
 
 pub fn launch_request_for_workspace(
@@ -69,7 +69,7 @@ pub fn launch_request_for_workspace(
     capture_cols: Option<u16>,
     capture_rows: Option<u16>,
 ) -> LaunchRequest {
-    super::launch_request_for_workspace(
+    super::launch_plan::launch_request_for_workspace(
         workspace,
         prompt,
         workspace_init_command,
@@ -88,7 +88,7 @@ pub fn shell_launch_request_for_workspace(
     capture_cols: Option<u16>,
     capture_rows: Option<u16>,
 ) -> ShellLaunchRequest {
-    super::shell_launch_request_for_workspace(
+    super::launch_plan::shell_launch_request_for_workspace(
         workspace,
         session_name,
         command,
@@ -102,7 +102,7 @@ pub fn execute_shell_launch_request_for_mode(
     request: &ShellLaunchRequest,
     mode: CommandExecutionMode<'_>,
 ) -> (String, Result<(), String>) {
-    super::execute_shell_launch_request_for_mode(request, mode)
+    super::execution::execute_shell_launch_request_for_mode(request, mode)
 }
 
 pub fn execute_launch_request_with_result_for_mode(

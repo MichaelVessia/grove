@@ -36,6 +36,9 @@ use ftui::{Cmd, Model, PackedRgba, Style};
 use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
 use serde_json::Value;
 
+use crate::application::agent_runtime::capture::{
+    evaluate_capture_change, tmux_capture_error_indicates_missing_session,
+};
 use crate::application::agent_runtime::facade::{
     detect_status_with_session_override, execute_launch_request_with_result_for_mode,
     execute_restart_workspace_in_pane_with_result, execute_shell_launch_request_for_mode,
@@ -45,12 +48,12 @@ use crate::application::agent_runtime::facade::{
 };
 use crate::application::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
-    WorkspaceStatusTarget, agent_supports_in_pane_restart, evaluate_capture_change,
-    execute_command_with, git_session_name_for_workspace, infer_workspace_skip_permissions,
-    poll_interval, restart_workspace_in_pane_with_io, session_name_for_workspace_ref,
-    shell_session_name_for_workspace, tmux_capture_error_indicates_missing_session,
-    tmux_launch_error_indicates_duplicate_session, trimmed_nonempty,
-    workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
+    WorkspaceStatusTarget, agent_supports_in_pane_restart, execute_command_with,
+    git_session_name_for_workspace, infer_workspace_skip_permissions, poll_interval,
+    restart_workspace_in_pane_with_io, session_name_for_workspace_ref,
+    shell_session_name_for_workspace, tmux_launch_error_indicates_duplicate_session,
+    trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
+    workspace_can_stop_agent,
 };
 #[cfg(test)]
 use crate::application::interactive::render_cursor_overlay;
