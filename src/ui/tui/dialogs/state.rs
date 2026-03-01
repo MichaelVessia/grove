@@ -487,14 +487,16 @@ cyclic_field_nav!(pub(super) ProjectDefaultsDialogField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SettingsDialogState {
     pub(super) focused_field: SettingsDialogField,
+    pub(super) theme: ThemeName,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsDialogField {
+    Theme,
     SaveButton,
     CancelButton,
 }
 
 cyclic_field_nav!(pub(super) SettingsDialogField {
-    SaveButton, CancelButton,
+    Theme, SaveButton, CancelButton,
 });

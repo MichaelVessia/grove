@@ -12,6 +12,7 @@ use serde_json::Value;
 use super::bootstrap_config::AppDependencies;
 use super::*;
 use crate::domain::{PullRequest, PullRequestStatus};
+use crate::infrastructure::config::ThemeName;
 
 const REPLAY_SCHEMA_VERSION: u64 = 1;
 const REPLAY_FIXTURE_DIRECTORY: &str = "tests/fixtures/replay";
@@ -90,6 +91,7 @@ mod tests {
             sidebar_hidden: false,
             mouse_capture_enabled: true,
             launch_skip_permissions: false,
+            theme_name: ThemeName::CatppuccinMocha,
         }
     }
 

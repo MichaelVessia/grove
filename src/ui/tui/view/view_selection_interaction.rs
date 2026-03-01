@@ -47,7 +47,7 @@ impl GroveApp {
             return;
         }
 
-        let selection_bg = ui_theme().surface1;
+        let selection_bg = self.active_ui_theme().surface1;
         let output_y = inner.y.saturating_add(PREVIEW_METADATA_ROWS);
         for (offset, line) in visible_plain_lines.iter().enumerate() {
             let line_idx = visible_start.saturating_add(offset);

@@ -233,7 +233,7 @@ One-time migration prompt for existing single-file users:
 - [docs/config-migration-prompt.md](docs/config-migration-prompt.md)
 
 Grove behavior:
-- Reads `config.toml`, does not write it at runtime
+- Reads `config.toml`, writes `theme` when saved from Settings modal
 - Reads and writes `projects.toml` for mutable state
 - `sidebar_width_pct` and `launch_skip_permissions` are immutable at runtime,
   edit `config.toml` to persist changes
@@ -241,6 +241,7 @@ Grove behavior:
 `config.toml` includes:
 - `sidebar_width_pct`
 - `launch_skip_permissions`
+- `theme` (`monokai`, `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`)
 
 `launch_skip_permissions` behavior:
 - Controls default unsafe-mode launch behavior for Claude/Codex/OpenCode
@@ -257,6 +258,7 @@ Example `config.toml`:
 ```toml
 sidebar_width_pct = 33
 launch_skip_permissions = false
+theme = "catppuccin-mocha"
 ```
 
 Example `projects.toml`:

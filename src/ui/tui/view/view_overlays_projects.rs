@@ -9,7 +9,7 @@ impl GroveApp {
             return;
         }
 
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         let dialog_width = area.width.saturating_sub(8).min(96);
         let content_width = usize::from(dialog_width.saturating_sub(2));
 

@@ -11,7 +11,7 @@ impl GroveApp {
 
         let dialog_width = area.width.saturating_sub(8).min(100);
         let dialog_height = 11u16;
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let focused = |field| dialog.focused_field == field;
         let start_focused = focused(LaunchDialogField::StartButton);

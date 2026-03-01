@@ -17,7 +17,7 @@ impl GroveApp {
             .height
             .saturating_sub(Self::KEYBIND_HELP_VERTICAL_MARGIN.saturating_mul(2))
             .max(Self::KEYBIND_HELP_MIN_HEIGHT);
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let section_gap = if dialog_height >= 42 { 1 } else { 0 };
         let label_width = if content_width >= 132 {

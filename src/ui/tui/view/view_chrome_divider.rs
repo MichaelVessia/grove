@@ -14,7 +14,7 @@ impl GroveApp {
         let divider = std::iter::repeat_n(glyph, usize::from(area.height))
             .collect::<Vec<&str>>()
             .join("\n");
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         Paragraph::new(divider)
             .style(Style::new().fg(if self.divider_drag_active {
                 theme.blue

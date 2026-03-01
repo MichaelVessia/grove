@@ -169,7 +169,7 @@ impl GroveApp {
             return;
         }
 
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         let state_label = self.footer_state_chip_label();
         let context = self.footer_context_line();
         let hints = self.footer_key_hints_line();

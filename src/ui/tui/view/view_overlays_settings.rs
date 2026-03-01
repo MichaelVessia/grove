@@ -5,17 +5,23 @@ impl GroveApp {
         let Some(dialog) = self.settings_dialog() else {
             return;
         };
-        if area.width < 40 || area.height < 12 {
+        if area.width < 40 || area.height < 15 {
             return;
         }
 
         let dialog_width = area.width.saturating_sub(12).min(72);
-        let dialog_height = 12u16;
-        let theme = ui_theme();
+        let dialog_height = 15u16;
+        let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let focused = |field| dialog.focused_field == field;
+        let theme_focused = focused(SettingsDialogField::Theme);
         let save_focused = focused(SettingsDialogField::SaveButton);
         let cancel_focused = focused(SettingsDialogField::CancelButton);
+        let theme_value = format!(
+            "{} ({})",
+            theme_display_name(dialog.theme),
+            dialog.theme.config_key()
+        );
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width("Global settings", content_width),
@@ -23,6 +29,16 @@ impl GroveApp {
             )]),
             FtLine::raw(""),
         ];
+        lines.push(modal_focus_badged_row(
+            content_width,
+            theme,
+            "Theme",
+            theme_value.as_str(),
+            theme_focused,
+            theme.blue,
+            theme.text,
+        ));
+        lines.push(FtLine::raw(""));
         lines.push(modal_actions_row(
             content_width,
             theme,
@@ -35,7 +51,7 @@ impl GroveApp {
         lines.extend(modal_wrapped_hint_rows(
             content_width,
             theme,
-            "Global settings are read-only, edit ~/.config/grove/config.toml",
+            "Use left/right or space to cycle built-in themes.",
         ));
         let body = FtText::from_lines(lines);
 

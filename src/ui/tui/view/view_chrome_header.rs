@@ -6,7 +6,7 @@ impl GroveApp {
             return;
         }
 
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         let base_style = Style::new().bg(theme.crust).fg(theme.text);
         let left_style = Style::new().bg(theme.surface0).fg(theme.blue).bold();
         let repo_style = Style::new().bg(theme.mantle).fg(theme.subtext0);

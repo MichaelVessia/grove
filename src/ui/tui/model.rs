@@ -74,7 +74,7 @@ use crate::application::workspace_lifecycle::{
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
 use crate::infrastructure::config::{
-    AgentEnvDefaults, GroveConfig, ProjectConfig, WorkspaceAttentionAckConfig,
+    AgentEnvDefaults, GroveConfig, ProjectConfig, ThemeName, WorkspaceAttentionAckConfig,
 };
 use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
 use crate::infrastructure::paths::refer_to_same_location;
@@ -83,7 +83,9 @@ use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
 
 #[cfg(test)]
 use ansi::ansi_16_color;
+#[cfg(test)]
 use ansi::ansi_lines_to_styled_lines;
+use ansi::ansi_lines_to_styled_lines_for_theme;
 #[cfg(test)]
 use bootstrap_config::AppDependencies;
 use bootstrap_config::{
@@ -277,6 +279,7 @@ struct GroveApp {
     viewport_width: u16,
     viewport_height: u16,
     sidebar_width_pct: u16,
+    theme_name: ThemeName,
     sidebar_hidden: bool,
     mouse_capture_enabled: bool,
     launch_skip_permissions: bool,

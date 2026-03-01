@@ -39,6 +39,7 @@ Do exactly this:
 5) Parse legacy config and write new <CONFIG_DIR>/config.toml with only:
    - sidebar_width_pct (default 33 if missing)
    - launch_skip_permissions (default false if missing)
+   - theme (default "catppuccin-mocha" if missing)
 6) Write <CONFIG_DIR>/projects.toml with:
    - projects array/table content from legacy config
    - attention_acks array/table content from legacy config
@@ -57,3 +58,4 @@ Do exactly this:
 - `<CONFIG_DIR>/projects.toml` is Grove-owned mutable state.
 - `sidebar_width_pct` and `launch_skip_permissions` are managed by file edits,
   not runtime UI writes.
+- `theme` may be changed from the Settings modal and persisted to `config.toml`.

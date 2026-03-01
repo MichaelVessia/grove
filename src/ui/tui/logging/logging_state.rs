@@ -259,7 +259,7 @@ impl GroveApp {
             ],
         );
 
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         let (title, icon, style_variant, duration, priority, color) = match severity {
             ToastSeverity::Success => (
                 "Success",

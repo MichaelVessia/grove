@@ -119,6 +119,7 @@ pub(crate) fn app_from_bootstrap(snapshot: &ReplayBootstrapSnapshot) -> GroveApp
     app.sidebar_hidden = snapshot.sidebar_hidden;
     app.mouse_capture_enabled = snapshot.mouse_capture_enabled;
     app.launch_skip_permissions = snapshot.launch_skip_permissions;
+    app.theme_name = snapshot.theme_name;
     app.telemetry.replay_msg_seq_counter = 0;
     app
 }

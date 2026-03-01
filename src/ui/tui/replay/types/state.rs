@@ -17,6 +17,8 @@ struct ReplayStateSnapshot {
     active_modal: Option<String>,
     keybind_help_open: bool,
     command_palette_open: bool,
+    #[serde(default)]
+    theme_name: ThemeName,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -61,6 +63,7 @@ impl ReplayStateSnapshot {
             active_modal: app.active_dialog_kind().map(str::to_string),
             keybind_help_open: app.dialogs.keybind_help_open,
             command_palette_open: app.dialogs.command_palette.is_visible(),
+            theme_name: app.theme_name,
         }
     }
 }

@@ -8,7 +8,7 @@ impl GroveApp {
 
         let preview_focused = self.state.focus == PaneFocus::Preview && !self.modal_open();
         let interactive_input_active = self.session.interactive.is_some() && !self.modal_open();
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         let (title, border_style) = if interactive_input_active {
             ("Preview · INSERT", Style::new().fg(theme.teal).bold())
         } else {
@@ -56,14 +56,9 @@ impl GroveApp {
             preview_height,
         ));
 
-        let paragraph = Paragraph::new(FtText::from_lines(text_lines));
-        if self.preview_tab == PreviewTab::Agent {
-            paragraph.render(inner, frame);
-        } else {
-            paragraph
-                .style(Style::new().bg(ui_theme().base))
-                .render(inner, frame);
-        }
+        Paragraph::new(FtText::from_lines(text_lines))
+            .style(Style::new().fg(theme.text).bg(theme.base))
+            .render(inner, frame);
         for (label, agent, x, y) in animated_labels {
             if y >= inner.bottom() {
                 continue;

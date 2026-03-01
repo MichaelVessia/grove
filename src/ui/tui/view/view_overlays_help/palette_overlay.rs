@@ -7,7 +7,7 @@ impl GroveApp {
             return;
         }
 
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         let max_dialog_width = area.width.saturating_sub(2);
         if max_dialog_width == 0 {
             return;

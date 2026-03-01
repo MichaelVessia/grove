@@ -96,6 +96,7 @@ impl GroveApp {
         let persisted_config = crate::infrastructure::config::load_from_path(&config_path)
             .unwrap_or_else(|_| GroveConfig::default());
         let sidebar_width_pct = clamp_sidebar_ratio(persisted_config.sidebar_width_pct);
+        let theme_name = persisted_config.theme;
         let launch_skip_permissions = persisted_config.launch_skip_permissions;
         let workspace_attention_ack_markers = persisted_config
             .attention_acks
@@ -188,6 +189,7 @@ impl GroveApp {
             viewport_width: 120,
             viewport_height: 40,
             sidebar_width_pct,
+            theme_name,
             sidebar_hidden: false,
             mouse_capture_enabled: true,
             launch_skip_permissions,

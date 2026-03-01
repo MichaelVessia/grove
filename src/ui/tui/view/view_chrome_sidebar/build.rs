@@ -274,7 +274,7 @@ impl GroveApp {
     }
 
     pub(super) fn sidebar_workspace_row_map(&self) -> Vec<Option<usize>> {
-        let (lines, _) = self.build_sidebar_lines(ui_theme());
+        let (lines, _) = self.build_sidebar_lines(self.active_ui_theme());
         lines
             .iter()
             .map(SidebarListLine::workspace_index)

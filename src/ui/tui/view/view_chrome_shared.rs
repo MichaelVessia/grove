@@ -2,7 +2,7 @@ use super::view_prelude::*;
 
 impl GroveApp {
     fn workspace_attention_color(&self, attention: WorkspaceAttention) -> PackedRgba {
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         match attention {
             WorkspaceAttention::NeedsAttention => theme.yellow,
         }
@@ -20,7 +20,7 @@ impl GroveApp {
     }
 
     pub(super) fn pane_border_style(&self, focused: bool) -> Style {
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         if focused {
             return Style::new().fg(theme.blue).bold();
         }
@@ -29,7 +29,7 @@ impl GroveApp {
     }
 
     pub(super) fn workspace_agent_color(&self, agent: AgentType) -> PackedRgba {
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         match agent {
             AgentType::Claude => theme.peach,
             AgentType::Codex => theme.text,
@@ -38,7 +38,7 @@ impl GroveApp {
     }
 
     fn activity_effect_secondary_color(&self, agent: AgentType) -> PackedRgba {
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         match agent {
             AgentType::Claude => theme.text,
             AgentType::Codex => theme.overlay0,

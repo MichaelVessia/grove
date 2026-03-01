@@ -1,7 +1,10 @@
 use std::time::Instant;
 
+use ftui::Style;
 use ftui::core::geometry::Rect;
 use ftui::render::frame::Frame;
+use ftui::widgets::Widget;
+use ftui::widgets::paragraph::Paragraph;
 use serde_json::Value;
 
 use crate::infrastructure::event_log::Event as LogEvent;
@@ -15,6 +18,10 @@ impl GroveApp {
         frame.set_cursor_visible(false);
         frame.enable_hit_testing();
         let area = Rect::from_size(frame.buffer.width(), frame.buffer.height());
+        let theme = self.active_ui_theme();
+        Paragraph::new("")
+            .style(Style::new().bg(theme.base))
+            .render(area, frame);
         let layout = Self::view_layout_for_size(
             frame.buffer.width(),
             frame.buffer.height(),

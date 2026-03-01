@@ -22,6 +22,7 @@ macro_rules! cyclic_field_nav {
 use std::path::PathBuf;
 use std::time::Instant;
 
+use crate::infrastructure::config::ThemeName;
 use ftui::PackedRgba;
 use ftui::core::geometry::Rect;
 
@@ -161,11 +162,15 @@ pub(super) struct UiTheme {
     pub(super) crust: PackedRgba,
     pub(super) surface0: PackedRgba,
     pub(super) surface1: PackedRgba,
+    pub(super) surface2: PackedRgba,
     pub(super) overlay0: PackedRgba,
     pub(super) text: PackedRgba,
+    pub(super) subtext1: PackedRgba,
     pub(super) subtext0: PackedRgba,
     pub(super) blue: PackedRgba,
     pub(super) lavender: PackedRgba,
+    pub(super) pink: PackedRgba,
+    pub(super) green: PackedRgba,
     pub(super) yellow: PackedRgba,
     pub(super) red: PackedRgba,
     pub(super) peach: PackedRgba,
@@ -173,23 +178,234 @@ pub(super) struct UiTheme {
     pub(super) teal: PackedRgba,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ThemePalette {
+    background_color: PackedRgba,
+    header_color: PackedRgba,
+    backdrop_color: PackedRgba,
+    surface_color: PackedRgba,
+    surface_focused_color: PackedRgba,
+    surface_elevated_color: PackedRgba,
+    border_color: PackedRgba,
+    text_color: PackedRgba,
+    strong_muted_text_color: PackedRgba,
+    muted_text_color: PackedRgba,
+    accent_color: PackedRgba,
+    accent_soft_color: PackedRgba,
+    accent_pink_color: PackedRgba,
+    accent_teal_color: PackedRgba,
+    success_color: PackedRgba,
+    warning_color: PackedRgba,
+    error_color: PackedRgba,
+    accent_warm_color: PackedRgba,
+    accent_alt_color: PackedRgba,
+}
+
+impl ThemePalette {
+    const fn to_ui_theme(self) -> UiTheme {
+        UiTheme {
+            base: self.background_color,
+            mantle: self.header_color,
+            crust: self.backdrop_color,
+            surface0: self.surface_color,
+            surface1: self.surface_focused_color,
+            surface2: self.surface_elevated_color,
+            overlay0: self.border_color,
+            text: self.text_color,
+            subtext1: self.strong_muted_text_color,
+            subtext0: self.muted_text_color,
+            blue: self.accent_color,
+            lavender: self.accent_soft_color,
+            pink: self.accent_pink_color,
+            green: self.success_color,
+            yellow: self.warning_color,
+            red: self.error_color,
+            peach: self.accent_warm_color,
+            mauve: self.accent_alt_color,
+            teal: self.accent_teal_color,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ThemePreset {
+    name: ThemeName,
+    display_name: &'static str,
+    palette: ThemePalette,
+}
+
+const THEME_PRESETS: [ThemePreset; 5] = [
+    ThemePreset {
+        name: ThemeName::Monokai,
+        display_name: "Monokai",
+        palette: ThemePalette {
+            background_color: PackedRgba::rgb(39, 40, 34),
+            header_color: PackedRgba::rgb(30, 31, 28),
+            backdrop_color: PackedRgba::rgb(22, 22, 19),
+            surface_color: PackedRgba::rgb(62, 61, 50),
+            surface_focused_color: PackedRgba::rgb(73, 72, 62),
+            surface_elevated_color: PackedRgba::rgb(92, 88, 76),
+            border_color: PackedRgba::rgb(117, 113, 94),
+            text_color: PackedRgba::rgb(248, 248, 242),
+            strong_muted_text_color: PackedRgba::rgb(212, 208, 191),
+            muted_text_color: PackedRgba::rgb(162, 160, 142),
+            accent_color: PackedRgba::rgb(102, 217, 239),
+            accent_soft_color: PackedRgba::rgb(174, 129, 255),
+            accent_pink_color: PackedRgba::rgb(249, 38, 114),
+            accent_teal_color: PackedRgba::rgb(17, 168, 205),
+            success_color: PackedRgba::rgb(166, 226, 46),
+            warning_color: PackedRgba::rgb(230, 219, 116),
+            error_color: PackedRgba::rgb(249, 38, 114),
+            accent_warm_color: PackedRgba::rgb(253, 151, 31),
+            accent_alt_color: PackedRgba::rgb(249, 38, 114),
+        },
+    },
+    ThemePreset {
+        name: ThemeName::CatppuccinLatte,
+        display_name: "Catppuccin Latte",
+        palette: ThemePalette {
+            background_color: PackedRgba::rgb(239, 241, 245),
+            header_color: PackedRgba::rgb(230, 233, 239),
+            backdrop_color: PackedRgba::rgb(220, 224, 232),
+            surface_color: PackedRgba::rgb(204, 208, 218),
+            surface_focused_color: PackedRgba::rgb(188, 192, 204),
+            surface_elevated_color: PackedRgba::rgb(172, 176, 190),
+            border_color: PackedRgba::rgb(156, 160, 176),
+            text_color: PackedRgba::rgb(76, 79, 105),
+            strong_muted_text_color: PackedRgba::rgb(92, 95, 119),
+            muted_text_color: PackedRgba::rgb(108, 111, 133),
+            accent_color: PackedRgba::rgb(30, 102, 245),
+            accent_soft_color: PackedRgba::rgb(114, 135, 253),
+            accent_pink_color: PackedRgba::rgb(234, 118, 203),
+            accent_teal_color: PackedRgba::rgb(23, 146, 153),
+            success_color: PackedRgba::rgb(64, 160, 43),
+            warning_color: PackedRgba::rgb(223, 142, 29),
+            error_color: PackedRgba::rgb(210, 15, 57),
+            accent_warm_color: PackedRgba::rgb(254, 100, 11),
+            accent_alt_color: PackedRgba::rgb(136, 57, 239),
+        },
+    },
+    ThemePreset {
+        name: ThemeName::CatppuccinFrappe,
+        display_name: "Catppuccin Frappe",
+        palette: ThemePalette {
+            background_color: PackedRgba::rgb(48, 52, 70),
+            header_color: PackedRgba::rgb(41, 44, 60),
+            backdrop_color: PackedRgba::rgb(35, 38, 52),
+            surface_color: PackedRgba::rgb(65, 69, 89),
+            surface_focused_color: PackedRgba::rgb(81, 87, 109),
+            surface_elevated_color: PackedRgba::rgb(98, 104, 128),
+            border_color: PackedRgba::rgb(115, 121, 148),
+            text_color: PackedRgba::rgb(198, 208, 245),
+            strong_muted_text_color: PackedRgba::rgb(181, 191, 226),
+            muted_text_color: PackedRgba::rgb(165, 173, 206),
+            accent_color: PackedRgba::rgb(140, 170, 238),
+            accent_soft_color: PackedRgba::rgb(186, 187, 241),
+            accent_pink_color: PackedRgba::rgb(244, 184, 228),
+            accent_teal_color: PackedRgba::rgb(129, 200, 190),
+            success_color: PackedRgba::rgb(166, 209, 137),
+            warning_color: PackedRgba::rgb(229, 200, 144),
+            error_color: PackedRgba::rgb(231, 130, 132),
+            accent_warm_color: PackedRgba::rgb(239, 159, 118),
+            accent_alt_color: PackedRgba::rgb(202, 158, 230),
+        },
+    },
+    ThemePreset {
+        name: ThemeName::CatppuccinMacchiato,
+        display_name: "Catppuccin Macchiato",
+        palette: ThemePalette {
+            background_color: PackedRgba::rgb(36, 39, 58),
+            header_color: PackedRgba::rgb(30, 32, 48),
+            backdrop_color: PackedRgba::rgb(24, 25, 38),
+            surface_color: PackedRgba::rgb(54, 58, 79),
+            surface_focused_color: PackedRgba::rgb(73, 77, 100),
+            surface_elevated_color: PackedRgba::rgb(91, 96, 120),
+            border_color: PackedRgba::rgb(110, 115, 141),
+            text_color: PackedRgba::rgb(202, 211, 245),
+            strong_muted_text_color: PackedRgba::rgb(184, 192, 224),
+            muted_text_color: PackedRgba::rgb(165, 173, 203),
+            accent_color: PackedRgba::rgb(138, 173, 244),
+            accent_soft_color: PackedRgba::rgb(183, 189, 248),
+            accent_pink_color: PackedRgba::rgb(245, 189, 230),
+            accent_teal_color: PackedRgba::rgb(139, 213, 202),
+            success_color: PackedRgba::rgb(166, 218, 149),
+            warning_color: PackedRgba::rgb(238, 212, 159),
+            error_color: PackedRgba::rgb(237, 135, 150),
+            accent_warm_color: PackedRgba::rgb(245, 169, 127),
+            accent_alt_color: PackedRgba::rgb(198, 160, 246),
+        },
+    },
+    ThemePreset {
+        name: ThemeName::CatppuccinMocha,
+        display_name: "Catppuccin Mocha",
+        palette: ThemePalette {
+            background_color: PackedRgba::rgb(30, 30, 46),
+            header_color: PackedRgba::rgb(24, 24, 37),
+            backdrop_color: PackedRgba::rgb(17, 17, 27),
+            surface_color: PackedRgba::rgb(49, 50, 68),
+            surface_focused_color: PackedRgba::rgb(69, 71, 90),
+            surface_elevated_color: PackedRgba::rgb(88, 91, 112),
+            border_color: PackedRgba::rgb(108, 112, 134),
+            text_color: PackedRgba::rgb(205, 214, 244),
+            strong_muted_text_color: PackedRgba::rgb(186, 194, 222),
+            muted_text_color: PackedRgba::rgb(166, 173, 200),
+            accent_color: PackedRgba::rgb(137, 180, 250),
+            accent_soft_color: PackedRgba::rgb(180, 190, 254),
+            accent_pink_color: PackedRgba::rgb(245, 194, 231),
+            accent_teal_color: PackedRgba::rgb(148, 226, 213),
+            success_color: PackedRgba::rgb(166, 227, 161),
+            warning_color: PackedRgba::rgb(249, 226, 175),
+            error_color: PackedRgba::rgb(243, 139, 168),
+            accent_warm_color: PackedRgba::rgb(250, 179, 135),
+            accent_alt_color: PackedRgba::rgb(203, 166, 247),
+        },
+    },
+];
+
+fn theme_preset(theme_name: ThemeName) -> ThemePreset {
+    THEME_PRESETS
+        .iter()
+        .copied()
+        .find(|preset| preset.name == theme_name)
+        .unwrap_or(THEME_PRESETS[4])
+}
+
+pub(super) fn theme_display_name(theme_name: ThemeName) -> &'static str {
+    theme_preset(theme_name).display_name
+}
+
+pub(super) fn next_theme_name(theme_name: ThemeName) -> ThemeName {
+    let index = THEME_PRESETS
+        .iter()
+        .position(|preset| preset.name == theme_name)
+        .unwrap_or(0);
+    THEME_PRESETS[(index + 1) % THEME_PRESETS.len()].name
+}
+
+pub(super) fn previous_theme_name(theme_name: ThemeName) -> ThemeName {
+    let index = THEME_PRESETS
+        .iter()
+        .position(|preset| preset.name == theme_name)
+        .unwrap_or(0);
+    THEME_PRESETS[(index + THEME_PRESETS.len() - 1) % THEME_PRESETS.len()].name
+}
+
+fn theme_palette(theme_name: ThemeName) -> ThemePalette {
+    theme_preset(theme_name).palette
+}
+
+pub(super) fn ui_theme_for(theme_name: ThemeName) -> UiTheme {
+    theme_palette(theme_name).to_ui_theme()
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn ui_theme() -> UiTheme {
-    UiTheme {
-        base: PackedRgba::rgb(30, 30, 46),
-        mantle: PackedRgba::rgb(24, 24, 37),
-        crust: PackedRgba::rgb(17, 17, 27),
-        surface0: PackedRgba::rgb(49, 50, 68),
-        surface1: PackedRgba::rgb(69, 71, 90),
-        overlay0: PackedRgba::rgb(108, 112, 134),
-        text: PackedRgba::rgb(205, 214, 244),
-        subtext0: PackedRgba::rgb(166, 173, 200),
-        blue: PackedRgba::rgb(137, 180, 250),
-        lavender: PackedRgba::rgb(180, 190, 254),
-        yellow: PackedRgba::rgb(249, 226, 175),
-        red: PackedRgba::rgb(243, 139, 168),
-        peach: PackedRgba::rgb(250, 179, 135),
-        mauve: PackedRgba::rgb(203, 166, 247),
-        teal: PackedRgba::rgb(148, 226, 213),
+    ui_theme_for(ThemeName::default())
+}
+
+impl super::GroveApp {
+    pub(super) fn active_ui_theme(&self) -> UiTheme {
+        ui_theme_for(self.theme_name)
     }
 }
 

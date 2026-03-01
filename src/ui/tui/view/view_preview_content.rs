@@ -8,7 +8,7 @@ impl GroveApp {
         inner: Rect,
         selected_workspace: Option<&Workspace>,
     ) -> (Vec<FtLine>, AnimatedPreviewLabels) {
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         let mut animated_labels: AnimatedPreviewLabels = Vec::new();
         let selected_workspace_header = selected_workspace.map(|workspace| {
             let workspace_name = Self::workspace_display_name(workspace);
@@ -232,6 +232,6 @@ impl GroveApp {
             }];
         }
 
-        ansi_lines_to_styled_lines(&visible_render_lines)
+        ansi_lines_to_styled_lines_for_theme(&visible_render_lines, self.theme_name)
     }
 }

@@ -14,6 +14,8 @@ struct ReplayBootstrapSnapshot {
     sidebar_hidden: bool,
     mouse_capture_enabled: bool,
     launch_skip_permissions: bool,
+    #[serde(default)]
+    theme_name: ThemeName,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -122,6 +124,7 @@ impl ReplayBootstrapSnapshot {
             sidebar_hidden: app.sidebar_hidden,
             mouse_capture_enabled: app.mouse_capture_enabled,
             launch_skip_permissions: app.launch_skip_permissions,
+            theme_name: app.theme_name,
         }
     }
 

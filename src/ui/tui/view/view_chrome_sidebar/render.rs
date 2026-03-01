@@ -18,7 +18,7 @@ impl GroveApp {
             return;
         }
 
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
 
         if self.projects.is_empty() {
             Paragraph::new(FtText::from_lines(vec![

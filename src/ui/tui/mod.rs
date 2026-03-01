@@ -212,8 +212,8 @@ mod tests {
         StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput, UiCommand,
         UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
         WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, ansi_16_color,
-        ansi_lines_to_styled_lines, decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme,
-        usize_to_u64,
+        ansi_lines_to_styled_lines, ansi_lines_to_styled_lines_for_theme,
+        decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
     use crate::application::interactive::InteractiveState;
     use crate::application::services::runtime_service::workspace_status_targets_for_polling_with_live_preview;
@@ -222,7 +222,7 @@ mod tests {
     };
     use crate::domain::{AgentType, PullRequest, PullRequestStatus, Workspace, WorkspaceStatus};
     use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
-    use crate::infrastructure::config::ProjectConfig;
+    use crate::infrastructure::config::{ProjectConfig, ThemeName};
     use crate::infrastructure::event_log::{Event as LoggedEvent, NullEventLogger};
     use crate::ui::state::{PaneFocus, UiMode};
     use ftui::core::event::{
@@ -233,7 +233,7 @@ mod tests {
     use ftui::widgets::block::Block;
     use ftui::widgets::borders::Borders;
     use ftui::widgets::toast::ToastStyle;
-    use ftui::{Cmd, Frame, GraphemePool};
+    use ftui::{Cmd, Frame, GraphemePool, PackedRgba};
     use proptest::prelude::*;
     use serde_json::Value;
     use std::cell::RefCell;
@@ -2736,20 +2736,75 @@ mod tests {
     }
 
     #[test]
-    fn settings_dialog_save_does_not_write_global_config() {
+    fn settings_dialog_save_persists_selected_theme() {
         let mut app = fixture_app();
+        assert_eq!(app.theme_name, ThemeName::CatppuccinMocha);
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
         assert!(app.settings_dialog().is_some());
+        assert_eq!(
+            app.settings_dialog().map(|dialog| dialog.focused_field),
+            Some(SettingsDialogField::Theme)
+        );
 
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press));
         let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
 
         assert!(app.settings_dialog().is_none());
-        assert!(!app.config_path.exists());
-        assert!(
-            app.status_bar_line()
-                .contains("settings are read-only, edit ~/.config/grove/config.toml")
-        );
+        assert_eq!(app.theme_name, ThemeName::Monokai);
+        assert!(app.status_bar_line().contains("theme saved: monokai"));
+
+        let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
+            .expect("config should load");
+        assert_eq!(loaded.theme, ThemeName::Monokai);
+    }
+
+    #[test]
+    fn render_uses_selected_theme_palette() {
+        let mut monokai_app = fixture_app();
+        monokai_app.theme_name = ThemeName::Monokai;
+
+        let mut latte_app = fixture_app();
+        latte_app.theme_name = ThemeName::CatppuccinLatte;
+
+        with_rendered_frame(&monokai_app, 80, 24, |frame| {
+            let header_bg = frame.buffer.get(0, 0).expect("header cell should exist").bg;
+            assert_eq!(header_bg, ui_theme_for(ThemeName::Monokai).crust);
+        });
+
+        with_rendered_frame(&latte_app, 80, 24, |frame| {
+            let header_bg = frame.buffer.get(0, 0).expect("header cell should exist").bg;
+            assert_eq!(header_bg, ui_theme_for(ThemeName::CatppuccinLatte).crust);
+            assert_ne!(header_bg, ui_theme_for(ThemeName::Monokai).crust);
+        });
+    }
+
+    #[test]
+    fn agent_preview_unstyled_cells_use_theme_background() {
+        let mut app = fixture_app();
+        app.theme_name = ThemeName::CatppuccinLatte;
+        app.preview_tab = PreviewTab::Agent;
+        app.preview.lines = vec!["unstyled output".to_string()];
+        app.preview.render_lines = app.preview.lines.clone();
+        app.preview.offset = 0;
+
+        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+        let content_x = layout.preview.x.saturating_add(1);
+        let content_y = layout
+            .preview
+            .y
+            .saturating_add(1)
+            .saturating_add(PREVIEW_METADATA_ROWS);
+
+        with_rendered_frame(&app, 100, 40, |frame| {
+            let cell = frame
+                .buffer
+                .get(content_x, content_y)
+                .expect("preview content cell should exist");
+            assert_eq!(cell.bg, ui_theme_for(ThemeName::CatppuccinLatte).base);
+            assert_eq!(cell.fg, ui_theme_for(ThemeName::CatppuccinLatte).text);
+        });
     }
 
     #[test]
@@ -5672,6 +5727,38 @@ mod tests {
                 assert_eq!(
                     line.spans()[1].style.and_then(|style| style.fg),
                     Some(ansi_16_color(1))
+                );
+            }
+
+            #[test]
+            fn ansi_parser_uses_readable_latte_white_slots() {
+                let styled_lines = ansi_lines_to_styled_lines_for_theme(
+                    &[
+                        "\u{1b}[37mnormal-white".to_string(),
+                        "\u{1b}[97mbright-white".to_string(),
+                    ],
+                    ThemeName::CatppuccinLatte,
+                );
+                let latte = ui_theme_for(ThemeName::CatppuccinLatte);
+                assert_eq!(
+                    styled_lines[0].spans()[0].style.and_then(|style| style.fg),
+                    Some(latte.subtext1)
+                );
+                assert_eq!(
+                    styled_lines[1].spans()[0].style.and_then(|style| style.fg),
+                    Some(latte.subtext0)
+                );
+            }
+
+            #[test]
+            fn ansi_parser_dim_for_latte_uses_dim_foreground_color() {
+                let styled_lines = ansi_lines_to_styled_lines_for_theme(
+                    &["a\u{1b}[2mb".to_string()],
+                    ThemeName::CatppuccinLatte,
+                );
+                assert_eq!(
+                    styled_lines[0].spans()[1].style.and_then(|style| style.fg),
+                    Some(PackedRgba::rgb(140, 143, 161))
                 );
             }
 
@@ -11154,6 +11241,18 @@ mod tests {
                 let mut app = fixture_app();
                 app.open_settings_dialog();
 
+                assert_eq!(
+                    app.settings_dialog().map(|dialog| dialog.focused_field),
+                    Some(SettingsDialogField::Theme)
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('n'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
                 assert_eq!(
                     app.settings_dialog().map(|dialog| dialog.focused_field),
                     Some(SettingsDialogField::SaveButton)

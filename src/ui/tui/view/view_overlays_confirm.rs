@@ -11,7 +11,7 @@ impl GroveApp {
 
         let dialog_width = area.width.saturating_sub(24).clamp(44, 72);
         let dialog_height = 10u16;
-        let theme = ui_theme();
+        let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let confirm_focused = dialog.focused_field == ConfirmDialogField::ConfirmButton;
         let cancel_focused = dialog.focused_field == ConfirmDialogField::CancelButton;

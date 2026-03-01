@@ -1,7 +1,11 @@
 use ftui::text::{Line as FtLine, Span as FtSpan};
 use ftui::{PackedRgba, Style};
 
-use super::colors::{ansi_16_color, ansi_256_color};
+use crate::infrastructure::config::ThemeName;
+
+use super::colors::{
+    ansi_16_color_for_theme, ansi_256_color_for_theme, ansi_dim_foreground_for_theme,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct AnsiStyleState {
@@ -17,7 +21,7 @@ struct AnsiStyleState {
 }
 
 impl AnsiStyleState {
-    fn into_style(self) -> Option<Style> {
+    fn into_style(self, theme_name: ThemeName) -> Option<Style> {
         let mut style = Style::new();
 
         if let Some(fg) = self.fg {
@@ -29,8 +33,8 @@ impl AnsiStyleState {
         if self.bold {
             style = style.bold();
         }
-        if self.dim {
-            style = style.dim();
+        if self.dim && self.fg.is_none() {
+            style = style.fg(ansi_dim_foreground_for_theme(theme_name));
         }
         if self.italic {
             style = style.italic();
@@ -56,13 +60,17 @@ impl AnsiStyleState {
     }
 }
 
-fn parse_sgr_extended_color(params: &[i32], start: usize) -> Option<(PackedRgba, usize)> {
+fn parse_sgr_extended_color(
+    params: &[i32],
+    start: usize,
+    theme_name: ThemeName,
+) -> Option<(PackedRgba, usize)> {
     let mode = *params.get(start)?;
     match mode {
         5 => {
             let value = *params.get(start.saturating_add(1))?;
             let palette = u8::try_from(value).ok()?;
-            Some((ansi_256_color(palette), 2))
+            Some((ansi_256_color_for_theme(theme_name, palette), 2))
         }
         2 => {
             let r = u8::try_from(*params.get(start.saturating_add(1))?).ok()?;
@@ -74,7 +82,7 @@ fn parse_sgr_extended_color(params: &[i32], start: usize) -> Option<(PackedRgba,
     }
 }
 
-fn apply_sgr_codes(raw_params: &str, state: &mut AnsiStyleState) {
+fn apply_sgr_codes(raw_params: &str, state: &mut AnsiStyleState, theme_name: ThemeName) {
     let params: Vec<i32> = if raw_params.is_empty() {
         vec![0]
     } else {
@@ -112,27 +120,27 @@ fn apply_sgr_codes(raw_params: &str, state: &mut AnsiStyleState) {
             29 => state.strikethrough = false,
             30..=37 => {
                 if let Ok(code) = u8::try_from(params[index] - 30) {
-                    state.fg = Some(ansi_16_color(code));
+                    state.fg = Some(ansi_16_color_for_theme(theme_name, code));
                 }
             }
             90..=97 => {
                 if let Ok(code) = u8::try_from(params[index] - 90) {
-                    state.fg = Some(ansi_16_color(code.saturating_add(8)));
+                    state.fg = Some(ansi_16_color_for_theme(theme_name, code.saturating_add(8)));
                 }
             }
             40..=47 => {
                 if let Ok(code) = u8::try_from(params[index] - 40) {
-                    state.bg = Some(ansi_16_color(code));
+                    state.bg = Some(ansi_16_color_for_theme(theme_name, code));
                 }
             }
             100..=107 => {
                 if let Ok(code) = u8::try_from(params[index] - 100) {
-                    state.bg = Some(ansi_16_color(code.saturating_add(8)));
+                    state.bg = Some(ansi_16_color_for_theme(theme_name, code.saturating_add(8)));
                 }
             }
             38 => {
                 if let Some((color, consumed)) =
-                    parse_sgr_extended_color(&params, index.saturating_add(1))
+                    parse_sgr_extended_color(&params, index.saturating_add(1), theme_name)
                 {
                     state.fg = Some(color);
                     index = index.saturating_add(consumed);
@@ -140,7 +148,7 @@ fn apply_sgr_codes(raw_params: &str, state: &mut AnsiStyleState) {
             }
             48 => {
                 if let Some((color, consumed)) =
-                    parse_sgr_extended_color(&params, index.saturating_add(1))
+                    parse_sgr_extended_color(&params, index.saturating_add(1), theme_name)
                 {
                     state.bg = Some(color);
                     index = index.saturating_add(consumed);
@@ -155,7 +163,11 @@ fn apply_sgr_codes(raw_params: &str, state: &mut AnsiStyleState) {
     }
 }
 
-fn ansi_line_to_styled_line_with_state(line: &str, state: &mut AnsiStyleState) -> FtLine {
+fn ansi_line_to_styled_line_with_state(
+    line: &str,
+    state: &mut AnsiStyleState,
+    theme_name: ThemeName,
+) -> FtLine {
     let mut spans: Vec<FtSpan<'static>> = Vec::new();
     let mut buffer = String::new();
     let mut chars = line.chars().peekable();
@@ -165,7 +177,7 @@ fn ansi_line_to_styled_line_with_state(line: &str, state: &mut AnsiStyleState) -
             return;
         }
         let content = std::mem::take(buffer);
-        if let Some(style) = state.into_style() {
+        if let Some(style) = state.into_style(theme_name) {
             spans.push(FtSpan::styled(content, style));
         } else {
             spans.push(FtSpan::raw(content));
@@ -195,7 +207,7 @@ fn ansi_line_to_styled_line_with_state(line: &str, state: &mut AnsiStyleState) -
                 }
                 if final_char == Some('m') {
                     flush(&mut buffer, &mut spans, *state);
-                    apply_sgr_codes(&params, state);
+                    apply_sgr_codes(&params, state, theme_name);
                 }
             }
             ']' => {
@@ -231,10 +243,18 @@ fn ansi_line_to_styled_line_with_state(line: &str, state: &mut AnsiStyleState) -
     FtLine::from_spans(spans)
 }
 
+#[cfg(test)]
 pub(in crate::ui::tui) fn ansi_lines_to_styled_lines(lines: &[String]) -> Vec<FtLine> {
+    ansi_lines_to_styled_lines_for_theme(lines, ThemeName::default())
+}
+
+pub(in crate::ui::tui) fn ansi_lines_to_styled_lines_for_theme(
+    lines: &[String],
+    theme_name: ThemeName,
+) -> Vec<FtLine> {
     let mut state = AnsiStyleState::default();
     lines
         .iter()
-        .map(|line| ansi_line_to_styled_line_with_state(line, &mut state))
+        .map(|line| ansi_line_to_styled_line_with_state(line, &mut state, theme_name))
         .collect()
 }

@@ -4,10 +4,35 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThemeName {
+    Monokai,
+    CatppuccinLatte,
+    CatppuccinFrappe,
+    CatppuccinMacchiato,
+    #[default]
+    CatppuccinMocha,
+}
+
+impl ThemeName {
+    pub const fn config_key(self) -> &'static str {
+        match self {
+            Self::Monokai => "monokai",
+            Self::CatppuccinLatte => "catppuccin-latte",
+            Self::CatppuccinFrappe => "catppuccin-frappe",
+            Self::CatppuccinMacchiato => "catppuccin-macchiato",
+            Self::CatppuccinMocha => "catppuccin-mocha",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroveConfig {
     #[serde(default = "default_sidebar_width_pct")]
     pub sidebar_width_pct: u16,
+    #[serde(default)]
+    pub theme: ThemeName,
     #[serde(default)]
     pub projects: Vec<ProjectConfig>,
     #[serde(default)]
@@ -24,6 +49,7 @@ impl Default for GroveConfig {
     fn default() -> Self {
         Self {
             sidebar_width_pct: default_sidebar_width_pct(),
+            theme: ThemeName::default(),
             projects: Vec::new(),
             attention_acks: Vec::new(),
             launch_skip_permissions: false,
@@ -95,6 +121,8 @@ struct GlobalSettingsConfig {
     #[serde(default = "default_sidebar_width_pct")]
     sidebar_width_pct: u16,
     #[serde(default)]
+    theme: ThemeName,
+    #[serde(default)]
     launch_skip_permissions: bool,
 }
 
@@ -102,6 +130,7 @@ impl Default for GlobalSettingsConfig {
     fn default() -> Self {
         Self {
             sidebar_width_pct: default_sidebar_width_pct(),
+            theme: ThemeName::default(),
             launch_skip_permissions: false,
         }
     }
@@ -158,6 +187,7 @@ pub fn load_from_path(path: &Path) -> Result<GroveConfig, String> {
     let projects = load_projects_from_path(&projects_path_for(path))?;
     Ok(GroveConfig {
         sidebar_width_pct: settings.sidebar_width_pct,
+        theme: settings.theme,
         projects: projects.projects,
         attention_acks: projects.attention_acks,
         launch_skip_permissions: settings.launch_skip_permissions,
@@ -177,6 +207,7 @@ pub fn load_global_from_path(path: &Path) -> Result<GroveConfig, String> {
         .map_err(|error| format!("global config parse failed: {error}"))?;
     Ok(GroveConfig {
         sidebar_width_pct: settings.sidebar_width_pct,
+        theme: settings.theme,
         projects: Vec::new(),
         attention_acks: Vec::new(),
         launch_skip_permissions: settings.launch_skip_permissions,
@@ -199,6 +230,7 @@ pub fn load_projects_from_path(path: &Path) -> Result<GroveConfig, String> {
     }
     Ok(GroveConfig {
         sidebar_width_pct: default_sidebar_width_pct(),
+        theme: ThemeName::default(),
         projects: projects.projects,
         attention_acks: projects.attention_acks,
         launch_skip_permissions: false,
@@ -214,6 +246,7 @@ pub fn save_global_to_path(path: &Path, config: &GroveConfig) -> Result<(), Stri
         .map_err(|error| format!("global config directory create failed: {error}"))?;
     let settings = GlobalSettingsConfig {
         sidebar_width_pct: config.sidebar_width_pct,
+        theme: config.theme,
         launch_skip_permissions: config.launch_skip_permissions,
     };
     let encoded = toml::to_string_pretty(&settings)
@@ -257,7 +290,7 @@ pub fn save_to_path(path: &Path, config: &GroveConfig) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentEnvDefaults, GroveConfig, ProjectConfig, ProjectDefaults, load_from_path,
+        AgentEnvDefaults, GroveConfig, ProjectConfig, ProjectDefaults, ThemeName, load_from_path,
         projects_path_for, save_global_to_path, save_projects_to_path, save_to_path,
     };
     use std::fs;
@@ -286,6 +319,7 @@ mod tests {
             config,
             GroveConfig {
                 sidebar_width_pct: 33,
+                theme: ThemeName::CatppuccinMocha,
                 projects: Vec::new(),
                 attention_acks: Vec::new(),
                 launch_skip_permissions: false,
@@ -298,6 +332,7 @@ mod tests {
         let path = unique_temp_path("roundtrip");
         let config = GroveConfig {
             sidebar_width_pct: 52,
+            theme: ThemeName::Monokai,
             projects: vec![ProjectConfig {
                 name: "grove".to_string(),
                 path: PathBuf::from("/repos/grove"),
@@ -330,6 +365,7 @@ mod tests {
 
         let loaded = load_from_path(&path).expect("legacy config should load");
         assert_eq!(loaded.sidebar_width_pct, 33);
+        assert_eq!(loaded.theme, ThemeName::CatppuccinMocha);
         assert_eq!(loaded.projects, Vec::<ProjectConfig>::new());
 
         cleanup_files(path.as_path());
@@ -348,6 +384,7 @@ mod tests {
         let loaded = load_from_path(&path).expect("legacy project config should load");
         assert_eq!(loaded.projects.len(), 1);
         assert_eq!(loaded.sidebar_width_pct, 33);
+        assert_eq!(loaded.theme, ThemeName::CatppuccinMocha);
         assert_eq!(loaded.attention_acks, Vec::new());
         assert!(!loaded.launch_skip_permissions);
         assert_eq!(loaded.projects[0].defaults.base_branch, "");
@@ -386,6 +423,7 @@ mod tests {
         let projects_path = projects_path_for(path.as_path());
         let initial = GroveConfig {
             sidebar_width_pct: 33,
+            theme: ThemeName::CatppuccinMocha,
             projects: vec![ProjectConfig {
                 name: "grove".to_string(),
                 path: PathBuf::from("/repos/grove"),
@@ -398,6 +436,7 @@ mod tests {
             .expect("projects should save");
         let updated = GroveConfig {
             sidebar_width_pct: 48,
+            theme: ThemeName::CatppuccinLatte,
             projects: Vec::new(),
             attention_acks: Vec::new(),
             launch_skip_permissions: true,
@@ -406,6 +445,7 @@ mod tests {
 
         let loaded = load_from_path(&path).expect("combined config should load");
         assert_eq!(loaded.sidebar_width_pct, 48);
+        assert_eq!(loaded.theme, ThemeName::CatppuccinLatte);
         assert!(loaded.launch_skip_permissions);
         assert_eq!(loaded.projects.len(), 1);
         assert_eq!(loaded.projects[0].name, "grove");
@@ -419,6 +459,7 @@ mod tests {
         let projects_path = projects_path_for(path.as_path());
         let settings = GroveConfig {
             sidebar_width_pct: 61,
+            theme: ThemeName::CatppuccinFrappe,
             projects: Vec::new(),
             attention_acks: Vec::new(),
             launch_skip_permissions: true,
@@ -433,6 +474,7 @@ mod tests {
 
         let loaded = load_from_path(&path).expect("combined config should load");
         assert_eq!(loaded.sidebar_width_pct, 61);
+        assert_eq!(loaded.theme, ThemeName::CatppuccinFrappe);
         assert!(loaded.launch_skip_permissions);
         assert_eq!(loaded.projects.len(), 1);
         assert_eq!(loaded.projects[0].name, "grove");
