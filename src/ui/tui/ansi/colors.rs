@@ -33,7 +33,10 @@ pub(super) fn ansi_dim_foreground_for_theme(theme_name: ThemeName) -> PackedRgba
         ThemeName::CatppuccinFrappe => PackedRgba::rgb(131, 139, 167),
         ThemeName::CatppuccinMacchiato => PackedRgba::rgb(128, 135, 162),
         ThemeName::CatppuccinMocha => PackedRgba::rgb(127, 132, 156),
-        ThemeName::Monokai => ui_theme_for(theme_name).subtext0,
+        ThemeName::Monokai
+        | ThemeName::RosePine
+        | ThemeName::RosePineMoon
+        | ThemeName::RosePineDawn => ui_theme_for(theme_name).subtext0,
     }
 }
 

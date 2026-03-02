@@ -2809,12 +2809,12 @@ mod tests {
         let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
 
         assert!(app.settings_dialog().is_none());
-        assert_eq!(app.theme_name, ThemeName::Monokai);
-        assert!(app.status_bar_line().contains("theme saved: monokai"));
+        assert_eq!(app.theme_name, ThemeName::RosePine);
+        assert!(app.status_bar_line().contains("theme saved: rose-pine"));
 
         let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
             .expect("config should load");
-        assert_eq!(loaded.theme, ThemeName::Monokai);
+        assert_eq!(loaded.theme, ThemeName::RosePine);
     }
 
     #[test]
@@ -2827,9 +2827,9 @@ mod tests {
 
         assert_eq!(
             app.settings_dialog().map(|dialog| dialog.theme),
-            Some(ThemeName::Monokai)
+            Some(ThemeName::RosePine)
         );
-        assert_eq!(app.theme_name, ThemeName::Monokai);
+        assert_eq!(app.theme_name, ThemeName::RosePine);
     }
 
     #[test]
@@ -2839,7 +2839,7 @@ mod tests {
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
         let _ = app.handle_key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press));
-        assert_eq!(app.theme_name, ThemeName::Monokai);
+        assert_eq!(app.theme_name, ThemeName::RosePine);
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press));
         assert!(app.settings_dialog().is_none());
