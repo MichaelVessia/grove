@@ -13,6 +13,9 @@ pub enum ThemeName {
     CatppuccinMacchiato,
     #[default]
     CatppuccinMocha,
+    RosePine,
+    RosePineMoon,
+    RosePineDawn,
 }
 
 impl ThemeName {
@@ -23,6 +26,9 @@ impl ThemeName {
             Self::CatppuccinFrappe => "catppuccin-frappe",
             Self::CatppuccinMacchiato => "catppuccin-macchiato",
             Self::CatppuccinMocha => "catppuccin-mocha",
+            Self::RosePine => "rose-pine",
+            Self::RosePineMoon => "rose-pine-moon",
+            Self::RosePineDawn => "rose-pine-dawn",
         }
     }
 }
