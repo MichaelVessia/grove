@@ -351,6 +351,14 @@ mod tests {
         }
 
         #[test]
+        fn capture_change_drops_charset_escape_with_multibyte_suffix() {
+            let raw = "A\u{1b}(🙂B";
+            let change = evaluate_capture_change(None, raw);
+            assert_eq!(change.cleaned_output, "AB");
+            assert_eq!(change.render_output, "AB");
+        }
+
+        #[test]
         fn capture_change_ignores_truncated_partial_mouse_fragments() {
             let first = evaluate_capture_change(None, "prompt [<65;103;31");
             assert_eq!(first.cleaned_output, "prompt ");

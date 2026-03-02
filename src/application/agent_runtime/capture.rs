@@ -122,35 +122,101 @@ fn parse_mouse_mode_sequence_end(bytes: &[u8], start: usize) -> Option<usize> {
 
 fn strip_non_sgr_control_sequences(input: &str) -> String {
     let mut cleaned = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
+    let bytes = input.as_bytes();
+    let mut index = 0usize;
 
-    while let Some(character) = chars.next() {
-        if character != '\u{1b}' {
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte != b'\x1b' {
+            if byte.is_ascii() {
+                let character = char::from(byte);
+                if is_safe_text_character(character) {
+                    cleaned.push(character);
+                }
+                index = index.saturating_add(1);
+                continue;
+            }
+
+            let Some(character) = input[index..].chars().next() else {
+                break;
+            };
             if is_safe_text_character(character) {
                 cleaned.push(character);
             }
+            index = index.saturating_add(character.len_utf8());
             continue;
         }
 
-        let Some(next) = chars.next() else {
+        let Some(next) = bytes.get(index.saturating_add(1)).copied() else {
             break;
         };
 
         match next {
-            '[' => {
-                let mut csi = String::from("\u{1b}[");
-                if let Some(final_char) = consume_csi_sequence(&mut chars, &mut csi)
-                    && final_char == 'm'
-                {
-                    cleaned.push_str(&csi);
+            b'[' => {
+                let mut scan = index.saturating_add(2);
+                while scan < bytes.len() {
+                    let final_byte = bytes[scan];
+                    scan = scan.saturating_add(1);
+                    if (b'@'..=b'~').contains(&final_byte) {
+                        if final_byte == b'm' {
+                            cleaned.push_str(&input[index..scan]);
+                        }
+                        index = scan;
+                        break;
+                    }
+                }
+                if scan >= bytes.len() {
+                    break;
                 }
             }
-            ']' => consume_osc_sequence(&mut chars),
-            'P' | 'X' | '^' | '_' => consume_st_sequence(&mut chars),
-            '(' | ')' | '*' | '+' | '-' | '.' | '/' | '#' => {
-                let _ = chars.next();
+            b']' => {
+                let mut scan = index.saturating_add(2);
+                let mut terminated = false;
+                while scan < bytes.len() {
+                    let value = bytes[scan];
+                    if value == b'\x07' {
+                        index = scan.saturating_add(1);
+                        terminated = true;
+                        break;
+                    }
+                    if value == b'\x1b' && bytes.get(scan.saturating_add(1)) == Some(&b'\\') {
+                        index = scan.saturating_add(2);
+                        terminated = true;
+                        break;
+                    }
+                    scan = scan.saturating_add(1);
+                }
+                if !terminated {
+                    break;
+                }
             }
-            _ => {}
+            b'P' | b'X' | b'^' | b'_' => {
+                let mut scan = index.saturating_add(2);
+                let mut terminated = false;
+                while scan < bytes.len() {
+                    if bytes[scan] == b'\x1b' && bytes.get(scan.saturating_add(1)) == Some(&b'\\') {
+                        index = scan.saturating_add(2);
+                        terminated = true;
+                        break;
+                    }
+                    scan = scan.saturating_add(1);
+                }
+                if !terminated {
+                    break;
+                }
+            }
+            b'(' | b')' | b'*' | b'+' | b'-' | b'.' | b'/' | b'#' => {
+                index = index.saturating_add(2);
+                if index < bytes.len() {
+                    let Some(character) = input[index..].chars().next() else {
+                        break;
+                    };
+                    index = index.saturating_add(character.len_utf8());
+                }
+            }
+            _ => {
+                index = index.saturating_add(2);
+            }
         }
     }
 
@@ -185,46 +251,6 @@ fn strip_sgr_sequences(input: &str) -> String {
     }
 
     String::from_utf8(output).unwrap_or_default()
-}
-
-fn consume_csi_sequence<I>(chars: &mut std::iter::Peekable<I>, buffer: &mut String) -> Option<char>
-where
-    I: Iterator<Item = char>,
-{
-    for character in chars.by_ref() {
-        buffer.push(character);
-        if ('\u{40}'..='\u{7e}').contains(&character) {
-            return Some(character);
-        }
-    }
-
-    None
-}
-
-fn consume_osc_sequence<I>(chars: &mut std::iter::Peekable<I>)
-where
-    I: Iterator<Item = char>,
-{
-    while let Some(character) = chars.next() {
-        if character == '\u{7}' {
-            return;
-        }
-
-        if character == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
-            return;
-        }
-    }
-}
-
-fn consume_st_sequence<I>(chars: &mut std::iter::Peekable<I>)
-where
-    I: Iterator<Item = char>,
-{
-    while let Some(character) = chars.next() {
-        if character == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
-            return;
-        }
-    }
 }
 
 fn strip_partial_mouse_sequences(input: &str) -> String {
