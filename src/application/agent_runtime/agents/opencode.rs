@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -28,6 +29,32 @@ struct SessionMetadata {
     time_updated_ms: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DatabaseFileState {
+    modified_at: Option<SystemTime>,
+    length_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DatabaseState {
+    database: DatabaseFileState,
+    wal: DatabaseFileState,
+}
+
+#[derive(Debug, Clone)]
+struct SessionDirectoryEntry {
+    session_id: String,
+    directory: PathBuf,
+    time_updated_ms: i64,
+}
+
+#[derive(Debug, Clone)]
+struct SessionDirectoryCacheEntry {
+    cached_at: Instant,
+    state: DatabaseState,
+    sessions: Vec<SessionDirectoryEntry>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MessageRole {
     Assistant,
@@ -44,6 +71,11 @@ struct MessageData<'a> {
 fn session_lookup_cache() -> &'static Mutex<HashMap<SessionLookupKey, SessionLookupCacheEntry>> {
     static CACHE: OnceLock<Mutex<HashMap<SessionLookupKey, SessionLookupCacheEntry>>> =
         OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn session_directory_cache() -> &'static Mutex<HashMap<PathBuf, SessionDirectoryCacheEntry>> {
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, SessionDirectoryCacheEntry>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -225,31 +257,38 @@ fn find_session_for_path(database_path: &Path, workspace_path: &Path) -> Option<
     }
 
     let workspace_path = shared::absolute_path(workspace_path)?;
-    let connection = open_database(database_path)?;
-    let mut statement = connection
-        .prepare("SELECT id, directory, time_updated FROM session ORDER BY time_updated DESC")
-        .ok()?;
-    let rows = statement
-        .query_map([], |row| {
-            let session_id: String = row.get(0)?;
-            let directory: String = row.get(1)?;
-            let time_updated_ms: i64 = row.get(2)?;
-            Ok((session_id, directory, time_updated_ms))
-        })
-        .ok()?;
+    let state = database_state(database_path)?;
 
-    for row in rows.flatten() {
-        let (session_id, directory, time_updated_ms) = row;
-        if !shared::cwd_matches(Path::new(&directory), workspace_path.as_path()) {
-            continue;
-        }
-        return Some(SessionMetadata {
-            session_id,
-            time_updated_ms,
-        });
+    if let Ok(cache) = session_directory_cache().lock()
+        && let Some(entry) = cache.get(database_path)
+        && entry.state == state
+    {
+        return find_matching_session(entry.sessions.as_slice(), workspace_path.as_path());
     }
 
-    None
+    let sessions = load_sessions(database_path)?;
+    let matched = find_matching_session(sessions.as_slice(), workspace_path.as_path());
+
+    if let Ok(mut cache) = session_directory_cache().lock() {
+        let cached_at = Instant::now();
+        cache.insert(
+            database_path.to_path_buf(),
+            SessionDirectoryCacheEntry {
+                cached_at,
+                state,
+                sessions,
+            },
+        );
+        shared::prune_by_oldest(
+            &mut cache,
+            super::super::SESSION_LOOKUP_CACHE_MAX_ENTRIES,
+            Some(super::super::SESSION_LOOKUP_EVICTION_TTL),
+            |entry| entry.cached_at,
+            |entry| entry.cached_at,
+        );
+    }
+
+    matched
 }
 
 fn get_last_message_entry(
@@ -309,6 +348,70 @@ fn reset_cache_for_test() {
     if let Ok(mut cache) = session_lookup_cache().lock() {
         cache.clear();
     }
+    if let Ok(mut cache) = session_directory_cache().lock() {
+        cache.clear();
+    }
+}
+
+fn load_sessions(database_path: &Path) -> Option<Vec<SessionDirectoryEntry>> {
+    let connection = open_database(database_path)?;
+    let mut statement = connection
+        .prepare("SELECT id, directory, time_updated FROM session ORDER BY time_updated DESC")
+        .ok()?;
+    let rows = statement
+        .query_map([], |row| {
+            let session_id: String = row.get(0)?;
+            let directory: String = row.get(1)?;
+            let time_updated_ms: i64 = row.get(2)?;
+            Ok(SessionDirectoryEntry {
+                session_id,
+                directory: PathBuf::from(directory),
+                time_updated_ms,
+            })
+        })
+        .ok()?;
+    Some(rows.flatten().collect())
+}
+
+fn find_matching_session(
+    sessions: &[SessionDirectoryEntry],
+    workspace_path: &Path,
+) -> Option<SessionMetadata> {
+    for session in sessions {
+        if !shared::cwd_matches(session.directory.as_path(), workspace_path) {
+            continue;
+        }
+        return Some(SessionMetadata {
+            session_id: session.session_id.clone(),
+            time_updated_ms: session.time_updated_ms,
+        });
+    }
+    None
+}
+
+fn database_state(database_path: &Path) -> Option<DatabaseState> {
+    let database = file_state(database_path)?;
+    let wal_path = opencode_wal_path(database_path);
+    let wal = file_state(wal_path.as_path()).unwrap_or(DatabaseFileState {
+        modified_at: None,
+        length_bytes: 0,
+    });
+    Some(DatabaseState { database, wal })
+}
+
+fn opencode_wal_path(database_path: &Path) -> PathBuf {
+    let mut path = database_path.as_os_str().to_os_string();
+    path.push("-wal");
+    PathBuf::from(path)
+}
+
+fn file_state(path: &Path) -> Option<DatabaseFileState> {
+    let metadata = fs::metadata(path).ok()?;
+    let modified_at = metadata.modified().ok();
+    Some(DatabaseFileState {
+        modified_at,
+        length_bytes: metadata.len(),
+    })
 }
 
 #[cfg(test)]
@@ -361,6 +464,25 @@ mod tests {
                     session_id,
                     workspace_path.to_string_lossy().to_string(),
                     1_i64,
+                ),
+            )
+            .expect("session row should be inserted");
+    }
+
+    fn insert_session_row(
+        database_path: &Path,
+        session_id: &str,
+        workspace_path: &Path,
+        updated_ms: i64,
+    ) {
+        let connection = Connection::open(database_path).expect("database should open");
+        connection
+            .execute(
+                "INSERT INTO session (id, directory, time_updated) VALUES (?1, ?2, ?3)",
+                (
+                    session_id,
+                    workspace_path.to_string_lossy().to_string(),
+                    updated_ms,
                 ),
             )
             .expect("session row should be inserted");
@@ -473,5 +595,25 @@ mod tests {
             .lock()
             .expect("session cache lock should succeed");
         assert!(!cache.contains_key(&stale_key));
+    }
+
+    #[test]
+    fn session_directory_cache_invalidates_when_database_state_changes() {
+        reset_cache_for_test();
+        let root = unique_test_dir("opencode-session-directory-cache");
+        let workspace_path = root.join("workspace");
+        fs::create_dir_all(&workspace_path).expect("workspace directory should be created");
+        let database_path = root.join("opencode.db");
+        create_opencode_db(&database_path, &workspace_path, "session-old");
+
+        let first = find_session_for_path(&database_path, &workspace_path)
+            .expect("first lookup should resolve");
+        assert_eq!(first.session_id, "session-old");
+
+        insert_session_row(&database_path, "session-new", &workspace_path, 2);
+
+        let second = find_session_for_path(&database_path, &workspace_path)
+            .expect("lookup after update should resolve");
+        assert_eq!(second.session_id, "session-new");
     }
 }
