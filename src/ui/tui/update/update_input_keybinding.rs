@@ -59,7 +59,11 @@ impl GroveApp {
                     if kind == "create" {
                         self.clear_create_branch_picker();
                     }
-                    self.close_active_dialog();
+                    if kind == "settings" {
+                        self.cancel_settings_dialog();
+                    } else {
+                        self.close_active_dialog();
+                    }
                 } else if self.dialogs.keybind_help_open {
                     self.dialogs.keybind_help_open = false;
                 }

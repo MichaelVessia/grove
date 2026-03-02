@@ -2818,6 +2818,39 @@ mod tests {
     }
 
     #[test]
+    fn settings_dialog_theme_preview_applies_while_cycling() {
+        let mut app = fixture_app();
+        assert_eq!(app.theme_name, ThemeName::CatppuccinMocha);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press));
+
+        assert_eq!(
+            app.settings_dialog().map(|dialog| dialog.theme),
+            Some(ThemeName::Monokai)
+        );
+        assert_eq!(app.theme_name, ThemeName::Monokai);
+    }
+
+    #[test]
+    fn settings_dialog_cancel_restores_theme_after_preview() {
+        let mut app = fixture_app();
+        assert_eq!(app.theme_name, ThemeName::CatppuccinMocha);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press));
+        assert_eq!(app.theme_name, ThemeName::Monokai);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press));
+        assert!(app.settings_dialog().is_none());
+        assert_eq!(app.theme_name, ThemeName::CatppuccinMocha);
+
+        let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
+            .expect("config should load");
+        assert_eq!(loaded.theme, ThemeName::CatppuccinMocha);
+    }
+
+    #[test]
     fn render_uses_selected_theme_palette() {
         let mut monokai_app = fixture_app();
         monokai_app.theme_name = ThemeName::Monokai;

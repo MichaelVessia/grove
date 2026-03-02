@@ -487,6 +487,7 @@ cyclic_field_nav!(pub(super) ProjectDefaultsDialogField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SettingsDialogState {
     pub(super) focused_field: SettingsDialogField,
+    pub(super) initial_theme: ThemeName,
     pub(super) theme: ThemeName,
 }
 

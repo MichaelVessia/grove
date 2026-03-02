@@ -2,18 +2,33 @@ use super::*;
 
 impl GroveApp {
     fn cycle_settings_theme(&mut self, next: bool) {
-        let Some(dialog) = self.settings_dialog_mut() else {
-            return;
-        };
-        if dialog.focused_field != SettingsDialogField::Theme {
-            return;
-        }
+        let Some(next_theme) = ({
+            let Some(dialog) = self.settings_dialog_mut() else {
+                return;
+            };
+            if dialog.focused_field != SettingsDialogField::Theme {
+                return;
+            }
 
-        dialog.theme = if next {
-            next_theme_name(dialog.theme)
-        } else {
-            previous_theme_name(dialog.theme)
+            let next_theme = if next {
+                next_theme_name(dialog.theme)
+            } else {
+                previous_theme_name(dialog.theme)
+            };
+            dialog.theme = next_theme;
+            Some(next_theme)
+        }) else {
+            return;
         };
+        self.theme_name = next_theme;
+    }
+
+    pub(super) fn cancel_settings_dialog(&mut self) {
+        let Some(initial_theme) = self.settings_dialog().map(|dialog| dialog.initial_theme) else {
+            return;
+        };
+        self.theme_name = initial_theme;
+        self.close_active_dialog();
     }
 
     fn save_theme_to_global_settings(&self, theme: ThemeName) -> Result<(), String> {
@@ -80,7 +95,7 @@ impl GroveApp {
             PostAction::Save => self.apply_settings_dialog_save(),
             PostAction::Cancel => {
                 self.log_dialog_event("settings", "dialog_cancelled");
-                self.close_active_dialog();
+                self.cancel_settings_dialog();
             }
         }
     }
@@ -91,6 +106,7 @@ impl GroveApp {
         }
         self.set_settings_dialog(SettingsDialogState {
             focused_field: SettingsDialogField::Theme,
+            initial_theme: self.theme_name,
             theme: self.theme_name,
         });
     }
