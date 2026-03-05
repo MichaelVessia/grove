@@ -1,4 +1,3 @@
-use crate::domain::AgentType;
 use crate::infrastructure::process::stderr_trimmed;
 use std::fs;
 use std::fs::OpenOptions;
@@ -24,7 +23,6 @@ mod requests;
 mod update;
 
 const GROVE_DIR: &str = ".grove";
-const GROVE_AGENT_MARKER_FILE: &str = ".grove/agent";
 const GROVE_BASE_MARKER_FILE: &str = ".grove/base";
 const GROVE_SETUP_SCRIPT_FILE: &str = ".grove/setup.sh";
 const GROVE_GIT_EXCLUDE_ENTRIES: [&str; 1] = [".grove/"];
@@ -72,9 +70,7 @@ pub fn workspace_lifecycle_error_message(error: &WorkspaceLifecycleError) -> Str
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceMarkerError {
-    MissingAgentMarker,
     MissingBaseMarker,
-    InvalidAgentMarker(String),
     EmptyBaseBranch,
     Io(String),
 }
@@ -188,7 +184,6 @@ pub struct UpdateWorkspaceFromBaseRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceMarkers {
-    pub agent: AgentType,
     pub base_branch: String,
 }
 
@@ -536,19 +531,6 @@ pub fn read_workspace_markers(
     markers::read_workspace_markers(workspace_path)
 }
 
-pub fn read_workspace_agent_marker(
-    workspace_path: &Path,
-) -> Result<AgentType, WorkspaceMarkerError> {
-    markers::read_workspace_agent_marker(workspace_path)
-}
-
-pub fn write_workspace_agent_marker(
-    workspace_path: &Path,
-    agent: AgentType,
-) -> Result<(), WorkspaceLifecycleError> {
-    markers::write_workspace_agent_marker(workspace_path, agent)
-}
-
 pub fn write_workspace_base_marker(
     workspace_path: &Path,
     base_branch: &str,
@@ -564,13 +546,10 @@ mod tests {
         SetupScriptRunner, UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
         WorkspaceMarkerError, WorkspaceSetupTemplate, copy_env_files, create_workspace,
         create_workspace_with_template, delete_workspace, ensure_grove_git_exclude_entries,
-        merge_workspace, merge_workspace_with_session_stopper, read_workspace_agent_marker,
-        read_workspace_markers, update_workspace_from_base,
-        update_workspace_from_base_with_session_stopper, workspace_directory_path,
-        workspace_lifecycle_error_message, write_workspace_agent_marker,
-        write_workspace_base_marker,
+        merge_workspace, merge_workspace_with_session_stopper, read_workspace_markers,
+        update_workspace_from_base, update_workspace_from_base_with_session_stopper,
+        workspace_directory_path, workspace_lifecycle_error_message, write_workspace_base_marker,
     };
-    use crate::domain::AgentType;
     use std::cell::RefCell;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1063,65 +1042,29 @@ mod tests {
     }
 
     #[test]
-    fn read_workspace_markers_validates_marker_content() {
-        let temp = TestDir::new("markers");
+    fn read_workspace_markers_requires_base_marker() {
+        let temp = TestDir::new("markers-missing-base");
         let workspace = temp.path.join("grove-feature-z");
         fs::create_dir_all(&workspace).expect("workspace should exist");
         fs::create_dir_all(workspace.join(".grove")).expect(".grove should exist");
-
-        fs::write(workspace.join(".grove/agent"), "unknown\n")
-            .expect("agent marker should be writable");
-        fs::write(workspace.join(".grove/base"), "main\n").expect("base marker should be writable");
 
         assert_eq!(
             read_workspace_markers(&workspace),
-            Err(WorkspaceMarkerError::InvalidAgentMarker(
-                "unknown".to_string()
-            ))
+            Err(WorkspaceMarkerError::MissingBaseMarker)
         );
     }
 
     #[test]
-    fn read_workspace_agent_marker_reads_valid_marker() {
-        let temp = TestDir::new("agent-marker-read");
+    fn read_workspace_markers_rejects_empty_base_marker() {
+        let temp = TestDir::new("markers-empty-base");
         let workspace = temp.path.join("grove-feature-z");
         fs::create_dir_all(&workspace).expect("workspace should exist");
         fs::create_dir_all(workspace.join(".grove")).expect(".grove should exist");
-        fs::write(workspace.join(".grove/agent"), "codex\n").expect("marker should be writable");
+        fs::write(workspace.join(".grove/base"), "\n").expect("base marker should be writable");
 
-        let marker = read_workspace_agent_marker(&workspace).expect("marker should be readable");
-        assert_eq!(marker, AgentType::Codex);
-    }
-
-    #[test]
-    fn write_workspace_agent_marker_writes_expected_value() {
-        let temp = TestDir::new("agent-marker-write");
-        let workspace = temp.path.join("grove");
-        fs::create_dir_all(&workspace).expect("workspace should exist");
-
-        write_workspace_agent_marker(&workspace, AgentType::Claude).expect("write should succeed");
         assert_eq!(
-            fs::read_to_string(workspace.join(".grove/agent"))
-                .expect("marker should be readable")
-                .trim(),
-            "claude"
-        );
-
-        write_workspace_agent_marker(&workspace, AgentType::Codex).expect("write should succeed");
-        assert_eq!(
-            fs::read_to_string(workspace.join(".grove/agent"))
-                .expect("marker should be readable")
-                .trim(),
-            "codex"
-        );
-
-        write_workspace_agent_marker(&workspace, AgentType::OpenCode)
-            .expect("write should succeed");
-        assert_eq!(
-            fs::read_to_string(workspace.join(".grove/agent"))
-                .expect("marker should be readable")
-                .trim(),
-            "opencode"
+            read_workspace_markers(&workspace),
+            Err(WorkspaceMarkerError::EmptyBaseBranch)
         );
     }
 
