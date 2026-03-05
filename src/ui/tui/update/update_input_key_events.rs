@@ -233,6 +233,10 @@ impl GroveApp {
             self.handle_confirm_dialog_key(*key_event);
             return true;
         }
+        if self.session_cleanup_dialog().is_some() {
+            self.handle_session_cleanup_dialog_key(*key_event);
+            return true;
+        }
         if self.delete_dialog().is_some() {
             self.handle_delete_dialog_key(*key_event);
             return true;

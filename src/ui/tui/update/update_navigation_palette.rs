@@ -92,6 +92,7 @@ impl GroveApp {
             | UiCommand::OpenSettings
             | UiCommand::ToggleMouseCapture
             | UiCommand::ToggleUnsafe
+            | UiCommand::CleanupSessions
             | UiCommand::OpenHelp
             | UiCommand::Quit => true,
             UiCommand::OpenPreview => self.state.focus == PaneFocus::WorkspaceList,

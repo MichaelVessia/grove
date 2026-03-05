@@ -336,6 +336,7 @@ impl GroveApp {
             Some(ActiveDialog::Launch(_)) => Some("launch"),
             Some(ActiveDialog::Stop(_)) => Some("stop"),
             Some(ActiveDialog::Confirm(_)) => Some("confirm"),
+            Some(ActiveDialog::SessionCleanup(_)) => Some("session_cleanup"),
             Some(ActiveDialog::Delete(_)) => Some("delete"),
             Some(ActiveDialog::Merge(_)) => Some("merge"),
             Some(ActiveDialog::UpdateFromBase(_)) => Some("update_from_base"),
@@ -371,6 +372,13 @@ impl GroveApp {
         ConfirmDialogState
     );
     active_dialog_take_accessor!(take_confirm_dialog, Confirm, ConfirmDialogState);
+    active_dialog_accessors!(
+        session_cleanup_dialog,
+        session_cleanup_dialog_mut,
+        set_session_cleanup_dialog,
+        SessionCleanup,
+        SessionCleanupDialogState
+    );
     active_dialog_accessors!(
         delete_dialog,
         delete_dialog_mut,

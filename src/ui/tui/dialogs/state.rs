@@ -95,6 +95,14 @@ pub(super) struct ConfirmDialogState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct SessionCleanupDialogState {
+    pub(super) options: SessionCleanupOptions,
+    pub(super) plan: SessionCleanupPlan,
+    pub(super) last_error: Option<String>,
+    pub(super) focused_field: SessionCleanupDialogField,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DeleteDialogState {
     pub(super) project_name: Option<String>,
     pub(super) project_path: Option<PathBuf>,
@@ -152,12 +160,24 @@ pub(super) enum ConfirmDialogField {
     CancelButton,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SessionCleanupDialogField {
+    IncludeStale,
+    IncludeAttached,
+    ApplyButton,
+    CancelButton,
+}
+
 cyclic_field_nav!(pub(super) StopDialogField {
     StopButton, CancelButton,
 });
 
 cyclic_field_nav!(pub(super) ConfirmDialogField {
     ConfirmButton, CancelButton,
+});
+
+cyclic_field_nav!(pub(super) SessionCleanupDialogField {
+    IncludeStale, IncludeAttached, ApplyButton, CancelButton,
 });
 
 cyclic_field_nav!(pub(super) DeleteDialogField {

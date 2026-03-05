@@ -1,6 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::application::session_cleanup::{
+    SessionCleanupEntry, SessionCleanupOptions, SessionCleanupReason, apply_session_cleanup,
+    plan_session_cleanup,
+};
 use crate::infrastructure::event_log::now_millis;
 
 const DEBUG_RECORD_DIR: &str = ".grove";
@@ -19,6 +23,10 @@ pub(crate) struct CliArgs {
     pub(crate) benchmark_baseline_path: Option<PathBuf>,
     pub(crate) benchmark_write_baseline_path: Option<PathBuf>,
     pub(crate) benchmark_warn_regression_pct: Option<u64>,
+    pub(crate) cleanup_sessions: bool,
+    pub(crate) cleanup_sessions_apply: bool,
+    pub(crate) cleanup_sessions_include_stale: bool,
+    pub(crate) cleanup_sessions_include_attached: bool,
 }
 
 pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io::Result<CliArgs> {
@@ -65,6 +73,21 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io:
                     ));
                 }
                 cli.benchmark_scale = true;
+            }
+            "cleanup" => {
+                let Some(target) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "cleanup requires a target (`sessions`)",
+                    ));
+                };
+                if target != "sessions" {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("unsupported cleanup target `{target}`"),
+                    ));
+                }
+                cli.cleanup_sessions = true;
             }
             "--snapshot" => {
                 let Some(path) = args.next() else {
@@ -129,6 +152,15 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io:
                 }
                 cli.benchmark_warn_regression_pct = Some(parsed);
             }
+            "--apply" => {
+                cli.cleanup_sessions_apply = true;
+            }
+            "--include-stale" => {
+                cli.cleanup_sessions_include_stale = true;
+            }
+            "--include-attached" => {
+                cli.cleanup_sessions_include_attached = true;
+            }
             _ => {}
         }
     }
@@ -153,6 +185,30 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io:
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "benchmark flags require `benchmark-scale`",
+        ));
+    }
+
+    if !cli.cleanup_sessions
+        && (cli.cleanup_sessions_apply
+            || cli.cleanup_sessions_include_stale
+            || cli.cleanup_sessions_include_attached)
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "cleanup flags require `cleanup sessions`",
+        ));
+    }
+
+    if cli.cleanup_sessions
+        && (cli.replay_trace_path.is_some()
+            || cli.benchmark_scale
+            || cli.debug_record
+            || cli.event_log_path.is_some()
+            || cli.print_hello)
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "cleanup sessions cannot be combined with other command modes",
         ));
     }
 
@@ -205,8 +261,95 @@ pub(crate) fn ensure_event_log_parent_directory(path: &Path) -> std::io::Result<
     fs::create_dir_all(parent)
 }
 
+fn format_age(age_secs: Option<u64>) -> String {
+    let Some(age_secs) = age_secs else {
+        return "unknown".to_string();
+    };
+    if age_secs < 60 {
+        return format!("{age_secs}s");
+    }
+    if age_secs < 60 * 60 {
+        return format!("{}m", age_secs / 60);
+    }
+    if age_secs < 24 * 60 * 60 {
+        return format!("{}h", age_secs / (60 * 60));
+    }
+    format!("{}d", age_secs / (24 * 60 * 60))
+}
+
+fn reason_label(reason: SessionCleanupReason) -> &'static str {
+    match reason {
+        SessionCleanupReason::Orphaned => "orphan",
+        SessionCleanupReason::StaleAuxiliary => "stale",
+    }
+}
+
+fn print_cleanup_entries(prefix: &str, entries: &[SessionCleanupEntry]) {
+    for entry in entries {
+        println!(
+            "{prefix} {} [{}] age={} attached={}",
+            entry.session_name,
+            reason_label(entry.reason),
+            format_age(entry.age_secs),
+            entry.attached_clients
+        );
+    }
+}
+
+fn run_cleanup_sessions(cli: &CliArgs) -> std::io::Result<()> {
+    let options = SessionCleanupOptions {
+        include_stale: cli.cleanup_sessions_include_stale,
+        include_attached: cli.cleanup_sessions_include_attached,
+    };
+    let plan = plan_session_cleanup(options).map_err(std::io::Error::other)?;
+    if plan.candidates.is_empty() {
+        println!("cleanup sessions: no candidates");
+    } else {
+        println!("cleanup sessions: {} candidate(s)", plan.candidates.len());
+        print_cleanup_entries("-", plan.candidates.as_slice());
+    }
+    if !plan.skipped_attached.is_empty() {
+        println!(
+            "cleanup sessions: {} attached session(s) skipped, use --include-attached to include",
+            plan.skipped_attached.len()
+        );
+        print_cleanup_entries("~", plan.skipped_attached.as_slice());
+    }
+
+    if !cli.cleanup_sessions_apply {
+        if !plan.candidates.is_empty() {
+            println!("dry run only, rerun with `cleanup sessions --apply` to kill candidates");
+        }
+        return Ok(());
+    }
+
+    let applied = apply_session_cleanup(&plan);
+    for session_name in &applied.killed {
+        println!("killed {session_name}");
+    }
+    for session_name in &applied.already_gone {
+        println!("gone {session_name}");
+    }
+    for (session_name, error) in &applied.failures {
+        eprintln!("failed {session_name}: {error}");
+    }
+
+    if applied.failures.is_empty() {
+        return Ok(());
+    }
+
+    Err(std::io::Error::other(format!(
+        "cleanup sessions failed for {} session(s)",
+        applied.failures.len()
+    )))
+}
+
 pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
     let cli = parse_cli_args(args)?;
+
+    if cli.cleanup_sessions {
+        return run_cleanup_sessions(&cli);
+    }
 
     if cli.benchmark_scale {
         let options = crate::application::scale_benchmark::ScaleBenchmarkOptions {
@@ -302,6 +445,10 @@ mod tests {
                 benchmark_baseline_path: None,
                 benchmark_write_baseline_path: None,
                 benchmark_warn_regression_pct: None,
+                cleanup_sessions: false,
+                cleanup_sessions_apply: false,
+                cleanup_sessions_include_stale: false,
+                cleanup_sessions_include_attached: false,
             }
         );
     }
@@ -332,6 +479,10 @@ mod tests {
                 benchmark_baseline_path: None,
                 benchmark_write_baseline_path: None,
                 benchmark_warn_regression_pct: None,
+                cleanup_sessions: false,
+                cleanup_sessions_apply: false,
+                cleanup_sessions_include_stale: false,
+                cleanup_sessions_include_attached: false,
             }
         );
     }
@@ -364,6 +515,10 @@ mod tests {
                 benchmark_baseline_path: None,
                 benchmark_write_baseline_path: None,
                 benchmark_warn_regression_pct: None,
+                cleanup_sessions: false,
+                cleanup_sessions_apply: false,
+                cleanup_sessions_include_stale: false,
+                cleanup_sessions_include_attached: false,
             }
         );
     }
@@ -404,6 +559,10 @@ mod tests {
                 benchmark_baseline_path: Some(PathBuf::from("/tmp/baseline.json")),
                 benchmark_write_baseline_path: Some(PathBuf::from("/tmp/new-baseline.json")),
                 benchmark_warn_regression_pct: Some(25),
+                cleanup_sessions: false,
+                cleanup_sessions_apply: false,
+                cleanup_sessions_include_stale: false,
+                cleanup_sessions_include_attached: false,
             }
         );
     }
@@ -423,6 +582,47 @@ mod tests {
             "/tmp/trace.jsonl".to_string(),
         ])
         .expect_err("benchmark and replay should not combine");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn cli_parser_reads_cleanup_sessions_options() {
+        let parsed = parse_cli_args(vec![
+            "cleanup".to_string(),
+            "sessions".to_string(),
+            "--apply".to_string(),
+            "--include-stale".to_string(),
+            "--include-attached".to_string(),
+        ])
+        .expect("cleanup arguments should parse");
+
+        assert_eq!(
+            parsed,
+            CliArgs {
+                print_hello: false,
+                event_log_path: None,
+                debug_record: false,
+                replay_trace_path: None,
+                replay_snapshot_path: None,
+                replay_emit_test_name: None,
+                replay_invariant_only: false,
+                benchmark_scale: false,
+                benchmark_json_output: false,
+                benchmark_baseline_path: None,
+                benchmark_write_baseline_path: None,
+                benchmark_warn_regression_pct: None,
+                cleanup_sessions: true,
+                cleanup_sessions_apply: true,
+                cleanup_sessions_include_stale: true,
+                cleanup_sessions_include_attached: true,
+            }
+        );
+    }
+
+    #[test]
+    fn cli_parser_rejects_cleanup_flags_without_cleanup_subcommand() {
+        let error = parse_cli_args(vec!["--apply".to_string()])
+            .expect_err("cleanup flags without cleanup command should fail");
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     }
 

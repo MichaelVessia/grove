@@ -203,6 +203,9 @@ impl GroveApp {
             UiCommand::ToggleUnsafe => {
                 self.launch_skip_permissions = !self.launch_skip_permissions;
             }
+            UiCommand::CleanupSessions => {
+                self.open_session_cleanup_dialog();
+            }
             UiCommand::OpenHelp => {
                 self.open_keybind_help();
             }

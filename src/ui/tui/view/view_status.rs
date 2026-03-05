@@ -9,6 +9,7 @@ impl GroveApp {
             "delete" => "Delete",
             "merge" => "Merge",
             "update_from_base" => "Update",
+            "session_cleanup" => "Cleanup",
             "create" => "Create",
             "edit" => "Edit",
             "project" => "Project",

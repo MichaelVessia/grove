@@ -55,6 +55,10 @@ use crate::application::interactive::{
     multiplexer_send_input_command, render_cursor_overlay_ansi,
 };
 use crate::application::preview::PreviewState;
+use crate::application::session_cleanup::{
+    SessionCleanupOptions, SessionCleanupPlan, SessionCleanupReason, apply_session_cleanup,
+    plan_session_cleanup_for_workspaces,
+};
 use crate::application::services::runtime_service::{
     detect_status_with_session_override, execute_launch_request_with_result_for_mode,
     execute_restart_workspace_in_pane_with_result, execute_shell_launch_request_for_mode,
@@ -183,6 +187,7 @@ enum ActiveDialog {
     Launch(LaunchDialogState),
     Stop(StopDialogState),
     Confirm(ConfirmDialogState),
+    SessionCleanup(SessionCleanupDialogState),
     Delete(DeleteDialogState),
     Merge(MergeDialogState),
     UpdateFromBase(UpdateFromBaseDialogState),

@@ -1,6 +1,6 @@
 use super::*;
 
-static COMMAND_META: [UiCommandMeta; 35] = [
+static COMMAND_META: [UiCommandMeta; 36] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_focus",
@@ -791,6 +791,20 @@ static COMMAND_META: [UiCommandMeta; 35] = [
     },
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
+            id: "palette:cleanup_sessions",
+            title: "Cleanup Sessions",
+            description: "Review and clean orphaned Grove tmux sessions",
+            tags: &["cleanup", "sessions", "tmux", "orphaned", "stale"],
+            category: "System",
+        }),
+        help_hints: &[HelpHintSpec {
+            context: HelpHintContext::Global,
+            label: "Palette cleanup sessions",
+        }],
+        keybindings: &[],
+    },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
             id: "palette:open_help",
             title: "Keybind Help",
             description: "Open keyboard shortcut help (?)",
@@ -874,9 +888,10 @@ impl UiCommand {
             UiCommand::OpenSettings => &COMMAND_META[29],
             UiCommand::ToggleMouseCapture => &COMMAND_META[30],
             UiCommand::ToggleUnsafe => &COMMAND_META[31],
-            UiCommand::OpenHelp => &COMMAND_META[32],
-            UiCommand::OpenCommandPalette => &COMMAND_META[33],
-            UiCommand::Quit => &COMMAND_META[34],
+            UiCommand::CleanupSessions => &COMMAND_META[32],
+            UiCommand::OpenHelp => &COMMAND_META[33],
+            UiCommand::OpenCommandPalette => &COMMAND_META[34],
+            UiCommand::Quit => &COMMAND_META[35],
         }
     }
 }

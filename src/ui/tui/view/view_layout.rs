@@ -84,6 +84,7 @@ impl GroveApp {
                 | HIT_ID_DELETE_DIALOG
                 | HIT_ID_STOP_DIALOG
                 | HIT_ID_CONFIRM_DIALOG
+                | HIT_ID_SESSION_CLEANUP_DIALOG
                 | HIT_ID_KEYBIND_HELP_DIALOG => HitRegion::Outside,
                 _ => HitRegion::Outside,
             };

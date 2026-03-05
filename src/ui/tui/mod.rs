@@ -44,6 +44,8 @@ mod dialogs_projects_key;
 mod dialogs_projects_reorder;
 #[path = "dialogs/dialogs_projects_state.rs"]
 mod dialogs_projects_state;
+#[path = "dialogs/dialogs_session_cleanup.rs"]
+mod dialogs_session_cleanup;
 #[path = "dialogs/dialogs_settings.rs"]
 mod dialogs_settings;
 #[path = "dialogs/state.rs"]
@@ -135,6 +137,8 @@ mod view_overlays_edit;
 mod view_overlays_help;
 #[path = "view/view_overlays_projects.rs"]
 mod view_overlays_projects;
+#[path = "view/view_overlays_session_cleanup.rs"]
+mod view_overlays_session_cleanup;
 #[path = "view/view_overlays_settings.rs"]
 mod view_overlays_settings;
 #[path = "view/view_overlays_workspace_delete.rs"]
@@ -2576,6 +2580,21 @@ mod tests {
     }
 
     #[test]
+    fn command_palette_exposes_cleanup_sessions_action() {
+        let app = fixture_app();
+        let list_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        let cleanup_id = UiCommand::CleanupSessions
+            .palette_spec()
+            .map(|spec| spec.id)
+            .expect("cleanup command should be palette discoverable");
+        assert!(list_ids.iter().any(|id| id == cleanup_id));
+    }
+
+    #[test]
     fn ui_command_palette_ids_are_unique_and_roundtrip() {
         let mut ids = std::collections::HashSet::new();
         for command in UiCommand::all() {
@@ -2651,9 +2670,9 @@ mod tests {
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
                 .count(),
-            33
+            34
         );
-        assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 12);
+        assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 13);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::Workspace).len(),
             10
