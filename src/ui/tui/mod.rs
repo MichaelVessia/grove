@@ -220,7 +220,7 @@ mod tests {
         StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
         StopDialogField, TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField,
         WORKSPACE_ITEM_HEIGHT, WorkspaceAttention, WorkspaceShellLaunchCompletion,
-        WorkspaceStatusCapture, ansi_16_color, ansi_lines_to_styled_lines,
+        WorkspaceStatusCapture, WorkspaceTabKind, ansi_16_color, ansi_lines_to_styled_lines,
         ansi_lines_to_styled_lines_for_theme, decode_create_dialog_tab_hit_data,
         decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
@@ -6071,26 +6071,27 @@ mod tests {
         mod mouse_preview {
             use super::*;
 
-            fn preview_tab_click_point(sidebar_width_pct: u16, tab: PreviewTab) -> (u16, u16) {
-                let layout = GroveApp::view_layout_for_size(100, 40, sidebar_width_pct, false);
+            fn preview_tab_click_point(app: &GroveApp, tab_kind: WorkspaceTabKind) -> (u16, u16) {
+                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
                 let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
                 let tab_y = preview_inner.y.saturating_add(1);
                 let mut tab_x = preview_inner.x;
+                let Some(workspace) = app.state.selected_workspace() else {
+                    return (preview_inner.x, tab_y);
+                };
+                let Some(tabs) = app.workspace_tabs.get(workspace.path.as_path()) else {
+                    return (preview_inner.x, tab_y);
+                };
 
-                for (index, current_tab) in [PreviewTab::Agent, PreviewTab::Shell, PreviewTab::Git]
-                    .iter()
-                    .copied()
-                    .enumerate()
-                {
+                for (index, current_tab) in tabs.tabs.iter().enumerate() {
                     if index > 0 {
                         tab_x = tab_x.saturating_add(1);
                     }
-                    let Some(tab_width) =
-                        u16::try_from(current_tab.label().len().saturating_add(2)).ok()
-                    else {
+                    let title = format!(" {} ", current_tab.title);
+                    let Some(tab_width) = u16::try_from(title.len()).ok() else {
                         continue;
                     };
-                    if current_tab == tab {
+                    if current_tab.kind == tab_kind {
                         return (tab_x, tab_y);
                     }
                     tab_x = tab_x.saturating_add(tab_width);
@@ -6102,7 +6103,17 @@ mod tests {
             #[test]
             fn mouse_click_preview_tab_switches_tabs() {
                 let mut app = fixture_app();
-                assert_eq!(app.preview_tab, PreviewTab::Agent);
+                app.state.selected_index = 1;
+                app.open_new_shell_tab();
+                let Some(home_id) = app
+                    .selected_workspace_tabs_state()
+                    .and_then(|tabs| tabs.find_kind(WorkspaceTabKind::Home))
+                    .map(|tab| tab.id)
+                else {
+                    panic!("home tab should exist");
+                };
+                let _ = app.select_tab_by_id_for_selected_workspace(home_id);
+                assert_eq!(app.preview_tab, PreviewTab::Home);
 
                 ftui::Model::update(
                     &mut app,
@@ -6111,8 +6122,7 @@ mod tests {
                         height: 40,
                     },
                 );
-                let (shell_tab_x, tab_y) =
-                    preview_tab_click_point(app.sidebar_width_pct, PreviewTab::Shell);
+                let (shell_tab_x, tab_y) = preview_tab_click_point(&app, WorkspaceTabKind::Shell);
 
                 ftui::Model::update(
                     &mut app,
@@ -6134,8 +6144,18 @@ mod tests {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 app.state.selected_index = 1;
+                app.open_new_shell_tab();
+                app.open_or_focus_git_tab();
+                let Some(shell_id) = app
+                    .selected_workspace_tabs_state()
+                    .and_then(|tabs| tabs.find_kind(WorkspaceTabKind::Shell))
+                    .map(|tab| tab.id)
+                else {
+                    panic!("shell tab should exist");
+                };
+                let _ = app.select_tab_by_id_for_selected_workspace(shell_id);
                 assert!(app.enter_interactive(Instant::now()));
-                assert_eq!(app.preview_tab, PreviewTab::Agent);
+                assert_eq!(app.preview_tab, PreviewTab::Shell);
 
                 ftui::Model::update(
                     &mut app,
@@ -6144,8 +6164,7 @@ mod tests {
                         height: 40,
                     },
                 );
-                let (git_tab_x, tab_y) =
-                    preview_tab_click_point(app.sidebar_width_pct, PreviewTab::Git);
+                let (git_tab_x, tab_y) = preview_tab_click_point(&app, WorkspaceTabKind::Git);
 
                 ftui::Model::update(
                     &mut app,
@@ -8275,7 +8294,17 @@ mod tests {
                 app.state.selected_index = 1;
                 app.state.mode = UiMode::List;
                 app.state.focus = PaneFocus::WorkspaceList;
-                app.preview_tab = PreviewTab::Agent;
+                app.open_new_shell_tab();
+                app.open_or_focus_git_tab();
+                let Some(home_id) = app
+                    .selected_workspace_tabs_state()
+                    .and_then(|tabs| tabs.find_kind(WorkspaceTabKind::Home))
+                    .map(|tab| tab.id)
+                else {
+                    panic!("home tab should exist");
+                };
+                let _ = app.select_tab_by_id_for_selected_workspace(home_id);
+                assert_eq!(app.preview_tab, PreviewTab::Home);
 
                 ftui::Model::update(
                     &mut app,
@@ -8297,7 +8326,7 @@ mod tests {
                             .with_kind(KeyEventKind::Press),
                     ),
                 );
-                assert_eq!(app.preview_tab, PreviewTab::Agent);
+                assert_eq!(app.preview_tab, PreviewTab::Home);
             }
 
             #[test]
