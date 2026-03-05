@@ -204,17 +204,18 @@ mod tests {
     use super::{
         AppDependencies, ClipboardAccess, CommandTmuxInput, CreateDialogField, CreateDialogTab,
         CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
-        DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
-        HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW,
-        HelpHintContext, LaunchDialogField, LaunchDialogState, LazygitLaunchCompletion,
-        LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
-        PendingAutoStartWorkspace, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
-        ProjectAddDialogField, ProjectDefaultsDialogField, RefreshWorkspacesCompletion,
-        SettingsDialogField, StartAgentCompletion, StartAgentConfigField, StartAgentConfigState,
-        StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput, UiCommand,
-        UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
-        WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, ansi_16_color,
-        ansi_lines_to_styled_lines, ansi_lines_to_styled_lines_for_theme,
+        DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_CREATE_DIALOG_TAB,
+        HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST,
+        HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW, HelpHintContext, LaunchDialogField,
+        LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField,
+        MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS, PendingAutoStartWorkspace,
+        PendingResizeVerification, PreviewPollCompletion, PreviewTab, ProjectAddDialogField,
+        ProjectDefaultsDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
+        StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
+        StopDialogField, TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField,
+        WORKSPACE_ITEM_HEIGHT, WorkspaceAttention, WorkspaceShellLaunchCompletion,
+        WorkspaceStatusCapture, ansi_16_color, ansi_lines_to_styled_lines,
+        ansi_lines_to_styled_lines_for_theme, decode_create_dialog_tab_hit_data,
         decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
     use crate::application::interactive::InteractiveState;
@@ -1796,25 +1797,47 @@ mod tests {
             },
         );
 
-        let width = 80u16;
-        let height = 24u16;
-        let dialog_width = width.saturating_sub(8).min(90);
-        let dialog_height = 25u16;
-        let dialog_x = width.saturating_sub(dialog_width) / 2;
-        let dialog_y = height.saturating_sub(dialog_height) / 2;
-        let inner_x = dialog_x.saturating_add(1);
-        let tab_row_y = dialog_y.saturating_add(1).saturating_add(2);
+        let mut manual_click: Option<(u16, u16)> = None;
+        let mut pull_request_click: Option<(u16, u16)> = None;
+        with_rendered_frame(&app, 80, 24, |frame| {
+            for y in 0..frame.height() {
+                for x in 0..frame.width() {
+                    let Some((hit_id, _region, hit_data)) = frame.hit_test(x, y) else {
+                        continue;
+                    };
+                    if hit_id != HitId::new(HIT_ID_CREATE_DIALOG_TAB) {
+                        continue;
+                    }
+                    match decode_create_dialog_tab_hit_data(hit_data) {
+                        Some(CreateDialogTab::Manual) => {
+                            if manual_click.is_none() {
+                                manual_click = Some((x, y));
+                            }
+                        }
+                        Some(CreateDialogTab::PullRequest) => {
+                            if pull_request_click.is_none() {
+                                pull_request_click = Some((x, y));
+                            }
+                        }
+                        None => {}
+                    }
+                }
+            }
+        });
 
-        let manual_tab_width =
-            u16::try_from("Manual".len().saturating_add(2)).expect("manual tab width should fit");
-        let pull_tab_x = inner_x.saturating_add(manual_tab_width).saturating_add(1);
+        let Some((manual_x, manual_y)) = manual_click else {
+            panic!("manual mode tab hit target should be present");
+        };
+        let Some((pull_request_x, pull_request_y)) = pull_request_click else {
+            panic!("pull-request mode tab hit target should be present");
+        };
 
         ftui::Model::update(
             &mut app,
             Msg::Mouse(MouseEvent::new(
                 MouseEventKind::Down(MouseButton::Left),
-                pull_tab_x.saturating_add(1),
-                tab_row_y,
+                pull_request_x,
+                pull_request_y,
             )),
         );
 
@@ -1831,8 +1854,8 @@ mod tests {
             &mut app,
             Msg::Mouse(MouseEvent::new(
                 MouseEventKind::Down(MouseButton::Left),
-                inner_x.saturating_add(1),
-                tab_row_y,
+                manual_x,
+                manual_y,
             )),
         );
 

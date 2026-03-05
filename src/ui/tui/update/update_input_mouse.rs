@@ -55,9 +55,8 @@ impl GroveApp {
 
         let dialog_width = width.saturating_sub(8).min(90);
         let dialog_height = 25u16;
-        let dialog_x = width.saturating_sub(dialog_width) / 2;
-        let dialog_y = height.saturating_sub(dialog_height) / 2;
-        let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+        let dialog_area =
+            Self::centered_modal_rect(Rect::from_size(width, height), dialog_width, dialog_height);
         let inner = Block::new().borders(Borders::ALL).inner(dialog_area);
         if inner.is_empty() {
             return None;
@@ -88,6 +87,20 @@ impl GroveApp {
         }
 
         None
+    }
+
+    fn create_dialog_tab_from_hit_grid(&self, x: u16, y: u16) -> Option<CreateDialogTab> {
+        self.last_hit_grid
+            .borrow()
+            .as_ref()
+            .and_then(|grid| grid.hit_test(x, y))
+            .and_then(|(id, _region, data)| {
+                if id.id() == HIT_ID_CREATE_DIALOG_TAB {
+                    decode_create_dialog_tab_hit_data(data)
+                } else {
+                    None
+                }
+            })
     }
 
     fn sidebar_ratio_for_drag_pointer(&self, pointer_x: i32) -> u16 {
@@ -258,8 +271,9 @@ impl GroveApp {
 
         if self.modal_open() {
             if matches!(mouse_event.kind, MouseEventKind::Down(MouseButton::Left))
-                && let Some(next_tab) =
-                    self.create_dialog_tab_at_pointer(mouse_event.x, mouse_event.y)
+                && let Some(next_tab) = self
+                    .create_dialog_tab_from_hit_grid(mouse_event.x, mouse_event.y)
+                    .or_else(|| self.create_dialog_tab_at_pointer(mouse_event.x, mouse_event.y))
                 && let Some(dialog) = self.create_dialog_mut()
                 && dialog.tab != next_tab
             {

@@ -199,7 +199,7 @@ impl GroveApp {
             content_width,
             label_width,
             "Create",
-            "Tab/S-Tab or C-n/C-p fields, j/k adjust controls, ';' separates setup commands, Space toggles auto-run, h/l buttons, Enter/Esc",
+            "Tab/S-Tab or C-n/C-p fields, Alt+[/] or click mode tabs, j/k adjust controls, ';' separates setup commands, Space toggles auto-run, h/l buttons, Enter/Esc",
             theme,
         );
         Self::keybind_help_push_modal_row(

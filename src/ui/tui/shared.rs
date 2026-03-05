@@ -56,6 +56,7 @@ pub(super) const HIT_ID_PROJECT_DEFAULTS_DIALOG: u32 = 17;
 pub(super) const HIT_ID_STOP_DIALOG: u32 = 18;
 pub(super) const HIT_ID_CONFIRM_DIALOG: u32 = 19;
 pub(super) const HIT_ID_WORKSPACE_PR_LINK: u32 = 20;
+pub(super) const HIT_ID_CREATE_DIALOG_TAB: u32 = 21;
 pub(super) const MAX_PENDING_INPUT_TRACES: usize = 256;
 pub(super) const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 pub(super) const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
@@ -87,6 +88,23 @@ pub(super) fn decode_workspace_pr_hit_data(data: u64) -> Option<(usize, usize)> 
     let mask = u64::from(u32::MAX);
     let pull_request = usize::try_from(data & mask).ok()?;
     Some((workspace, pull_request))
+}
+
+pub(super) fn encode_create_dialog_tab_hit_data(tab: crate::ui::tui::CreateDialogTab) -> u64 {
+    match tab {
+        crate::ui::tui::CreateDialogTab::Manual => 0,
+        crate::ui::tui::CreateDialogTab::PullRequest => 1,
+    }
+}
+
+pub(super) fn decode_create_dialog_tab_hit_data(
+    data: u64,
+) -> Option<crate::ui::tui::CreateDialogTab> {
+    match data {
+        0 => Some(crate::ui::tui::CreateDialogTab::Manual),
+        1 => Some(crate::ui::tui::CreateDialogTab::PullRequest),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
