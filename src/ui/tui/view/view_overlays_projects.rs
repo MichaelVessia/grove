@@ -184,6 +184,30 @@ impl GroveApp {
             return;
         }
 
+        let dialog_height = area.height.min(20);
+        let inner_height = usize::from(dialog_height.saturating_sub(2));
+        let reorder_active = dialog.reorder.is_some();
+        let hints = if reorder_active {
+            "Reorder mode, j/k or Up/Down or Tab/S-Tab/C-n/C-p move, Enter save, Esc cancel"
+        } else {
+            "Enter focus, Up/Down or Tab/S-Tab/C-n/C-p navigate, Ctrl+R reorder, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close"
+        };
+        let hint_rows = modal_wrapped_hint_rows(content_width, theme, hints);
+        let header_line_count = 3usize
+            .saturating_add(usize::from(reorder_active))
+            .saturating_add(1);
+        let footer_line_count = 1usize.saturating_add(hint_rows.len());
+        let list_line_budget =
+            inner_height.saturating_sub(header_line_count.saturating_add(footer_line_count));
+        let visible_projects = (list_line_budget / 2)
+            .max(1)
+            .min(dialog.filtered_project_indices.len());
+        let scroll_offset = Self::project_dialog_scroll_offset(
+            dialog.selected_filtered_index,
+            dialog.filtered_project_indices.len(),
+            visible_projects,
+        );
+
         let mut lines = Vec::new();
         lines.push(modal_labeled_input_row(
             content_width,
@@ -200,7 +224,6 @@ impl GroveApp {
             ),
             Style::new().fg(theme.overlay0),
         )]));
-        let reorder_active = dialog.reorder.is_some();
         if reorder_active {
             lines.push(FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width("Reorder mode active", content_width),
@@ -215,13 +238,18 @@ impl GroveApp {
                 Style::new().fg(theme.subtext0),
             )]));
         } else {
-            for (visible_index, project_index) in
-                dialog.filtered_project_indices.iter().take(8).enumerate()
-            {
+            let visible_end = scroll_offset
+                .saturating_add(visible_projects)
+                .min(dialog.filtered_project_indices.len());
+            for filtered_index in scroll_offset..visible_end {
+                let Some(project_index) = dialog.filtered_project_indices.get(filtered_index)
+                else {
+                    continue;
+                };
                 let Some(project) = self.projects.get(*project_index) else {
                     continue;
                 };
-                let selected = visible_index == dialog.selected_filtered_index;
+                let selected = filtered_index == dialog.selected_filtered_index;
                 let marker = if selected && reorder_active {
                     "↕"
                 } else if selected {
@@ -250,12 +278,7 @@ impl GroveApp {
         }
 
         lines.push(FtLine::raw(""));
-        let hints = if reorder_active {
-            "Reorder mode, j/k or Up/Down or Tab/S-Tab/C-n/C-p move, Enter save, Esc cancel"
-        } else {
-            "Enter focus, Up/Down or Tab/S-Tab/C-n/C-p navigate, Ctrl+R reorder, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close"
-        };
-        lines.extend(modal_wrapped_hint_rows(content_width, theme, hints));
+        lines.extend(hint_rows);
 
         let content = OverlayModalContent {
             title: "Projects",
@@ -269,11 +292,53 @@ impl GroveApp {
                 ModalSizeConstraints::new()
                     .min_width(dialog_width)
                     .max_width(dialog_width)
-                    .min_height(16)
-                    .max_height(20),
+                    .min_height(dialog_height)
+                    .max_height(dialog_height),
             )
             .backdrop(BackdropConfig::new(theme.crust, 0.55))
             .hit_id(HitId::new(HIT_ID_PROJECT_DIALOG))
             .render(area, frame);
+    }
+
+    fn project_dialog_scroll_offset(
+        selected_index: usize,
+        total_items: usize,
+        visible_items: usize,
+    ) -> usize {
+        if total_items == 0 || visible_items == 0 {
+            return 0;
+        }
+
+        let clamped_selected = selected_index.min(total_items.saturating_sub(1));
+        let max_offset = total_items.saturating_sub(visible_items);
+        clamped_selected
+            .saturating_add(1)
+            .saturating_sub(visible_items)
+            .min(max_offset)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_dialog_scroll_offset_handles_empty_or_zero_visible_window() {
+        assert_eq!(GroveApp::project_dialog_scroll_offset(0, 0, 4), 0);
+        assert_eq!(GroveApp::project_dialog_scroll_offset(3, 8, 0), 0);
+    }
+
+    #[test]
+    fn project_dialog_scroll_offset_keeps_selection_visible() {
+        assert_eq!(GroveApp::project_dialog_scroll_offset(0, 11, 4), 0);
+        assert_eq!(GroveApp::project_dialog_scroll_offset(3, 11, 4), 0);
+        assert_eq!(GroveApp::project_dialog_scroll_offset(4, 11, 4), 1);
+        assert_eq!(GroveApp::project_dialog_scroll_offset(10, 11, 4), 7);
+    }
+
+    #[test]
+    fn project_dialog_scroll_offset_clamps_selected_index_and_offset() {
+        assert_eq!(GroveApp::project_dialog_scroll_offset(99, 5, 3), 2);
+        assert_eq!(GroveApp::project_dialog_scroll_offset(2, 5, 10), 0);
     }
 }
