@@ -751,12 +751,7 @@ mod tests {
             ]]
         );
 
-        assert_eq!(
-            fs::read_to_string(result.workspace_path.join(".grove/agent"))
-                .expect("agent marker should be readable")
-                .trim(),
-            "claude"
-        );
+        assert!(!result.workspace_path.join(".grove/agent").exists());
         assert_eq!(
             fs::read_to_string(result.workspace_path.join(".grove/base"))
                 .expect("base marker should be readable")
@@ -819,12 +814,7 @@ mod tests {
                 .trim(),
             "feature/auth.v2"
         );
-        assert_eq!(
-            fs::read_to_string(result.workspace_path.join(".grove/agent"))
-                .expect("agent marker should be readable")
-                .trim(),
-            "codex"
-        );
+        assert!(!result.workspace_path.join(".grove/agent").exists());
     }
 
     #[test]
@@ -1006,7 +996,7 @@ mod tests {
         fs::create_dir_all(repo_root.join(".git/info")).expect("git info dir should exist");
         fs::write(
             repo_root.join(".git/info/exclude"),
-            ".grove/agent\n/target/\n",
+            ".grove/base\n/target/\n",
         )
         .expect("git exclude should be writable");
 

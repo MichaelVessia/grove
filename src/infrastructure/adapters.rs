@@ -387,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn build_workspaces_includes_main_and_only_marker_managed_worktrees() {
+    fn build_workspaces_includes_main_and_unmanaged_worktrees() {
         let temp = TestDir::new("build");
         let main_root = temp.path.join("grove");
         let managed = temp.path.join("grove-feature-a");
@@ -398,7 +398,6 @@ mod tests {
         fs::create_dir_all(&unmanaged).expect("unmanaged should exist");
         fs::create_dir_all(managed.join(".grove")).expect(".grove should exist");
 
-        fs::write(managed.join(".grove/agent"), "codex\n").expect("agent marker should exist");
         fs::write(managed.join(".grove/base"), "main\n").expect("base marker should exist");
 
         let parsed = parse_worktree_porcelain(&format!(
@@ -419,18 +418,22 @@ mod tests {
             build_workspaces(&parsed, Path::new(&main_root), "grove", &activity_by_branch)
                 .expect("workspace build should succeed");
 
-        assert_eq!(workspaces.len(), 2);
+        assert_eq!(workspaces.len(), 3);
         assert_eq!(workspaces[0].name, "grove");
         assert_eq!(workspaces[0].status, WorkspaceStatus::Main);
         assert_eq!(workspaces[0].agent, AgentType::Claude);
 
         assert_eq!(workspaces[1].name, "feature-a");
-        assert_eq!(workspaces[1].agent, AgentType::Codex);
+        assert_eq!(workspaces[1].agent, AgentType::Claude);
         assert_eq!(workspaces[1].base_branch.as_deref(), Some("main"));
+
+        assert_eq!(workspaces[2].name, "unmanaged");
+        assert_eq!(workspaces[2].agent, AgentType::Claude);
+        assert_eq!(workspaces[2].base_branch, None);
     }
 
     #[test]
-    fn build_workspaces_main_uses_agent_marker_when_present() {
+    fn build_workspaces_ignores_agent_markers() {
         let temp = TestDir::new("build-main-agent");
         let main_root = temp.path.join("grove");
         let managed = temp.path.join("grove-feature-a");
@@ -441,7 +444,7 @@ mod tests {
         fs::create_dir_all(managed.join(".grove")).expect(".grove should exist");
         fs::write(main_root.join(".grove/agent"), "codex\n")
             .expect("main agent marker should exist");
-        fs::write(managed.join(".grove/agent"), "claude\n").expect("agent marker should exist");
+        fs::write(managed.join(".grove/agent"), "opencode\n").expect("agent marker should exist");
         fs::write(managed.join(".grove/base"), "main\n").expect("base marker should exist");
 
         let parsed = parse_worktree_porcelain(&format!(
@@ -456,8 +459,9 @@ mod tests {
 
         assert_eq!(workspaces.len(), 2);
         assert_eq!(workspaces[0].name, "grove");
-        assert_eq!(workspaces[0].agent, AgentType::Codex);
+        assert_eq!(workspaces[0].agent, AgentType::Claude);
         assert_eq!(workspaces[0].status, WorkspaceStatus::Main);
+        assert_eq!(workspaces[1].agent, AgentType::Claude);
     }
 
     #[test]

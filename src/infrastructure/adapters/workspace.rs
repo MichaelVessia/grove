@@ -74,20 +74,11 @@ pub(super) fn build_workspaces(
             .and_then(|branch_name| activity_by_branch.get(branch_name).copied());
 
         let metadata = if is_main {
-            Some(main_workspace_metadata(&entry.path)?)
+            main_workspace_metadata(&entry.path)?
         } else {
             marker_metadata(&entry.path)?
         };
-
-        let Some(metadata) = metadata else {
-            continue;
-        };
-
-        let status = if metadata.supported_agent {
-            workspace_status(is_main, &entry.branch, entry.is_detached)
-        } else {
-            WorkspaceStatus::Unsupported
-        };
+        let status = workspace_status(is_main, &entry.branch, entry.is_detached);
 
         let workspace = Workspace::try_new(
             workspace_name_from_path(&entry.path, repo_name, is_main),

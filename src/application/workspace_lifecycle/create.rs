@@ -1,8 +1,6 @@
 use std::fs;
 use std::path::Path;
 
-use crate::domain::AgentType;
-
 use super::{
     BranchMode, CommandSetupCommandRunner, CreateWorkspaceRequest, CreateWorkspaceResult,
     GitCommandRunner, SetupCommandContext, SetupCommandRunner, SetupScriptContext,
@@ -48,11 +46,7 @@ pub(super) fn create_workspace_with_template(
 
     fs::create_dir_all(&workspace_path)
         .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))?;
-    write_workspace_markers(
-        &workspace_path,
-        request.agent,
-        &request.marker_base_branch(),
-    )?;
+    write_workspace_markers(&workspace_path, &request.marker_base_branch())?;
     super::ensure_grove_git_exclude_entries(repo_root)?;
     super::copy_env_files(repo_root, &workspace_path)?;
 
@@ -145,9 +139,7 @@ fn run_create_worktree_command(
 
 fn write_workspace_markers(
     workspace_path: &Path,
-    agent: AgentType,
     base_branch: &str,
 ) -> Result<(), WorkspaceLifecycleError> {
-    super::write_workspace_agent_marker(workspace_path, agent)?;
     super::write_workspace_base_marker(workspace_path, base_branch)
 }
