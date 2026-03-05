@@ -15,6 +15,23 @@ use crate::infrastructure::paths::refer_to_same_location;
 use crate::ui::mouse::clamp_sidebar_ratio;
 
 impl GroveApp {
+    fn default_workspace_tabs_and_last_agent(
+        workspaces: &[crate::domain::Workspace],
+    ) -> (
+        HashMap<PathBuf, WorkspaceTabsState>,
+        HashMap<PathBuf, AgentType>,
+    ) {
+        let workspace_tabs = workspaces
+            .iter()
+            .map(|workspace| (workspace.path.clone(), WorkspaceTabsState::new()))
+            .collect::<HashMap<PathBuf, WorkspaceTabsState>>();
+        let last_agent_selection = workspaces
+            .iter()
+            .map(|workspace| (workspace.path.clone(), workspace.agent))
+            .collect::<HashMap<PathBuf, AgentType>>();
+        (workspace_tabs, last_agent_selection)
+    }
+
     pub(super) fn new(event_log: Box<dyn EventLogger>, debug_record_start_ts: Option<u64>) -> Self {
         let (config, config_path, _config_error) = load_runtime_config();
         let bootstrap = bootstrap_data_for_projects(&config.projects);
@@ -111,12 +128,17 @@ impl GroveApp {
                 .disable_sequences()
                 .validated(),
         );
+        let state = AppState::new(bootstrap.workspaces);
+        let (workspace_tabs, last_agent_selection) =
+            Self::default_workspace_tabs_and_last_agent(&state.workspaces);
         let mut app = Self {
             repo_name: bootstrap.repo_name,
             projects,
-            state: AppState::new(bootstrap.workspaces),
+            state,
             discovery_state: bootstrap.discovery_state,
             preview_tab: PreviewTab::Agent,
+            workspace_tabs,
+            last_agent_selection,
             preview: PreviewState::new(),
             notifications: NotificationQueue::new(
                 QueueConfig::new()
@@ -157,6 +179,7 @@ impl GroveApp {
             session: SessionState {
                 interactive: None,
                 last_tmux_error: None,
+                agent_sessions: SessionTracker::default(),
                 lazygit_sessions: SessionTracker::default(),
                 shell_sessions: SessionTracker::default(),
                 lazygit_command: resolve_lazygit_command(),
@@ -211,6 +234,7 @@ impl GroveApp {
             last_sidebar_mouse_scroll_at: None,
             last_sidebar_mouse_scroll_delta: 0,
         };
+        app.sync_workspace_tab_maps();
         app.reconcile_workspace_attention_tracking();
         app.refresh_preview_summary();
         app

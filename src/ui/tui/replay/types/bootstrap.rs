@@ -43,6 +43,7 @@ enum ReplayMode {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 enum ReplayPreviewTab {
+    Home,
     Agent,
     Shell,
     Git,
@@ -176,6 +177,7 @@ impl ReplayMode {
 impl ReplayPreviewTab {
     fn from_preview_tab(tab: PreviewTab) -> Self {
         match tab {
+            PreviewTab::Home => Self::Home,
             PreviewTab::Agent => Self::Agent,
             PreviewTab::Shell => Self::Shell,
             PreviewTab::Git => Self::Git,
@@ -184,6 +186,7 @@ impl ReplayPreviewTab {
 
     fn to_preview_tab(self) -> PreviewTab {
         match self {
+            Self::Home => PreviewTab::Home,
             Self::Agent => PreviewTab::Agent,
             Self::Shell => PreviewTab::Shell,
             Self::Git => PreviewTab::Git,

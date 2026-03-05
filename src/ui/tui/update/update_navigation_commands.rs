@@ -36,35 +36,10 @@ impl GroveApp {
         self.set_sidebar_ratio(ratio);
     }
 
-    pub(super) fn select_preview_tab(&mut self, next_tab: PreviewTab) {
-        if next_tab == self.preview_tab {
-            return;
-        }
-
-        self.preview_tab = next_tab;
-        self.clear_preview_selection();
-        if self.preview_tab == PreviewTab::Git
-            && let Some(workspace) = self.state.selected_workspace()
-        {
-            let session_name = git_session_name_for_workspace(workspace);
-            self.session.lazygit_sessions.retry_failed(&session_name);
-        }
-        if matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
-            && let Some(workspace) = self.state.selected_workspace()
-        {
-            let session_name = shell_session_name_for_workspace(workspace);
-            self.session.shell_sessions.retry_failed(&session_name);
-        }
-        self.poll_preview();
-    }
-
     fn cycle_preview_tab(&mut self, direction: i8) {
-        let next_tab = if direction.is_negative() {
-            self.preview_tab.previous()
-        } else {
-            self.preview_tab.next()
-        };
-        self.select_preview_tab(next_tab);
+        self.cycle_selected_workspace_tabs(direction);
+        self.clear_preview_selection();
+        self.poll_preview();
     }
 
     fn toggle_mouse_capture(&mut self) {
@@ -166,11 +141,17 @@ impl GroveApp {
             UiCommand::StartAgent => {
                 self.open_start_dialog();
             }
+            UiCommand::OpenShellTab => {
+                self.open_new_shell_tab();
+            }
+            UiCommand::OpenGitTab => {
+                self.open_or_focus_git_tab();
+            }
             UiCommand::StopAgent => {
-                self.open_stop_dialog();
+                self.kill_active_tab_session();
             }
             UiCommand::RestartAgent => {
-                self.open_restart_dialog();
+                self.close_active_tab_or_confirm();
             }
             UiCommand::DeleteWorkspace => {
                 self.open_delete_dialog();

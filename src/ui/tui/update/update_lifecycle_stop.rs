@@ -14,6 +14,7 @@ impl GroveApp {
         false
     }
 
+    #[allow(dead_code)]
     pub(super) fn restart_workspace_agent_for_path(&mut self, workspace_path: &Path) {
         if self.dialogs.start_in_flight
             || self.dialogs.stop_in_flight
@@ -47,6 +48,7 @@ impl GroveApp {
         self.stop_workspace_agent(workspace);
     }
 
+    #[allow(dead_code)]
     fn restart_workspace_agent_in_pane(&mut self, workspace: Workspace) {
         if self.dialogs.restart_in_flight {
             return;

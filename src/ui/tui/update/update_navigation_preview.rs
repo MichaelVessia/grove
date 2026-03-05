@@ -260,7 +260,7 @@ impl GroveApp {
         None
     }
 
-    fn ensure_lazygit_session_for_selected_workspace(&mut self) -> Option<String> {
+    pub(super) fn ensure_lazygit_session_for_selected_workspace(&mut self) -> Option<String> {
         let workspace = self.state.selected_workspace()?.clone();
         self.ensure_session_for_workspace(
             SessionKind::Lazygit,
@@ -294,40 +294,24 @@ impl GroveApp {
         )
     }
 
-    pub(super) fn ensure_workspace_shell_session_for_selected_workspace(
-        &mut self,
-        retry_failed: bool,
-        allow_running_agent_session: bool,
-        allow_main_workspace: bool,
-    ) -> Option<String> {
-        let workspace = self.state.selected_workspace()?.clone();
-        self.ensure_workspace_shell_session_for_workspace(
-            workspace,
-            retry_failed,
-            allow_running_agent_session,
-            allow_main_workspace,
-        )
-    }
-
     pub(super) fn selected_agent_preview_session_if_ready(&self) -> Option<String> {
-        let workspace = self.state.selected_workspace()?;
-        if workspace.status.has_session() {
-            return Some(session_name_for_workspace_ref(workspace));
-        }
-        if workspace.is_main {
+        let tab = self.selected_active_tab()?;
+        if tab.kind != WorkspaceTabKind::Agent {
             return None;
         }
-
-        let session_name = shell_session_name_for_workspace(workspace);
-        self.session
-            .shell_sessions
-            .is_ready(&session_name)
-            .then_some(session_name)
+        let session_name = tab.session_name.clone()?;
+        if self.session.agent_sessions.is_ready(&session_name) {
+            return Some(session_name);
+        }
+        None
     }
 
     pub(super) fn selected_shell_preview_session_if_ready(&self) -> Option<String> {
-        let workspace = self.state.selected_workspace()?;
-        let session_name = shell_session_name_for_workspace(workspace);
+        let tab = self.selected_active_tab()?;
+        if tab.kind != WorkspaceTabKind::Shell {
+            return None;
+        }
+        let session_name = tab.session_name.clone()?;
         self.session
             .shell_sessions
             .is_ready(&session_name)
@@ -336,6 +320,7 @@ impl GroveApp {
 
     pub(super) fn can_enter_interactive_session(&self) -> bool {
         match self.preview_tab {
+            PreviewTab::Home => false,
             PreviewTab::Git => {
                 workspace_can_enter_interactive(self.state.selected_workspace(), true)
             }
@@ -348,27 +333,19 @@ impl GroveApp {
         if let Some(session_name) = self.selected_agent_preview_session_if_ready() {
             return Some(session_name);
         }
-
-        self.ensure_workspace_shell_session_for_selected_workspace(true, false, false)
+        None
     }
 
     pub(super) fn ensure_shell_preview_session_for_interactive(&mut self) -> Option<String> {
-        if let Some(session_name) = self.selected_shell_preview_session_if_ready() {
-            return Some(session_name);
-        }
-
-        self.ensure_workspace_shell_session_for_selected_workspace(true, true, true)
+        self.selected_shell_preview_session_if_ready()
     }
 
     pub(super) fn prepare_live_preview_session(&mut self) -> Option<LivePreviewTarget> {
         let session_name = match self.preview_tab {
+            PreviewTab::Home => return None,
             PreviewTab::Git => self.ensure_lazygit_session_for_selected_workspace()?,
-            PreviewTab::Shell => self.selected_shell_preview_session_if_ready().or_else(|| {
-                self.ensure_workspace_shell_session_for_selected_workspace(false, true, true)
-            })?,
-            PreviewTab::Agent => self.selected_agent_preview_session_if_ready().or_else(|| {
-                self.ensure_workspace_shell_session_for_selected_workspace(false, false, false)
-            })?,
+            PreviewTab::Shell => self.selected_shell_preview_session_if_ready()?,
+            PreviewTab::Agent => self.selected_agent_preview_session_if_ready()?,
         };
         Some(LivePreviewTarget {
             session_name,

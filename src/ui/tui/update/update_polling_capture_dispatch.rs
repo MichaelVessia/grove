@@ -38,6 +38,7 @@ impl GroveApp {
 
     pub(super) fn selected_live_preview_session_if_ready(&self) -> Option<String> {
         match self.preview_tab {
+            PreviewTab::Home => None,
             PreviewTab::Git => {
                 let workspace = self.state.selected_workspace()?;
                 let session_name = git_session_name_for_workspace(workspace);
@@ -52,17 +53,7 @@ impl GroveApp {
     }
 
     fn selected_live_preview_session_for_completion(&self) -> Option<String> {
-        if matches!(self.preview_tab, PreviewTab::Git | PreviewTab::Shell) {
-            return self.selected_live_preview_session_if_ready();
-        }
-
-        self.selected_live_preview_session_if_ready().or_else(|| {
-            let workspace = self.state.selected_workspace()?;
-            if !workspace.supported_agent {
-                return None;
-            }
-            Some(session_name_for_workspace_ref(workspace))
-        })
+        self.selected_live_preview_session_if_ready()
     }
 
     pub(super) fn poll_preview(&mut self) {
@@ -109,17 +100,14 @@ impl GroveApp {
         }
 
         let live_preview = self.prepare_live_preview_session().or_else(|| {
-            if self.preview_tab != PreviewTab::Agent {
+            if self.preview_tab == PreviewTab::Git {
                 return None;
             }
-            let workspace = self.state.selected_workspace()?;
-            if !workspace.supported_agent {
-                return None;
-            }
-            Some(LivePreviewTarget {
-                session_name: session_name_for_workspace_ref(workspace),
-                include_escape_sequences: true,
-            })
+            self.selected_live_preview_session_if_ready()
+                .map(|session_name| LivePreviewTarget {
+                    session_name,
+                    include_escape_sequences: true,
+                })
         });
         let live_scrollback_lines = self.live_preview_scrollback_lines();
         let cursor_session = self.interactive_target_session();

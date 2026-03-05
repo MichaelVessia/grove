@@ -99,6 +99,8 @@ mod update_navigation_commands;
 mod update_navigation_palette;
 #[path = "update/update_navigation_preview.rs"]
 mod update_navigation_preview;
+#[path = "update/update_navigation_tabs.rs"]
+mod update_navigation_tabs;
 #[path = "update/update_polling_capture_cursor.rs"]
 mod update_polling_capture_cursor;
 #[path = "update/update_polling_capture_dispatch.rs"]
@@ -1582,6 +1584,7 @@ mod tests {
     fn modal_dialog_renders_over_sidebar() {
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
+            agent: AgentType::Claude,
             start_config: StartAgentConfigState::new(String::new(), String::new(), false),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
@@ -1595,6 +1598,7 @@ mod tests {
     fn launch_dialog_uses_opaque_background_fill() {
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
+            agent: AgentType::Claude,
             start_config: StartAgentConfigState::new(String::new(), String::new(), false),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
@@ -3084,6 +3088,7 @@ mod tests {
     fn launch_dialog_keeps_compact_footer() {
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
+            agent: AgentType::Claude,
             start_config: StartAgentConfigState::new(String::new(), String::new(), false),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
@@ -3277,6 +3282,7 @@ mod tests {
     fn status_row_keeps_compact_footer_in_launch_dialog() {
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
+            agent: AgentType::Claude,
             start_config: StartAgentConfigState::new(String::new(), String::new(), false),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });

@@ -1,6 +1,6 @@
 use super::*;
 
-static COMMAND_META: [UiCommandMeta; 36] = [
+static COMMAND_META: [UiCommandMeta; 38] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_focus",
@@ -553,15 +553,61 @@ static COMMAND_META: [UiCommandMeta; 36] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:start_agent",
-            title: "Start Agent",
-            description: "Open start-agent dialog for selected workspace (s)",
-            tags: &["start", "agent", "workspace", "s"],
+            title: "New Agent Tab",
+            description: "Open agent picker and launch a new agent tab (a)",
+            tags: &["new", "agent", "tab", "workspace", "a"],
             category: "Workspace",
         }),
-        help_hints: &[HelpHintSpec {
-            context: HelpHintContext::PreviewAgent,
-            label: "s start",
+        help_hints: &[
+            HelpHintSpec {
+                context: HelpHintContext::Workspace,
+                label: "a new agent tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewAgent,
+                label: "a new agent tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewShell,
+                label: "a new agent tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewGit,
+                label: "a new agent tab",
+            },
+        ],
+        keybindings: &[KeybindingSpec {
+            scope: KeybindingScope::NonInteractive,
+            code: KeyCodeMatch::Char('a'),
+            modifiers: KeyModifiersMatch::Any,
         }],
+    },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
+            id: "palette:new_shell_tab",
+            title: "New Shell Tab",
+            description: "Launch a new shell tab for the selected workspace (s)",
+            tags: &["new", "shell", "tab", "workspace", "s"],
+            category: "Workspace",
+        }),
+        help_hints: &[
+            HelpHintSpec {
+                context: HelpHintContext::Workspace,
+                label: "s new shell tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewAgent,
+                label: "s new shell tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewShell,
+                label: "s new shell tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewGit,
+                label: "s new shell tab",
+            },
+        ],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
             code: KeyCodeMatch::Char('s'),
@@ -570,16 +616,58 @@ static COMMAND_META: [UiCommandMeta; 36] = [
     },
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
-            id: "palette:stop_agent",
-            title: "Stop Agent",
-            description: "Open confirm dialog to kill selected workspace agent session (x in Agent preview)",
-            tags: &["stop", "agent", "workspace", "x"],
+            id: "palette:open_git_tab",
+            title: "Open Git Tab",
+            description: "Focus existing git tab or launch it if missing (g)",
+            tags: &["git", "tab", "lazygit", "workspace", "g"],
             category: "Workspace",
         }),
-        help_hints: &[HelpHintSpec {
-            context: HelpHintContext::PreviewAgent,
-            label: "x stop (confirm)",
+        help_hints: &[
+            HelpHintSpec {
+                context: HelpHintContext::Workspace,
+                label: "g git tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewAgent,
+                label: "g git tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewShell,
+                label: "g git tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewGit,
+                label: "g git tab",
+            },
+        ],
+        keybindings: &[KeybindingSpec {
+            scope: KeybindingScope::NonInteractive,
+            code: KeyCodeMatch::Char('g'),
+            modifiers: KeyModifiersMatch::Any,
         }],
+    },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
+            id: "palette:kill_active_tab_session",
+            title: "Kill Active Tab Session",
+            description: "Kill whatever is running in the active tab (x)",
+            tags: &["kill", "stop", "session", "tab", "x"],
+            category: "Workspace",
+        }),
+        help_hints: &[
+            HelpHintSpec {
+                context: HelpHintContext::PreviewAgent,
+                label: "x kill session",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewShell,
+                label: "x kill session",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewGit,
+                label: "x kill session",
+            },
+        ],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
             code: KeyCodeMatch::Char('x'),
@@ -588,19 +676,29 @@ static COMMAND_META: [UiCommandMeta; 36] = [
     },
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
-            id: "palette:restart_agent",
-            title: "Restart Agent",
-            description: "Open confirm dialog to restart selected workspace agent session (r in Agent preview)",
-            tags: &["restart", "agent", "workspace", "r"],
+            id: "palette:close_active_tab",
+            title: "Close Active Tab",
+            description: "Close active tab, confirm kill+close when session is live (X)",
+            tags: &["close", "tab", "session", "X"],
             category: "Workspace",
         }),
-        help_hints: &[HelpHintSpec {
-            context: HelpHintContext::PreviewAgent,
-            label: "r restart",
-        }],
+        help_hints: &[
+            HelpHintSpec {
+                context: HelpHintContext::PreviewAgent,
+                label: "X close tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewShell,
+                label: "X close tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewGit,
+                label: "X close tab",
+            },
+        ],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
-            code: KeyCodeMatch::Char('r'),
+            code: KeyCodeMatch::Char('X'),
             modifiers: KeyModifiersMatch::Any,
         }],
     },
@@ -876,22 +974,24 @@ impl UiCommand {
             UiCommand::NewWorkspace => &COMMAND_META[17],
             UiCommand::EditWorkspace => &COMMAND_META[18],
             UiCommand::StartAgent => &COMMAND_META[19],
-            UiCommand::StopAgent => &COMMAND_META[20],
-            UiCommand::RestartAgent => &COMMAND_META[21],
-            UiCommand::DeleteWorkspace => &COMMAND_META[22],
-            UiCommand::MergeWorkspace => &COMMAND_META[23],
-            UiCommand::UpdateFromBase => &COMMAND_META[24],
-            UiCommand::RefreshWorkspaces => &COMMAND_META[25],
-            UiCommand::OpenProjects => &COMMAND_META[26],
-            UiCommand::ReorderProjects => &COMMAND_META[27],
-            UiCommand::DeleteProject => &COMMAND_META[28],
-            UiCommand::OpenSettings => &COMMAND_META[29],
-            UiCommand::ToggleMouseCapture => &COMMAND_META[30],
-            UiCommand::ToggleUnsafe => &COMMAND_META[31],
-            UiCommand::CleanupSessions => &COMMAND_META[32],
-            UiCommand::OpenHelp => &COMMAND_META[33],
-            UiCommand::OpenCommandPalette => &COMMAND_META[34],
-            UiCommand::Quit => &COMMAND_META[35],
+            UiCommand::OpenShellTab => &COMMAND_META[20],
+            UiCommand::OpenGitTab => &COMMAND_META[21],
+            UiCommand::StopAgent => &COMMAND_META[22],
+            UiCommand::RestartAgent => &COMMAND_META[23],
+            UiCommand::DeleteWorkspace => &COMMAND_META[24],
+            UiCommand::MergeWorkspace => &COMMAND_META[25],
+            UiCommand::UpdateFromBase => &COMMAND_META[26],
+            UiCommand::RefreshWorkspaces => &COMMAND_META[27],
+            UiCommand::OpenProjects => &COMMAND_META[28],
+            UiCommand::ReorderProjects => &COMMAND_META[29],
+            UiCommand::DeleteProject => &COMMAND_META[30],
+            UiCommand::OpenSettings => &COMMAND_META[31],
+            UiCommand::ToggleMouseCapture => &COMMAND_META[32],
+            UiCommand::ToggleUnsafe => &COMMAND_META[33],
+            UiCommand::CleanupSessions => &COMMAND_META[34],
+            UiCommand::OpenHelp => &COMMAND_META[35],
+            UiCommand::OpenCommandPalette => &COMMAND_META[36],
+            UiCommand::Quit => &COMMAND_META[37],
         }
     }
 }

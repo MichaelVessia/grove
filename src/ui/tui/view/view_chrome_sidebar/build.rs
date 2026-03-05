@@ -154,21 +154,32 @@ impl GroveApp {
 
                 let line2_prefix = "     ";
                 let line2_prefix_width = text_display_width(line2_prefix);
-                let agent_label = workspace.agent.label().to_string();
+                let running_agent_tabs = self
+                    .workspace_tabs
+                    .get(workspace.path.as_path())
+                    .map(|tabs| {
+                        tabs.tabs
+                            .iter()
+                            .filter(|tab| {
+                                tab.kind == WorkspaceTabKind::Agent
+                                    && tab.state == WorkspaceTabRuntimeState::Running
+                            })
+                            .count()
+                    })
+                    .unwrap_or(0);
+                let running_label = format!("{running_agent_tabs} running");
                 let mut line2_segments = vec![
                     SidebarSegment {
                         text: line2_prefix.to_string(),
                         style: secondary_style,
                     },
                     SidebarSegment {
-                        text: agent_label.clone(),
-                        style: secondary_style
-                            .fg(self.workspace_agent_color(workspace.agent))
-                            .bold(),
+                        text: running_label.clone(),
+                        style: secondary_style.bold(),
                     },
                 ];
                 let mut line2_width =
-                    line2_prefix_width.saturating_add(text_display_width(&agent_label));
+                    line2_prefix_width.saturating_add(text_display_width(&running_label));
                 let mut pr_hits = Vec::new();
                 if !workspace.is_main && !workspace.pull_requests.is_empty() {
                     line2_segments.push(SidebarSegment {
@@ -235,7 +246,7 @@ impl GroveApp {
                 };
                 let meta_activity = if is_working {
                     Some(SidebarActivityLabel {
-                        label: workspace.agent.label().to_string(),
+                        label: running_label,
                         agent: workspace.agent,
                         start_col: line2_prefix_width,
                     })

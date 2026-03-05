@@ -110,22 +110,18 @@ impl GroveApp {
                 self.state.selected_workspace().is_some()
             }
             UiCommand::StartAgent => {
-                self.preview_agent_tab_is_focused()
-                    && !self.dialogs.start_in_flight
+                !self.dialogs.start_in_flight
                     && !self.dialogs.restart_in_flight
-                    && workspace_can_start_agent(self.state.selected_workspace())
+                    && self.state.selected_workspace().is_some()
             }
-            UiCommand::StopAgent => {
-                !self.dialogs.stop_in_flight
-                    && !self.dialogs.restart_in_flight
-                    && workspace_can_stop_agent(self.state.selected_workspace())
-            }
+            UiCommand::OpenShellTab => self.state.selected_workspace().is_some(),
+            UiCommand::OpenGitTab => self.state.selected_workspace().is_some(),
+            UiCommand::StopAgent => self.active_tab_session_name().is_some(),
             UiCommand::RestartAgent => {
-                self.preview_agent_tab_is_focused()
-                    && !self.dialogs.start_in_flight
-                    && !self.dialogs.stop_in_flight
-                    && !self.dialogs.restart_in_flight
-                    && workspace_can_stop_agent(self.state.selected_workspace())
+                self.state.selected_workspace().is_some()
+                    && self
+                        .selected_active_tab()
+                        .is_some_and(|tab| tab.kind != WorkspaceTabKind::Home)
             }
             UiCommand::DeleteWorkspace => {
                 self.state.selected_workspace().is_some_and(|workspace| {

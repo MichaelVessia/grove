@@ -22,6 +22,7 @@ macro_rules! cyclic_field_nav {
 use std::path::PathBuf;
 use std::time::Instant;
 
+use crate::domain::AgentType;
 use crate::infrastructure::config::ThemeName;
 use ftui::PackedRgba;
 use ftui::core::geometry::Rect;
@@ -516,6 +517,7 @@ pub(super) enum HitRegion {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) enum PreviewTab {
+    Home,
     #[default]
     Agent,
     Shell,
@@ -525,26 +527,187 @@ pub(super) enum PreviewTab {
 impl PreviewTab {
     pub(super) const fn label(self) -> &'static str {
         match self {
+            Self::Home => "Home",
             Self::Agent => "Agent",
             Self::Shell => "Shell",
             Self::Git => "Git",
         }
     }
+}
 
-    pub(super) const fn next(self) -> Self {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum WorkspaceTabKind {
+    Home,
+    Agent,
+    Shell,
+    Git,
+}
+
+impl WorkspaceTabKind {
+    pub(super) const fn label(self) -> &'static str {
         match self {
-            Self::Agent => Self::Shell,
-            Self::Shell => Self::Git,
-            Self::Git => Self::Agent,
+            Self::Home => "Home",
+            Self::Agent => "Agent",
+            Self::Shell => "Shell",
+            Self::Git => "Git",
+        }
+    }
+}
+
+impl From<WorkspaceTabKind> for PreviewTab {
+    fn from(value: WorkspaceTabKind) -> Self {
+        match value {
+            WorkspaceTabKind::Home => PreviewTab::Home,
+            WorkspaceTabKind::Agent => PreviewTab::Agent,
+            WorkspaceTabKind::Shell => PreviewTab::Shell,
+            WorkspaceTabKind::Git => PreviewTab::Git,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum WorkspaceTabRuntimeState {
+    Starting,
+    Running,
+    Stopped,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct WorkspaceTab {
+    pub(super) id: u64,
+    pub(super) kind: WorkspaceTabKind,
+    pub(super) title: String,
+    pub(super) session_name: Option<String>,
+    pub(super) agent_type: Option<AgentType>,
+    pub(super) state: WorkspaceTabRuntimeState,
+}
+
+impl WorkspaceTab {
+    pub(super) fn home(id: u64) -> Self {
+        Self {
+            id,
+            kind: WorkspaceTabKind::Home,
+            title: WorkspaceTabKind::Home.label().to_string(),
+            session_name: None,
+            agent_type: None,
+            state: WorkspaceTabRuntimeState::Stopped,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct WorkspaceTabsState {
+    pub(super) tabs: Vec<WorkspaceTab>,
+    pub(super) active_tab_id: u64,
+    pub(super) next_seq: u64,
+}
+
+impl Default for WorkspaceTabsState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WorkspaceTabsState {
+    pub(super) fn new() -> Self {
+        let home = WorkspaceTab::home(1);
+        Self {
+            tabs: vec![home],
+            active_tab_id: 1,
+            next_seq: 2,
         }
     }
 
-    pub(super) const fn previous(self) -> Self {
-        match self {
-            Self::Agent => Self::Git,
-            Self::Shell => Self::Agent,
-            Self::Git => Self::Shell,
+    pub(super) fn active_tab(&self) -> Option<&WorkspaceTab> {
+        self.tabs.iter().find(|tab| tab.id == self.active_tab_id)
+    }
+
+    pub(super) fn active_tab_mut(&mut self) -> Option<&mut WorkspaceTab> {
+        self.tabs
+            .iter_mut()
+            .find(|tab| tab.id == self.active_tab_id)
+    }
+
+    pub(super) fn tab_by_id(&self, tab_id: u64) -> Option<&WorkspaceTab> {
+        self.tabs.iter().find(|tab| tab.id == tab_id)
+    }
+
+    pub(super) fn tab_by_id_mut(&mut self, tab_id: u64) -> Option<&mut WorkspaceTab> {
+        self.tabs.iter_mut().find(|tab| tab.id == tab_id)
+    }
+
+    pub(super) fn find_kind(&self, kind: WorkspaceTabKind) -> Option<&WorkspaceTab> {
+        self.tabs.iter().find(|tab| tab.kind == kind)
+    }
+
+    pub(super) fn set_active(&mut self, tab_id: u64) -> bool {
+        if self.tab_by_id(tab_id).is_none() {
+            return false;
         }
+        self.active_tab_id = tab_id;
+        true
+    }
+
+    pub(super) fn active_index(&self) -> Option<usize> {
+        self.tabs
+            .iter()
+            .position(|tab| tab.id == self.active_tab_id)
+    }
+
+    pub(super) fn insert_tab_adjacent(&mut self, mut tab: WorkspaceTab) -> u64 {
+        let tab_id = self.next_seq;
+        self.next_seq = self.next_seq.saturating_add(1);
+        tab.id = tab_id;
+        let last_same_kind = self.tabs.iter().rposition(|entry| entry.kind == tab.kind);
+        let insert_at = if let Some(index) = last_same_kind {
+            index.saturating_add(1)
+        } else {
+            self.active_index()
+                .map_or(self.tabs.len(), |index| index.saturating_add(1))
+        };
+        self.tabs.insert(insert_at, tab);
+        self.active_tab_id = tab_id;
+        tab_id
+    }
+
+    pub(super) fn close_tab(&mut self, tab_id: u64) -> Option<WorkspaceTab> {
+        let index = self.tabs.iter().position(|tab| tab.id == tab_id)?;
+        if self.tabs[index].kind == WorkspaceTabKind::Home {
+            return None;
+        }
+        let removed = self.tabs.remove(index);
+        if self.active_tab_id == tab_id {
+            let fallback_index = index
+                .saturating_sub(1)
+                .min(self.tabs.len().saturating_sub(1));
+            if let Some(fallback) = self.tabs.get(fallback_index) {
+                self.active_tab_id = fallback.id;
+            }
+        }
+        Some(removed)
+    }
+
+    pub(super) fn ensure_home_tab(&mut self) {
+        if self
+            .tabs
+            .iter()
+            .any(|tab| tab.kind == WorkspaceTabKind::Home)
+        {
+            if self.tab_by_id(self.active_tab_id).is_none()
+                && let Some(home) = self
+                    .tabs
+                    .iter()
+                    .find(|tab| tab.kind == WorkspaceTabKind::Home)
+            {
+                self.active_tab_id = home.id;
+            }
+            return;
+        }
+        let home = WorkspaceTab::home(self.next_seq);
+        self.next_seq = self.next_seq.saturating_add(1);
+        self.tabs.insert(0, home.clone());
+        self.active_tab_id = home.id;
     }
 }
 

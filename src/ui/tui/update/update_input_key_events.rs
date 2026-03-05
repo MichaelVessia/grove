@@ -139,12 +139,6 @@ impl GroveApp {
     }
 
     pub(super) fn enter_preview_or_interactive(&mut self) {
-        if matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
-            && let Some(workspace) = self.state.selected_workspace()
-        {
-            let session_name = shell_session_name_for_workspace(workspace);
-            self.session.shell_sessions.retry_failed(&session_name);
-        }
         if !self.enter_interactive(Instant::now()) {
             reduce(&mut self.state, Action::EnterPreviewMode);
             self.poll_preview();
@@ -154,8 +148,7 @@ impl GroveApp {
     fn non_interactive_command_for_key(&self, key_event: &KeyEvent) -> Option<UiCommand> {
         let in_preview_focus =
             self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview;
-        let in_preview_scroll =
-            in_preview_focus && matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell);
+        let in_preview_scroll = in_preview_focus && self.active_tab_is_scrollable();
         let can_enter_interactive = self.can_enter_interactive_session();
 
         for command in UiCommand::all() {
@@ -193,8 +186,15 @@ impl GroveApp {
             | UiCommand::ScrollBottom => in_preview_scroll,
             UiCommand::PreviousTab | UiCommand::NextTab => in_preview_focus,
             UiCommand::StopAgent | UiCommand::RestartAgent => {
-                (self.state.mode == UiMode::Preview || self.state.focus == PaneFocus::Preview)
-                    && self.preview_tab == PreviewTab::Agent
+                self.state.mode == UiMode::Preview
+                    && self.state.focus == PaneFocus::Preview
+                    && match command {
+                        UiCommand::StopAgent => self.active_tab_session_name().is_some(),
+                        UiCommand::RestartAgent => self
+                            .selected_active_tab()
+                            .is_some_and(|tab| tab.kind != WorkspaceTabKind::Home),
+                        _ => false,
+                    }
             }
             UiCommand::ResizeSidebarNarrower
             | UiCommand::ResizeSidebarWider
@@ -348,13 +348,8 @@ impl GroveApp {
         self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview
     }
 
-    pub(super) fn preview_agent_tab_is_focused(&self) -> bool {
-        self.preview_is_focused() && self.preview_tab == PreviewTab::Agent
-    }
-
     pub(super) fn preview_scroll_tab_is_focused(&self) -> bool {
-        self.preview_is_focused()
-            && matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
+        self.preview_is_focused() && self.active_tab_is_scrollable()
     }
 
     pub(super) fn open_keybind_help(&mut self) {
@@ -376,6 +371,7 @@ impl GroveApp {
         if self.session.interactive.is_some() {
             self.exit_interactive_to_list();
         }
+        self.sync_preview_tab_from_active_workspace_tab();
         self.preview.jump_to_bottom();
         self.clear_agent_activity_tracking();
         self.clear_preview_selection();

@@ -6,7 +6,7 @@ impl GroveApp {
     const SIDEBAR_MOUSE_SCROLL_DEBOUNCE_MS: u64 = 50;
     const CREATE_DIALOG_TAB_ROW_OFFSET: u16 = 2;
 
-    fn preview_tab_at_pointer(&self, x: u16, y: u16) -> Option<PreviewTab> {
+    fn preview_tab_id_at_pointer(&self, x: u16, y: u16) -> Option<u64> {
         let layout = self.view_layout();
         if layout.preview.is_empty() {
             return None;
@@ -22,21 +22,20 @@ impl GroveApp {
             return None;
         }
 
+        let workspace = self.state.selected_workspace()?;
+        let tabs = self.workspace_tabs.get(workspace.path.as_path())?;
         let mut tab_x = preview_inner.x;
-        for (index, tab) in [PreviewTab::Agent, PreviewTab::Shell, PreviewTab::Git]
-            .iter()
-            .copied()
-            .enumerate()
-        {
+        for (index, tab) in tabs.tabs.iter().enumerate() {
             if index > 0 {
                 tab_x = tab_x.saturating_add(1);
             }
-            let Some(tab_width) = u16::try_from(tab.label().len().saturating_add(2)).ok() else {
+            let label = format!(" {} ", tab.title);
+            let Some(tab_width) = u16::try_from(text_display_width(label.as_str())).ok() else {
                 continue;
             };
             let tab_end = tab_x.saturating_add(tab_width).min(preview_inner.right());
             if x >= tab_x && x < tab_end {
-                return Some(tab);
+                return Some(tab.id);
             }
             tab_x = tab_x.saturating_add(tab_width);
         }
@@ -314,14 +313,14 @@ impl GroveApp {
                     self.open_workspace_pull_request_link(row_data);
                 }
                 HitRegion::Preview => {
-                    if let Some(next_tab) =
-                        self.preview_tab_at_pointer(mouse_event.x, mouse_event.y)
+                    if let Some(tab_id) =
+                        self.preview_tab_id_at_pointer(mouse_event.x, mouse_event.y)
                     {
                         if self.session.interactive.is_some() {
                             self.exit_interactive_to_list();
                         }
                         reduce(&mut self.state, Action::EnterPreviewMode);
-                        self.select_preview_tab(next_tab);
+                        let _ = self.select_tab_by_id_for_selected_workspace(tab_id);
                         self.clear_preview_selection();
                     } else {
                         let interactive_before_click = self.session.interactive.is_some();

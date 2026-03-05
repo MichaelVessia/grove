@@ -24,6 +24,7 @@ impl GroveApp {
                 let action = self
                     .launch_dialog()
                     .map(|dialog| match dialog.focused_field {
+                        LaunchDialogField::Agent => EnterAction::ConfirmStart,
                         LaunchDialogField::StartButton => EnterAction::ConfirmStart,
                         LaunchDialogField::CancelButton => EnterAction::CancelDialog,
                         LaunchDialogField::StartConfig(_) => EnterAction::ConfirmStart,
@@ -65,7 +66,20 @@ impl GroveApp {
                     dialog.start_config.backspace(field);
                 }
             }
-            KeyCode::Left | KeyCode::Right => {}
+            KeyCode::Left => {
+                if let Some(dialog) = self.launch_dialog_mut()
+                    && dialog.focused_field == LaunchDialogField::Agent
+                {
+                    dialog.agent = dialog.agent.previous();
+                }
+            }
+            KeyCode::Right => {
+                if let Some(dialog) = self.launch_dialog_mut()
+                    && dialog.focused_field == LaunchDialogField::Agent
+                {
+                    dialog.agent = dialog.agent.next();
+                }
+            }
             KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
                 if let Some(dialog) = self.launch_dialog_mut() {
                     if (dialog.focused_field == LaunchDialogField::StartButton
@@ -81,6 +95,13 @@ impl GroveApp {
                         return;
                     }
                     match dialog.focused_field {
+                        LaunchDialogField::Agent => {
+                            if character == 'j' || character == 'l' {
+                                dialog.agent = dialog.agent.next();
+                            } else if character == 'k' || character == 'h' {
+                                dialog.agent = dialog.agent.previous();
+                            }
+                        }
                         LaunchDialogField::StartConfig(field) => match field {
                             StartAgentConfigField::Prompt | StartAgentConfigField::InitCommand => {
                                 if !character.is_control() {
@@ -111,35 +132,29 @@ impl GroveApp {
             self.show_info_toast("no workspace selected");
             return;
         };
-        if !workspace.supported_agent {
-            self.show_info_toast("unsupported workspace agent marker");
-            return;
-        }
-        if workspace.status.is_running() {
-            self.show_info_toast("agent already running");
-            return;
-        }
-        if !workspace_can_start_agent(Some(&workspace)) {
-            self.show_info_toast("workspace cannot be started");
-            return;
-        }
-
         let prompt = read_workspace_launch_prompt(&workspace.path).unwrap_or_default();
         let init_command = self.workspace_init_command_for_workspace(&workspace);
         let skip_permissions = self.workspace_skip_permissions_for_workspace(&workspace);
+        let agent = self
+            .last_agent_selection
+            .get(workspace.path.as_path())
+            .copied()
+            .unwrap_or(workspace.agent);
         self.set_launch_dialog(LaunchDialogState {
+            agent,
             start_config: StartAgentConfigState::new(
                 prompt.clone(),
                 init_command.clone().unwrap_or_default(),
                 skip_permissions,
             ),
-            focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
+            focused_field: LaunchDialogField::Agent,
         });
         self.log_dialog_event_with_fields(
             "launch",
             "dialog_opened",
             [
                 ("workspace".to_string(), Value::from(workspace.name.clone())),
+                ("agent".to_string(), Value::from(agent.label())),
                 (
                     "prompt_len".to_string(),
                     Value::from(usize_to_u64(prompt.len())),

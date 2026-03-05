@@ -86,20 +86,20 @@ impl GroveApp {
         let tab_active_style = Style::new().fg(theme.base).bg(theme.blue).bold();
         let tab_inactive_style = Style::new().fg(theme.subtext0).bg(theme.surface0);
         let mut tab_spans = Vec::new();
-        for (index, tab) in [PreviewTab::Agent, PreviewTab::Shell, PreviewTab::Git]
-            .iter()
-            .copied()
-            .enumerate()
+        if let Some(workspace) = selected_workspace
+            && let Some(tabs) = self.workspace_tabs.get(workspace.path.as_path())
         {
-            if index > 0 {
-                tab_spans.push(FtSpan::raw(" ".to_string()));
+            for (index, tab) in tabs.tabs.iter().enumerate() {
+                if index > 0 {
+                    tab_spans.push(FtSpan::raw(" ".to_string()));
+                }
+                let style = if tab.id == tabs.active_tab_id {
+                    tab_active_style
+                } else {
+                    tab_inactive_style
+                };
+                tab_spans.push(FtSpan::styled(format!(" {} ", tab.title), style));
             }
-            let style = if tab == self.preview_tab {
-                tab_active_style
-            } else {
-                tab_inactive_style
-            };
-            tab_spans.push(FtSpan::styled(format!(" {} ", tab.label()), style));
         }
         if let Some(workspace) = selected_workspace {
             tab_spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
@@ -226,6 +226,7 @@ impl GroveApp {
 
         if visible_render_lines.is_empty() {
             return vec![match self.preview_tab {
+                PreviewTab::Home => FtLine::raw("(home)"),
                 PreviewTab::Agent => FtLine::raw("(no preview output)"),
                 PreviewTab::Shell => self.preview_shell_fallback_line(selected_workspace),
                 PreviewTab::Git => self.preview_git_fallback_line(selected_workspace),

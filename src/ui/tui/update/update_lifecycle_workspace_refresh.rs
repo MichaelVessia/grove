@@ -136,6 +136,7 @@ impl GroveApp {
         }
         self.state.mode = previous_mode;
         self.state.focus = previous_focus;
+        self.sync_workspace_tab_maps();
         self.reconcile_workspace_attention_tracking();
         self.clear_agent_activity_tracking();
         self.clear_status_tracking();
@@ -168,6 +169,7 @@ impl GroveApp {
         }
         self.state.mode = previous_mode;
         self.state.focus = previous_focus;
+        self.sync_workspace_tab_maps();
         self.dialogs.refresh_in_flight = false;
         self.reconcile_workspace_attention_tracking();
         self.clear_agent_activity_tracking();

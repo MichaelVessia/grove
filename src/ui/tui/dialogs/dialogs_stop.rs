@@ -87,6 +87,7 @@ impl GroveApp {
         }
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn open_stop_dialog(&mut self) {
         if self.modal_open() {
             return;

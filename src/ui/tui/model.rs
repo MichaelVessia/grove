@@ -43,7 +43,8 @@ use crate::application::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
     WorkspaceStatusTarget, agent_supports_in_pane_restart, execute_command_with,
     git_session_name_for_workspace, infer_workspace_skip_permissions, poll_interval,
-    restart_workspace_in_pane_with_io, session_name_for_workspace_ref,
+    restart_workspace_in_pane_with_io, session_name_for_workspace_in_project,
+    session_name_for_workspace_ref,
     shell_session_name_for_workspace, tmux_launch_error_indicates_duplicate_session,
     trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
     workspace_can_stop_agent,
@@ -182,6 +183,7 @@ impl SessionTracker {
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ActiveDialog {
     Launch(LaunchDialogState),
@@ -200,6 +202,7 @@ enum ActiveDialog {
 struct SessionState {
     interactive: Option<InteractiveState>,
     last_tmux_error: Option<String>,
+    agent_sessions: SessionTracker,
     lazygit_sessions: SessionTracker,
     shell_sessions: SessionTracker,
     lazygit_command: String,
@@ -270,6 +273,8 @@ struct GroveApp {
     state: AppState,
     discovery_state: DiscoveryState,
     preview_tab: PreviewTab,
+    workspace_tabs: HashMap<PathBuf, WorkspaceTabsState>,
+    last_agent_selection: HashMap<PathBuf, AgentType>,
     preview: PreviewState,
     notifications: NotificationQueue,
     action_mapper: ActionMapper,

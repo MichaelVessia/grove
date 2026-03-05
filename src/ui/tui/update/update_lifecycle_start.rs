@@ -219,6 +219,7 @@ impl GroveApp {
             "dialog_confirmed",
             [
                 ("workspace".to_string(), Value::from(workspace_name)),
+                ("agent".to_string(), Value::from(dialog.agent.label())),
                 (
                     "prompt_len".to_string(),
                     Value::from(usize_to_u64(dialog.start_config.prompt.len())),
@@ -239,6 +240,14 @@ impl GroveApp {
             init_command,
             skip_permissions,
         } = dialog.start_config.parse_start_options();
-        self.start_selected_workspace_agent_with_options(prompt, init_command, skip_permissions);
+        let options = StartOptions {
+            prompt,
+            init_command,
+            skip_permissions,
+        };
+        if let Err(error) = self.launch_new_agent_tab(dialog.agent, options) {
+            self.session.last_tmux_error = Some(error.clone());
+            self.show_error_toast(format!("agent tab launch failed: {error}"));
+        }
     }
 }

@@ -72,6 +72,7 @@ impl GroveApp {
             KeybindingAction::ClearInput => {
                 if let Some(dialog) = self.launch_dialog_mut() {
                     match dialog.focused_field {
+                        LaunchDialogField::Agent => {}
                         LaunchDialogField::StartConfig(field) => dialog.start_config.clear(field),
                         LaunchDialogField::StartButton | LaunchDialogField::CancelButton => {}
                     }

@@ -1,51 +1,6 @@
 use super::*;
 
 impl GroveApp {
-    pub(super) fn open_restart_dialog(&mut self) {
-        if self.modal_open() {
-            return;
-        }
-        if self.dialogs.start_in_flight
-            || self.dialogs.stop_in_flight
-            || self.dialogs.restart_in_flight
-        {
-            self.show_info_toast("agent lifecycle already in progress");
-            return;
-        }
-
-        let Some(workspace) = self.state.selected_workspace().cloned() else {
-            self.show_info_toast("no agent running");
-            return;
-        };
-        if !workspace_can_stop_agent(Some(&workspace)) {
-            self.show_info_toast("no agent running");
-            return;
-        }
-
-        self.set_confirm_dialog(ConfirmDialogState {
-            action: ConfirmDialogAction::RestartAgent {
-                workspace_name: workspace.name.clone(),
-                workspace_path: workspace.path.clone(),
-            },
-            focused_field: ConfirmDialogField::ConfirmButton,
-        });
-        self.log_dialog_event_with_fields(
-            "confirm",
-            "dialog_opened",
-            [
-                (
-                    "target".to_string(),
-                    Value::from("restart_agent".to_string()),
-                ),
-                ("workspace".to_string(), Value::from(workspace.name)),
-                (
-                    "path".to_string(),
-                    Value::from(workspace.path.display().to_string()),
-                ),
-            ],
-        );
-    }
-
     pub(super) fn open_quit_dialog(&mut self) {
         if self.modal_open() {
             return;
@@ -73,7 +28,7 @@ impl GroveApp {
 
     fn confirm_dialog_target(action: &ConfirmDialogAction) -> &'static str {
         match action {
-            ConfirmDialogAction::RestartAgent { .. } => "restart_agent",
+            ConfirmDialogAction::CloseActiveTab { .. } => "close_active_tab",
             ConfirmDialogAction::QuitApp => "quit_app",
         }
     }
@@ -90,8 +45,12 @@ impl GroveApp {
         );
 
         match dialog.action {
-            ConfirmDialogAction::RestartAgent { workspace_path, .. } => {
-                self.restart_workspace_agent_for_path(&workspace_path);
+            ConfirmDialogAction::CloseActiveTab {
+                workspace_path,
+                tab_id,
+                session_name,
+            } => {
+                self.force_close_active_tab_and_session(&workspace_path, tab_id, &session_name);
             }
             ConfirmDialogAction::QuitApp => {
                 self.queue_cmd(Cmd::Quit);

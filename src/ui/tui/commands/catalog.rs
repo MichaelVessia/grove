@@ -22,6 +22,8 @@ pub(super) enum UiCommand {
     NewWorkspace,
     EditWorkspace,
     StartAgent,
+    OpenShellTab,
+    OpenGitTab,
     StopAgent,
     RestartAgent,
     DeleteWorkspace,
@@ -175,7 +177,7 @@ fn control_character_for(character: char) -> Option<char> {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 36] = [
+    pub(super) const ALL: [UiCommand; 38] = [
         UiCommand::ToggleFocus,
         UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
@@ -196,6 +198,8 @@ impl UiCommand {
         UiCommand::NewWorkspace,
         UiCommand::EditWorkspace,
         UiCommand::StartAgent,
+        UiCommand::OpenShellTab,
+        UiCommand::OpenGitTab,
         UiCommand::StopAgent,
         UiCommand::RestartAgent,
         UiCommand::DeleteWorkspace,

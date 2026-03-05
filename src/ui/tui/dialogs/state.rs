@@ -68,6 +68,7 @@ impl StartAgentConfigState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct LaunchDialogState {
+    pub(super) agent: AgentType,
     pub(super) start_config: StartAgentConfigState,
     pub(super) focused_field: LaunchDialogField,
 }
@@ -79,11 +80,13 @@ pub(super) struct StopDialogState {
     pub(super) focused_field: StopDialogField,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum ConfirmDialogAction {
-    RestartAgent {
-        workspace_name: String,
+    CloseActiveTab {
         workspace_path: PathBuf,
+        tab_id: u64,
+        session_name: String,
     },
     QuitApp,
 }
@@ -230,6 +233,7 @@ impl StartAgentConfigField {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum LaunchDialogField {
+    Agent,
     StartConfig(StartAgentConfigField),
     StartButton,
     CancelButton,
@@ -238,6 +242,7 @@ pub(super) enum LaunchDialogField {
 impl LaunchDialogField {
     pub(super) fn next(self) -> Self {
         match self {
+            Self::Agent => Self::StartConfig(StartAgentConfigField::Prompt),
             Self::StartConfig(field) => {
                 if field == StartAgentConfigField::Unsafe {
                     Self::StartButton
@@ -254,19 +259,21 @@ impl LaunchDialogField {
         match self {
             Self::StartConfig(field) => {
                 if field == StartAgentConfigField::Prompt {
-                    Self::CancelButton
+                    Self::Agent
                 } else {
                     Self::StartConfig(field.previous())
                 }
             }
             Self::StartButton => Self::StartConfig(StartAgentConfigField::Unsafe),
             Self::CancelButton => Self::StartButton,
+            Self::Agent => Self::CancelButton,
         }
     }
 
     #[cfg(test)]
     pub(super) fn label(self) -> &'static str {
         match self {
+            Self::Agent => "agent",
             Self::StartConfig(field) => field.label(),
             Self::StartButton => "start",
             Self::CancelButton => "cancel",

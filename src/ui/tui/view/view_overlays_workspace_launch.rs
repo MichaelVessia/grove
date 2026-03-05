@@ -5,17 +5,33 @@ impl GroveApp {
         let Some(dialog) = self.launch_dialog() else {
             return;
         };
-        if area.width < 20 || area.height < 11 {
+        if area.width < 20 || area.height < 15 {
             return;
         }
 
         let dialog_width = area.width.saturating_sub(8).min(100);
-        let dialog_height = 11u16;
+        let dialog_height = 15u16;
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let focused = |field| dialog.focused_field == field;
         let start_focused = focused(LaunchDialogField::StartButton);
         let cancel_focused = focused(LaunchDialogField::CancelButton);
+        let agent_row = |agent: AgentType| {
+            let mut style = Style::new().fg(theme.overlay0);
+            if dialog.focused_field == LaunchDialogField::Agent {
+                style = style.bg(theme.surface0);
+            }
+            let marker = if dialog.agent == agent { "●" } else { "○" };
+            let label = format!("{marker} {}", agent.label());
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(label.as_str(), content_width),
+                if dialog.agent == agent {
+                    style.fg(self.workspace_agent_color(agent)).bold()
+                } else {
+                    style
+                },
+            )])
+        };
         let config_rows =
             modal_start_agent_config_rows(content_width, theme, &dialog.start_config, |field| {
                 focused(LaunchDialogField::StartConfig(field))
@@ -25,6 +41,14 @@ impl GroveApp {
                 pad_or_truncate_to_display_width("Launch profile", content_width),
                 Style::new().fg(theme.overlay0),
             )]),
+            FtLine::raw(""),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("Agent", content_width),
+                Style::new().fg(theme.overlay0),
+            )]),
+            agent_row(AgentType::Claude),
+            agent_row(AgentType::Codex),
+            agent_row(AgentType::OpenCode),
             FtLine::raw(""),
             config_rows[0].clone(),
             config_rows[1].clone(),
@@ -42,7 +66,7 @@ impl GroveApp {
         lines.extend(modal_wrapped_hint_rows(
             content_width,
             theme,
-            "Tab/C-n next, S-Tab/C-p prev, Space toggle unsafe, Enter start, Esc cancel",
+            "Tab/C-n next, S-Tab/C-p prev, j/k or h/l choose agent, Space toggle unsafe, Enter start, Esc cancel",
         ));
         let body = FtText::from_lines(lines);
         render_modal_dialog(
@@ -52,7 +76,7 @@ impl GroveApp {
             ModalDialogSpec {
                 dialog_width,
                 dialog_height,
-                title: "Start Agent",
+                title: "New Agent Tab",
                 theme,
                 border_color: theme.mauve,
                 hit_id: HIT_ID_LAUNCH_DIALOG,
