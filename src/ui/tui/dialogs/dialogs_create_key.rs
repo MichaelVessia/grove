@@ -49,9 +49,7 @@ impl GroveApp {
                         CreateDialogField::WorkspaceName
                         | CreateDialogField::PullRequestUrl
                         | CreateDialogField::Project
-                        | CreateDialogField::BaseBranch
-                        | CreateDialogField::Agent
-                        | CreateDialogField::StartConfig(_) => EnterAction::AdvanceField,
+                        | CreateDialogField::BaseBranch => EnterAction::AdvanceField,
                     });
 
                 match action {
@@ -87,18 +85,6 @@ impl GroveApp {
                     .is_some_and(|dialog| dialog.focused_field == CreateDialogField::Project)
                 {
                     self.shift_create_dialog_project(-1);
-                    return;
-                }
-                if let Some(dialog) = self.create_dialog_mut()
-                    && dialog.focused_field == CreateDialogField::Agent
-                {
-                    Self::select_previous_create_dialog_agent(dialog);
-                }
-                if let Some(dialog) = self.create_dialog_mut()
-                    && dialog.focused_field
-                        == CreateDialogField::StartConfig(StartAgentConfigField::Unsafe)
-                {
-                    dialog.start_config.toggle_unsafe();
                 }
             }
             KeyCode::Down => {
@@ -115,18 +101,6 @@ impl GroveApp {
                     .is_some_and(|dialog| dialog.focused_field == CreateDialogField::Project)
                 {
                     self.shift_create_dialog_project(1);
-                    return;
-                }
-                if let Some(dialog) = self.create_dialog_mut()
-                    && dialog.focused_field == CreateDialogField::Agent
-                {
-                    Self::select_next_create_dialog_agent(dialog);
-                }
-                if let Some(dialog) = self.create_dialog_mut()
-                    && dialog.focused_field
-                        == CreateDialogField::StartConfig(StartAgentConfigField::Unsafe)
-                {
-                    dialog.start_config.toggle_unsafe();
                 }
             }
             KeyCode::Char(_) if ctrl_n || ctrl_p => {
@@ -150,11 +124,7 @@ impl GroveApp {
                             dialog.base_branch.pop();
                             refresh_base_branch = true;
                         }
-                        CreateDialogField::StartConfig(field) => {
-                            dialog.start_config.backspace(field);
-                        }
                         CreateDialogField::Project
-                        | CreateDialogField::Agent
                         | CreateDialogField::CreateButton
                         | CreateDialogField::CancelButton => {}
                     }
@@ -195,23 +165,6 @@ impl GroveApp {
                 }
                 let mut refresh_base_branch = false;
                 if let Some(dialog) = self.create_dialog_mut() {
-                    if dialog.focused_field == CreateDialogField::Agent
-                        && (character == 'j' || character == 'k' || character == ' ')
-                    {
-                        if character == 'k' {
-                            Self::select_previous_create_dialog_agent(dialog);
-                        } else {
-                            Self::select_next_create_dialog_agent(dialog);
-                        }
-                        return;
-                    }
-                    if dialog.focused_field
-                        == CreateDialogField::StartConfig(StartAgentConfigField::Unsafe)
-                        && (character == 'j' || character == 'k' || character == ' ')
-                    {
-                        dialog.start_config.toggle_unsafe();
-                        return;
-                    }
                     if (dialog.focused_field == CreateDialogField::CreateButton
                         || dialog.focused_field == CreateDialogField::CancelButton)
                         && (character == 'h' || character == 'l')
@@ -245,15 +198,6 @@ impl GroveApp {
                                 refresh_base_branch = true;
                             }
                         }
-                        CreateDialogField::StartConfig(field) => match field {
-                            StartAgentConfigField::Prompt | StartAgentConfigField::InitCommand => {
-                                if !character.is_control() {
-                                    dialog.start_config.push_char(field, character);
-                                }
-                            }
-                            StartAgentConfigField::Unsafe => {}
-                        },
-                        CreateDialogField::Agent => {}
                         CreateDialogField::CreateButton | CreateDialogField::CancelButton => {}
                     }
                 }
@@ -264,13 +208,7 @@ impl GroveApp {
             _ => {}
         }
     }
-    fn select_next_create_dialog_agent(dialog: &mut CreateDialogState) {
-        dialog.agent = Self::next_agent(dialog.agent);
-    }
 
-    fn select_previous_create_dialog_agent(dialog: &mut CreateDialogState) {
-        dialog.agent = Self::previous_agent(dialog.agent);
-    }
     fn shift_create_dialog_project(&mut self, delta: isize) {
         let Some(current_index) = self.create_dialog().map(|dialog| dialog.project_index) else {
             return;

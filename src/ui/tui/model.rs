@@ -69,7 +69,7 @@ use crate::application::services::runtime_service::{
 };
 use crate::application::services::workspace_service::{
     create_workspace_with_template, delete_workspace, merge_workspace, update_workspace_from_base,
-    workspace_lifecycle_error_message, write_workspace_agent_marker, write_workspace_base_marker,
+    workspace_lifecycle_error_message, write_workspace_base_marker,
 };
 use crate::application::workspace_lifecycle::{
     BranchMode, CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner,
@@ -119,12 +119,6 @@ struct QueuedDeleteWorkspace {
     request: DeleteWorkspaceRequest,
     workspace_name: String,
     workspace_path: PathBuf,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PendingAutoStartWorkspace {
-    workspace_path: PathBuf,
-    start_config: StartAgentConfigState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -210,7 +204,6 @@ struct SessionState {
     pending_interactive_sends: VecDeque<QueuedInteractiveSend>,
     interactive_send_in_flight: bool,
     pending_resize_verification: Option<PendingResizeVerification>,
-    pending_auto_launch_shell_workspace_path: Option<PathBuf>,
     pending_restart_workspace_path: Option<PathBuf>,
 }
 
@@ -250,8 +243,6 @@ struct DialogState {
     merge_in_flight: bool,
     update_from_base_in_flight: bool,
     create_in_flight: bool,
-    pending_auto_start_workspace: Option<PendingAutoStartWorkspace>,
-    pending_create_start_config: Option<StartAgentConfigState>,
     start_in_flight: bool,
     stop_in_flight: bool,
     restart_in_flight: bool,

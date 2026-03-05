@@ -271,29 +271,6 @@ impl GroveApp {
         )
     }
 
-    pub(super) fn ensure_workspace_shell_session_for_workspace(
-        &mut self,
-        workspace: Workspace,
-        retry_failed: bool,
-        allow_running_agent_session: bool,
-        allow_main_workspace: bool,
-    ) -> Option<String> {
-        if workspace.is_main && !allow_main_workspace {
-            return None;
-        }
-        if !allow_running_agent_session && workspace.status.has_session() {
-            return None;
-        }
-
-        self.ensure_session_for_workspace(
-            SessionKind::WorkspaceShell,
-            &workspace,
-            String::new(),
-            retry_failed,
-            true,
-        )
-    }
-
     pub(super) fn selected_agent_preview_session_if_ready(&self) -> Option<String> {
         let tab = self.selected_active_tab()?;
         if tab.kind != WorkspaceTabKind::Agent {

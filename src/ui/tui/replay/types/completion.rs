@@ -107,7 +107,6 @@ struct ReplayCreateWorkspaceCompletion {
 struct ReplayCreateWorkspaceRequest {
     workspace_name: String,
     branch_mode: ReplayBranchMode,
-    agent: ReplayAgentType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -486,7 +485,6 @@ impl ReplayCreateWorkspaceRequest {
         Self {
             workspace_name: request.workspace_name.clone(),
             branch_mode: ReplayBranchMode::from_branch_mode(&request.branch_mode),
-            agent: ReplayAgentType::from_agent_type(request.agent),
         }
     }
 
@@ -494,7 +492,6 @@ impl ReplayCreateWorkspaceRequest {
         CreateWorkspaceRequest {
             workspace_name: self.workspace_name.clone(),
             branch_mode: self.branch_mode.to_branch_mode(),
-            agent: self.agent.to_agent_type(),
         }
     }
 }

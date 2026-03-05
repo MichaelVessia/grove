@@ -84,16 +84,12 @@ impl GroveApp {
                 dialog.focused_field = dialog.focused_field.previous();
             }
             KeyCode::Left => {
-                if dialog.focused_field == EditDialogField::Agent {
-                    Self::select_previous_edit_dialog_agent(dialog);
-                } else if dialog.focused_field == EditDialogField::CancelButton {
+                if dialog.focused_field == EditDialogField::CancelButton {
                     dialog.focused_field = EditDialogField::SaveButton;
                 }
             }
             KeyCode::Right => {
-                if dialog.focused_field == EditDialogField::Agent {
-                    Self::select_next_edit_dialog_agent(dialog);
-                } else if dialog.focused_field == EditDialogField::SaveButton {
+                if dialog.focused_field == EditDialogField::SaveButton {
                     dialog.focused_field = EditDialogField::CancelButton;
                 }
             }
@@ -101,9 +97,7 @@ impl GroveApp {
                 if key_event.modifiers.is_empty()
                     && dialog.focused_field != EditDialogField::BaseBranch =>
             {
-                if dialog.focused_field == EditDialogField::Agent {
-                    Self::select_previous_edit_dialog_agent(dialog);
-                } else if dialog.focused_field == EditDialogField::CancelButton {
+                if dialog.focused_field == EditDialogField::CancelButton {
                     dialog.focused_field = EditDialogField::SaveButton;
                 }
             }
@@ -111,20 +105,12 @@ impl GroveApp {
                 if key_event.modifiers.is_empty()
                     && dialog.focused_field != EditDialogField::BaseBranch =>
             {
-                if dialog.focused_field == EditDialogField::Agent {
-                    Self::select_next_edit_dialog_agent(dialog);
-                } else if dialog.focused_field == EditDialogField::SaveButton {
+                if dialog.focused_field == EditDialogField::SaveButton {
                     dialog.focused_field = EditDialogField::CancelButton;
-                }
-            }
-            KeyCode::Char(' ') => {
-                if dialog.focused_field == EditDialogField::Agent {
-                    Self::select_next_edit_dialog_agent(dialog);
                 }
             }
             KeyCode::Enter => match dialog.focused_field {
                 EditDialogField::BaseBranch => dialog.focused_field = dialog.focused_field.next(),
-                EditDialogField::Agent => Self::select_next_edit_dialog_agent(dialog),
                 EditDialogField::SaveButton => post_action = PostAction::Save,
                 EditDialogField::CancelButton => post_action = PostAction::Cancel,
             },
@@ -167,7 +153,6 @@ impl GroveApp {
             is_main: workspace.is_main,
             branch: workspace.branch.clone(),
             base_branch: base_branch.clone(),
-            agent: workspace.agent,
             was_running: workspace.status.has_session(),
             focused_field: EditDialogField::BaseBranch,
         });
@@ -177,7 +162,6 @@ impl GroveApp {
             [
                 ("workspace".to_string(), Value::from(workspace.name.clone())),
                 ("base_branch".to_string(), Value::from(base_branch)),
-                ("agent".to_string(), Value::from(workspace.agent.label())),
                 (
                     "running".to_string(),
                     Value::from(workspace.status.has_session()),
@@ -187,14 +171,6 @@ impl GroveApp {
         self.state.mode = UiMode::List;
         self.state.focus = PaneFocus::WorkspaceList;
         self.session.last_tmux_error = None;
-    }
-
-    fn select_next_edit_dialog_agent(dialog: &mut EditDialogState) {
-        dialog.agent = Self::next_agent(dialog.agent);
-    }
-
-    fn select_previous_edit_dialog_agent(dialog: &mut EditDialogState) {
-        dialog.agent = Self::previous_agent(dialog.agent);
     }
 
     fn apply_edit_dialog_save(&mut self) {
@@ -230,7 +206,6 @@ impl GroveApp {
                     "base_branch".to_string(),
                     Value::from(target_branch.clone()),
                 ),
-                ("agent".to_string(), Value::from(dialog.agent.label())),
                 ("was_running".to_string(), Value::from(dialog.was_running)),
                 ("is_main".to_string(), Value::from(dialog.is_main)),
             ],
@@ -246,36 +221,26 @@ impl GroveApp {
             return;
         }
 
-        if let Err(error) = write_workspace_agent_marker(&dialog.workspace_path, dialog.agent) {
-            self.show_error_toast(format!(
-                "workspace edit failed: {}",
-                workspace_lifecycle_error_message(&error)
-            ));
-            return;
-        }
-
         if let Some(workspace) = self
             .state
             .workspaces
             .iter_mut()
             .find(|workspace| workspace.path == dialog.workspace_path)
         {
-            workspace.agent = dialog.agent;
             workspace.base_branch = Some(target_branch.clone());
             if dialog.is_main {
                 workspace.branch = target_branch.clone();
             }
-            workspace.supported_agent = true;
         }
 
         self.close_active_dialog();
         self.session.last_tmux_error = None;
         if dialog.is_main && dialog.was_running {
-            self.show_info_toast("base workspace switched, restart agent to apply agent change");
+            self.show_info_toast("base workspace switched, restart active tabs to apply change");
         } else if dialog.is_main {
             self.show_success_toast(format!("base workspace switched to '{target_branch}'"));
         } else if dialog.was_running {
-            self.show_info_toast("workspace updated, restart agent to apply change");
+            self.show_info_toast("workspace updated, restart active tabs to apply change");
         } else {
             self.show_success_toast("workspace updated");
         }

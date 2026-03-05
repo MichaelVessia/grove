@@ -71,31 +71,8 @@ impl GroveApp {
             .map(|project| project.name.clone())
             .unwrap_or_else(|| "(missing project)".to_string());
         let focused = |field| dialog.focused_field == field;
-        let selected_agent = dialog.agent;
-        let selected_agent_style = Style::new()
-            .fg(theme.text)
-            .bg(if focused(CreateDialogField::Agent) {
-                theme.surface1
-            } else {
-                theme.base
-            })
-            .bold();
-        let unselected_agent_style = Style::new().fg(theme.subtext0).bg(theme.base);
         let selected_dropdown_style = Style::new().fg(theme.text).bg(theme.surface1).bold();
         let unselected_dropdown_style = Style::new().fg(theme.subtext0).bg(theme.base);
-        let agent_row = |agent: AgentType| {
-            let is_selected = selected_agent == agent;
-            let prefix = if is_selected { "▸" } else { " " };
-            let line = pad_or_truncate_to_display_width(
-                format!("{} [Agent] {}", prefix, agent.label()).as_str(),
-                content_width,
-            );
-            if is_selected {
-                FtLine::from_spans(vec![FtSpan::styled(line, selected_agent_style)])
-            } else {
-                FtLine::from_spans(vec![FtSpan::styled(line, unselected_agent_style)])
-            }
-        };
 
         let (mode_tabs_row, mode_tab_ranges) =
             Self::create_dialog_mode_tabs_row(content_width, theme, dialog.tab);
@@ -236,22 +213,6 @@ impl GroveApp {
             }
         }
         lines.push(FtLine::raw(""));
-        for agent in AgentType::all() {
-            lines.push(agent_row(*agent));
-        }
-        lines.push(FtLine::raw(""));
-        lines.push(FtLine::from_spans(vec![FtSpan::styled(
-            pad_or_truncate_to_display_width("Agent startup (every start)", content_width),
-            Style::new().fg(theme.overlay0),
-        )]));
-        let start_config_rows =
-            modal_start_agent_config_rows(content_width, theme, &dialog.start_config, |field| {
-                focused(CreateDialogField::StartConfig(field))
-            });
-        lines.push(start_config_rows[0].clone());
-        lines.push(start_config_rows[1].clone());
-        lines.push(start_config_rows[2].clone());
-        lines.push(FtLine::raw(""));
         let create_focused = focused(CreateDialogField::CreateButton);
         let cancel_focused = focused(CreateDialogField::CancelButton);
         lines.push(modal_actions_row(
@@ -263,9 +224,9 @@ impl GroveApp {
             cancel_focused,
         ));
         let hint_text = if dialog.tab == CreateDialogTab::Manual {
-            "Tab/C-n next, S-Tab/C-p prev, click mode tab or Alt+[/Alt+], j/k adjust project/branch, Space toggles unsafe, Enter create, Esc cancel"
+            "Tab/C-n next, S-Tab/C-p prev, click mode tab or Alt+[/Alt+], j/k adjust project/branch, Enter create, Esc cancel"
         } else {
-            "Tab/C-n next, S-Tab/C-p prev, click mode tab or Alt+[/Alt+], j/k adjust project or agent, Space toggles unsafe, Enter create, Esc cancel"
+            "Tab/C-n next, S-Tab/C-p prev, click mode tab or Alt+[/Alt+], j/k adjust project, Enter create, Esc cancel"
         };
         lines.extend(modal_wrapped_hint_rows(content_width, theme, hint_text));
         let body = FtText::from_lines(lines);

@@ -90,7 +90,6 @@ pub enum BranchMode {
 pub struct CreateWorkspaceRequest {
     pub workspace_name: String,
     pub branch_mode: BranchMode,
-    pub agent: AgentType,
 }
 
 impl CreateWorkspaceRequest {
@@ -693,7 +692,6 @@ mod tests {
             branch_mode: BranchMode::NewBranch {
                 base_branch: "main".to_string(),
             },
-            agent: AgentType::Claude,
         };
 
         assert_eq!(
@@ -706,7 +704,6 @@ mod tests {
             branch_mode: BranchMode::ExistingBranch {
                 existing_branch: "feature/auth.v2".to_string(),
             },
-            agent: AgentType::Codex,
         };
 
         assert_eq!(valid_existing_branch.validate(), Ok(()));
@@ -729,7 +726,6 @@ mod tests {
             branch_mode: BranchMode::NewBranch {
                 base_branch: "main".to_string(),
             },
-            agent: AgentType::Claude,
         };
 
         let result =
@@ -791,7 +787,6 @@ mod tests {
             branch_mode: BranchMode::ExistingBranch {
                 existing_branch: "feature/auth.v2".to_string(),
             },
-            agent: AgentType::Codex,
         };
 
         let result =
@@ -831,7 +826,6 @@ mod tests {
                 number: 3484,
                 base_branch: "main".to_string(),
             },
-            agent: AgentType::Claude,
         };
 
         let result =
@@ -885,7 +879,6 @@ mod tests {
             branch_mode: BranchMode::NewBranch {
                 base_branch: "main".to_string(),
             },
-            agent: AgentType::Claude,
         };
 
         let result =
@@ -923,7 +916,6 @@ mod tests {
             branch_mode: BranchMode::NewBranch {
                 base_branch: "main".to_string(),
             },
-            agent: AgentType::Claude,
         };
         let template = WorkspaceSetupTemplate {
             auto_run_setup_commands: true,
@@ -966,7 +958,6 @@ mod tests {
             branch_mode: BranchMode::NewBranch {
                 base_branch: "main".to_string(),
             },
-            agent: AgentType::Claude,
         };
         let template = WorkspaceSetupTemplate {
             auto_run_setup_commands: true,

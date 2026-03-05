@@ -74,18 +74,10 @@ impl GroveApp {
             DiscoveryState::Ready => {
                 if let Some(dialog) = self.create_dialog() {
                     return format!(
-                        "Status: new workspace, field={}, agent={}, base_branch=\"{}\", unsafe={}, name=\"{}\", prompt=\"{}\", init=\"{}\"",
+                        "Status: new workspace, field={}, base_branch=\"{}\", name=\"{}\"",
                         dialog.focused_field.label(),
-                        dialog.agent.label(),
                         dialog.base_branch.replace('\n', "\\n"),
-                        if dialog.start_config.skip_permissions {
-                            "on"
-                        } else {
-                            "off"
-                        },
                         dialog.workspace_name,
-                        dialog.start_config.prompt.replace('\n', "\\n"),
-                        dialog.start_config.init_command.replace('\n', "\\n"),
                     );
                 }
                 if let Some(dialog) = self.launch_dialog() {

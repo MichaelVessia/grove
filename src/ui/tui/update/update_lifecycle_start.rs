@@ -129,27 +129,6 @@ impl GroveApp {
         }));
     }
 
-    pub(super) fn start_selected_workspace_agent_with_options(
-        &mut self,
-        prompt: Option<String>,
-        init_command: Option<String>,
-        skip_permissions: bool,
-    ) {
-        if self.dialogs.start_in_flight || self.dialogs.restart_in_flight {
-            return;
-        }
-
-        if !workspace_can_start_agent(self.state.selected_workspace()) {
-            self.show_info_toast("workspace cannot be started");
-            return;
-        }
-        let Some(workspace) = self.state.selected_workspace().cloned() else {
-            self.show_info_toast("no workspace selected");
-            return;
-        };
-        self.start_workspace_agent_with_options(workspace, prompt, init_command, skip_permissions);
-    }
-
     pub(super) fn restart_workspace_agent_by_path(&mut self, workspace_path: &Path) {
         let Some(workspace) = self
             .state

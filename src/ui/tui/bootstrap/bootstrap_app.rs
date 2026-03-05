@@ -167,8 +167,6 @@ impl GroveApp {
                 merge_in_flight: false,
                 update_from_base_in_flight: false,
                 create_in_flight: false,
-                pending_auto_start_workspace: None,
-                pending_create_start_config: None,
                 start_in_flight: false,
                 stop_in_flight: false,
                 restart_in_flight: false,
@@ -187,7 +185,6 @@ impl GroveApp {
                 pending_interactive_sends: VecDeque::new(),
                 interactive_send_in_flight: false,
                 pending_resize_verification: None,
-                pending_auto_launch_shell_workspace_path: None,
                 pending_restart_workspace_path: None,
             },
             polling: PollingState {

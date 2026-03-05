@@ -18,9 +18,7 @@ impl GroveApp {
             return dialog.start_config.is_input_nonempty();
         }
         if let Some(dialog) = self.create_dialog() {
-            return !dialog.workspace_name.is_empty()
-                || !dialog.base_branch.is_empty()
-                || dialog.start_config.is_input_nonempty();
+            return !dialog.workspace_name.is_empty() || !dialog.base_branch.is_empty();
         }
         if let Some(project_dialog) = self.project_dialog() {
             if !project_dialog.filter.is_empty() {
@@ -87,11 +85,7 @@ impl GroveApp {
                             dialog.base_branch.clear();
                             refresh_base_branch = true;
                         }
-                        CreateDialogField::StartConfig(field) => {
-                            dialog.start_config.clear(field);
-                        }
                         CreateDialogField::Project
-                        | CreateDialogField::Agent
                         | CreateDialogField::CreateButton
                         | CreateDialogField::CancelButton => {}
                     }

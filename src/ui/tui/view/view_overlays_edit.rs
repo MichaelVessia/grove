@@ -16,9 +16,9 @@ impl GroveApp {
         let focused = |field| dialog.focused_field == field;
         let path = dialog.workspace_path.display().to_string();
         let running_note = if dialog.was_running && dialog.is_main {
-            "Branch switches now, restart agent to apply agent change"
+            "Branch switches now, restart active tabs to apply change"
         } else if dialog.was_running {
-            "Base branch applies now, restart agent to apply agent change"
+            "Base branch applies now, restart active tabs to apply change"
         } else if dialog.is_main {
             "Branch switches immediately"
         } else {
@@ -30,9 +30,9 @@ impl GroveApp {
             "BaseBranch"
         };
         let edit_hint = if dialog.is_main {
-            "Tab/C-n next, S-Tab/C-p prev, type/backspace branch, h/l or Space toggle agent, Enter save, Esc cancel"
+            "Tab/C-n next, S-Tab/C-p prev, type/backspace branch, Enter save, Esc cancel"
         } else {
-            "Tab/C-n next, S-Tab/C-p prev, type/backspace base branch, h/l or Space toggle agent, Enter save, Esc cancel"
+            "Tab/C-n next, S-Tab/C-p prev, type/backspace base branch, Enter save, Esc cancel"
         };
 
         let mut lines = vec![
@@ -73,15 +73,6 @@ impl GroveApp {
                 dialog.base_branch.as_str(),
                 "main",
                 focused(EditDialogField::BaseBranch),
-            ),
-            modal_focus_badged_row(
-                content_width,
-                theme,
-                "Agent",
-                dialog.agent.label(),
-                focused(EditDialogField::Agent),
-                theme.peach,
-                theme.text,
             ),
         ];
         lines.extend(modal_wrapped_hint_rows(

@@ -43,57 +43,6 @@ impl GroveApp {
         self.refresh_workspaces(None);
     }
 
-    fn auto_launch_pending_workspace_shell(&mut self) -> bool {
-        let Some(pending_path) = self
-            .session
-            .pending_auto_launch_shell_workspace_path
-            .clone()
-        else {
-            return false;
-        };
-        self.session.pending_auto_launch_shell_workspace_path = None;
-
-        let Some(workspace) = self
-            .state
-            .workspaces
-            .iter()
-            .find(|workspace| workspace.path == pending_path)
-            .cloned()
-        else {
-            return false;
-        };
-
-        let session_name = shell_session_name_for_workspace(&workspace);
-        let launched = self
-            .ensure_workspace_shell_session_for_workspace(workspace, false, true, true)
-            .is_some();
-        launched || self.session.shell_sessions.is_in_flight(&session_name)
-    }
-
-    pub(super) fn auto_start_pending_workspace_agent(&mut self) -> bool {
-        let Some(pending) = self.dialogs.pending_auto_start_workspace.clone() else {
-            return false;
-        };
-        self.dialogs.pending_auto_start_workspace = None;
-
-        let selected_matches = self
-            .state
-            .selected_workspace()
-            .is_some_and(|workspace| workspace.path == pending.workspace_path);
-        if !selected_matches {
-            return false;
-        }
-
-        let StartOptions {
-            prompt,
-            init_command,
-            skip_permissions,
-        } = pending.start_config.parse_start_options();
-        self.launch_skip_permissions = skip_permissions;
-        self.start_selected_workspace_agent_with_options(prompt, init_command, skip_permissions);
-        self.dialogs.start_in_flight
-    }
-
     pub(super) fn refresh_workspaces(&mut self, preferred_workspace_path: Option<PathBuf>) {
         if !self.tmux_input.supports_background_launch() {
             self.refresh_workspaces_sync(preferred_workspace_path);
@@ -140,11 +89,7 @@ impl GroveApp {
         self.reconcile_workspace_attention_tracking();
         self.clear_agent_activity_tracking();
         self.clear_status_tracking();
-        self.auto_launch_pending_workspace_shell();
-        let started_in_background = self.auto_start_pending_workspace_agent();
-        if !started_in_background {
-            self.poll_preview();
-        }
+        self.poll_preview();
         self.finalize_manual_workspace_refresh_feedback();
     }
 
@@ -174,11 +119,7 @@ impl GroveApp {
         self.reconcile_workspace_attention_tracking();
         self.clear_agent_activity_tracking();
         self.clear_status_tracking();
-        self.auto_launch_pending_workspace_shell();
-        let started_in_background = self.auto_start_pending_workspace_agent();
-        if !started_in_background {
-            self.poll_preview();
-        }
+        self.poll_preview();
         self.finalize_manual_workspace_refresh_feedback();
     }
 }

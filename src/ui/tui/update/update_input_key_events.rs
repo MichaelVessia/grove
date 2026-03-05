@@ -72,21 +72,7 @@ impl GroveApp {
                         }
                     }
                 }
-                CreateDialogField::StartConfig(field) => {
-                    if matches!(
-                        field,
-                        StartAgentConfigField::Prompt | StartAgentConfigField::InitCommand
-                    ) {
-                        handled = true;
-                        for character in text.chars() {
-                            if !character.is_control() {
-                                dialog.start_config.push_char(field, character);
-                            }
-                        }
-                    }
-                }
                 CreateDialogField::Project
-                | CreateDialogField::Agent
                 | CreateDialogField::CreateButton
                 | CreateDialogField::CancelButton => {}
             }

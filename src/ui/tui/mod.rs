@@ -214,13 +214,13 @@ mod tests {
         HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST,
         HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW, HelpHintContext, LaunchDialogField,
         LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField,
-        MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS, PendingAutoStartWorkspace,
-        PendingResizeVerification, PreviewPollCompletion, PreviewTab, ProjectAddDialogField,
-        ProjectDefaultsDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
-        StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
-        StopDialogField, TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField,
-        WORKSPACE_ITEM_HEIGHT, WorkspaceAttention, WorkspaceShellLaunchCompletion,
-        WorkspaceStatusCapture, WorkspaceTabKind, ansi_16_color, ansi_lines_to_styled_lines,
+        MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification,
+        PreviewPollCompletion, PreviewTab, ProjectAddDialogField, ProjectDefaultsDialogField,
+        RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion,
+        StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
+        TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
+        WorkspaceAttention, WorkspaceShellLaunchCompletion, WorkspaceStatusCapture,
+        WorkspaceTabKind, ansi_16_color, ansi_lines_to_styled_lines,
         ansi_lines_to_styled_lines_for_theme, decode_create_dialog_tab_hit_data,
         decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
@@ -1728,17 +1728,9 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
     }
 
     #[test]
-    fn create_dialog_selected_agent_row_uses_highlight_background() {
+    fn create_dialog_selected_project_row_uses_highlight_background() {
         let mut app = fixture_app();
         app.open_create_dialog();
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-        );
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-        );
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -1757,13 +1749,13 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 (y_start..y_end).find(|&row| row_text(frame, row, x_start, x_end).contains(needle))
             };
 
-            let Some(selected_row) = find_dialog_row("[Agent] Claude") else {
-                panic!("selected agent row should be rendered");
+            let Some(selected_row) = find_dialog_row("[Project] grove") else {
+                panic!("selected project row should be rendered");
             };
             assert_row_bg(frame, selected_row, x_start, x_end, ui_theme().surface1);
 
-            let Some(unselected_row) = find_dialog_row("Codex") else {
-                panic!("unselected agent row should be rendered");
+            let Some(unselected_row) = find_dialog_row("[Name]") else {
+                panic!("unselected name row should be rendered");
             };
             assert_row_bg(frame, unselected_row, x_start, x_end, ui_theme().base);
 
@@ -1778,7 +1770,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
     }
 
     #[test]
-    fn create_dialog_unfocused_agent_row_uses_base_background() {
+    fn create_dialog_unfocused_project_row_uses_base_background() {
         let mut app = fixture_app();
         app.open_create_dialog();
 
@@ -1800,10 +1792,10 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
             };
             assert_row_bg(frame, name_row, x_start, x_end, ui_theme().surface1);
 
-            let Some(selected_agent_row) = find_dialog_row("[Agent] Claude") else {
-                panic!("selected agent row should be rendered");
+            let Some(project_row) = find_dialog_row("[Project] grove") else {
+                panic!("project row should be rendered");
             };
-            assert_row_bg(frame, selected_agent_row, x_start, x_end, ui_theme().base);
+            assert_row_bg(frame, project_row, x_start, x_end, ui_theme().base);
         });
     }
 
@@ -3212,9 +3204,9 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
             else {
                 panic!("create dialog wrapped hint first row should be rendered");
             };
-            let Some(second_row) = ((first_row.saturating_add(1))..y_end)
-                .find(|&row| row_text(frame, row, x_start, x_end).contains("unsafe, Enter create"))
-            else {
+            let Some(second_row) = ((first_row.saturating_add(1))..y_end).find(|&row| {
+                row_text(frame, row, x_start, x_end).contains("Enter create, Esc cancel")
+            }) else {
                 panic!("create dialog wrapped hint second row should be rendered");
             };
 
@@ -8926,10 +8918,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 );
 
                 assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.agent),
-                    Some(AgentType::Claude)
-                );
-                assert_eq!(
                     app.create_dialog().map(|dialog| dialog.base_branch.clone()),
                     Some("main".to_string())
                 );
@@ -8951,17 +8939,15 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 assert!(dialog.is_main);
                 assert_eq!(dialog.branch, "main");
                 assert_eq!(dialog.base_branch, "main");
-                assert_eq!(dialog.agent, AgentType::Claude);
                 assert_eq!(dialog.focused_field, EditDialogField::BaseBranch);
             }
 
             #[test]
-            fn edit_dialog_save_updates_workspace_agent_base_branch_and_markers() {
+            fn edit_dialog_save_updates_workspace_base_branch_marker() {
                 let mut app = fixture_app();
                 let workspace_dir = unique_temp_workspace_dir("edit-save");
                 app.state.selected_index = 1;
                 app.state.workspaces[1].path = workspace_dir.clone();
-                app.state.workspaces[1].agent = AgentType::Codex;
 
                 ftui::Model::update(
                     &mut app,
@@ -8997,28 +8983,13 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 );
                 ftui::Model::update(
                     &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char(' ')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
                 );
 
                 assert!(app.edit_dialog().is_none());
-                assert_eq!(app.state.workspaces[1].agent, AgentType::OpenCode);
                 assert_eq!(
                     app.state.workspaces[1].base_branch.as_deref(),
                     Some("develop")
-                );
-                assert_eq!(
-                    fs::read_to_string(workspace_dir.join(".grove/agent"))
-                        .expect("agent marker should be readable")
-                        .trim(),
-                    "opencode"
                 );
                 assert_eq!(
                     fs::read_to_string(workspace_dir.join(".grove/base"))
@@ -9133,10 +9104,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 );
                 ftui::Model::update(
                     &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
                 );
 
@@ -9187,10 +9154,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 );
                 ftui::Model::update(
                     &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
                 );
 
@@ -9217,7 +9180,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 );
                 assert_eq!(
                     app.edit_dialog().map(|dialog| dialog.focused_field),
-                    Some(EditDialogField::Agent)
+                    Some(EditDialogField::SaveButton)
                 );
                 ftui::Model::update(
                     &mut app,
@@ -10167,7 +10130,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                         ),
                     );
                 }
-                for _ in 0..7 {
+                for _ in 0..3 {
                     ftui::Model::update(
                         &mut app,
                         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -10937,11 +10900,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                     app.create_dialog().map(|dialog| dialog.base_branch.clone()),
                     Some("develop".to_string())
                 );
-                assert_eq!(
-                    app.create_dialog()
-                        .map(|dialog| dialog.start_config.init_command.clone()),
-                    Some("direnv allow".to_string())
-                );
             }
 
             #[test]
@@ -10952,7 +10910,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                     branch_mode: BranchMode::NewBranch {
                         base_branch: "main".to_string(),
                     },
-                    agent: AgentType::Claude,
                 };
                 let result = CreateWorkspaceResult {
                     workspace_path: PathBuf::from("/repos/grove-feature-x"),
@@ -10970,37 +10927,11 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
 
                 assert!(cmd_contains_task(&cmd));
                 assert!(app.dialogs.refresh_in_flight);
-                assert_eq!(
-                    app.dialogs
-                        .pending_auto_start_workspace
-                        .as_ref()
-                        .map(|pending| pending.workspace_path.clone()),
-                    Some(PathBuf::from("/repos/grove-feature-x"))
-                );
-                assert_eq!(
-                    app.dialogs
-                        .pending_auto_start_workspace
-                        .as_ref()
-                        .map(|pending| pending.start_config.clone()),
-                    Some(StartAgentConfigState::new(
-                        String::new(),
-                        String::new(),
-                        false
-                    ))
-                );
-                assert_eq!(
-                    app.session.pending_auto_launch_shell_workspace_path,
-                    Some(PathBuf::from("/repos/grove-feature-x"))
-                );
             }
 
             #[test]
-            fn refresh_workspace_completion_autostarts_agent_for_new_workspace() {
+            fn refresh_workspace_completion_does_not_auto_launch_sessions_for_new_workspace() {
                 let mut app = fixture_background_app(WorkspaceStatus::Idle);
-                app.dialogs.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
-                    workspace_path: PathBuf::from("/repos/grove-feature-a"),
-                    start_config: StartAgentConfigState::new(String::new(), String::new(), true),
-                });
 
                 let cmd = ftui::Model::update(
                     &mut app,
@@ -11010,93 +10941,14 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                     }),
                 );
 
-                assert!(cmd_contains_task(&cmd));
-                assert!(app.dialogs.start_in_flight);
-                assert!(app.dialogs.pending_auto_start_workspace.is_none());
-                assert!(app.launch_skip_permissions);
+                assert!(!cmd_contains_task(&cmd));
+                assert!(!app.dialogs.start_in_flight);
                 assert!(
                     !app.session
                         .shell_sessions
                         .in_flight
                         .contains("grove-ws-feature-a-shell")
                 );
-            }
-
-            #[test]
-            fn refresh_workspace_completion_auto_launches_shell_for_new_workspace() {
-                let mut app = fixture_background_app(WorkspaceStatus::Idle);
-                app.session.pending_auto_launch_shell_workspace_path =
-                    Some(PathBuf::from("/repos/grove-feature-a"));
-
-                let cmd = ftui::Model::update(
-                    &mut app,
-                    Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
-                        preferred_workspace_path: Some(PathBuf::from("/repos/grove-feature-a")),
-                        bootstrap: fixture_bootstrap(WorkspaceStatus::Idle),
-                    }),
-                );
-
-                assert!(cmd_contains_task(&cmd));
-                assert!(
-                    app.session
-                        .shell_sessions
-                        .in_flight
-                        .contains("grove-ws-feature-a-shell")
-                );
-                assert!(
-                    app.session
-                        .pending_auto_launch_shell_workspace_path
-                        .is_none()
-                );
-            }
-
-            #[test]
-            fn auto_start_pending_workspace_agent_uses_pending_start_config() {
-                let workspace_dir = unique_temp_workspace_dir("pending-auto-start");
-                fs::create_dir_all(workspace_dir.join(".grove"))
-                    .expect(".grove dir should be writable");
-
-                let (mut app, commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                app.state.selected_index = 1;
-                app.state.workspaces[1].path = workspace_dir.clone();
-                app.dialogs.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
-                    workspace_path: workspace_dir.clone(),
-                    start_config: StartAgentConfigState::new(
-                        "fix flaky test".to_string(),
-                        "direnv allow".to_string(),
-                        true,
-                    ),
-                });
-
-                let _ = app.auto_start_pending_workspace_agent();
-
-                assert!(app.dialogs.pending_auto_start_workspace.is_none());
-                assert!(!app.dialogs.start_in_flight);
-                assert!(app.launch_skip_permissions);
-                assert_eq!(
-                    commands.borrow().last(),
-                    Some(&vec![
-                        "tmux".to_string(),
-                        "send-keys".to_string(),
-                        "-t".to_string(),
-                        "grove-ws-feature-a".to_string(),
-                        format!("bash {}/.grove/start.sh", workspace_dir.display()),
-                        "Enter".to_string(),
-                    ])
-                );
-
-                let launcher_path = workspace_dir.join(".grove/start.sh");
-                let launcher_script =
-                    fs::read_to_string(&launcher_path).expect("launcher script should be written");
-                assert!(launcher_script.contains("fix flaky test"));
-                assert!(launcher_script.contains("direnv allow"));
-                assert!(launcher_script.contains("workspace-init-"));
-                assert!(
-                    launcher_script.contains("codex --dangerously-bypass-approvals-and-sandbox")
-                );
-
-                let _ = fs::remove_dir_all(workspace_dir);
             }
         }
         mod workspace_operations {
@@ -11560,34 +11412,37 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
             }
 
             #[test]
-            fn create_dialog_j_and_k_on_agent_field_toggle_agent() {
+            fn create_dialog_j_and_k_on_project_field_switch_project() {
                 let mut app = fixture_app();
+                app.projects.push(ProjectConfig {
+                    name: "other".to_string(),
+                    path: PathBuf::from("/repos/other"),
+                    defaults: Default::default(),
+                });
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
-                for _ in 0..3 {
-                    ftui::Model::update(
-                        &mut app,
-                        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                    );
-                }
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+                );
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
                 );
 
                 assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.agent),
-                    Some(AgentType::Codex)
+                    app.create_dialog().map(|dialog| dialog.project_index),
+                    Some(1)
                 );
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
                 );
                 assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.agent),
-                    Some(AgentType::Claude)
+                    app.create_dialog().map(|dialog| dialog.project_index),
+                    Some(0)
                 );
             }
 
@@ -11651,9 +11506,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 );
                 assert_eq!(
                     app.create_dialog().map(|dialog| dialog.focused_field),
-                    Some(CreateDialogField::StartConfig(
-                        StartAgentConfigField::Prompt
-                    ))
+                    Some(CreateDialogField::CancelButton)
                 );
                 ftui::Model::update(
                     &mut app,
@@ -11665,7 +11518,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 );
                 assert_eq!(
                     app.create_dialog().map(|dialog| dialog.focused_field),
-                    Some(CreateDialogField::Agent)
+                    Some(CreateDialogField::CreateButton)
                 );
             }
 
@@ -11702,7 +11555,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 );
                 assert_eq!(
                     app.create_dialog().map(|dialog| dialog.focused_field),
-                    Some(CreateDialogField::Agent)
+                    Some(CreateDialogField::CreateButton)
                 );
                 ftui::Model::update(
                     &mut app,
@@ -11766,7 +11619,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 );
                 assert_eq!(
                     app.create_dialog().map(|dialog| dialog.focused_field),
-                    Some(CreateDialogField::Agent)
+                    Some(CreateDialogField::CreateButton)
                 );
             }
 
@@ -11805,7 +11658,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
-                for _ in 0..7 {
+                for _ in 0..3 {
                     ftui::Model::update(
                         &mut app,
                         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -11828,7 +11681,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
-                for _ in 0..8 {
+                for _ in 0..4 {
                     ftui::Model::update(
                         &mut app,
                         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),

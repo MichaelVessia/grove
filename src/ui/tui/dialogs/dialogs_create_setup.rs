@@ -47,13 +47,6 @@ impl GroveApp {
         Some(base_branch.to_string())
     }
 
-    fn project_default_workspace_init_command(&self, project_index: usize) -> String {
-        let Some(project) = self.projects.get(project_index) else {
-            return String::new();
-        };
-        project.defaults.workspace_init_command.clone()
-    }
-
     pub(super) fn apply_create_dialog_project_defaults(&mut self, project_index: usize) {
         let base_branch = self
             .project_default_base_branch(project_index)
@@ -62,12 +55,10 @@ impl GroveApp {
                     .map(|dialog| dialog.base_branch.clone())
             })
             .unwrap_or_else(|| "main".to_string());
-        let workspace_init_command = self.project_default_workspace_init_command(project_index);
 
         if let Some(dialog) = self.create_dialog_mut() {
             dialog.project_index = project_index;
             dialog.base_branch = base_branch.clone();
-            dialog.start_config.init_command = workspace_init_command;
         }
 
         self.refresh_create_dialog_branch_candidates(base_branch);
@@ -105,42 +96,19 @@ impl GroveApp {
         let selected_base_branch = self
             .project_default_base_branch(project_index)
             .unwrap_or_else(|| self.selected_base_branch());
-        let default_agent = self
-            .state
-            .selected_workspace()
-            .map_or(AgentType::Claude, |workspace| workspace.agent);
-        let workspace_init_command = self.project_default_workspace_init_command(project_index);
         self.set_create_dialog(CreateDialogState {
             tab: CreateDialogTab::Manual,
             workspace_name: String::new(),
             pr_url: String::new(),
             project_index,
-            agent: default_agent,
             base_branch: selected_base_branch.clone(),
-            start_config: StartAgentConfigState::new(
-                String::new(),
-                workspace_init_command,
-                self.launch_skip_permissions,
-            ),
             focused_field: CreateDialogField::first_for_tab(CreateDialogTab::Manual),
         });
         self.refresh_create_dialog_branch_candidates(selected_base_branch);
-        self.log_dialog_event_with_fields(
-            "create",
-            "dialog_opened",
-            [("agent".to_string(), Value::from(default_agent.label()))],
-        );
+        self.log_dialog_event("create", "dialog_opened");
         self.state.mode = UiMode::List;
         self.state.focus = PaneFocus::WorkspaceList;
         self.session.last_tmux_error = None;
-    }
-
-    pub(super) fn next_agent(agent: AgentType) -> AgentType {
-        agent.next()
-    }
-
-    pub(super) fn previous_agent(agent: AgentType) -> AgentType {
-        agent.previous()
     }
 
     pub(super) fn clear_create_branch_picker(&mut self) {

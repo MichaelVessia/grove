@@ -10,10 +10,8 @@ use crate::application::workspace_lifecycle::{
     merge_workspace_with_terminator as lifecycle_merge_workspace_with_terminator,
     update_workspace_from_base_with_terminator as lifecycle_update_workspace_from_base_with_terminator,
     workspace_lifecycle_error_message as lifecycle_workspace_lifecycle_error_message,
-    write_workspace_agent_marker as lifecycle_write_workspace_agent_marker,
     write_workspace_base_marker as lifecycle_write_workspace_base_marker,
 };
-use crate::domain::AgentType;
 use crate::infrastructure::process::execute_command;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -58,12 +56,6 @@ pub(crate) trait WorkspaceService {
     ) -> (Result<(), String>, Vec<String>);
 
     fn workspace_lifecycle_error_message(&self, error: &WorkspaceLifecycleError) -> String;
-
-    fn write_workspace_agent_marker(
-        &self,
-        workspace_path: &Path,
-        agent: AgentType,
-    ) -> Result<(), WorkspaceLifecycleError>;
 
     fn write_workspace_base_marker(
         &self,
@@ -122,14 +114,6 @@ impl WorkspaceService for CommandWorkspaceService {
         lifecycle_workspace_lifecycle_error_message(error)
     }
 
-    fn write_workspace_agent_marker(
-        &self,
-        workspace_path: &Path,
-        agent: AgentType,
-    ) -> Result<(), WorkspaceLifecycleError> {
-        lifecycle_write_workspace_agent_marker(workspace_path, agent)
-    }
-
     fn write_workspace_base_marker(
         &self,
         workspace_path: &Path,
@@ -178,13 +162,6 @@ pub fn update_workspace_from_base(
 
 pub fn workspace_lifecycle_error_message(error: &WorkspaceLifecycleError) -> String {
     CommandWorkspaceService.workspace_lifecycle_error_message(error)
-}
-
-pub fn write_workspace_agent_marker(
-    workspace_path: &Path,
-    agent: AgentType,
-) -> Result<(), WorkspaceLifecycleError> {
-    CommandWorkspaceService.write_workspace_agent_marker(workspace_path, agent)
 }
 
 pub fn write_workspace_base_marker(

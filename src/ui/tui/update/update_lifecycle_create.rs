@@ -62,31 +62,17 @@ impl GroveApp {
                     "workspace_name".to_string(),
                     Value::from(workspace_name.clone()),
                 ),
-                ("agent".to_string(), Value::from(dialog.agent.label())),
                 ("branch_mode".to_string(), Value::from(branch_mode_label)),
                 ("branch_value".to_string(), Value::from(branch_value)),
                 (
                     "project_index".to_string(),
                     Value::from(usize_to_u64(dialog.project_index)),
                 ),
-                (
-                    "prompt_len".to_string(),
-                    Value::from(usize_to_u64(dialog.start_config.prompt.len())),
-                ),
-                (
-                    "skip_permissions".to_string(),
-                    Value::from(dialog.start_config.skip_permissions),
-                ),
-                (
-                    "init_len".to_string(),
-                    Value::from(usize_to_u64(dialog.start_config.init_command.len())),
-                ),
             ],
         );
         let request = CreateWorkspaceRequest {
             workspace_name: workspace_name.clone(),
             branch_mode,
-            agent: dialog.agent,
         };
 
         if let Err(error) = request.validate() {
@@ -94,7 +80,6 @@ impl GroveApp {
             return;
         }
 
-        self.dialogs.pending_create_start_config = Some(dialog.start_config.clone());
         let repo_root = project.path;
         if !self.tmux_input.supports_background_launch() {
             let git = CommandGitRunner;
@@ -134,27 +119,11 @@ impl GroveApp {
         completion: CreateWorkspaceCompletion,
     ) {
         self.dialogs.create_in_flight = false;
-        let fallback_skip_permissions = self.launch_skip_permissions;
-        let start_config = self
-            .dialogs
-            .pending_create_start_config
-            .take()
-            .unwrap_or_else(|| {
-                StartAgentConfigState::new(String::new(), String::new(), fallback_skip_permissions)
-            });
         let workspace_name = completion.request.workspace_name;
         match completion.result {
             Ok(result) => {
                 self.close_active_dialog();
                 self.clear_create_branch_picker();
-                if let Err(error) = write_workspace_init_command(
-                    &result.workspace_path,
-                    trimmed_nonempty(&start_config.init_command).as_deref(),
-                ) {
-                    self.session.last_tmux_error =
-                        Some(format!("init command marker persist failed: {error}"));
-                }
-                self.launch_skip_permissions = start_config.skip_permissions;
                 self.refresh_workspaces(Some(result.workspace_path));
                 self.state.mode = UiMode::List;
                 self.state.focus = PaneFocus::WorkspaceList;
