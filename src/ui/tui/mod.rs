@@ -4999,6 +4999,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     combined.contains("Launch tabs here, or create another workspace when needed.")
                 );
                 assert!(!combined.contains("Preparing session for feature-a"));
+                assert!(!combined.contains("No sessions running in this workspace."));
             }
 
             #[test]
