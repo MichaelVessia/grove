@@ -71,6 +71,25 @@ tmux list-sessions -F '#{session_name}' \
 
 5. Relaunch Grove, open desired tabs from `Home` (`a`, `s`, `g`).
 
+## Optional: Adopt Legacy Sessions In-Place (Rename + Metadata)
+
+If you want to preserve live legacy sessions instead of killing them, use:
+
+```bash
+scripts/migrations/adopt-legacy-tmux-sessions-2026-03.sh
+```
+
+Then apply:
+
+```bash
+scripts/migrations/adopt-legacy-tmux-sessions-2026-03.sh --apply
+```
+
+Notes:
+- Default mode is dry-run.
+- By default, attached sessions are skipped.
+- Add `--include-attached` if you explicitly want attached sessions migrated too.
+
 ## Team Announcement Snippet
 
 ```text
