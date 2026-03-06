@@ -4985,6 +4985,20 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             }
 
             #[test]
+            fn home_tab_non_main_workspace_summary_uses_home_copy() {
+                let mut app = fixture_app();
+                app.state.selected_index = 1;
+                app.sync_preview_tab_from_active_workspace_tab();
+
+                app.refresh_preview_summary();
+
+                let combined = app.preview.lines.join("\n");
+                assert!(combined.contains("Workspace Home"));
+                assert!(combined.contains("Press 'a' for agent tabs"));
+                assert!(!combined.contains("Preparing session for feature-a"));
+            }
+
+            #[test]
             fn enter_on_idle_workspace_launches_shell_session_and_enters_interactive_mode() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
@@ -6779,7 +6793,8 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 assert!(content.contains("Preview Pane"));
                 assert!(content.contains("Status:"));
                 assert!(content.contains("feature-a | feature-a | Codex | /repos/grove-feature-a"));
-                assert!(content.contains("Press 'n' to create a workspace, hit 's' to open agent"));
+                assert!(content.contains("Press 'n' to create a workspace."));
+                assert!(content.contains("Then use 'a' for agent tabs"));
             }
 
             #[test]

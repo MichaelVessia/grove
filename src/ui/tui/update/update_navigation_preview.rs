@@ -426,6 +426,12 @@ impl GroveApp {
                                 && tab.state == WorkspaceTabRuntimeState::Running
                         })
                     });
+                if self.preview_tab == PreviewTab::Home {
+                    if workspace.is_main {
+                        return self.main_worktree_splash();
+                    }
+                    return self.workspace_home_splash(workspace, has_running_tabs);
+                }
                 if self.preview_tab == PreviewTab::Shell {
                     return self
                         .shell_session_status_summary(workspace)
@@ -445,6 +451,23 @@ impl GroveApp {
                     .unwrap_or_else(|| format!("Preparing session for {}...", workspace.name))
             })
             .unwrap_or_else(|| "No workspace selected".to_string())
+    }
+
+    fn workspace_home_splash(&self, workspace: &Workspace, has_running_tabs: bool) -> String {
+        let running_note = if has_running_tabs {
+            "Sessions are running in other tabs."
+        } else {
+            "No sessions running in this workspace."
+        };
+        [
+            "Workspace Home".to_string(),
+            format!("{} · {}", workspace.name, workspace.path.display()),
+            String::new(),
+            running_note.to_string(),
+            "Press 'a' for agent tabs, 's' for shell tabs, 'g' for git tab.".to_string(),
+            "Use 'x' to kill active tab session, 'X' to close active tab.".to_string(),
+        ]
+        .join("\n")
     }
 
     fn main_worktree_splash(&self) -> String {
@@ -477,7 +500,8 @@ impl GroveApp {
             String::new(),
             "--------------------------------------------------".to_string(),
             String::new(),
-            "Press 'n' to create a workspace, hit 's' to open agent".to_string(),
+            "Press 'n' to create a workspace.".to_string(),
+            "Then use 'a' for agent tabs, 's' for shell tabs, 'g' for git tab.".to_string(),
             String::new(),
             "Each workspace has its own directory and branch.".to_string(),
             "Run agents in parallel without branch hopping.".to_string(),
