@@ -414,6 +414,15 @@ impl GroveApp {
         self.state
             .selected_workspace()
             .map(|workspace| {
+                let has_running_tabs = self
+                    .workspace_tabs
+                    .get(workspace.path.as_path())
+                    .is_some_and(|tabs| {
+                        tabs.tabs.iter().any(|tab| {
+                            tab.kind != WorkspaceTabKind::Home
+                                && tab.state == WorkspaceTabRuntimeState::Running
+                        })
+                    });
                 if self.preview_tab == PreviewTab::Shell {
                     return self
                         .shell_session_status_summary(workspace)
@@ -422,7 +431,7 @@ impl GroveApp {
                         });
                 }
 
-                if workspace.is_main && !workspace.status.has_session() {
+                if workspace.is_main && !has_running_tabs {
                     return self.main_worktree_splash();
                 }
                 if workspace.is_main {

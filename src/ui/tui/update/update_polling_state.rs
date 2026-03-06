@@ -7,7 +7,13 @@ impl GroveApp {
             .workspaces
             .iter()
             .find(|workspace| workspace.path == workspace_path)?;
-        if !workspace.supported_agent || !workspace.status.has_session() {
+        let has_running_agent_tab = self.workspace_tabs.get(workspace_path).is_some_and(|tabs| {
+            tabs.tabs.iter().any(|tab| {
+                tab.kind == WorkspaceTabKind::Agent
+                    && tab.state == WorkspaceTabRuntimeState::Running
+            })
+        });
+        if !workspace.supported_agent || !has_running_agent_tab {
             return None;
         }
 

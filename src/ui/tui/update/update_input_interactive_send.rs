@@ -5,6 +5,14 @@ impl GroveApp {
         &self,
         session_name: &str,
     ) -> Option<PathBuf> {
+        if let Some((workspace_path, _)) = self.workspace_tabs.iter().find(|(_, tabs)| {
+            tabs.tabs
+                .iter()
+                .any(|tab| tab.session_name.as_deref() == Some(session_name))
+        }) {
+            return Some(workspace_path.clone());
+        }
+
         self.state
             .workspaces
             .iter()

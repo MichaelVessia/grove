@@ -190,6 +190,29 @@ impl GroveApp {
         self.selected_workspace_tabs_state()?.active_tab()
     }
 
+    pub(super) fn workspace_path_for_session(&self, session_name: &str) -> Option<PathBuf> {
+        self.workspace_tabs
+            .iter()
+            .find(|(_, tabs)| {
+                tabs.tabs
+                    .iter()
+                    .any(|tab| tab.session_name.as_deref() == Some(session_name))
+            })
+            .map(|(workspace_path, _)| workspace_path.clone())
+    }
+
+    pub(super) fn mark_tab_stopped_for_session(&mut self, session_name: &str) {
+        for tabs in self.workspace_tabs.values_mut() {
+            if let Some(tab) = tabs
+                .tabs
+                .iter_mut()
+                .find(|tab| tab.session_name.as_deref() == Some(session_name))
+            {
+                tab.state = WorkspaceTabRuntimeState::Stopped;
+            }
+        }
+    }
+
     pub(super) fn selected_active_tab_mut(&mut self) -> Option<&mut WorkspaceTab> {
         self.selected_workspace_tabs_state_mut()?.active_tab_mut()
     }

@@ -35,10 +35,21 @@ impl GroveApp {
                 let mut workspace_status_changed = false;
                 let mut status_detect_ms = 0;
                 let selected_workspace_index = self
-                    .state
-                    .selected_workspace()
-                    .filter(|workspace| session_name_for_workspace_ref(workspace) == session_name)
-                    .map(|_| self.state.selected_index);
+                    .workspace_path_for_session(session_name)
+                    .and_then(|workspace_path| {
+                        self.state
+                            .workspaces
+                            .iter()
+                            .position(|workspace| workspace.path == workspace_path)
+                    })
+                    .or_else(|| {
+                        self.state
+                            .selected_workspace()
+                            .filter(|workspace| {
+                                session_name_for_workspace_ref(workspace) == session_name
+                            })
+                            .map(|_| self.state.selected_index)
+                    });
                 if let Some(index) = selected_workspace_index {
                     let supported_agent = self.state.workspaces[index].supported_agent;
                     let workspace_path = self.state.workspaces[index].path.clone();
@@ -228,15 +239,26 @@ impl GroveApp {
                 let capture_error_indicates_missing_session =
                     tmux_capture_error_indicates_missing_session(&message);
                 if capture_error_indicates_missing_session {
+                    self.session.agent_sessions.remove_ready(session_name);
                     self.session.lazygit_sessions.remove_ready(session_name);
                     self.session.shell_sessions.remove_ready(session_name);
+                    self.mark_tab_stopped_for_session(session_name);
                     let selected_workspace_index = self
-                        .state
-                        .selected_workspace()
-                        .filter(|workspace| {
-                            session_name_for_workspace_ref(workspace) == session_name
+                        .workspace_path_for_session(session_name)
+                        .and_then(|workspace_path| {
+                            self.state
+                                .workspaces
+                                .iter()
+                                .position(|workspace| workspace.path == workspace_path)
                         })
-                        .map(|_| self.state.selected_index);
+                        .or_else(|| {
+                            self.state
+                                .selected_workspace()
+                                .filter(|workspace| {
+                                    session_name_for_workspace_ref(workspace) == session_name
+                                })
+                                .map(|_| self.state.selected_index)
+                        });
                     if let Some(index) = selected_workspace_index {
                         let workspace_path = self.state.workspaces[index].path.clone();
                         let previous_status = self.state.workspaces[index].status;

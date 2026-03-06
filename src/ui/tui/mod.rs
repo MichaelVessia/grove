@@ -968,6 +968,37 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         );
     }
 
+    #[test]
+    fn attention_workspace_lookup_supports_numbered_tab_sessions() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+        app.sync_workspace_tab_maps();
+
+        let workspace_path = PathBuf::from("/repos/grove-feature-a");
+        let numbered_session = "grove-ws-feature-a-agent-3".to_string();
+        let inserted = app
+            .workspace_tabs
+            .get_mut(workspace_path.as_path())
+            .map(|tabs| {
+                let _ = tabs.insert_tab_adjacent(WorkspaceTab {
+                    id: 0,
+                    kind: WorkspaceTabKind::Agent,
+                    title: "Codex 3".to_string(),
+                    session_name: Some(numbered_session.clone()),
+                    agent_type: Some(AgentType::Codex),
+                    state: WorkspaceTabRuntimeState::Running,
+                });
+                true
+            })
+            .unwrap_or(false);
+        assert!(inserted);
+
+        assert_eq!(
+            app.attention_workspace_path_for_session(&numbered_session),
+            Some(workspace_path),
+        );
+    }
+
     fn with_rendered_frame(
         app: &GroveApp,
         width: u16,
@@ -8647,6 +8678,59 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 );
 
                 assert!(app.status_bar_line().contains("preview capture failed"));
+            }
+
+            #[test]
+            fn missing_agent_tab_capture_marks_tab_stopped_and_clears_tracker() {
+                let mut app = fixture_app();
+                app.state.selected_index = 1;
+                app.sync_workspace_tab_maps();
+                let workspace_path = PathBuf::from("/repos/grove-feature-a");
+                let session_name = "grove-ws-feature-a-agent-2".to_string();
+                let tab_id = app
+                    .workspace_tabs
+                    .get_mut(workspace_path.as_path())
+                    .map(|tabs| {
+                        tabs.insert_tab_adjacent(WorkspaceTab {
+                            id: 0,
+                            kind: WorkspaceTabKind::Agent,
+                            title: "Codex 2".to_string(),
+                            session_name: Some(session_name.clone()),
+                            agent_type: Some(AgentType::Codex),
+                            state: WorkspaceTabRuntimeState::Running,
+                        })
+                    })
+                    .expect("workspace tabs should exist");
+                if let Some(tabs) = app.workspace_tabs.get_mut(workspace_path.as_path()) {
+                    tabs.active_tab_id = tab_id;
+                }
+                app.preview_tab = PreviewTab::Agent;
+                app.session.agent_sessions.mark_ready(session_name.clone());
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 1,
+                        live_capture: Some(LivePreviewCapture {
+                            session: session_name.clone(),
+                            scrollback_lines: 600,
+                            include_escape_sequences: false,
+                            capture_ms: 2,
+                            total_ms: 2,
+                            result: Err("can't find session".to_string()),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                assert!(!app.session.agent_sessions.is_ready(&session_name));
+                let tab_state = app
+                    .workspace_tabs
+                    .get(workspace_path.as_path())
+                    .and_then(|tabs| tabs.tab_by_id(tab_id))
+                    .map(|tab| tab.state);
+                assert_eq!(tab_state, Some(WorkspaceTabRuntimeState::Stopped));
             }
 
             #[test]

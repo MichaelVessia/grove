@@ -135,6 +135,15 @@ impl GroveApp {
             self.show_info_toast("no workspace selected");
             return;
         };
+        let has_running_tabs = self
+            .workspace_tabs
+            .get(workspace.path.as_path())
+            .is_some_and(|tabs| {
+                tabs.tabs.iter().any(|tab| {
+                    tab.kind != WorkspaceTabKind::Home
+                        && tab.state == WorkspaceTabRuntimeState::Running
+                })
+            });
         let base_branch = if workspace.is_main {
             workspace.branch.clone()
         } else {
@@ -153,7 +162,7 @@ impl GroveApp {
             is_main: workspace.is_main,
             branch: workspace.branch.clone(),
             base_branch: base_branch.clone(),
-            was_running: workspace.status.has_session(),
+            was_running: has_running_tabs,
             focused_field: EditDialogField::BaseBranch,
         });
         self.log_dialog_event_with_fields(
@@ -162,10 +171,7 @@ impl GroveApp {
             [
                 ("workspace".to_string(), Value::from(workspace.name.clone())),
                 ("base_branch".to_string(), Value::from(base_branch)),
-                (
-                    "running".to_string(),
-                    Value::from(workspace.status.has_session()),
-                ),
+                ("running".to_string(), Value::from(has_running_tabs)),
             ],
         );
         self.state.mode = UiMode::List;
