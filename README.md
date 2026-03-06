@@ -180,6 +180,7 @@ Inside Grove:
 - `a` new agent tab (opens agent picker + launch options)
 - `s` new shell tab
 - `g` open/focus git tab
+- `,` rename active tab
 - `Enter` open preview / interactive attach (context dependent)
 - `x` kill active tab session
 - `X` close active tab (confirm kill+close if session is live)

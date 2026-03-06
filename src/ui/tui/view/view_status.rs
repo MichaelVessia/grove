@@ -12,6 +12,7 @@ impl GroveApp {
             "session_cleanup" => "Cleanup",
             "create" => "Create",
             "edit" => "Edit",
+            "rename_tab" => "Rename",
             "project" => "Project",
             "settings" => "Settings",
             _ => "Dialog",

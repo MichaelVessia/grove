@@ -302,6 +302,15 @@ pub(super) struct EditDialogState {
     pub(super) focused_field: EditDialogField,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct RenameTabDialogState {
+    pub(super) workspace_path: PathBuf,
+    pub(super) tab_id: u64,
+    pub(super) current_title: String,
+    pub(super) title: String,
+    pub(super) focused_field: RenameTabDialogField,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum CreateDialogField {
     WorkspaceName,
@@ -347,6 +356,17 @@ pub(super) enum EditDialogField {
 
 cyclic_field_nav!(pub(super) EditDialogField {
     BaseBranch, SaveButton, CancelButton,
+});
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RenameTabDialogField {
+    Title,
+    RenameButton,
+    CancelButton,
+}
+
+cyclic_field_nav!(pub(super) RenameTabDialogField {
+    Title, RenameButton, CancelButton,
 });
 
 impl CreateDialogField {

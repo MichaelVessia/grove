@@ -147,6 +147,9 @@ impl GroveApp {
             UiCommand::OpenGitTab => {
                 self.open_or_focus_git_tab();
             }
+            UiCommand::RenameActiveTab => {
+                self.open_rename_tab_dialog();
+            }
             UiCommand::StopAgent => {
                 self.kill_active_tab_session();
             }

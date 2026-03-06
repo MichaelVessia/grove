@@ -214,6 +214,14 @@ impl GroveApp {
             &mut lines,
             content_width,
             label_width,
+            "Rename tab",
+            "Tab/S-Tab/C-n/C-p fields, type/backspace title, Enter rename, Esc cancel",
+            theme,
+        );
+        Self::keybind_help_push_modal_row(
+            &mut lines,
+            content_width,
+            label_width,
             "Start",
             "Tab/S-Tab or C-n/C-p fields, Space toggle unsafe, h/l buttons, Enter/Esc",
             theme,

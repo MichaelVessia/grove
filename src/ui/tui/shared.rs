@@ -59,6 +59,7 @@ pub(super) const HIT_ID_CONFIRM_DIALOG: u32 = 19;
 pub(super) const HIT_ID_WORKSPACE_PR_LINK: u32 = 20;
 pub(super) const HIT_ID_CREATE_DIALOG_TAB: u32 = 21;
 pub(super) const HIT_ID_SESSION_CLEANUP_DIALOG: u32 = 22;
+pub(super) const HIT_ID_RENAME_TAB_DIALOG: u32 = 23;
 pub(super) const MAX_PENDING_INPUT_TRACES: usize = 256;
 pub(super) const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 pub(super) const FAST_ANIMATION_INTERVAL_MS: u64 = 100;

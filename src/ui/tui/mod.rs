@@ -44,6 +44,8 @@ mod dialogs_projects_key;
 mod dialogs_projects_reorder;
 #[path = "dialogs/dialogs_projects_state.rs"]
 mod dialogs_projects_state;
+#[path = "dialogs/dialogs_rename_tab.rs"]
+mod dialogs_rename_tab;
 #[path = "dialogs/dialogs_session_cleanup.rs"]
 mod dialogs_session_cleanup;
 #[path = "dialogs/dialogs_settings.rs"]
@@ -139,6 +141,8 @@ mod view_overlays_edit;
 mod view_overlays_help;
 #[path = "view/view_overlays_projects.rs"]
 mod view_overlays_projects;
+#[path = "view/view_overlays_rename_tab.rs"]
+mod view_overlays_rename_tab;
 #[path = "view/view_overlays_session_cleanup.rs"]
 mod view_overlays_session_cleanup;
 #[path = "view/view_overlays_settings.rs"]
@@ -2842,6 +2846,22 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     }
 
     #[test]
+    fn command_palette_exposes_rename_active_tab_action_when_preview_tab_selected() {
+        let mut app = fixture_app();
+        focus_agent_preview_tab(&mut app);
+        let list_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        let rename_id = UiCommand::RenameActiveTab
+            .palette_spec()
+            .map(|spec| spec.id)
+            .expect("rename tab command should be palette discoverable");
+        assert!(list_ids.iter().any(|id| id == rename_id));
+    }
+
+    #[test]
     fn ui_command_palette_ids_are_unique_and_roundtrip() {
         let mut ids = std::collections::HashSet::new();
         for command in UiCommand::all() {
@@ -2917,25 +2937,25 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
                 .count(),
-            34
+            37
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 13);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::Workspace).len(),
-            10
+            14
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::List).len(), 1);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewAgent).len(),
-            9
+            12
         );
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewShell).len(),
-            6
+            12
         );
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewGit).len(),
-            3
+            9
         );
     }
 
@@ -7840,6 +7860,76 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     ),
                 );
                 assert_eq!(app.preview_tab, PreviewTab::Home);
+            }
+
+            #[test]
+            fn comma_opens_rename_tab_dialog_for_active_non_home_tab() {
+                let mut app = fixture_app();
+                focus_agent_preview_tab(&mut app);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char(',')).with_kind(KeyEventKind::Press)),
+                );
+
+                assert_eq!(app.active_dialog_kind(), Some("rename_tab"));
+            }
+
+            #[test]
+            fn comma_rename_updates_tab_title_and_persists_tmux_metadata() {
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+                focus_agent_preview_tab(&mut app);
+                let Some(previous_title) = app.selected_active_tab().map(|tab| tab.title.clone())
+                else {
+                    panic!("active tab should exist");
+                };
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char(',')).with_kind(KeyEventKind::Press)),
+                );
+                assert_eq!(app.active_dialog_kind(), Some("rename_tab"));
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Backspace).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('X')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                let Some(updated_title) = app.selected_active_tab().map(|tab| tab.title.clone())
+                else {
+                    panic!("active tab should exist");
+                };
+                assert_eq!(
+                    updated_title,
+                    format!("{}X", &previous_title[..previous_title.len() - 1])
+                );
+                assert!(
+                    commands.borrow().iter().any(|command| {
+                        command
+                            == &vec![
+                                "tmux".to_string(),
+                                "set-option".to_string(),
+                                "-t".to_string(),
+                                "grove-ws-grove".to_string(),
+                                "@grove_tab_title".to_string(),
+                                updated_title.clone(),
+                            ]
+                    }),
+                    "expected tmux tab title metadata write"
+                );
+                assert_eq!(app.active_dialog_kind(), None);
             }
 
             #[test]

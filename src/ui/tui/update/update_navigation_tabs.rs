@@ -515,6 +515,27 @@ impl GroveApp {
         }
     }
 
+    pub(super) fn rename_workspace_tab_title(
+        &mut self,
+        workspace_path: &Path,
+        tab_id: u64,
+        title: String,
+    ) -> Result<(), String> {
+        let tab = {
+            let Some(tabs) = self.workspace_tabs.get_mut(workspace_path) else {
+                return Err("workspace tabs unavailable".to_string());
+            };
+            let Some(tab) = tabs.tab_by_id_mut(tab_id) else {
+                return Err("tab not found".to_string());
+            };
+            tab.title = title;
+            tab.clone()
+        };
+        self.write_tab_tmux_metadata(workspace_path, &tab);
+        self.poll_preview();
+        Ok(())
+    }
+
     pub(super) fn open_or_focus_git_tab(&mut self) {
         let Some((_, tab_id)) = self.ensure_selected_workspace_tab_kind(WorkspaceTabKind::Git)
         else {

@@ -1,6 +1,6 @@
 use super::*;
 
-static COMMAND_META: [UiCommandMeta; 38] = [
+static COMMAND_META: [UiCommandMeta; 39] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_focus",
@@ -640,6 +640,38 @@ static COMMAND_META: [UiCommandMeta; 38] = [
     },
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
+            id: "palette:rename_active_tab",
+            title: "Rename Active Tab",
+            description: "Rename the active tab title (,)",
+            tags: &["rename", "tab", "title", ","],
+            category: "Workspace",
+        }),
+        help_hints: &[
+            HelpHintSpec {
+                context: HelpHintContext::Workspace,
+                label: ", rename tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewAgent,
+                label: ", rename tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewShell,
+                label: ", rename tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewGit,
+                label: ", rename tab",
+            },
+        ],
+        keybindings: &[KeybindingSpec {
+            scope: KeybindingScope::NonInteractive,
+            code: KeyCodeMatch::Char(','),
+            modifiers: KeyModifiersMatch::Any,
+        }],
+    },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
             id: "palette:kill_active_tab_session",
             title: "Kill Active Tab Session",
             description: "Kill whatever is running in the active tab (x)",
@@ -968,22 +1000,23 @@ impl UiCommand {
             UiCommand::StartAgent => &COMMAND_META[19],
             UiCommand::OpenShellTab => &COMMAND_META[20],
             UiCommand::OpenGitTab => &COMMAND_META[21],
-            UiCommand::StopAgent => &COMMAND_META[22],
-            UiCommand::RestartAgent => &COMMAND_META[23],
-            UiCommand::DeleteWorkspace => &COMMAND_META[24],
-            UiCommand::MergeWorkspace => &COMMAND_META[25],
-            UiCommand::UpdateFromBase => &COMMAND_META[26],
-            UiCommand::RefreshWorkspaces => &COMMAND_META[27],
-            UiCommand::OpenProjects => &COMMAND_META[28],
-            UiCommand::ReorderProjects => &COMMAND_META[29],
-            UiCommand::DeleteProject => &COMMAND_META[30],
-            UiCommand::OpenSettings => &COMMAND_META[31],
-            UiCommand::ToggleMouseCapture => &COMMAND_META[32],
-            UiCommand::ToggleUnsafe => &COMMAND_META[33],
-            UiCommand::CleanupSessions => &COMMAND_META[34],
-            UiCommand::OpenHelp => &COMMAND_META[35],
-            UiCommand::OpenCommandPalette => &COMMAND_META[36],
-            UiCommand::Quit => &COMMAND_META[37],
+            UiCommand::RenameActiveTab => &COMMAND_META[22],
+            UiCommand::StopAgent => &COMMAND_META[23],
+            UiCommand::RestartAgent => &COMMAND_META[24],
+            UiCommand::DeleteWorkspace => &COMMAND_META[25],
+            UiCommand::MergeWorkspace => &COMMAND_META[26],
+            UiCommand::UpdateFromBase => &COMMAND_META[27],
+            UiCommand::RefreshWorkspaces => &COMMAND_META[28],
+            UiCommand::OpenProjects => &COMMAND_META[29],
+            UiCommand::ReorderProjects => &COMMAND_META[30],
+            UiCommand::DeleteProject => &COMMAND_META[31],
+            UiCommand::OpenSettings => &COMMAND_META[32],
+            UiCommand::ToggleMouseCapture => &COMMAND_META[33],
+            UiCommand::ToggleUnsafe => &COMMAND_META[34],
+            UiCommand::CleanupSessions => &COMMAND_META[35],
+            UiCommand::OpenHelp => &COMMAND_META[36],
+            UiCommand::OpenCommandPalette => &COMMAND_META[37],
+            UiCommand::Quit => &COMMAND_META[38],
         }
     }
 }

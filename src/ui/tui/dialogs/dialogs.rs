@@ -342,6 +342,7 @@ impl GroveApp {
             Some(ActiveDialog::UpdateFromBase(_)) => Some("update_from_base"),
             Some(ActiveDialog::Create(_)) => Some("create"),
             Some(ActiveDialog::Edit(_)) => Some("edit"),
+            Some(ActiveDialog::RenameTab(_)) => Some("rename_tab"),
             Some(ActiveDialog::Project(_)) => Some("project"),
             Some(ActiveDialog::Settings(_)) => Some("settings"),
             None => None,
@@ -420,6 +421,13 @@ impl GroveApp {
         set_edit_dialog,
         Edit,
         EditDialogState
+    );
+    active_dialog_accessors!(
+        rename_tab_dialog,
+        rename_tab_dialog_mut,
+        set_rename_tab_dialog,
+        RenameTab,
+        RenameTabDialogState
     );
     active_dialog_accessors!(
         project_dialog,

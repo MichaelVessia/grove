@@ -171,10 +171,13 @@ impl GroveApp {
             | UiCommand::PageDown
             | UiCommand::ScrollBottom => in_preview_scroll,
             UiCommand::PreviousTab | UiCommand::NextTab => in_preview_focus,
-            UiCommand::StopAgent | UiCommand::RestartAgent => {
+            UiCommand::RenameActiveTab | UiCommand::StopAgent | UiCommand::RestartAgent => {
                 self.state.mode == UiMode::Preview
                     && self.state.focus == PaneFocus::Preview
                     && match command {
+                        UiCommand::RenameActiveTab => self
+                            .selected_active_tab()
+                            .is_some_and(|tab| tab.kind != WorkspaceTabKind::Home),
                         UiCommand::StopAgent => self.active_tab_session_name().is_some(),
                         UiCommand::RestartAgent => self
                             .selected_active_tab()
@@ -205,6 +208,10 @@ impl GroveApp {
         }
         if self.edit_dialog().is_some() {
             self.handle_edit_dialog_key(*key_event);
+            return true;
+        }
+        if self.rename_tab_dialog().is_some() {
+            self.handle_rename_tab_dialog_key(*key_event);
             return true;
         }
         if self.launch_dialog().is_some() {

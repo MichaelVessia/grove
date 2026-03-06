@@ -188,6 +188,7 @@ enum ActiveDialog {
     UpdateFromBase(UpdateFromBaseDialogState),
     Create(CreateDialogState),
     Edit(EditDialogState),
+    RenameTab(RenameTabDialogState),
     Project(ProjectDialogState),
     Settings(SettingsDialogState),
 }

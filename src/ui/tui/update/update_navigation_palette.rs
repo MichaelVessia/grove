@@ -116,6 +116,9 @@ impl GroveApp {
             }
             UiCommand::OpenShellTab => self.state.selected_workspace().is_some(),
             UiCommand::OpenGitTab => self.state.selected_workspace().is_some(),
+            UiCommand::RenameActiveTab => self
+                .selected_active_tab()
+                .is_some_and(|tab| tab.kind != WorkspaceTabKind::Home),
             UiCommand::StopAgent => self.active_tab_session_name().is_some(),
             UiCommand::RestartAgent => {
                 self.state.selected_workspace().is_some()

@@ -36,6 +36,7 @@ impl GroveApp {
         self.render_status_line(frame, layout.status);
         self.render_create_dialog_overlay(frame, area);
         self.render_edit_dialog_overlay(frame, area);
+        self.render_rename_tab_dialog_overlay(frame, area);
         self.render_launch_dialog_overlay(frame, area);
         self.render_stop_dialog_overlay(frame, area);
         self.render_confirm_dialog_overlay(frame, area);
