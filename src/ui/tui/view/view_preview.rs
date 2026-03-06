@@ -59,7 +59,7 @@ impl GroveApp {
         Paragraph::new(FtText::from_lines(text_lines))
             .style(Style::new().fg(theme.text).bg(theme.base))
             .render(inner, frame);
-        for (label, agent, x, y) in animated_labels {
+        for (label, x, y) in animated_labels {
             if y >= inner.bottom() {
                 continue;
             }
@@ -67,7 +67,7 @@ impl GroveApp {
             if width == 0 {
                 continue;
             }
-            self.render_activity_effect_label(&label, agent, Rect::new(x, y, width, 1), frame);
+            self.render_preview_activity_effect_label(&label, Rect::new(x, y, width, 1), frame);
         }
         self.apply_preview_selection_highlight_cells(
             frame,

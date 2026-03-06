@@ -1,6 +1,6 @@
 use super::view_prelude::*;
 
-type AnimatedPreviewLabels = Vec<(String, AgentType, u16, u16)>;
+type AnimatedPreviewLabels = Vec<(String, u16, u16)>;
 
 impl GroveApp {
     pub(super) fn preview_metadata_lines_and_labels(
@@ -28,61 +28,52 @@ impl GroveApp {
                 branch_label,
                 age_label,
                 is_working,
-                workspace.agent,
                 workspace.is_orphaned,
             )
         });
 
-        let mut text_lines = vec![if let Some((
-            name_label,
-            branch_label,
-            age_label,
-            is_working,
-            agent,
-            is_orphaned,
-        )) = selected_workspace_header.as_ref()
-        {
-            let mut spans = vec![FtSpan::styled(
-                name_label.clone(),
-                if *is_working {
-                    Style::new().fg(self.workspace_agent_color(*agent)).bold()
+        let mut text_lines =
+            vec![
+                if let Some((name_label, branch_label, age_label, is_working, is_orphaned)) =
+                    selected_workspace_header.as_ref()
+                {
+                    let mut spans = vec![FtSpan::styled(
+                        name_label.clone(),
+                        if *is_working {
+                            Style::new().fg(theme.blue).bold()
+                        } else {
+                            Style::new().fg(theme.text).bold()
+                        },
+                    )];
+                    if let Some(branch_label) = branch_label {
+                        spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                        spans.push(FtSpan::styled(
+                            branch_label.clone(),
+                            Style::new().fg(theme.subtext0),
+                        ));
+                    }
+                    if !age_label.is_empty() {
+                        spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                        spans.push(FtSpan::styled(
+                            age_label.clone(),
+                            Style::new().fg(theme.overlay0),
+                        ));
+                    }
+                    if *is_orphaned {
+                        spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                        spans.push(FtSpan::styled(
+                            "session ended",
+                            Style::new().fg(theme.peach),
+                        ));
+                    }
+                    FtLine::from_spans(spans)
                 } else {
-                    Style::new().fg(theme.text).bold()
+                    FtLine::from_spans(vec![FtSpan::styled(
+                        "none selected",
+                        Style::new().fg(theme.subtext0),
+                    )])
                 },
-            )];
-            if let Some(branch_label) = branch_label {
-                spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
-                spans.push(FtSpan::styled(
-                    branch_label.clone(),
-                    Style::new().fg(theme.subtext0),
-                ));
-            }
-            spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
-            spans.push(FtSpan::styled(
-                agent.label().to_string(),
-                Style::new().fg(self.workspace_agent_color(*agent)).bold(),
-            ));
-            if !age_label.is_empty() {
-                spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
-                spans.push(FtSpan::styled(
-                    age_label.clone(),
-                    Style::new().fg(theme.overlay0),
-                ));
-            }
-            if *is_orphaned {
-                spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
-                spans.push(FtSpan::styled(
-                    "session ended",
-                    Style::new().fg(theme.peach),
-                ));
-            }
-            FtLine::from_spans(spans)
-        } else {
-            FtLine::from_spans(vec![FtSpan::styled(
-                "none selected",
-                Style::new().fg(theme.subtext0),
-            )])
-        }];
+            ];
         let tab_active_style = Style::new().fg(theme.base).bg(theme.blue).bold();
         let tab_inactive_style = Style::new().fg(theme.subtext0).bg(theme.surface0);
         let mut tab_spans = Vec::new();
@@ -115,22 +106,8 @@ impl GroveApp {
             ));
         }
         text_lines.push(FtLine::from_spans(tab_spans));
-        if let Some((name_label, branch_label, _, true, agent, _)) =
-            selected_workspace_header.as_ref()
-        {
-            animated_labels.push((name_label.clone(), *agent, inner.x, inner.y));
-            let branch_prefix = branch_label
-                .as_ref()
-                .map_or(String::new(), |branch| format!(" · {branch}"));
-            let agent_prefix = format!("{name_label}{branch_prefix} · ");
-            animated_labels.push((
-                agent.label().to_string(),
-                *agent,
-                inner.x.saturating_add(
-                    u16::try_from(text_display_width(&agent_prefix)).unwrap_or(u16::MAX),
-                ),
-                inner.y,
-            ));
+        if let Some((name_label, _, _, true, _)) = selected_workspace_header.as_ref() {
+            animated_labels.push((name_label.clone(), inner.x, inner.y));
         }
 
         (text_lines, animated_labels)

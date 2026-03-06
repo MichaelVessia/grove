@@ -1229,18 +1229,100 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 "sidebar row should not include age label, got: {sidebar_text}"
             );
 
-            let Some(preview_row) = find_row_containing(
-                frame,
-                "grove · main · Claude",
-                preview_x_start,
-                preview_x_end,
-            ) else {
+            let Some(preview_row) =
+                find_row_containing(frame, "grove · main", preview_x_start, preview_x_end)
+            else {
                 panic!("preview header row should be rendered");
             };
             let preview_text = row_text(frame, preview_row, preview_x_start, preview_x_end);
             assert!(
                 preview_text.contains(expected_age_prefix.as_str()),
                 "preview header should include age label, got: {preview_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn preview_header_omits_workspace_agent_label() {
+        let mut app = fixture_app();
+        app.state.selected_index = 0;
+
+        let layout = GroveApp::view_layout_for_size(140, 24, app.sidebar_width_pct, false);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let preview_x_start = layout.preview.x.saturating_add(1);
+        let preview_x_end = layout.preview.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 140, 24, |frame| {
+            let preview_text = row_text(frame, preview_inner.y, preview_x_start, preview_x_end);
+            assert!(
+                preview_text.contains("grove · main"),
+                "preview header should include workspace and branch, got: {preview_text}"
+            );
+            assert!(
+                !preview_text.contains("Claude")
+                    && !preview_text.contains("Codex")
+                    && !preview_text.contains("OpenCode"),
+                "preview header should not include workspace agent label, got: {preview_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn preview_working_workspace_header_uses_theme_accent_color() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+        app.state.workspaces[1].status = WorkspaceStatus::Thinking;
+
+        let layout = GroveApp::view_layout_for_size(140, 24, app.sidebar_width_pct, false);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let preview_x_start = layout.preview.x.saturating_add(1);
+        let preview_x_end = layout.preview.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 140, 24, |frame| {
+            let Some(name_col) =
+                find_cell_with_char(frame, preview_inner.y, preview_x_start, preview_x_end, 'f')
+            else {
+                panic!("working workspace header should include workspace label");
+            };
+            let Some(name_cell) = frame.buffer.get(name_col, preview_inner.y) else {
+                panic!("workspace label cell should be rendered");
+            };
+            assert_eq!(
+                name_cell.fg,
+                ui_theme().blue,
+                "working workspace header should use theme accent color",
+            );
+        });
+    }
+
+    #[test]
+    fn sidebar_working_workspace_animation_uses_theme_accent_color() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+        app.state.workspaces[1].status = WorkspaceStatus::Thinking;
+
+        let layout = GroveApp::view_layout_for_size(140, 24, app.sidebar_width_pct, false);
+        let sidebar_x_start = layout.sidebar.x.saturating_add(1);
+        let sidebar_x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 140, 24, |frame| {
+            let Some(sidebar_row) =
+                find_row_containing(frame, "feature-a", sidebar_x_start, sidebar_x_end)
+            else {
+                panic!("working sidebar row should include workspace label");
+            };
+            let Some(name_col) =
+                find_cell_with_char(frame, sidebar_row, sidebar_x_start, sidebar_x_end, 'f')
+            else {
+                panic!("working sidebar row should include workspace label");
+            };
+            let Some(name_cell) = frame.buffer.get(name_col, sidebar_row) else {
+                panic!("workspace label cell should be rendered");
+            };
+            assert_eq!(
+                name_cell.fg,
+                ui_theme().blue,
+                "working sidebar row should use theme accent color",
             );
         });
     }

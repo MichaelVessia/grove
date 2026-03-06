@@ -37,46 +37,53 @@ impl GroveApp {
         }
     }
 
-    fn activity_effect_secondary_color(&self, agent: AgentType) -> PackedRgba {
-        let theme = self.active_ui_theme();
-        match agent {
-            AgentType::Claude => theme.text,
-            AgentType::Codex => theme.overlay0,
-            AgentType::OpenCode => theme.crust,
-        }
-    }
-
-    fn activity_effect_gradient(&self, agent: AgentType) -> ColorGradient {
-        let primary = self.workspace_agent_color(agent);
-        let secondary = self.activity_effect_secondary_color(agent);
-        ColorGradient::new(vec![(0.0, primary), (0.5, secondary), (1.0, primary)])
-    }
-
     fn activity_effect_time(&self) -> f64 {
         self.polling.fast_animation_frame as f64 * (FAST_ANIMATION_INTERVAL_MS as f64 / 1000.0)
+    }
+
+    fn preview_activity_effect_gradient(&self) -> ColorGradient {
+        let theme = self.active_ui_theme();
+        ColorGradient::new(vec![
+            (0.0, theme.blue),
+            (0.5, theme.overlay0),
+            (1.0, theme.blue),
+        ])
+    }
+
+    pub(super) fn render_preview_activity_effect_label(
+        &self,
+        label: &str,
+        area: Rect,
+        frame: &mut Frame,
+    ) {
+        self.render_accent_activity_effect_label(label, area, frame);
+    }
+
+    fn render_accent_activity_effect_label(&self, label: &str, area: Rect, frame: &mut Frame) {
+        if area.is_empty() || label.is_empty() {
+            return;
+        }
+
+        let theme = self.active_ui_theme();
+        StyledText::new(label)
+            .bold()
+            .base_color(theme.blue)
+            .effect(TextEffect::AnimatedGradient {
+                gradient: self.preview_activity_effect_gradient(),
+                speed: 1.8,
+            })
+            .time(self.activity_effect_time())
+            .render(area, frame);
     }
 
     pub(super) fn render_activity_effect_label(
         &self,
         label: &str,
-        agent: AgentType,
+        _agent: AgentType,
         area: Rect,
         frame: &mut Frame,
     ) {
-        if area.is_empty() || label.is_empty() {
-            return;
-        }
-
-        let primary = self.workspace_agent_color(agent);
-        StyledText::new(label)
-            .bold()
-            .base_color(primary)
-            .effect(TextEffect::AnimatedGradient {
-                gradient: self.activity_effect_gradient(agent),
-                speed: 1.8,
-            })
-            .time(self.activity_effect_time())
-            .render(area, frame);
+        self.render_accent_activity_effect_label(label, area, frame);
     }
 
     pub(super) fn relative_age_label(&self, unix_secs: Option<i64>) -> String {
