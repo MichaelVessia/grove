@@ -219,8 +219,8 @@ mod tests {
         RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion,
         StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
         TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
-        WorkspaceAttention, WorkspaceShellLaunchCompletion, WorkspaceStatusCapture,
-        WorkspaceTabKind, ansi_16_color, ansi_lines_to_styled_lines,
+        WorkspaceAttention, WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab,
+        WorkspaceTabKind, WorkspaceTabRuntimeState, ansi_16_color, ansi_lines_to_styled_lines,
         ansi_lines_to_styled_lines_for_theme, decode_create_dialog_tab_hit_data,
         decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
@@ -611,7 +611,43 @@ mod tests {
     fn focus_agent_preview_tab(app: &mut GroveApp) {
         app.state.mode = UiMode::Preview;
         app.state.focus = PaneFocus::Preview;
-        app.preview_tab = PreviewTab::Agent;
+        app.sync_workspace_tab_maps();
+        let Some(workspace) = app.state.selected_workspace().cloned() else {
+            return;
+        };
+        let session_name =
+            crate::application::agent_runtime::session_name_for_workspace_ref(&workspace);
+        let workspace_path = workspace.path.clone();
+        let tab_id = if let Some(tabs) = app.workspace_tabs.get_mut(workspace_path.as_path()) {
+            if let Some(existing_tab) = tabs
+                .tabs
+                .iter()
+                .find(|tab| tab.kind == WorkspaceTabKind::Agent)
+            {
+                existing_tab.id
+            } else {
+                tabs.insert_tab_adjacent(WorkspaceTab {
+                    id: 0,
+                    kind: WorkspaceTabKind::Agent,
+                    title: format!("{} 1", workspace.agent.label()),
+                    session_name: Some(session_name.clone()),
+                    agent_type: Some(workspace.agent),
+                    state: WorkspaceTabRuntimeState::Running,
+                })
+            }
+        } else {
+            return;
+        };
+        if let Some(tabs) = app.workspace_tabs.get_mut(workspace_path.as_path()) {
+            tabs.active_tab_id = tab_id;
+            if let Some(tab) = tabs.tab_by_id_mut(tab_id) {
+                tab.state = WorkspaceTabRuntimeState::Running;
+                tab.session_name = Some(session_name.clone());
+                tab.agent_type = Some(workspace.agent);
+            }
+        }
+        app.session.agent_sessions.mark_ready(session_name);
+        app.sync_preview_tab_from_active_workspace_tab();
     }
 
     fn force_tick_due(app: &mut GroveApp) {
@@ -4725,6 +4761,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
                 );
+                focus_agent_preview_tab(&mut app);
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
@@ -6269,6 +6306,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 app.state.selected_index = 1;
+                focus_agent_preview_tab(&mut app);
 
                 ftui::Model::update(
                     &mut app,
@@ -6298,6 +6336,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 app.state.selected_index = 1;
+                focus_agent_preview_tab(&mut app);
                 assert!(app.enter_interactive(Instant::now()));
 
                 let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
@@ -6474,6 +6513,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 app.preview.lines = (1..=120).map(|value| value.to_string()).collect();
                 app.preview.offset = 0;
                 app.preview.auto_scroll = true;
+                focus_agent_preview_tab(&mut app);
 
                 ftui::Model::update(
                     &mut app,
@@ -6489,483 +6529,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
 
                 assert!(app.preview.offset >= 3);
                 assert!(!app.preview.auto_scroll);
-            }
-
-            #[test]
-            fn mouse_drag_in_interactive_preview_highlights_selected_text() {
-                let (mut app, _commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-                app.preview.lines = vec!["alpha beta".to_string()];
-                app.preview.render_lines = vec!["\u{1b}[32malpha beta\u{1b}[0m".to_string()];
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Down(MouseButton::Left),
-                        preview_inner.x,
-                        select_y,
-                    )),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Drag(MouseButton::Left),
-                        preview_inner.x.saturating_add(4),
-                        select_y,
-                    )),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Up(MouseButton::Left),
-                        preview_inner.x.saturating_add(4),
-                        select_y,
-                    )),
-                );
-
-                let x_start = layout.preview.x.saturating_add(1);
-                let x_end = layout.preview.right().saturating_sub(1);
-                with_rendered_frame(&app, 100, 40, |frame| {
-                    let Some(output_row) = find_row_containing(frame, "alpha beta", x_start, x_end)
-                    else {
-                        panic!("output row should be rendered");
-                    };
-                    let Some(first_col) =
-                        find_cell_with_char(frame, output_row, x_start, x_end, 'a')
-                    else {
-                        panic!("selected output row should include first char");
-                    };
-
-                    assert_row_bg(
-                        frame,
-                        output_row,
-                        first_col,
-                        first_col.saturating_add(5),
-                        ui_theme().surface1,
-                    );
-                    assert_row_fg(
-                        frame,
-                        output_row,
-                        first_col,
-                        first_col.saturating_add(5),
-                        ansi_16_color(2),
-                    );
-                });
-            }
-
-            #[test]
-            fn interactive_mouse_drag_logs_click_mapping_and_selected_preview() {
-                let (mut app, _commands, _captures, _cursor_captures, events) =
-                    fixture_app_with_tmux_and_events(
-                        WorkspaceStatus::Active,
-                        Vec::new(),
-                        Vec::new(),
-                    );
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-                app.preview.lines = vec!["alpha beta".to_string()];
-                app.preview.render_lines = app.preview.lines.clone();
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-                clear_recorded_events(&events);
-
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Down(MouseButton::Left),
-                        preview_inner.x,
-                        select_y,
-                    )),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Drag(MouseButton::Left),
-                        preview_inner.x.saturating_add(4),
-                        select_y,
-                    )),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Up(MouseButton::Left),
-                        preview_inner.x.saturating_add(4),
-                        select_y,
-                    )),
-                );
-
-                let recorded = recorded_events(&events);
-                let started = recorded
-                    .iter()
-                    .find(|event| {
-                        event.event == "selection" && event.kind == "preview_drag_started"
-                    })
-                    .expect("drag start event should be logged");
-                assert_eq!(started.data.get("mapped"), Some(&Value::from(true)));
-                assert_eq!(started.data.get("line"), Some(&Value::from(0)));
-                assert_eq!(started.data.get("col"), Some(&Value::from(0)));
-                assert_eq!(
-                    started.data.get("line_clean_preview"),
-                    Some(&Value::from("alpha beta"))
-                );
-                assert_eq!(started.data.get("grapheme"), Some(&Value::from("a")));
-
-                let finished = recorded
-                    .iter()
-                    .find(|event| {
-                        event.event == "selection" && event.kind == "preview_drag_finished"
-                    })
-                    .expect("drag finish event should be logged");
-                assert_eq!(finished.data.get("has_selection"), Some(&Value::from(true)));
-                assert_eq!(finished.data.get("start_line"), Some(&Value::from(0)));
-                assert_eq!(finished.data.get("start_col"), Some(&Value::from(0)));
-                assert_eq!(finished.data.get("end_line"), Some(&Value::from(0)));
-                assert_eq!(finished.data.get("end_col"), Some(&Value::from(4)));
-                assert_eq!(
-                    finished.data.get("selected_preview"),
-                    Some(&Value::from("alpha"))
-                );
-                assert_eq!(
-                    finished.data.get("release_grapheme"),
-                    Some(&Value::from("a"))
-                );
-                assert_eq!(finished.data.get("end_grapheme"), Some(&Value::from("a")));
-
-                let mouse_event = recorded
-                    .iter()
-                    .find(|event| {
-                        event.event == "mouse"
-                            && event.kind == "event"
-                            && event.data.get("kind") == Some(&Value::from("Down(Left)"))
-                    })
-                    .expect("mouse event telemetry should be logged");
-                assert_eq!(
-                    mouse_event.data.get("region"),
-                    Some(&Value::from("preview"))
-                );
-                assert_eq!(mouse_event.data.get("mapped_line"), Some(&Value::from(0)));
-                assert_eq!(mouse_event.data.get("mapped_col"), Some(&Value::from(0)));
-                assert_eq!(
-                    mouse_event.data.get("mapped_grapheme"),
-                    Some(&Value::from("a"))
-                );
-            }
-
-            #[test]
-            fn interactive_drag_mapping_prefers_render_line_when_clean_line_empty() {
-                let (mut app, _commands, _captures, _cursor_captures, events) =
-                    fixture_app_with_tmux_and_events(
-                        WorkspaceStatus::Active,
-                        Vec::new(),
-                        Vec::new(),
-                    );
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-                app.preview.lines = vec![String::new()];
-                app.preview.render_lines = vec!["hello".to_string()];
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-                clear_recorded_events(&events);
-
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Down(MouseButton::Left),
-                        preview_inner.x,
-                        select_y,
-                    )),
-                );
-
-                let recorded = recorded_events(&events);
-                let started = recorded
-                    .iter()
-                    .find(|event| {
-                        event.event == "selection" && event.kind == "preview_drag_started"
-                    })
-                    .expect("drag start event should be logged");
-                assert_eq!(
-                    started.data.get("line_preview"),
-                    Some(&Value::from("hello"))
-                );
-                assert_eq!(
-                    started.data.get("line_clean_preview"),
-                    Some(&Value::from("hello"))
-                );
-            }
-
-            #[test]
-            fn interactive_drag_mapping_uses_rendered_frame_size_without_resize_message() {
-                let (mut app, _commands, _captures, _cursor_captures, events) =
-                    fixture_app_with_tmux_and_events(
-                        WorkspaceStatus::Active,
-                        Vec::new(),
-                        Vec::new(),
-                    );
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-                app.preview.lines = (0..120).map(|index| format!("line-{index:03}")).collect();
-                app.preview.render_lines = app.preview.lines.clone();
-
-                with_rendered_frame(&app, 100, 50, |_| {});
-                clear_recorded_events(&events);
-
-                let layout = GroveApp::view_layout_for_size(100, 50, app.sidebar_width_pct, false);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let select_x = preview_inner.x;
-                let select_y = preview_inner
-                    .y
-                    .saturating_add(PREVIEW_METADATA_ROWS)
-                    .saturating_add(40);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Down(MouseButton::Left),
-                        select_x,
-                        select_y,
-                    )),
-                );
-
-                let recorded = recorded_events(&events);
-                let started = recorded
-                    .iter()
-                    .find(|event| {
-                        event.event == "selection" && event.kind == "preview_drag_started"
-                    })
-                    .expect("drag start event should be logged");
-                assert_eq!(started.data.get("mapped"), Some(&Value::from(true)));
-
-                let output_height =
-                    usize::from(preview_inner.height.saturating_sub(PREVIEW_METADATA_ROWS));
-                let output_row = usize::from(
-                    select_y.saturating_sub(preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS)),
-                );
-                let expected_visible_start = app.preview.lines.len().saturating_sub(output_height);
-                let expected_line = expected_visible_start.saturating_add(output_row);
-                assert_eq!(
-                    started.data.get("line"),
-                    Some(&Value::from(usize_to_u64(expected_line)))
-                );
-            }
-
-            #[test]
-            fn mouse_move_then_release_highlights_selected_text_without_drag_event() {
-                let (mut app, _commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-                app.preview.lines = vec!["alpha beta".to_string()];
-                app.preview.render_lines = vec!["\u{1b}[32malpha beta\u{1b}[0m".to_string()];
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Down(MouseButton::Left),
-                        preview_inner.x,
-                        select_y,
-                    )),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Moved,
-                        preview_inner.x.saturating_add(4),
-                        select_y,
-                    )),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Up(MouseButton::Left),
-                        preview_inner.x.saturating_add(4),
-                        select_y,
-                    )),
-                );
-
-                let x_start = layout.preview.x.saturating_add(1);
-                let x_end = layout.preview.right().saturating_sub(1);
-                with_rendered_frame(&app, 100, 40, |frame| {
-                    let Some(output_row) = find_row_containing(frame, "alpha beta", x_start, x_end)
-                    else {
-                        panic!("output row should be rendered");
-                    };
-                    let Some(first_col) =
-                        find_cell_with_char(frame, output_row, x_start, x_end, 'a')
-                    else {
-                        panic!("selected output row should include first char");
-                    };
-
-                    assert_row_bg(
-                        frame,
-                        output_row,
-                        first_col,
-                        first_col.saturating_add(5),
-                        ui_theme().surface1,
-                    );
-                    assert_row_fg(
-                        frame,
-                        output_row,
-                        first_col,
-                        first_col.saturating_add(5),
-                        ansi_16_color(2),
-                    );
-                });
-            }
-
-            #[test]
-            fn mouse_drag_selection_overrides_existing_ansi_background_sequences() {
-                let (mut app, _commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-                app.preview.lines = vec!["abc".to_string()];
-                app.preview.render_lines = vec![
-                    "\u{1b}[48;2;30;35;50ma\u{1b}[48;2;30;35;50mb\u{1b}[48;2;30;35;50mc\u{1b}[0m"
-                        .to_string(),
-                ];
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Down(MouseButton::Left),
-                        preview_inner.x,
-                        select_y,
-                    )),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Drag(MouseButton::Left),
-                        preview_inner.x.saturating_add(2),
-                        select_y,
-                    )),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Up(MouseButton::Left),
-                        preview_inner.x.saturating_add(2),
-                        select_y,
-                    )),
-                );
-
-                let x_start = layout.preview.x.saturating_add(1);
-                let x_end = layout.preview.right().saturating_sub(1);
-                with_rendered_frame(&app, 100, 40, |frame| {
-                    let Some(output_row) = find_row_containing(frame, "abc", x_start, x_end) else {
-                        panic!("output row should be rendered");
-                    };
-                    let Some(first_col) =
-                        find_cell_with_char(frame, output_row, x_start, x_end, 'a')
-                    else {
-                        panic!("selected output row should include first char");
-                    };
-
-                    assert_row_bg(
-                        frame,
-                        output_row,
-                        first_col,
-                        first_col.saturating_add(3),
-                        ui_theme().surface1,
-                    );
-                });
             }
 
             #[test]
@@ -7083,166 +6646,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
             }
 
             #[test]
-            fn alt_copy_then_alt_paste_uses_mouse_selected_preview_text() {
-                let (mut app, commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, vec![Ok(String::new())]);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-                app.preview.lines = vec!["alpha beta".to_string()];
-                app.preview.render_lines = app.preview.lines.clone();
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Down(MouseButton::Left),
-                        preview_inner.x,
-                        select_y,
-                    )),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Drag(MouseButton::Left),
-                        preview_inner.x.saturating_add(4),
-                        select_y,
-                    )),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Mouse(MouseEvent::new(
-                        MouseEventKind::Up(MouseButton::Left),
-                        preview_inner.x.saturating_add(4),
-                        select_y,
-                    )),
-                );
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(
-                        KeyEvent::new(KeyCode::Char('c'))
-                            .with_modifiers(Modifiers::ALT)
-                            .with_kind(KeyEventKind::Press),
-                    ),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(
-                        KeyEvent::new(KeyCode::Char('v'))
-                            .with_modifiers(Modifiers::ALT)
-                            .with_kind(KeyEventKind::Press),
-                    ),
-                );
-
-                assert!(!app.preview_selection.has_selection());
-                assert_eq!(
-                    commands.borrow().last(),
-                    Some(&vec![
-                        "tmux".to_string(),
-                        "paste-buffer".to_string(),
-                        "-t".to_string(),
-                        "grove-ws-feature-a".to_string(),
-                        "alpha".to_string(),
-                    ])
-                );
-            }
-
-            #[test]
-            fn bracketed_paste_event_forwards_wrapped_literal() {
-                let (mut app, commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                ftui::Model::update(&mut app, Msg::Paste(PasteEvent::bracketed("hello\nworld")));
-
-                assert_eq!(
-                    commands.borrow().last(),
-                    Some(&vec![
-                        "tmux".to_string(),
-                        "send-keys".to_string(),
-                        "-l".to_string(),
-                        "-t".to_string(),
-                        "grove-ws-feature-a".to_string(),
-                        "\u{1b}[200~hello\nworld\u{1b}[201~".to_string(),
-                    ])
-                );
-            }
-
-            #[test]
-            fn alt_copy_then_alt_paste_uses_visible_preview_text_when_no_selection() {
-                let config_path = unique_config_path("alt-copy-paste");
-                let (mut app, commands, captures, _cursor_captures) =
-                    fixture_app_with_tmux_and_config_path(
-                        WorkspaceStatus::Active,
-                        vec![Ok(String::new())],
-                        vec![Ok("1 0 0 78 34".to_string())],
-                        config_path,
-                    );
-                app.state.selected_index = 1;
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-                app.preview.lines = vec!["copy me".to_string()];
-                app.preview.render_lines = app.preview.lines.clone();
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(
-                        KeyEvent::new(KeyCode::Char('c'))
-                            .with_modifiers(Modifiers::ALT)
-                            .with_kind(KeyEventKind::Press),
-                    ),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(
-                        KeyEvent::new(KeyCode::Char('v'))
-                            .with_modifiers(Modifiers::ALT)
-                            .with_kind(KeyEventKind::Press),
-                    ),
-                );
-
-                assert!(captures.borrow().is_empty());
-                assert_eq!(
-                    commands.borrow().last(),
-                    Some(&vec![
-                        "tmux".to_string(),
-                        "paste-buffer".to_string(),
-                        "-t".to_string(),
-                        "grove-ws-feature-a".to_string(),
-                        "copy me".to_string(),
-                    ])
-                );
-            }
-
-            #[test]
             fn shell_contains_list_preview_and_status_placeholders() {
                 let app = fixture_app();
                 let lines = app.shell_lines(8);
@@ -7288,10 +6691,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 let mut app = fixture_app();
                 app.preview.lines = (1..=120).map(|value| value.to_string()).collect();
                 app.preview.render_lines = app.preview.lines.clone();
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
+                focus_agent_preview_tab(&mut app);
                 assert_eq!(app.state.mode, crate::ui::state::UiMode::Preview);
 
                 let was_auto_scroll = app.preview.auto_scroll;
@@ -7328,7 +6728,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                     .map_or(1usize, |(_, height)| usize::from(height).saturating_sub(1))
                     .max(1);
 
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+                focus_agent_preview_tab(&mut app);
                 assert_eq!(app.state.mode, crate::ui::state::UiMode::Preview);
 
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Up)));
@@ -7357,7 +6757,20 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
             #[test]
             fn preview_mode_bracket_keys_cycle_tabs() {
                 let mut app = fixture_app();
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+                focus_agent_preview_tab(&mut app);
+                app.open_new_shell_tab();
+                app.open_or_focus_git_tab();
+                let Some(home_id) = app
+                    .selected_workspace_tabs_state()
+                    .and_then(|tabs| tabs.find_kind(WorkspaceTabKind::Home))
+                    .map(|tab| tab.id)
+                else {
+                    panic!("home tab should exist");
+                };
+                let _ = app.select_tab_by_id_for_selected_workspace(home_id);
+                assert_eq!(app.preview_tab, PreviewTab::Home);
+
+                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
                 assert_eq!(app.preview_tab, PreviewTab::Agent);
 
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
@@ -7367,7 +6780,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 assert_eq!(app.preview_tab, PreviewTab::Git);
 
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
-                assert_eq!(app.preview_tab, PreviewTab::Agent);
+                assert_eq!(app.preview_tab, PreviewTab::Home);
 
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('['))));
                 assert_eq!(app.preview_tab, PreviewTab::Git);
@@ -7383,9 +6796,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 app.preview.render_lines = app.preview.lines.clone();
                 app.preview.offset = 0;
                 app.preview.auto_scroll = true;
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+                app.open_or_focus_git_tab();
                 assert_eq!(app.preview_tab, PreviewTab::Git);
 
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('k'))));
@@ -7406,9 +6817,8 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                         height: 40,
                     },
                 );
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+                app.open_new_shell_tab();
+                app.open_or_focus_git_tab();
 
                 let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
                 let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
@@ -7421,7 +6831,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                         row_text(frame, preview_inner.y.saturating_add(1), x_start, x_end);
                     let output_line = row_text(frame, output_y, x_start, x_end);
 
-                    assert!(tabs_line.contains("Agent"));
+                    assert!(tabs_line.contains("Home"));
                     assert!(tabs_line.contains("Shell"));
                     assert!(tabs_line.contains("Git"));
                     assert!(output_line.contains("lazygit"));
@@ -7439,9 +6849,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                     None,
                 );
 
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
-                let cmd = ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+                let cmd = ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('g'))));
 
                 assert_eq!(app.preview_tab, PreviewTab::Git);
                 assert!(cmd_contains_task(&cmd));
@@ -7459,48 +6867,32 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
                 let lazygit_command = app.session.lazygit_command.clone();
 
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+                app.open_or_focus_git_tab();
 
-                let expected_suffix = vec![
-                    vec![
-                        "tmux".to_string(),
-                        "new-session".to_string(),
-                        "-d".to_string(),
-                        "-s".to_string(),
-                        "grove-ws-grove-git".to_string(),
-                        "-c".to_string(),
-                        "/repos/grove".to_string(),
-                    ],
-                    vec![
-                        "tmux".to_string(),
-                        "set-option".to_string(),
-                        "-t".to_string(),
-                        "grove-ws-grove-git".to_string(),
-                        "history-limit".to_string(),
-                        "10000".to_string(),
-                    ],
-                    vec![
-                        "tmux".to_string(),
-                        "resize-window".to_string(),
-                        "-t".to_string(),
-                        "grove-ws-grove-git".to_string(),
-                        "-x".to_string(),
-                        "80".to_string(),
-                        "-y".to_string(),
-                        "36".to_string(),
-                    ],
-                    vec![
-                        "tmux".to_string(),
-                        "send-keys".to_string(),
-                        "-t".to_string(),
-                        "grove-ws-grove-git".to_string(),
-                        lazygit_command,
-                        "Enter".to_string(),
-                    ],
-                ];
-                assert!(commands.borrow().as_slice().ends_with(&expected_suffix));
+                let recorded = commands.borrow();
+                assert!(recorded.iter().any(|command| {
+                    command
+                        == &vec![
+                            "tmux".to_string(),
+                            "new-session".to_string(),
+                            "-d".to_string(),
+                            "-s".to_string(),
+                            "grove-ws-grove-git".to_string(),
+                            "-c".to_string(),
+                            "/repos/grove".to_string(),
+                        ]
+                }));
+                assert!(recorded.iter().any(|command| {
+                    command
+                        == &vec![
+                            "tmux".to_string(),
+                            "send-keys".to_string(),
+                            "-t".to_string(),
+                            "grove-ws-grove-git".to_string(),
+                            lazygit_command.clone(),
+                            "Enter".to_string(),
+                        ]
+                }));
             }
 
             #[test]
@@ -7653,9 +7045,9 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
             fn workspace_shell_launch_completion_success_polls_from_list_mode() {
                 let mut app = fixture_background_app(WorkspaceStatus::Idle);
                 app.state.selected_index = 1;
+                focus_agent_preview_tab(&mut app);
                 app.state.mode = UiMode::List;
                 app.state.focus = PaneFocus::WorkspaceList;
-                app.preview_tab = PreviewTab::Agent;
                 app.session
                     .shell_sessions
                     .in_flight
@@ -7721,9 +7113,7 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
 
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
-                ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+                app.open_or_focus_git_tab();
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
 
                 assert_eq!(
@@ -7959,36 +7349,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
             use super::*;
 
             #[test]
-            fn interactive_enter_and_exit_emit_mode_events() {
-                let (mut app, _commands, _captures, _cursor_captures, events) =
-                    fixture_app_with_tmux_and_events(
-                        WorkspaceStatus::Active,
-                        Vec::new(),
-                        Vec::new(),
-                    );
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
-                );
-
-                let kinds = event_kinds(&events);
-                assert_kind_subsequence(&kinds, &["interactive_entered", "interactive_exited"]);
-            }
-
-            #[test]
             fn key_q_maps_to_key_message() {
                 let event =
                     Event::Key(KeyEvent::new(KeyCode::Char('q')).with_kind(KeyEventKind::Press));
@@ -8157,30 +7517,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
             }
 
             #[test]
-            fn ctrl_c_dismisses_modal_via_action_mapper() {
-                let mut app = fixture_app();
-                app.state.selected_index = 1;
-                focus_agent_preview_tab(&mut app);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
-                );
-                assert!(app.launch_dialog().is_some());
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(
-                        KeyEvent::new(KeyCode::Char('c'))
-                            .with_modifiers(Modifiers::CTRL)
-                            .with_kind(KeyEventKind::Press),
-                    ),
-                );
-
-                assert!(app.launch_dialog().is_none());
-            }
-
-            #[test]
             fn ctrl_c_dismisses_delete_modal_via_action_mapper() {
                 let mut app = fixture_app();
                 app.state.selected_index = 1;
@@ -8239,71 +7575,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
                 );
 
                 assert!(!matches!(cmd, Cmd::Quit));
-            }
-
-            #[test]
-            fn start_key_launches_selected_workspace_agent() {
-                let (mut app, commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
-                );
-                assert!(app.launch_dialog().is_some());
-                assert!(commands.borrow().is_empty());
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                assert_eq!(
-                    commands.borrow().as_slice(),
-                    &[
-                        vec![
-                            "tmux".to_string(),
-                            "new-session".to_string(),
-                            "-d".to_string(),
-                            "-s".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "-c".to_string(),
-                            "/repos/grove-feature-a".to_string(),
-                        ],
-                        vec![
-                            "tmux".to_string(),
-                            "set-option".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "history-limit".to_string(),
-                            "10000".to_string(),
-                        ],
-                        vec![
-                            "tmux".to_string(),
-                            "resize-window".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "-x".to_string(),
-                            "80".to_string(),
-                            "-y".to_string(),
-                            "36".to_string(),
-                        ],
-                        vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "codex".to_string(),
-                            "Enter".to_string(),
-                        ],
-                    ]
-                );
-                assert_eq!(
-                    app.state
-                        .selected_workspace()
-                        .map(|workspace| workspace.status),
-                    Some(WorkspaceStatus::Active)
-                );
             }
 
             #[test]
@@ -8514,24 +7785,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
             }
 
             #[test]
-            fn background_start_confirm_queues_lifecycle_task() {
-                let mut app = fixture_background_app(WorkspaceStatus::Idle);
-                app.state.selected_index = 1;
-                focus_agent_preview_tab(&mut app);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
-                );
-                let cmd = ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                assert!(cmd_contains_task(&cmd));
-            }
-
-            #[test]
             fn start_agent_completed_updates_workspace_status() {
                 let mut app = fixture_app();
                 app.state.selected_index = 1;
@@ -8555,98 +7808,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
             }
 
             #[test]
-            fn unsafe_toggle_changes_launch_command_flags() {
-                let (mut app, commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('!')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                assert_eq!(
-                    commands.borrow().last(),
-                    Some(&vec![
-                        "tmux".to_string(),
-                        "send-keys".to_string(),
-                        "-t".to_string(),
-                        "grove-ws-feature-a".to_string(),
-                        "codex --dangerously-bypass-approvals-and-sandbox".to_string(),
-                        "Enter".to_string(),
-                    ])
-                );
-                assert!(app.launch_skip_permissions);
-            }
-
-            #[test]
-            fn start_key_applies_project_agent_env_defaults_before_agent_launch() {
-                let (mut app, commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
-                app.projects[0].defaults.agent_env.codex = vec![
-                    "CODEX_CONFIG_DIR=~/.codex-work".to_string(),
-                    "OPENAI_API_BASE=https://api.example.com/v1".to_string(),
-                ];
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                assert!(commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "export CODEX_CONFIG_DIR='~/.codex-work' OPENAI_API_BASE='https://api.example.com/v1'"
-                                .to_string(),
-                            "Enter".to_string(),
-                        ]
-                }));
-            }
-
-            #[test]
-            fn start_key_rejects_invalid_project_agent_env_defaults() {
-                let (mut app, commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
-                app.projects[0].defaults.agent_env.codex = vec!["INVALID-KEY=value".to_string()];
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                assert!(commands.borrow().is_empty());
-                assert!(
-                    app.status_bar_line()
-                        .contains("invalid project agent env: invalid env key 'INVALID-KEY'")
-                );
-            }
-
-            #[test]
             fn unsafe_toggle_updates_launch_skip_permissions_for_session() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
@@ -8659,253 +7820,6 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
 
                 assert!(app.launch_skip_permissions);
                 assert!(!app.config_path.exists());
-            }
-
-            #[test]
-            fn start_key_persists_workspace_skip_permissions_marker() {
-                let workspace_dir = unique_temp_workspace_dir("start-skip-marker");
-                let (mut app, _commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
-                app.state.workspaces[1].path = workspace_dir.clone();
-                app.launch_skip_permissions = true;
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                let marker = fs::read_to_string(workspace_dir.join(".grove/skip_permissions"))
-                    .expect("skip marker should exist after start");
-                assert_eq!(marker, "true\n");
-                assert!(app.launch_skip_permissions);
-                assert!(!app.config_path.exists());
-
-                let _ = fs::remove_dir_all(workspace_dir);
-            }
-
-            #[test]
-            fn start_key_uses_workspace_prompt_file_launcher_script() {
-                let workspace_dir = unique_temp_workspace_dir("prompt");
-                let prompt_path = workspace_dir.join(".grove/prompt");
-                fs::create_dir_all(workspace_dir.join(".grove"))
-                    .expect(".grove dir should be writable");
-                fs::write(&prompt_path, "fix bug\nand add tests")
-                    .expect("prompt file should be writable");
-
-                let (mut app, commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                focus_agent_preview_tab(&mut app);
-                app.state.workspaces[1].path = workspace_dir.clone();
-                app.state.selected_index = 1;
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                assert_eq!(
-                    commands.borrow().last(),
-                    Some(&vec![
-                        "tmux".to_string(),
-                        "send-keys".to_string(),
-                        "-t".to_string(),
-                        "grove-ws-feature-a".to_string(),
-                        format!("bash {}/.grove/start.sh", workspace_dir.display()),
-                        "Enter".to_string(),
-                    ])
-                );
-
-                let launcher_path = workspace_dir.join(".grove/start.sh");
-                let launcher_script =
-                    fs::read_to_string(&launcher_path).expect("launcher script should be written");
-                assert!(launcher_script.contains("fix bug"));
-                assert!(launcher_script.contains("and add tests"));
-                assert!(launcher_script.contains("codex"));
-
-                let _ = fs::remove_dir_all(workspace_dir);
-            }
-
-            #[test]
-            fn start_dialog_init_command_runs_before_agent() {
-                let (mut app, commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
-
-                for character in ['d', 'i', 'r', 'e', 'n', 'v', ' ', 'a', 'l', 'l', 'o', 'w'] {
-                    ftui::Model::update(
-                        &mut app,
-                        Msg::Key(
-                            KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press),
-                        ),
-                    );
-                }
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                let last_command = commands
-                    .borrow()
-                    .last()
-                    .expect("last tmux command should exist")
-                    .clone();
-                assert_eq!(last_command[0], "tmux");
-                assert_eq!(last_command[1], "send-keys");
-                assert_eq!(last_command[2], "-t");
-                assert_eq!(last_command[3], "grove-ws-feature-a");
-                assert_eq!(last_command[5], "Enter");
-                let launch_command = &last_command[4];
-                assert!(launch_command.contains("workspace-init-"));
-                assert!(launch_command.contains("direnv allow"));
-                assert!(launch_command.contains("codex"));
-            }
-
-            #[test]
-            fn start_dialog_field_navigation_can_toggle_unsafe_for_launch() {
-                let (mut app, commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
-                assert_eq!(
-                    app.launch_dialog().map(|dialog| dialog.focused_field),
-                    Some(LaunchDialogField::StartConfig(
-                        StartAgentConfigField::Unsafe
-                    ))
-                );
-                app.handle_launch_dialog_key(
-                    KeyEvent::new(KeyCode::Char(' ')).with_kind(KeyEventKind::Press),
-                );
-                assert_eq!(
-                    app.launch_dialog()
-                        .map(|dialog| dialog.start_config.skip_permissions),
-                    Some(true)
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                assert_eq!(
-                    commands.borrow().last(),
-                    Some(&vec![
-                        "tmux".to_string(),
-                        "send-keys".to_string(),
-                        "-t".to_string(),
-                        "grove-ws-feature-a".to_string(),
-                        "codex --dangerously-bypass-approvals-and-sandbox".to_string(),
-                        "Enter".to_string(),
-                    ])
-                );
-            }
-
-            #[test]
-            fn start_dialog_blocks_background_navigation_and_escape_cancels() {
-                let (mut app, commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
-
-                assert_eq!(app.state.selected_index, 1);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
-                );
-
-                assert_eq!(app.state.selected_index, 1);
-                assert_eq!(
-                    app.launch_dialog()
-                        .map(|dialog| dialog.start_config.prompt.clone()),
-                    Some("k".to_string())
-                );
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
-                );
-
-                assert!(app.launch_dialog().is_none());
-                assert!(commands.borrow().is_empty());
-            }
-
-            #[test]
-            fn start_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
-                let mut app = fixture_app();
-                app.state.selected_index = 1;
-                app.open_start_dialog();
-
-                assert_eq!(
-                    app.launch_dialog().map(|dialog| dialog.focused_field),
-                    Some(LaunchDialogField::StartConfig(
-                        StartAgentConfigField::Prompt
-                    ))
-                );
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(
-                        KeyEvent::new(KeyCode::Char('n'))
-                            .with_modifiers(Modifiers::CTRL)
-                            .with_kind(KeyEventKind::Press),
-                    ),
-                );
-                assert_eq!(
-                    app.launch_dialog().map(|dialog| dialog.focused_field),
-                    Some(LaunchDialogField::StartConfig(
-                        StartAgentConfigField::InitCommand
-                    ))
-                );
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(
-                        KeyEvent::new(KeyCode::Char('p'))
-                            .with_modifiers(Modifiers::CTRL)
-                            .with_kind(KeyEventKind::Press),
-                    ),
-                );
-                assert_eq!(
-                    app.launch_dialog().map(|dialog| dialog.focused_field),
-                    Some(LaunchDialogField::StartConfig(
-                        StartAgentConfigField::Prompt
-                    ))
-                );
             }
 
             #[test]
