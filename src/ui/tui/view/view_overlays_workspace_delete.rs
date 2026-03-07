@@ -16,18 +16,21 @@ impl GroveApp {
         let focused = |field| dialog.focused_field == field;
         let warning_lines = if dialog.is_missing {
             (
-                "  • Directory already removed",
-                "  • Clean up git worktree metadata",
+                "  • Task root already removed",
+                "  • Clean up git worktree metadata in each repository",
             )
         } else {
             (
-                "  • Remove the working directory",
-                "  • Uncommitted changes will be lost",
+                "  • Remove the task root and all child worktrees",
+                "  • Uncommitted changes in any worktree will be lost",
             )
         };
         let cleanup_focused = focused(DeleteDialogField::DeleteLocalBranch);
         let cleanup_state = if dialog.delete_local_branch {
-            format!("enabled, remove '{}' branch locally", dialog.branch)
+            format!(
+                "enabled, remove '{}' branch in each repository",
+                dialog.task.branch
+            )
         } else {
             "disabled, keep local branch".to_string()
         };
@@ -39,7 +42,8 @@ impl GroveApp {
         };
         let delete_focused = focused(DeleteDialogField::DeleteButton);
         let cancel_focused = focused(DeleteDialogField::CancelButton);
-        let path = dialog.path.display().to_string();
+        let path = dialog.task.root_path.display().to_string();
+        let worktree_count = dialog.task.worktrees.len().to_string();
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width("Deletion plan", content_width),
@@ -50,7 +54,7 @@ impl GroveApp {
                 content_width,
                 theme,
                 "Name",
-                dialog.workspace_name.as_str(),
+                dialog.task.name.as_str(),
                 theme.blue,
                 theme.text,
             ),
@@ -58,7 +62,15 @@ impl GroveApp {
                 content_width,
                 theme,
                 "Branch",
-                dialog.branch.as_str(),
+                dialog.task.branch.as_str(),
+                theme.blue,
+                theme.text,
+            ),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Worktrees",
+                worktree_count.as_str(),
                 theme.blue,
                 theme.text,
             ),
@@ -122,7 +134,7 @@ impl GroveApp {
         lines.extend(modal_wrapped_hint_rows(
             content_width,
             theme,
-            "Tab/C-n next, S-Tab/C-p prev, Space toggle option, Enter or D delete, Esc cancel",
+            "Tab/C-n next, S-Tab/C-p prev, Space toggle option, Enter or D delete task, Esc cancel",
         ));
         let body = FtText::from_lines(lines);
         render_modal_dialog(
@@ -132,7 +144,7 @@ impl GroveApp {
             ModalDialogSpec {
                 dialog_width,
                 dialog_height,
-                title: "Delete Worktree?",
+                title: "Delete Task?",
                 theme,
                 border_color: theme.red,
                 hit_id: HIT_ID_DELETE_DIALOG,

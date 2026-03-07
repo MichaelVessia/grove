@@ -1,8 +1,146 @@
 use super::*;
 
 impl GroveApp {
+    fn handle_create_project_picker_key(&mut self, key_event: KeyEvent) {
+        let ctrl_n = key_event.code == KeyCode::Char('n') && key_event.modifiers == Modifiers::CTRL;
+        let ctrl_p = key_event.code == KeyCode::Char('p') && key_event.modifiers == Modifiers::CTRL;
+
+        match key_event.code {
+            KeyCode::Escape => {
+                let should_clear_filter = self
+                    .create_dialog()
+                    .and_then(|dialog| dialog.project_picker.as_ref())
+                    .is_some_and(|picker| !picker.filter.is_empty());
+                if should_clear_filter {
+                    if let Some(dialog) = self.create_dialog_mut()
+                        && let Some(picker) = dialog.project_picker.as_mut()
+                    {
+                        picker.filter.clear();
+                    }
+                    self.refresh_create_project_picker_filtered();
+                    return;
+                }
+
+                self.close_create_project_picker();
+            }
+            KeyCode::Enter => {
+                let Some(project_index) = self.selected_create_project_picker_project_index()
+                else {
+                    return;
+                };
+                self.apply_create_dialog_project_defaults(project_index);
+                self.close_create_project_picker();
+                self.create_dialog_focus_next();
+            }
+            KeyCode::Up => {
+                if let Some(dialog) = self.create_dialog_mut()
+                    && let Some(picker) = dialog.project_picker.as_mut()
+                    && picker.selected_filtered_index > 0
+                {
+                    picker.selected_filtered_index =
+                        picker.selected_filtered_index.saturating_sub(1);
+                }
+            }
+            KeyCode::Down => {
+                if let Some(dialog) = self.create_dialog_mut()
+                    && let Some(picker) = dialog.project_picker.as_mut()
+                    && picker.selected_filtered_index.saturating_add(1)
+                        < picker.filtered_project_indices.len()
+                {
+                    picker.selected_filtered_index =
+                        picker.selected_filtered_index.saturating_add(1);
+                }
+            }
+            KeyCode::Tab => {
+                if let Some(dialog) = self.create_dialog_mut()
+                    && let Some(picker) = dialog.project_picker.as_mut()
+                {
+                    let len = picker.filtered_project_indices.len();
+                    if len > 0 {
+                        picker.selected_filtered_index =
+                            picker.selected_filtered_index.saturating_add(1) % len;
+                    }
+                }
+            }
+            KeyCode::BackTab => {
+                if let Some(dialog) = self.create_dialog_mut()
+                    && let Some(picker) = dialog.project_picker.as_mut()
+                {
+                    let len = picker.filtered_project_indices.len();
+                    if len > 0 {
+                        picker.selected_filtered_index = if picker.selected_filtered_index == 0 {
+                            len.saturating_sub(1)
+                        } else {
+                            picker.selected_filtered_index.saturating_sub(1)
+                        };
+                    }
+                }
+            }
+            KeyCode::Char(_) if ctrl_n => {
+                if let Some(dialog) = self.create_dialog_mut()
+                    && let Some(picker) = dialog.project_picker.as_mut()
+                {
+                    let len = picker.filtered_project_indices.len();
+                    if len > 0 {
+                        picker.selected_filtered_index =
+                            picker.selected_filtered_index.saturating_add(1) % len;
+                    }
+                }
+            }
+            KeyCode::Char(_) if ctrl_p => {
+                if let Some(dialog) = self.create_dialog_mut()
+                    && let Some(picker) = dialog.project_picker.as_mut()
+                {
+                    let len = picker.filtered_project_indices.len();
+                    if len > 0 {
+                        picker.selected_filtered_index = if picker.selected_filtered_index == 0 {
+                            len.saturating_sub(1)
+                        } else {
+                            picker.selected_filtered_index.saturating_sub(1)
+                        };
+                    }
+                }
+            }
+            KeyCode::Char(' ') if key_event.modifiers.is_empty() => {
+                let Some(project_index) = self.selected_create_project_picker_project_index()
+                else {
+                    return;
+                };
+                if let Some(dialog) = self.create_dialog_mut() {
+                    dialog.project_index = project_index;
+                    if dialog.tab == CreateDialogTab::PullRequest {
+                        return;
+                    }
+                }
+                self.toggle_create_dialog_project_selection();
+            }
+            KeyCode::Backspace => {
+                if let Some(dialog) = self.create_dialog_mut()
+                    && let Some(picker) = dialog.project_picker.as_mut()
+                {
+                    picker.filter.pop();
+                }
+                self.refresh_create_project_picker_filtered();
+            }
+            KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
+                if let Some(dialog) = self.create_dialog_mut()
+                    && let Some(picker) = dialog.project_picker.as_mut()
+                    && !character.is_control()
+                {
+                    picker.filter.push(character);
+                }
+                self.refresh_create_project_picker_filtered();
+            }
+            _ => {}
+        }
+    }
+
     pub(super) fn handle_create_dialog_key(&mut self, key_event: KeyEvent) {
         if self.dialogs.create_in_flight {
+            return;
+        }
+        if self.create_project_picker_open() {
+            self.handle_create_project_picker_key(key_event);
             return;
         }
 
@@ -26,38 +164,32 @@ impl GroveApp {
             KeyCode::Escape => {
                 self.log_dialog_event("create", "dialog_cancelled");
                 self.close_active_dialog();
-                self.clear_create_branch_picker();
             }
             KeyCode::Enter => {
-                if self.select_create_base_branch_from_dropdown() {
-                    self.create_dialog_focus_next();
-                    self.refresh_create_branch_filtered();
-                    return;
-                }
-
                 enum EnterAction {
                     ConfirmCreate,
                     CancelDialog,
                     AdvanceField,
                 }
 
-                let action = self
-                    .create_dialog()
-                    .map(|dialog| match dialog.focused_field {
-                        CreateDialogField::CreateButton => EnterAction::ConfirmCreate,
-                        CreateDialogField::CancelButton => EnterAction::CancelDialog,
-                        CreateDialogField::WorkspaceName
-                        | CreateDialogField::PullRequestUrl
-                        | CreateDialogField::Project
-                        | CreateDialogField::BaseBranch => EnterAction::AdvanceField,
-                    });
+                let focused_field = self.create_dialog().map(|dialog| dialog.focused_field);
+                if focused_field == Some(CreateDialogField::Project) {
+                    self.open_create_project_picker();
+                    return;
+                }
+                let action = focused_field.map(|field| match field {
+                    CreateDialogField::CreateButton => EnterAction::ConfirmCreate,
+                    CreateDialogField::CancelButton => EnterAction::CancelDialog,
+                    CreateDialogField::WorkspaceName
+                    | CreateDialogField::PullRequestUrl
+                    | CreateDialogField::Project => EnterAction::AdvanceField,
+                });
 
                 match action {
                     Some(EnterAction::ConfirmCreate) => self.confirm_create_dialog(),
                     Some(EnterAction::CancelDialog) => {
                         self.log_dialog_event("create", "dialog_cancelled");
                         self.close_active_dialog();
-                        self.clear_create_branch_picker();
                     }
                     Some(EnterAction::AdvanceField) => {
                         self.create_dialog_focus_next();
@@ -71,38 +203,7 @@ impl GroveApp {
             KeyCode::BackTab => {
                 self.create_dialog_focus_previous();
             }
-            KeyCode::Left | KeyCode::Right => {}
-            KeyCode::Up => {
-                if self.create_base_branch_dropdown_visible()
-                    && self.dialogs.create_branch_index > 0
-                {
-                    self.dialogs.create_branch_index =
-                        self.dialogs.create_branch_index.saturating_sub(1);
-                    return;
-                }
-                if self
-                    .create_dialog()
-                    .is_some_and(|dialog| dialog.focused_field == CreateDialogField::Project)
-                {
-                    self.shift_create_dialog_project(-1);
-                }
-            }
-            KeyCode::Down => {
-                if self.create_base_branch_dropdown_visible()
-                    && self.dialogs.create_branch_index.saturating_add(1)
-                        < self.dialogs.create_branch_filtered.len()
-                {
-                    self.dialogs.create_branch_index =
-                        self.dialogs.create_branch_index.saturating_add(1);
-                    return;
-                }
-                if self
-                    .create_dialog()
-                    .is_some_and(|dialog| dialog.focused_field == CreateDialogField::Project)
-                {
-                    self.shift_create_dialog_project(1);
-                }
-            }
+            KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => {}
             KeyCode::Char(_) if ctrl_n || ctrl_p => {
                 if ctrl_n {
                     self.create_dialog_focus_next();
@@ -111,59 +212,21 @@ impl GroveApp {
                 }
             }
             KeyCode::Backspace => {
-                let mut refresh_base_branch = false;
                 if let Some(dialog) = self.create_dialog_mut() {
                     match dialog.focused_field {
                         CreateDialogField::WorkspaceName => {
-                            dialog.workspace_name.pop();
+                            dialog.task_name.pop();
                         }
                         CreateDialogField::PullRequestUrl => {
                             dialog.pr_url.pop();
-                        }
-                        CreateDialogField::BaseBranch => {
-                            dialog.base_branch.pop();
-                            refresh_base_branch = true;
                         }
                         CreateDialogField::Project
                         | CreateDialogField::CreateButton
                         | CreateDialogField::CancelButton => {}
                     }
                 }
-                if refresh_base_branch {
-                    self.refresh_create_branch_filtered();
-                }
             }
             KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
-                let focused_field = self.create_dialog().map(|dialog| dialog.focused_field);
-                if self
-                    .create_dialog()
-                    .is_some_and(|dialog| dialog.focused_field == CreateDialogField::Project)
-                {
-                    if character == 'j' {
-                        self.shift_create_dialog_project(1);
-                        return;
-                    }
-                    if character == 'k' {
-                        self.shift_create_dialog_project(-1);
-                        return;
-                    }
-                }
-                if focused_field == Some(CreateDialogField::BaseBranch) {
-                    if character == 'j'
-                        && self.dialogs.create_branch_index.saturating_add(1)
-                            < self.dialogs.create_branch_filtered.len()
-                    {
-                        self.dialogs.create_branch_index =
-                            self.dialogs.create_branch_index.saturating_add(1);
-                        return;
-                    }
-                    if character == 'k' && self.dialogs.create_branch_index > 0 {
-                        self.dialogs.create_branch_index =
-                            self.dialogs.create_branch_index.saturating_sub(1);
-                        return;
-                    }
-                }
-                let mut refresh_base_branch = false;
                 if let Some(dialog) = self.create_dialog_mut() {
                     if (dialog.focused_field == CreateDialogField::CreateButton
                         || dialog.focused_field == CreateDialogField::CancelButton)
@@ -183,7 +246,7 @@ impl GroveApp {
                                 || character == '-'
                                 || character == '_'
                             {
-                                dialog.workspace_name.push(character);
+                                dialog.task_name.push(character);
                             }
                         }
                         CreateDialogField::PullRequestUrl => {
@@ -192,72 +255,12 @@ impl GroveApp {
                             }
                         }
                         CreateDialogField::Project => {}
-                        CreateDialogField::BaseBranch => {
-                            if !character.is_control() {
-                                dialog.base_branch.push(character);
-                                refresh_base_branch = true;
-                            }
-                        }
                         CreateDialogField::CreateButton | CreateDialogField::CancelButton => {}
                     }
-                }
-                if refresh_base_branch {
-                    self.refresh_create_branch_filtered();
                 }
             }
             _ => {}
         }
-    }
-
-    fn shift_create_dialog_project(&mut self, delta: isize) {
-        let Some(current_index) = self.create_dialog().map(|dialog| dialog.project_index) else {
-            return;
-        };
-        if self.projects.is_empty() {
-            return;
-        }
-
-        let len = self.projects.len();
-        let current = current_index.min(len.saturating_sub(1));
-        let mut next = current;
-        if delta < 0 {
-            next = current.saturating_sub(1);
-        } else if delta > 0 {
-            next = (current.saturating_add(1)).min(len.saturating_sub(1));
-        }
-
-        if next == current_index {
-            return;
-        }
-
-        self.apply_create_dialog_project_defaults(next);
-    }
-
-    fn create_base_branch_dropdown_visible(&self) -> bool {
-        self.create_dialog().is_some_and(|dialog| {
-            dialog.tab == CreateDialogTab::Manual
-                && dialog.focused_field == CreateDialogField::BaseBranch
-                && !self.dialogs.create_branch_filtered.is_empty()
-        })
-    }
-
-    fn select_create_base_branch_from_dropdown(&mut self) -> bool {
-        if !self.create_base_branch_dropdown_visible() {
-            return false;
-        }
-        let Some(selected_branch) = self
-            .dialogs
-            .create_branch_filtered
-            .get(self.dialogs.create_branch_index)
-            .cloned()
-        else {
-            return false;
-        };
-        if let Some(dialog) = self.create_dialog_mut() {
-            dialog.base_branch = selected_branch;
-            return true;
-        }
-        false
     }
 
     fn create_dialog_focus_next(&mut self) {
@@ -279,6 +282,7 @@ impl GroveApp {
             } else {
                 dialog.tab.previous()
             };
+            dialog.project_picker = None;
             dialog.focused_field = CreateDialogField::first_for_tab(dialog.tab);
         }
     }

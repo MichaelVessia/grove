@@ -2,12 +2,14 @@ use std::path::Path;
 
 use crate::application::agent_runtime::{
     CommandExecutionMode, LaunchRequest, LivePreviewTarget, SessionActivity,
-    SessionExecutionResult, ShellLaunchRequest, WorkspaceStatusTarget,
+    SessionExecutionResult, ShellLaunchRequest, TaskLaunchRequest, WorkspaceStatusTarget,
     detect_status_with_session_override as runtime_detect_status_with_session_override,
     execute_launch_request_with_result_for_mode as runtime_execute_launch_request_with_result_for_mode,
     execute_restart_workspace_in_pane_with_result as runtime_execute_restart_workspace_in_pane_with_result,
     execute_shell_launch_request_for_mode as runtime_execute_shell_launch_request_for_mode,
+    execute_stop_task_with_result_for_mode as runtime_execute_stop_task_with_result_for_mode,
     execute_stop_workspace_with_result_for_mode as runtime_execute_stop_workspace_with_result_for_mode,
+    execute_task_launch_request_with_result_for_mode as runtime_execute_task_launch_request_with_result_for_mode,
     latest_assistant_attention_marker as runtime_latest_assistant_attention_marker,
     launch_request_for_workspace as runtime_launch_request_for_workspace,
     shell_launch_request_for_workspace as runtime_shell_launch_request_for_workspace,
@@ -61,9 +63,23 @@ pub(crate) trait RuntimeService {
         mode: CommandExecutionMode<'a>,
     ) -> SessionExecutionResult;
 
+    fn execute_task_launch_request_with_result_for_mode<'a>(
+        &self,
+        request: &TaskLaunchRequest,
+        mode: CommandExecutionMode<'a>,
+    ) -> SessionExecutionResult;
+
     fn execute_stop_workspace_with_result_for_mode<'a>(
         &self,
         workspace: &Workspace,
+        mode: CommandExecutionMode<'a>,
+    ) -> SessionExecutionResult;
+
+    fn execute_stop_task_with_result_for_mode<'a>(
+        &self,
+        task_name: &str,
+        task_root: &Path,
+        task_slug: &str,
         mode: CommandExecutionMode<'a>,
     ) -> SessionExecutionResult;
 
@@ -146,12 +162,30 @@ impl RuntimeService for CommandRuntimeService {
         runtime_execute_launch_request_with_result_for_mode(request, mode)
     }
 
+    fn execute_task_launch_request_with_result_for_mode<'a>(
+        &self,
+        request: &TaskLaunchRequest,
+        mode: CommandExecutionMode<'a>,
+    ) -> SessionExecutionResult {
+        runtime_execute_task_launch_request_with_result_for_mode(request, mode)
+    }
+
     fn execute_stop_workspace_with_result_for_mode<'a>(
         &self,
         workspace: &Workspace,
         mode: CommandExecutionMode<'a>,
     ) -> SessionExecutionResult {
         runtime_execute_stop_workspace_with_result_for_mode(workspace, mode)
+    }
+
+    fn execute_stop_task_with_result_for_mode<'a>(
+        &self,
+        task_name: &str,
+        task_root: &Path,
+        task_slug: &str,
+        mode: CommandExecutionMode<'a>,
+    ) -> SessionExecutionResult {
+        runtime_execute_stop_task_with_result_for_mode(task_name, task_root, task_slug, mode)
     }
 
     fn execute_restart_workspace_in_pane_with_result(
@@ -252,11 +286,28 @@ pub fn execute_launch_request_with_result_for_mode<'a>(
     CommandRuntimeService.execute_launch_request_with_result_for_mode(request, mode)
 }
 
+pub fn execute_task_launch_request_with_result_for_mode<'a>(
+    request: &TaskLaunchRequest,
+    mode: CommandExecutionMode<'a>,
+) -> SessionExecutionResult {
+    CommandRuntimeService.execute_task_launch_request_with_result_for_mode(request, mode)
+}
+
 pub fn execute_stop_workspace_with_result_for_mode<'a>(
     workspace: &Workspace,
     mode: CommandExecutionMode<'a>,
 ) -> SessionExecutionResult {
     CommandRuntimeService.execute_stop_workspace_with_result_for_mode(workspace, mode)
+}
+
+pub fn execute_stop_task_with_result_for_mode<'a>(
+    task_name: &str,
+    task_root: &Path,
+    task_slug: &str,
+    mode: CommandExecutionMode<'a>,
+) -> SessionExecutionResult {
+    CommandRuntimeService
+        .execute_stop_task_with_result_for_mode(task_name, task_root, task_slug, mode)
 }
 
 pub fn execute_restart_workspace_in_pane_with_result(

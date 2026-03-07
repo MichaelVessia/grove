@@ -19,46 +19,32 @@ impl GroveApp {
         }
     }
 
-    fn project_workspace_indices(&self, project: &ProjectConfig) -> Vec<usize> {
-        self.state
-            .workspaces
-            .iter()
-            .enumerate()
-            .filter(|(_, workspace)| {
-                workspace
-                    .project_path
-                    .as_ref()
-                    .is_some_and(|path| refer_to_same_location(path, &project.path))
-            })
-            .map(|(index, _)| index)
-            .collect()
-    }
-
     fn build_sidebar_lines(&self, theme: UiTheme) -> (Vec<SidebarListLine>, Option<usize>) {
         let mut lines = Vec::new();
         let mut selected_line = None;
+        let mut workspace_index = 0usize;
 
-        for (project_index, project) in self.projects.iter().enumerate() {
-            if project_index > 0 {
+        for (task_index, task) in self.state.tasks.iter().enumerate() {
+            if task_index > 0 {
                 lines.push(SidebarListLine::project(Vec::new()));
             }
 
             lines.push(SidebarListLine::project(vec![SidebarSegment {
-                text: format!("▾ {}", project.name),
+                text: format!("▾ {}", task.name),
                 style: Style::new().fg(theme.overlay0).bold(),
             }]));
 
-            let workspace_indices = self.project_workspace_indices(project);
-            if workspace_indices.is_empty() {
+            if task.worktrees.is_empty() {
                 lines.push(SidebarListLine::project(vec![SidebarSegment {
-                    text: "  (no workspaces)".to_string(),
+                    text: "  (no worktrees)".to_string(),
                     style: Style::new().fg(theme.subtext0),
                 }]));
                 continue;
             }
 
-            for workspace_index in workspace_indices {
+            for worktree in &task.worktrees {
                 let Some(workspace) = self.state.workspaces.get(workspace_index) else {
+                    workspace_index = workspace_index.saturating_add(1);
                     continue;
                 };
 
@@ -115,7 +101,7 @@ impl GroveApp {
                 } else {
                     primary_style
                 };
-                let workspace_name = Self::workspace_display_name(workspace);
+                let workspace_name = worktree.repository_name.clone();
                 let branch_text = if workspace.branch != workspace_name {
                     format!(" · {}", workspace.branch)
                 } else {
@@ -278,6 +264,7 @@ impl GroveApp {
                     Vec::new(),
                     None,
                 ));
+                workspace_index = workspace_index.saturating_add(1);
             }
         }
 

@@ -3,8 +3,9 @@ struct ReplayBootstrapSnapshot {
     repo_name: String,
     discovery_state: ReplayDiscoveryState,
     projects: Vec<ProjectConfig>,
-    workspaces: Vec<ReplayWorkspace>,
-    selected_index: usize,
+    tasks: Vec<ReplayTask>,
+    selected_task_index: usize,
+    selected_worktree_index: usize,
     focus: ReplayFocus,
     mode: ReplayMode,
     preview_tab: ReplayPreviewTab,
@@ -50,23 +51,6 @@ enum ReplayPreviewTab {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReplayWorkspace {
-    name: String,
-    path: PathBuf,
-    project_name: Option<String>,
-    project_path: Option<PathBuf>,
-    branch: String,
-    base_branch: Option<String>,
-    last_activity_unix_secs: Option<i64>,
-    agent: ReplayAgentType,
-    status: ReplayWorkspaceStatus,
-    is_main: bool,
-    is_orphaned: bool,
-    supported_agent: bool,
-    pull_requests: Vec<ReplayPullRequest>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct ReplayPullRequest {
     number: u64,
     url: String,
@@ -109,13 +93,9 @@ impl ReplayBootstrapSnapshot {
             repo_name: app.repo_name.clone(),
             discovery_state: ReplayDiscoveryState::from_discovery_state(&app.discovery_state),
             projects: app.projects.clone(),
-            workspaces: app
-                .state
-                .workspaces
-                .iter()
-                .map(ReplayWorkspace::from_workspace)
-                .collect(),
-            selected_index: app.state.selected_index,
+            tasks: app.state.tasks.iter().map(ReplayTask::from_task).collect(),
+            selected_task_index: app.state.selected_task_index,
+            selected_worktree_index: app.state.selected_worktree_index,
             focus: ReplayFocus::from_focus(app.state.focus),
             mode: ReplayMode::from_mode(app.state.mode),
             preview_tab: ReplayPreviewTab::from_preview_tab(app.preview_tab),
@@ -133,12 +113,44 @@ impl ReplayBootstrapSnapshot {
         BootstrapData {
             repo_name: self.repo_name.clone(),
             workspaces: self
-                .workspaces
+                .tasks
                 .iter()
-                .map(ReplayWorkspace::to_workspace)
+                .flat_map(|task| {
+                    let task = task.to_task();
+                    task.worktrees
+                        .iter()
+                        .map(|worktree| workspace_from_replay_task_worktree(&task, worktree))
+                        .collect::<Vec<Workspace>>()
+                })
                 .collect(),
             discovery_state: self.discovery_state.to_discovery_state(),
         }
+    }
+
+    fn to_tasks(&self) -> Vec<Task> {
+        self.tasks.iter().map(ReplayTask::to_task).collect()
+    }
+}
+
+fn workspace_from_replay_task_worktree(_task: &Task, worktree: &Worktree) -> Workspace {
+    Workspace {
+        name: worktree.repository_name.clone(),
+        path: worktree.path.clone(),
+        project_name: Some(worktree.repository_name.clone()),
+        project_path: Some(worktree.repository_path.clone()),
+        branch: worktree.branch.clone(),
+        base_branch: worktree.base_branch.clone(),
+        last_activity_unix_secs: worktree.last_activity_unix_secs,
+        agent: worktree.agent,
+        status: if worktree.status == WorkspaceStatus::Main {
+            WorkspaceStatus::Idle
+        } else {
+            worktree.status
+        },
+        is_main: false,
+        is_orphaned: worktree.is_orphaned,
+        supported_agent: worktree.supported_agent,
+        pull_requests: worktree.pull_requests.clone(),
     }
 }
 
@@ -294,52 +306,6 @@ impl ReplayPullRequest {
             number: self.number,
             url: self.url.clone(),
             status: self.status.to_pull_request_status(),
-        }
-    }
-}
-
-impl ReplayWorkspace {
-    fn from_workspace(workspace: &Workspace) -> Self {
-        Self {
-            name: workspace.name.clone(),
-            path: workspace.path.clone(),
-            project_name: workspace.project_name.clone(),
-            project_path: workspace.project_path.clone(),
-            branch: workspace.branch.clone(),
-            base_branch: workspace.base_branch.clone(),
-            last_activity_unix_secs: workspace.last_activity_unix_secs,
-            agent: ReplayAgentType::from_agent_type(workspace.agent),
-            status: ReplayWorkspaceStatus::from_workspace_status(workspace.status),
-            is_main: workspace.is_main,
-            is_orphaned: workspace.is_orphaned,
-            supported_agent: workspace.supported_agent,
-            pull_requests: workspace
-                .pull_requests
-                .iter()
-                .map(ReplayPullRequest::from_pull_request)
-                .collect(),
-        }
-    }
-
-    fn to_workspace(&self) -> Workspace {
-        Workspace {
-            name: self.name.clone(),
-            path: self.path.clone(),
-            project_name: self.project_name.clone(),
-            project_path: self.project_path.clone(),
-            branch: self.branch.clone(),
-            base_branch: self.base_branch.clone(),
-            last_activity_unix_secs: self.last_activity_unix_secs,
-            agent: self.agent.to_agent_type(),
-            status: self.status.to_workspace_status(),
-            is_main: self.is_main,
-            is_orphaned: self.is_orphaned,
-            supported_agent: self.supported_agent,
-            pull_requests: self
-                .pull_requests
-                .iter()
-                .map(ReplayPullRequest::to_pull_request)
-                .collect(),
         }
     }
 }

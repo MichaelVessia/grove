@@ -1,6 +1,6 @@
 # Grove PRD
 
-A minimal workspace manager for AI coding agents. Rust + FrankenTUI.
+A minimal task and worktree manager for AI coding agents. Rust + FrankenTUI.
 
 ## Problem
 
@@ -11,13 +11,13 @@ tracking what's running where) is tedious.
 
 Sidecar solves this comprehensively but carries significant complexity
 (plugin architecture, 8 agent types, kanban views, merge wizards, task
-linking). Grove strips this to the core workflow: create a workspace,
+linking). Grove strips this to the core workflow: create a task,
 assign an agent, interact with it inline, tear it down when done.
 
 ## Goals
 
-1. Manage git worktree-backed workspaces from a TUI
-2. Launch and monitor Claude Code or Codex in each workspace via tmux
+1. Manage task roots and git worktree-backed repositories from a TUI
+2. Launch and monitor Claude Code or Codex in each task/worktree via tmux
 3. Interactive mode: type directly into agent sessions from within the TUI
 4. Real-time output preview with full ANSI rendering and cursor overlay
 5. Full mouse support (click, drag-select, pane resize)
@@ -34,7 +34,7 @@ assign an agent, interact with it inline, tear it down when done.
 - Prompt templates or reusable prompts
 - Git stats display (+/- lines, commits ahead/behind) (defer to v2)
 - Diff view (defer to v2)
-- Multi-repo support
+- Per-repository shell/tooling management outside the selected task
 
 ## Delegation Contract
 
@@ -48,8 +48,8 @@ assign an agent, interact with it inline, tear it down when done.
 
 Decisions made during spec review, with rationale.
 
-- **Single repo scope**: Grove runs from a repo root and manages that
-  repo's worktrees. No multi-repo support.
+- **Task-first scope**: Grove manages task roots under `~/.grove/tasks`
+  and one or more repository worktrees inside each task.
 - **Alt-screen mode**: full-screen TUI (matches sidecar, standard for TUI
   apps).
 - **Branch naming**: no prefix for new branches. New workspace creation

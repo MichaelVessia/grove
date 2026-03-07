@@ -1,5 +1,6 @@
 use super::*;
 use crate::application::agent_runtime::SessionExecutionResult;
+use crate::application::task_lifecycle::{CreateTaskRequest, CreateTaskResult, TaskLifecycleError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Msg {
@@ -83,6 +84,7 @@ pub(super) struct RefreshWorkspacesCompletion {
 pub(super) struct DeleteWorkspaceCompletion {
     pub(super) workspace_name: String,
     pub(super) workspace_path: PathBuf,
+    pub(super) requested_workspace_paths: Vec<PathBuf>,
     pub(super) result: Result<(), String>,
     pub(super) warnings: Vec<String>,
 }
@@ -117,8 +119,8 @@ pub(super) struct UpdateWorkspaceFromBaseCompletion {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CreateWorkspaceCompletion {
-    pub(super) request: CreateWorkspaceRequest,
-    pub(super) result: Result<CreateWorkspaceResult, WorkspaceLifecycleError>,
+    pub(super) request: CreateTaskRequest,
+    pub(super) result: Result<CreateTaskResult, TaskLifecycleError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

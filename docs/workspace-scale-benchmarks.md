@@ -1,4 +1,4 @@
-# Workspace Scale Benchmarks
+# Task Scale Benchmarks
 
 Issue: [#38](https://github.com/MichaelVessia/grove/issues/38)
 
@@ -25,9 +25,9 @@ Notes:
 
 ## Flows Measured
 
-- `discovery`: parse synthetic `git worktree --porcelain` + branch activity, build workspaces, read marker metadata, sort.
-- `status-target-generation`: build tmux status polling targets (with live-preview exclusion).
-- `sort-update-pipeline`: reconcile sessions, compute status targets, apply status detection updates, re-sort.
+- `discovery`: parse synthetic `git worktree --porcelain` + branch activity, build task-shaped fixtures, read marker metadata, sort.
+- `status-target-generation`: build tmux status polling targets for task worktrees (with live-preview exclusion).
+- `sort-update-pipeline`: reconcile sessions, compute status targets, apply status detection updates, re-sort task worktrees.
 
 ## Baseline (2026-03-02 01:49:43 UTC)
 
@@ -37,7 +37,7 @@ Environment:
 - Package version: `0.1.0`
 - Warmup runs: `2`
 - Measured runs: `15`
-- Workspace counts: `10, 100, 500`
+- Task counts: `10, 100, 500`
 
 | N | Flow | p50 (ms) | p95 (ms) |
 |---:|---|---:|---:|

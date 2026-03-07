@@ -1,6 +1,49 @@
 use super::update_prelude::*;
 
 impl GroveApp {
+    pub(super) fn stop_task_agent(&mut self, task: Task) {
+        if self.dialogs.stop_in_flight || self.dialogs.restart_in_flight {
+            return;
+        }
+
+        if !self
+            .session
+            .agent_sessions
+            .is_ready(&session_name_for_task(&task.slug))
+        {
+            self.show_info_toast("no agent running");
+            return;
+        }
+
+        if !self.tmux_input.supports_background_launch() {
+            let completion = execute_stop_task_with_result_for_mode(
+                &task.name,
+                &task.root_path,
+                &task.slug,
+                CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
+            );
+            if let Some(error) = completion.result.as_ref().err() {
+                self.session.last_tmux_error = Some(error.clone());
+                self.show_error_toast("agent stop failed");
+                return;
+            }
+
+            self.apply_stop_agent_completion(completion.into());
+            return;
+        }
+
+        self.dialogs.stop_in_flight = true;
+        self.queue_cmd(Cmd::task(move || {
+            let completion = execute_stop_task_with_result_for_mode(
+                &task.name,
+                &task.root_path,
+                &task.slug,
+                CommandExecutionMode::Process,
+            );
+            Msg::StopAgentCompleted(completion.into())
+        }));
+    }
+
     fn take_pending_restart_for_workspace(&mut self, workspace_path: &Path) -> bool {
         if self
             .session
@@ -138,6 +181,16 @@ impl GroveApp {
         let should_restart = self.take_pending_restart_for_workspace(&completion.workspace_path);
         match completion.result {
             Ok(()) => {
+                if self
+                    .state
+                    .tasks
+                    .iter()
+                    .any(|task| task.root_path == completion.workspace_path)
+                {
+                    self.session
+                        .agent_sessions
+                        .remove_ready(&completion.session_name);
+                }
                 if self
                     .session
                     .interactive

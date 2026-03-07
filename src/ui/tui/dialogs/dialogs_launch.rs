@@ -130,6 +130,50 @@ impl GroveApp {
             return;
         }
 
+        if self.selected_home_tab_targets_task_root() {
+            let Some(task) = self.state.selected_task().cloned() else {
+                self.show_info_toast("no task selected");
+                return;
+            };
+            let prompt = read_workspace_launch_prompt(&task.root_path).unwrap_or_default();
+            let init_command = self.task_init_command_for_task(&task);
+            let skip_permissions = self.task_skip_permissions_for_task(&task);
+            let agent = self.task_agent_for_selected_task();
+            self.set_launch_dialog(LaunchDialogState {
+                agent,
+                start_config: StartAgentConfigState::new(
+                    String::new(),
+                    prompt.clone(),
+                    init_command.clone().unwrap_or_default(),
+                    skip_permissions,
+                ),
+                focused_field: LaunchDialogField::Agent,
+            });
+            self.log_dialog_event_with_fields(
+                "launch",
+                "dialog_opened",
+                [
+                    ("workspace".to_string(), Value::from(task.name.clone())),
+                    ("agent".to_string(), Value::from(agent.label())),
+                    ("name_len".to_string(), Value::from(0u64)),
+                    (
+                        "prompt_len".to_string(),
+                        Value::from(usize_to_u64(prompt.len())),
+                    ),
+                    (
+                        "skip_permissions".to_string(),
+                        Value::from(skip_permissions),
+                    ),
+                    (
+                        "init_len".to_string(),
+                        Value::from(usize_to_u64(init_command.unwrap_or_default().len())),
+                    ),
+                ],
+            );
+            self.session.last_tmux_error = None;
+            return;
+        }
+
         let Some(workspace) = self.state.selected_workspace().cloned() else {
             self.show_info_toast("no workspace selected");
             return;

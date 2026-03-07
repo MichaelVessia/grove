@@ -199,7 +199,7 @@ impl GroveApp {
             content_width,
             label_width,
             "Create",
-            "Tab/S-Tab/C-n/C-p fields, click mode tabs or Alt+[/Alt+], j/k adjust project/branch, Enter/Esc",
+            "Tab/S-Tab/C-n/C-p fields, click mode tabs or Alt+[/Alt+], Enter browse projects, picker supports filter + Up/Down + Space toggle, base branch comes from Project Defaults or git, Enter/Esc",
             theme,
         );
         Self::keybind_help_push_modal_row(
@@ -231,7 +231,7 @@ impl GroveApp {
             content_width,
             label_width,
             "Delete",
-            "Tab/S-Tab or C-n/C-p fields, j/k move, Space toggle, Enter/D confirm, Esc",
+            "Tab/S-Tab or C-n/C-p fields, j/k move, Space toggle, Enter/D delete task, Esc",
             theme,
         );
         Self::keybind_help_push_modal_row(
@@ -239,7 +239,7 @@ impl GroveApp {
             content_width,
             label_width,
             "Merge",
-            "Tab/S-Tab or C-n/C-p fields, j/k move, Space toggle, Enter/m confirm, Esc",
+            "Tab/S-Tab or C-n/C-p fields, j/k move, Space toggle, Enter/m merge worktree, Esc",
             theme,
         );
         Self::keybind_help_push_modal_row(
@@ -247,7 +247,7 @@ impl GroveApp {
             content_width,
             label_width,
             "Update",
-            "Tab/S-Tab or C-n/C-p fields, h/l buttons, Enter/u confirm, Esc",
+            "Tab/S-Tab or C-n/C-p fields, h/l buttons, Enter/u update worktree, Esc",
             theme,
         );
         Self::keybind_help_push_modal_row(

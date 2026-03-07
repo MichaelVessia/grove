@@ -42,7 +42,6 @@ impl GroveApp {
     }
 
     fn apply_paste_to_create_dialog(&mut self, text: &str) -> bool {
-        let mut refresh_base_branch = false;
         let mut handled = false;
         if let Some(dialog) = self.create_dialog_mut() {
             match dialog.focused_field {
@@ -51,7 +50,7 @@ impl GroveApp {
                     for character in text.chars() {
                         if character.is_ascii_alphanumeric() || character == '-' || character == '_'
                         {
-                            dialog.workspace_name.push(character);
+                            dialog.task_name.push(character);
                         }
                     }
                 }
@@ -63,23 +62,10 @@ impl GroveApp {
                         }
                     }
                 }
-                CreateDialogField::BaseBranch => {
-                    handled = true;
-                    for character in text.chars() {
-                        if !character.is_control() {
-                            dialog.base_branch.push(character);
-                            refresh_base_branch = true;
-                        }
-                    }
-                }
                 CreateDialogField::Project
                 | CreateDialogField::CreateButton
                 | CreateDialogField::CancelButton => {}
             }
-        }
-
-        if refresh_base_branch {
-            self.refresh_create_branch_filtered();
         }
         handled
     }

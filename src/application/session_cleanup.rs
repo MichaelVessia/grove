@@ -3,14 +3,19 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::application::agent_runtime::{TMUX_SESSION_PREFIX, workspace_session_name_matches};
+use crate::application::agent_runtime::{
+    TMUX_SESSION_PREFIX, kill_task_session_commands, task_session_names_for_cleanup,
+    workspace_session_name_matches,
+};
+use crate::application::task_discovery::bootstrap_task_data_for_root;
 use crate::application::workspace_discovery::discover_bootstrap_data;
-use crate::domain::Workspace;
+use crate::domain::{Task, Workspace};
 use crate::infrastructure::adapters::{
     CommandGitAdapter, CommandSystemAdapter, DiscoveryState, MultiplexerAdapter,
 };
 use crate::infrastructure::config::ProjectConfig;
 use crate::infrastructure::paths::refer_to_same_location;
+use crate::infrastructure::paths::tasks_root;
 use crate::infrastructure::process::{execute_command, stderr_trimmed};
 
 const STALE_AUXILIARY_MIN_AGE_SECS: u64 = 24 * 60 * 60;
@@ -66,9 +71,28 @@ impl MultiplexerAdapter for NoopMultiplexerAdapter {
 }
 
 pub fn plan_session_cleanup(options: SessionCleanupOptions) -> Result<SessionCleanupPlan, String> {
+    if let Some(task_root) = tasks_root() {
+        let bootstrap = bootstrap_task_data_for_root(task_root.as_path());
+        return plan_session_cleanup_for_tasks(bootstrap.tasks.as_slice(), options);
+    }
+
     let projects = cleanup_projects()?;
     let workspaces = discover_workspaces_for_projects(projects.as_slice());
     plan_session_cleanup_for_workspaces(workspaces.as_slice(), options)
+}
+
+pub fn plan_session_cleanup_for_tasks(
+    tasks: &[Task],
+    options: SessionCleanupOptions,
+) -> Result<SessionCleanupPlan, String> {
+    let sessions = list_tmux_sessions()?;
+    let now_unix_secs = now_unix_secs();
+    Ok(plan_session_cleanup_from_task_inputs(
+        tasks,
+        sessions.as_slice(),
+        options,
+        now_unix_secs,
+    ))
 }
 
 pub fn plan_session_cleanup_for_workspaces(
@@ -117,6 +141,10 @@ pub fn apply_session_cleanup(plan: &SessionCleanupPlan) -> SessionCleanupApplyRe
         already_gone,
         failures,
     }
+}
+
+pub fn cleanup_commands_for_task(task: &Task) -> Vec<Vec<String>> {
+    kill_task_session_commands(task)
 }
 
 fn cleanup_projects() -> Result<Vec<ProjectConfig>, String> {
@@ -280,6 +308,47 @@ fn plan_session_cleanup_from_inputs(
     }
 }
 
+fn plan_session_cleanup_from_task_inputs(
+    tasks: &[Task],
+    sessions: &[SessionRecord],
+    options: SessionCleanupOptions,
+    now_unix_secs: u64,
+) -> SessionCleanupPlan {
+    let mut candidates = Vec::new();
+    let mut skipped_attached = Vec::new();
+
+    for session in sessions {
+        let reason =
+            match cleanup_reason_for_tasks(session, tasks, options.include_stale, now_unix_secs) {
+                Some(reason) => reason,
+                None => continue,
+            };
+        let age_secs = session
+            .created_unix_secs
+            .and_then(|created| now_unix_secs.checked_sub(created));
+        let entry = SessionCleanupEntry {
+            session_name: session.name.clone(),
+            reason,
+            created_unix_secs: session.created_unix_secs,
+            age_secs,
+            attached_clients: session.attached_clients,
+        };
+
+        if !options.include_attached && session.attached_clients > 0 {
+            skipped_attached.push(entry);
+        } else {
+            candidates.push(entry);
+        }
+    }
+
+    candidates.sort_by(|left, right| left.session_name.cmp(&right.session_name));
+    skipped_attached.sort_by(|left, right| left.session_name.cmp(&right.session_name));
+    SessionCleanupPlan {
+        candidates,
+        skipped_attached,
+    }
+}
+
 fn cleanup_reason(
     session: &SessionRecord,
     workspaces: &[Workspace],
@@ -294,6 +363,27 @@ fn cleanup_reason(
         )
     });
     if !belongs_to_workspace {
+        return Some(SessionCleanupReason::Orphaned);
+    }
+
+    if include_stale && stale_auxiliary_session(session, now_unix_secs) {
+        return Some(SessionCleanupReason::StaleAuxiliary);
+    }
+
+    None
+}
+
+fn cleanup_reason_for_tasks(
+    session: &SessionRecord,
+    tasks: &[Task],
+    include_stale: bool,
+    now_unix_secs: u64,
+) -> Option<SessionCleanupReason> {
+    let session_names = [session.name.clone()];
+    let belongs_to_task = tasks
+        .iter()
+        .any(|task| !task_session_names_for_cleanup(task, session_names.as_slice()).is_empty());
+    if !belongs_to_task {
         return Some(SessionCleanupReason::Orphaned);
     }
 
@@ -342,10 +432,10 @@ fn now_unix_secs() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        SessionCleanupOptions, SessionCleanupReason, SessionRecord,
+        SessionCleanupOptions, SessionCleanupReason, SessionRecord, cleanup_commands_for_task,
         plan_session_cleanup_from_inputs,
     };
-    use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+    use crate::domain::{AgentType, Task, Workspace, WorkspaceStatus, Worktree};
     use std::path::PathBuf;
 
     fn fixture_workspace(name: &str) -> Workspace {
@@ -360,6 +450,52 @@ mod tests {
         )
         .expect("workspace should be valid")
         .with_project_context("grove".to_string(), PathBuf::from("/tmp/grove"))
+    }
+
+    fn fixture_task() -> Task {
+        Task::try_new(
+            "flohome-launch".to_string(),
+            "flohome-launch".to_string(),
+            PathBuf::from("/tmp/.grove/tasks/flohome-launch"),
+            "flohome-launch".to_string(),
+            vec![
+                Worktree::try_new(
+                    "flohome".to_string(),
+                    PathBuf::from("/repos/flohome"),
+                    PathBuf::from("/tmp/.grove/tasks/flohome-launch/flohome"),
+                    "flohome-launch".to_string(),
+                    AgentType::Codex,
+                    WorkspaceStatus::Idle,
+                )
+                .expect("worktree should be valid"),
+                Worktree::try_new(
+                    "terraform-fastly".to_string(),
+                    PathBuf::from("/repos/terraform-fastly"),
+                    PathBuf::from("/tmp/.grove/tasks/flohome-launch/terraform-fastly"),
+                    "flohome-launch".to_string(),
+                    AgentType::Codex,
+                    WorkspaceStatus::Idle,
+                )
+                .expect("worktree should be valid"),
+            ],
+        )
+        .expect("task should be valid")
+    }
+
+    #[test]
+    fn session_cleanup_targets_task_and_worktree_sessions() {
+        let commands = cleanup_commands_for_task(&fixture_task());
+        let rendered = commands
+            .iter()
+            .map(|command| command.join(" "))
+            .collect::<Vec<String>>();
+
+        assert!(
+            rendered
+                .iter()
+                .any(|command| command.contains("grove-task-"))
+        );
+        assert!(rendered.iter().any(|command| command.contains("grove-wt-")));
     }
 
     #[test]

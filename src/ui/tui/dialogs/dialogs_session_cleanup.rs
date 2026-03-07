@@ -10,7 +10,7 @@ impl GroveApp {
             include_stale: false,
             include_attached: false,
         };
-        let plan = match plan_session_cleanup_for_workspaces(&self.state.workspaces, options) {
+        let plan = match plan_session_cleanup_for_tasks(&self.state.tasks, options) {
             Ok(plan) => plan,
             Err(error) => {
                 self.session.last_tmux_error = Some(error.clone());
@@ -31,7 +31,7 @@ impl GroveApp {
     }
 
     fn refresh_session_cleanup_dialog_plan_with_options(&mut self, options: SessionCleanupOptions) {
-        let plan_result = plan_session_cleanup_for_workspaces(&self.state.workspaces, options);
+        let plan_result = plan_session_cleanup_for_tasks(&self.state.tasks, options);
         let mut error_toast = None;
         if let Some(dialog) = self.session_cleanup_dialog_mut() {
             dialog.options = options;

@@ -1,6 +1,19 @@
 use super::view_prelude::*;
 
 impl GroveApp {
+    fn create_dialog_project_picker_scroll_offset(
+        selected_index: usize,
+        total_count: usize,
+        visible_count: usize,
+    ) -> usize {
+        if total_count <= visible_count {
+            return 0;
+        }
+        let half = visible_count / 2;
+        let max_offset = total_count.saturating_sub(visible_count);
+        selected_index.saturating_sub(half).min(max_offset)
+    }
+
     pub(super) fn centered_modal_rect(area: Rect, width: u16, height: u16) -> Rect {
         let clamped_width = width.min(area.width);
         let clamped_height = height.min(area.height);
@@ -70,15 +83,24 @@ impl GroveApp {
             .get(dialog.project_index)
             .map(|project| project.name.clone())
             .unwrap_or_else(|| "(missing project)".to_string());
+        let selected_projects_label = if dialog.selected_repository_indices.is_empty() {
+            "(none)".to_string()
+        } else {
+            dialog
+                .selected_repository_indices
+                .iter()
+                .filter_map(|index| self.projects.get(*index))
+                .map(|project| project.name.clone())
+                .collect::<Vec<String>>()
+                .join(", ")
+        };
         let focused = |field| dialog.focused_field == field;
-        let selected_dropdown_style = Style::new().fg(theme.text).bg(theme.surface1).bold();
-        let unselected_dropdown_style = Style::new().fg(theme.subtext0).bg(theme.base);
 
         let (mode_tabs_row, mode_tab_ranges) =
             Self::create_dialog_mode_tabs_row(content_width, theme, dialog.tab);
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("Workspace setup (create)", content_width),
+                pad_or_truncate_to_display_width("Task setup (create)", content_width),
                 Style::new().fg(theme.overlay0),
             )]),
             FtLine::raw(""),
@@ -91,13 +113,135 @@ impl GroveApp {
                 Style::new().fg(theme.overlay0),
             )]),
         ];
+        if let Some(picker) = dialog.project_picker.as_ref() {
+            let dialog_height = 25u16;
+            let inner_height = usize::from(dialog_height.saturating_sub(2));
+            let picker_hint = if dialog.tab == CreateDialogTab::Manual {
+                "Type filter, Up/Down or Tab/S-Tab/C-n/C-p move, Space toggle included repos, Enter select, Esc back, need a project first? close and press p, then Ctrl+A"
+            } else {
+                "Type filter, Up/Down or Tab/S-Tab/C-n/C-p move, Enter select, Esc back, need a project first? close and press p, then Ctrl+A"
+            };
+            let hint_rows = modal_wrapped_hint_rows(content_width, theme, picker_hint);
+            let list_header_count = 5usize;
+            let footer_count = 1usize.saturating_add(hint_rows.len());
+            let list_line_budget = inner_height
+                .saturating_sub(lines.len().saturating_add(list_header_count + footer_count));
+            let visible_projects = (list_line_budget / 2).max(1);
+            let total_projects = self.projects.len();
+            let filtered_projects = picker.filtered_project_indices.len();
+
+            lines.push(modal_labeled_input_row(
+                content_width,
+                theme,
+                "Filter",
+                picker.filter.as_str(),
+                "Type project name or path",
+                true,
+            ));
+            lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    format!("{filtered_projects} of {total_projects} projects").as_str(),
+                    content_width,
+                ),
+                Style::new().fg(theme.overlay0),
+            )]));
+            lines.push(FtLine::raw(""));
+
+            if picker.filtered_project_indices.is_empty() {
+                let empty_label = if self.projects.is_empty() {
+                    "No projects configured"
+                } else {
+                    "No matching projects"
+                };
+                lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                    pad_or_truncate_to_display_width(empty_label, content_width),
+                    Style::new().fg(theme.subtext0),
+                )]));
+                lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                    pad_or_truncate_to_display_width(
+                        "Need a project first? Close this dialog, press p, then Ctrl+A",
+                        content_width,
+                    ),
+                    Style::new().fg(theme.overlay0),
+                )]));
+            } else {
+                let scroll_offset = Self::create_dialog_project_picker_scroll_offset(
+                    picker.selected_filtered_index,
+                    picker.filtered_project_indices.len(),
+                    visible_projects,
+                );
+                let visible_end = scroll_offset
+                    .saturating_add(visible_projects)
+                    .min(picker.filtered_project_indices.len());
+
+                for filtered_index in scroll_offset..visible_end {
+                    let Some(project_index) = picker.filtered_project_indices.get(filtered_index)
+                    else {
+                        continue;
+                    };
+                    let Some(project) = self.projects.get(*project_index) else {
+                        continue;
+                    };
+                    let selected = filtered_index == picker.selected_filtered_index;
+                    let marker = if selected { ">" } else { " " };
+                    let row_bg = if selected { theme.surface1 } else { theme.base };
+                    let name = if dialog.tab == CreateDialogTab::Manual {
+                        let included = dialog.selected_repository_indices.contains(project_index);
+                        let toggle = if included { "[x]" } else { "[ ]" };
+                        pad_or_truncate_to_display_width(
+                            format!("{marker} {toggle} {}", project.name).as_str(),
+                            content_width,
+                        )
+                    } else {
+                        pad_or_truncate_to_display_width(
+                            format!("{marker} {}", project.name).as_str(),
+                            content_width,
+                        )
+                    };
+                    let path = pad_or_truncate_to_display_width(
+                        format!("    {}", project.path.display()).as_str(),
+                        content_width,
+                    );
+                    lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                        name,
+                        Style::new()
+                            .fg(if selected { theme.text } else { theme.subtext1 })
+                            .bg(row_bg)
+                            .bold(),
+                    )]));
+                    lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                        path,
+                        Style::new().fg(theme.overlay0).bg(row_bg),
+                    )]));
+                }
+            }
+
+            lines.push(FtLine::raw(""));
+            lines.extend(hint_rows);
+
+            let body = FtText::from_lines(lines);
+            render_modal_dialog(
+                frame,
+                area,
+                body,
+                ModalDialogSpec {
+                    dialog_width,
+                    dialog_height,
+                    title: "Choose Project",
+                    theme,
+                    border_color: theme.mauve,
+                    hit_id: HIT_ID_CREATE_DIALOG,
+                },
+            );
+            return;
+        }
         match dialog.tab {
             CreateDialogTab::Manual => {
                 lines.push(modal_labeled_input_row(
                     content_width,
                     theme,
-                    "Name",
-                    dialog.workspace_name.as_str(),
+                    "Task",
+                    dialog.task_name.as_str(),
                     "feature-name",
                     focused(CreateDialogField::WorkspaceName),
                 ));
@@ -105,26 +249,33 @@ impl GroveApp {
                     content_width,
                     theme,
                     "Project",
-                    selected_project_label.as_str(),
-                    "j/k or C-n/C-p select",
+                    format!("{selected_project_label}  Enter browse").as_str(),
+                    "Enter browse projects",
                     focused(CreateDialogField::Project),
                 ));
-                lines.push(modal_labeled_input_row(
+                lines.push(modal_static_badged_row(
                     content_width,
                     theme,
-                    "BaseBranch",
-                    dialog.base_branch.as_str(),
-                    "current branch (fallback: main/master)",
-                    focused(CreateDialogField::BaseBranch),
+                    "Included",
+                    selected_projects_label.as_str(),
+                    theme.overlay0,
+                    theme.subtext0,
                 ));
+                lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                    pad_or_truncate_to_display_width(
+                        "  [Defaults] base branch is implicit per project, configure in Project Defaults",
+                        content_width,
+                    ),
+                    Style::new().fg(theme.overlay0),
+                )]));
             }
             CreateDialogTab::PullRequest => {
                 lines.push(modal_labeled_input_row(
                     content_width,
                     theme,
                     "Project",
-                    selected_project_label.as_str(),
-                    "j/k or C-n/C-p select",
+                    format!("{selected_project_label}  Enter browse").as_str(),
+                    "Enter browse projects",
                     focused(CreateDialogField::Project),
                 ));
                 lines.push(modal_labeled_input_row(
@@ -156,62 +307,6 @@ impl GroveApp {
                 Style::new().fg(theme.overlay0),
             )]));
         }
-        if dialog.tab == CreateDialogTab::Manual && focused(CreateDialogField::BaseBranch) {
-            if self.dialogs.create_branch_all.is_empty() {
-                lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                    pad_or_truncate_to_display_width(
-                        "  [Branches] Loading branches...",
-                        content_width,
-                    ),
-                    Style::new().fg(theme.overlay0),
-                )]));
-            } else if self.dialogs.create_branch_filtered.is_empty() {
-                lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                    pad_or_truncate_to_display_width(
-                        "  [Branches] No matching branches",
-                        content_width,
-                    ),
-                    Style::new().fg(theme.overlay0),
-                )]));
-            } else {
-                let max_dropdown = 4usize;
-                for (index, branch) in self.dialogs.create_branch_filtered.iter().enumerate() {
-                    if index >= max_dropdown {
-                        break;
-                    }
-                    let is_selected = index == self.dialogs.create_branch_index;
-                    let prefix = if is_selected { "▸" } else { " " };
-                    let line = pad_or_truncate_to_display_width(
-                        format!("{prefix} [Branches] {branch}").as_str(),
-                        content_width,
-                    );
-                    if is_selected {
-                        lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                            line,
-                            selected_dropdown_style,
-                        )]));
-                    } else {
-                        lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                            line,
-                            unselected_dropdown_style,
-                        )]));
-                    }
-                }
-                if self.dialogs.create_branch_filtered.len() > max_dropdown {
-                    lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                        pad_or_truncate_to_display_width(
-                            format!(
-                                "  [Branches] ... and {} more",
-                                self.dialogs.create_branch_filtered.len() - max_dropdown
-                            )
-                            .as_str(),
-                            content_width,
-                        ),
-                        Style::new().fg(theme.overlay0),
-                    )]));
-                }
-            }
-        }
         lines.push(FtLine::raw(""));
         let create_focused = focused(CreateDialogField::CreateButton);
         let cancel_focused = focused(CreateDialogField::CancelButton);
@@ -224,9 +319,9 @@ impl GroveApp {
             cancel_focused,
         ));
         let hint_text = if dialog.tab == CreateDialogTab::Manual {
-            "Tab/C-n next, S-Tab/C-p prev, click mode tab or Alt+[/Alt+], j/k adjust project/branch, Enter create, Esc cancel"
+            "Tab/C-n next, S-Tab/C-p prev, click mode tab or Alt+[/Alt+], Enter browse projects, base branch comes from Project Defaults or git, Enter create, Esc cancel"
         } else {
-            "Tab/C-n next, S-Tab/C-p prev, click mode tab or Alt+[/Alt+], j/k adjust project, Enter create, Esc cancel"
+            "Tab/C-n next, S-Tab/C-p prev, click mode tab or Alt+[/Alt+], Enter browse projects, Enter create, Esc cancel"
         };
         lines.extend(modal_wrapped_hint_rows(content_width, theme, hint_text));
         let body = FtText::from_lines(lines);
@@ -237,7 +332,7 @@ impl GroveApp {
             ModalDialogSpec {
                 dialog_width,
                 dialog_height,
-                title: "New Workspace",
+                title: "New Task",
                 theme,
                 border_color: theme.mauve,
                 hit_id: HIT_ID_CREATE_DIALOG,

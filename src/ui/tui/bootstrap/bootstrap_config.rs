@@ -2,11 +2,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use super::*;
 use crate::infrastructure::config::{GroveConfig, ProjectConfig};
 use crate::infrastructure::paths::refer_to_same_location;
-use crate::infrastructure::process::stderr_trimmed;
-
-use super::*;
 
 pub(super) struct AppDependencies {
     pub(super) tmux_input: Box<dyn TmuxInput>,
@@ -166,38 +164,4 @@ pub(super) fn write_workspace_skip_permissions(
     };
     fs::write(&marker_path, value).map_err(|error| format!("write marker failed: {error}"))?;
     Ok(())
-}
-
-pub(super) fn load_local_branches(repo_root: &Path) -> Result<Vec<String>, String> {
-    let output = Command::new("git")
-        .current_dir(repo_root)
-        .args(["branch", "--format=%(refname:short)"])
-        .output()
-        .map_err(|error| format!("git branch failed: {error}"))?;
-    if !output.status.success() {
-        let stderr = stderr_trimmed(&output);
-        return Err(format!("git branch failed: {stderr}"));
-    }
-
-    let stdout = String::from_utf8(output.stdout)
-        .map_err(|error| format!("git branch output decode failed: {error}"))?;
-    Ok(stdout
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect())
-}
-
-pub(super) fn filter_branches(query: &str, all_branches: &[String]) -> Vec<String> {
-    if query.is_empty() {
-        return all_branches.to_vec();
-    }
-
-    let query_lower = query.to_lowercase();
-    all_branches
-        .iter()
-        .filter(|branch| branch.to_lowercase().contains(&query_lower))
-        .cloned()
-        .collect()
 }

@@ -1,6 +1,35 @@
 use super::update_prelude::*;
 
 impl GroveApp {
+    pub(super) fn selected_task_supports_parent_agent(&self) -> bool {
+        let Some(task) = self.state.selected_task() else {
+            return false;
+        };
+        let Some(workspace) = self.state.selected_workspace() else {
+            return false;
+        };
+        task.root_path != workspace.path
+    }
+
+    pub(super) fn selected_home_tab_targets_task_root(&self) -> bool {
+        self.preview_tab == PreviewTab::Home && self.selected_task_supports_parent_agent()
+    }
+
+    pub(super) fn task_agent_for_selected_task(&self) -> AgentType {
+        self.state
+            .selected_worktree()
+            .map(|worktree| worktree.agent)
+            .unwrap_or(AgentType::Codex)
+    }
+
+    pub(super) fn task_init_command_for_task(&self, task: &Task) -> Option<String> {
+        read_workspace_init_command(&task.root_path)
+    }
+
+    pub(super) fn task_skip_permissions_for_task(&self, task: &Task) -> bool {
+        read_workspace_skip_permissions(&task.root_path).unwrap_or(self.launch_skip_permissions)
+    }
+
     pub(super) fn project_agent_env_for_workspace(
         &self,
         workspace: &Workspace,
@@ -58,6 +87,66 @@ impl GroveApp {
         }
 
         self.launch_skip_permissions
+    }
+
+    fn start_task_agent_with_options(
+        &mut self,
+        task: Task,
+        agent: AgentType,
+        prompt: Option<String>,
+        init_command: Option<String>,
+        skip_permissions: bool,
+    ) {
+        if self.dialogs.start_in_flight || self.dialogs.restart_in_flight {
+            return;
+        }
+
+        self.launch_skip_permissions = skip_permissions;
+        if let Err(error) = write_workspace_skip_permissions(&task.root_path, skip_permissions) {
+            self.session.last_tmux_error =
+                Some(format!("skip permissions marker persist failed: {error}"));
+        }
+        if let Err(error) = write_workspace_init_command(&task.root_path, init_command.as_deref()) {
+            self.session.last_tmux_error =
+                Some(format!("init command marker persist failed: {error}"));
+        }
+
+        let (capture_cols, capture_rows) = self.capture_dimensions();
+        let request = TaskLaunchRequest {
+            task_slug: task.slug.clone(),
+            task_root: task.root_path.clone(),
+            agent,
+            prompt,
+            workspace_init_command: init_command.or_else(|| self.task_init_command_for_task(&task)),
+            skip_permissions,
+            agent_env: Vec::new(),
+            capture_cols: Some(capture_cols),
+            capture_rows: Some(capture_rows),
+        };
+
+        if !self.tmux_input.supports_background_launch() {
+            let completion = execute_task_launch_request_with_result_for_mode(
+                &request,
+                CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
+            );
+            if let Some(error) = completion.result.as_ref().err() {
+                self.session.last_tmux_error = Some(error.clone());
+                self.show_error_toast("agent start failed");
+                return;
+            }
+
+            self.apply_start_agent_completion(completion.into());
+            return;
+        }
+
+        self.dialogs.start_in_flight = true;
+        self.queue_cmd(Cmd::task(move || {
+            let completion = execute_task_launch_request_with_result_for_mode(
+                &request,
+                CommandExecutionMode::Process,
+            );
+            Msg::StartAgentCompleted(completion.into())
+        }));
     }
 
     fn start_workspace_agent_with_options(
@@ -151,6 +240,16 @@ impl GroveApp {
         self.dialogs.start_in_flight = false;
         match completion.result {
             Ok(()) => {
+                if self
+                    .state
+                    .tasks
+                    .iter()
+                    .any(|task| task.root_path == completion.workspace_path)
+                {
+                    self.session
+                        .agent_sessions
+                        .mark_ready(completion.session_name.clone());
+                }
                 self.clear_status_tracking_for_workspace_path(&completion.workspace_path);
                 if let Some(workspace_index) = self
                     .state
@@ -192,7 +291,14 @@ impl GroveApp {
         let Some(dialog) = self.take_launch_dialog() else {
             return;
         };
-        let workspace_name = self.selected_workspace_name().unwrap_or_default();
+        let workspace_name = if self.selected_home_tab_targets_task_root() {
+            self.state
+                .selected_task()
+                .map(|task| task.name.clone())
+                .unwrap_or_default()
+        } else {
+            self.selected_workspace_name().unwrap_or_default()
+        };
         self.log_dialog_event_with_fields(
             "launch",
             "dialog_confirmed",
@@ -230,6 +336,20 @@ impl GroveApp {
             init_command,
             skip_permissions,
         };
+        if self.selected_home_tab_targets_task_root() {
+            let Some(task) = self.state.selected_task().cloned() else {
+                self.show_error_toast("agent tab launch failed: no task selected");
+                return;
+            };
+            self.start_task_agent_with_options(
+                task,
+                dialog.agent,
+                options.prompt,
+                options.init_command,
+                options.skip_permissions,
+            );
+            return;
+        }
         if let Err(error) = self.launch_new_agent_tab(dialog.agent, options) {
             self.session.last_tmux_error = Some(error.clone());
             self.show_error_toast(format!("agent tab launch failed: {error}"));

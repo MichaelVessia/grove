@@ -4,7 +4,7 @@
   "config": {
     "warmup_runs": 2,
     "measured_runs": 15,
-    "workspace_counts": [
+    "task_counts": [
       10,
       100,
       500
@@ -12,7 +12,7 @@
   },
   "cases": [
     {
-      "workspace_count": 10,
+      "task_count": 10,
       "discovery": {
         "warmup_runs": 2,
         "measured_runs": 15,
@@ -42,7 +42,7 @@
       }
     },
     {
-      "workspace_count": 100,
+      "task_count": 100,
       "discovery": {
         "warmup_runs": 2,
         "measured_runs": 15,
@@ -72,7 +72,7 @@
       }
     },
     {
-      "workspace_count": 500,
+      "task_count": 500,
       "discovery": {
         "warmup_runs": 2,
         "measured_runs": 15,

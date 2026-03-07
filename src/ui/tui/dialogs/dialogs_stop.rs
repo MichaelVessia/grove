@@ -100,6 +100,51 @@ impl GroveApp {
             return;
         }
 
+        if self.selected_home_tab_targets_task_root() {
+            let Some(task) = self.state.selected_task().cloned() else {
+                self.show_info_toast("no agent running");
+                return;
+            };
+            let session_name = session_name_for_task(&task.slug);
+            if !self.session.agent_sessions.is_ready(&session_name) {
+                self.show_info_toast("no agent running");
+                return;
+            }
+            let workspace = Workspace::try_new(
+                task.name.clone(),
+                task.root_path.clone(),
+                task.branch.clone(),
+                None,
+                self.task_agent_for_selected_task(),
+                WorkspaceStatus::Active,
+                false,
+            )
+            .expect("task root workspace should be valid");
+
+            self.set_stop_dialog(StopDialogState {
+                workspace: workspace.clone(),
+                session_name: session_name.clone(),
+                focused_field: StopDialogField::StopButton,
+            });
+            self.log_dialog_event_with_fields(
+                "stop",
+                "dialog_opened",
+                [
+                    ("workspace".to_string(), Value::from(workspace.name.clone())),
+                    ("branch".to_string(), Value::from(workspace.branch.clone())),
+                    (
+                        "path".to_string(),
+                        Value::from(workspace.path.display().to_string()),
+                    ),
+                    ("session".to_string(), Value::from(session_name)),
+                ],
+            );
+            self.state.mode = UiMode::List;
+            self.state.focus = PaneFocus::WorkspaceList;
+            self.session.last_tmux_error = None;
+            return;
+        }
+
         let Some(workspace) = self.state.selected_workspace().cloned() else {
             self.show_info_toast("no agent running");
             return;
@@ -160,6 +205,24 @@ impl GroveApp {
                 ("session".to_string(), Value::from(dialog.session_name)),
             ],
         );
+
+        if self
+            .state
+            .tasks
+            .iter()
+            .any(|task| task.root_path == dialog.workspace.path)
+        {
+            if let Some(task) = self
+                .state
+                .tasks
+                .iter()
+                .find(|task| task.root_path == dialog.workspace.path)
+                .cloned()
+            {
+                self.stop_task_agent(task);
+            }
+            return;
+        }
 
         self.stop_workspace_agent(dialog.workspace);
     }

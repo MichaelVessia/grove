@@ -495,14 +495,14 @@ static COMMAND_META: [UiCommandMeta; 39] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:new_workspace",
-            title: "New Workspace",
-            description: "Open workspace creation dialog (n)",
-            tags: &["new", "workspace", "create", "n"],
-            category: "Workspace",
+            title: "New Task",
+            description: "Open task creation dialog (n)",
+            tags: &["new", "task", "repository", "create", "n"],
+            category: "Task",
         }),
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
-            label: "n new",
+            label: "n new task",
         }],
         keybindings: &[
             KeybindingSpec {
@@ -706,14 +706,14 @@ static COMMAND_META: [UiCommandMeta; 39] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:delete_workspace",
-            title: "Delete Workspace",
-            description: "Open delete dialog for selected workspace (D)",
-            tags: &["delete", "workspace", "worktree", "D"],
-            category: "Workspace",
+            title: "Delete Task",
+            description: "Open delete dialog for selected task (D)",
+            tags: &["delete", "task", "workspace", "worktree", "D"],
+            category: "Task",
         }),
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
-            label: "D delete",
+            label: "D delete task",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -724,14 +724,14 @@ static COMMAND_META: [UiCommandMeta; 39] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:merge_workspace",
-            title: "Merge Workspace",
-            description: "Merge selected workspace branch into base (m)",
-            tags: &["merge", "workspace", "branch", "m"],
-            category: "Workspace",
+            title: "Merge Worktree",
+            description: "Merge selected worktree branch into base (m)",
+            tags: &["merge", "worktree", "branch", "m"],
+            category: "Worktree",
         }),
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
-            label: "m merge",
+            label: "m merge worktree",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -742,14 +742,14 @@ static COMMAND_META: [UiCommandMeta; 39] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:update_from_base",
-            title: "Update From Base",
-            description: "Update selected workspace (feature: merge base, base: pull origin) (u)",
-            tags: &["update", "sync", "base", "workspace", "u"],
-            category: "Workspace",
+            title: "Update Worktree",
+            description: "Update selected worktree (feature: merge base, base: pull origin) (u)",
+            tags: &["update", "sync", "base", "worktree", "u"],
+            category: "Worktree",
         }),
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
-            label: "u update",
+            label: "u update worktree",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -760,10 +760,10 @@ static COMMAND_META: [UiCommandMeta; 39] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:refresh_workspaces",
-            title: "Refresh Workspaces",
-            description: "Refresh workspaces and PR metadata from git + GitHub (R)",
-            tags: &["refresh", "workspace", "pull request", "github", "R"],
-            category: "Workspace",
+            title: "Refresh Tasks",
+            description: "Refresh tasks, worktrees, and PR metadata (R)",
+            tags: &["refresh", "task", "worktree", "pull request", "github", "R"],
+            category: "Task",
         }),
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,

@@ -75,10 +75,10 @@ impl GroveApp {
             DiscoveryState::Ready => {
                 if let Some(dialog) = self.create_dialog() {
                     return format!(
-                        "Status: new workspace, field={}, base_branch=\"{}\", name=\"{}\"",
+                        "Status: new task, field={}, name=\"{}\", pr_url=\"{}\"",
                         dialog.focused_field.label(),
-                        dialog.base_branch.replace('\n', "\\n"),
-                        dialog.workspace_name,
+                        dialog.task_name,
+                        dialog.pr_url.replace('\n', "\\n"),
                     );
                 }
                 if let Some(dialog) = self.launch_dialog() {
@@ -123,36 +123,25 @@ impl GroveApp {
         }
     }
 
-    fn selected_project_label(&self) -> String {
-        let Some(workspace) = self.state.selected_workspace() else {
-            return self.repo_name.clone();
-        };
+    fn selected_task_label(&self) -> String {
+        self.state
+            .selected_task()
+            .map(|task| task.name.clone())
+            .unwrap_or_else(|| self.repo_name.clone())
+    }
 
-        if let Some(project_name) = workspace.project_name.as_ref() {
-            return project_name.clone();
-        }
-
-        if let Some(project_path) = workspace.project_path.as_ref()
-            && let Some(project) = self
-                .projects
-                .iter()
-                .find(|project| refer_to_same_location(project.path.as_path(), project_path))
-        {
-            return project.name.clone();
-        }
-
-        self.repo_name.clone()
+    fn selected_worktree_label(&self) -> String {
+        self.state
+            .selected_worktree()
+            .map(|worktree| worktree.repository_name.clone())
+            .unwrap_or_else(|| "none".to_string())
     }
 
     fn footer_context_line(&self) -> String {
-        let project_label = self.selected_project_label();
-        let workspace_label = self
-            .state
-            .selected_workspace()
-            .map(Self::workspace_display_name)
-            .unwrap_or_else(|| "none".to_string());
+        let task_label = self.selected_task_label();
+        let worktree_label = self.selected_worktree_label();
 
-        format!("project: {project_label} · workspace: {workspace_label}")
+        format!("task: {task_label} · worktree: {worktree_label}")
     }
 
     fn footer_key_hints_line(&self) -> &'static str {

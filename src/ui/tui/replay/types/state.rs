@@ -1,8 +1,10 @@
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct ReplayStateSnapshot {
     selected_index: usize,
-    workspace_count: usize,
-    selected_workspace: Option<String>,
+    task_count: usize,
+    worktree_count: usize,
+    selected_task: Option<String>,
+    selected_worktree: Option<String>,
     focus: ReplayFocus,
     mode: ReplayMode,
     preview_tab: ReplayPreviewTab,
@@ -47,8 +49,13 @@ impl ReplayStateSnapshot {
 
         Self {
             selected_index: app.state.selected_index,
-            workspace_count: app.state.workspaces.len(),
-            selected_workspace: app.selected_workspace_name(),
+            task_count: app.state.tasks.len(),
+            worktree_count: app.state.workspaces.len(),
+            selected_task: app.state.selected_task().map(|task| task.slug.clone()),
+            selected_worktree: app
+                .state
+                .selected_worktree()
+                .map(|worktree| worktree.repository_name.clone()),
             focus: ReplayFocus::from_focus(app.state.focus),
             mode: ReplayMode::from_mode(app.state.mode),
             preview_tab: ReplayPreviewTab::from_preview_tab(app.preview_tab),

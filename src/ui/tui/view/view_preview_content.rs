@@ -10,27 +10,42 @@ impl GroveApp {
     ) -> (Vec<FtLine>, AnimatedPreviewLabels) {
         let theme = self.active_ui_theme();
         let mut animated_labels: AnimatedPreviewLabels = Vec::new();
-        let selected_workspace_header = selected_workspace.map(|workspace| {
-            let workspace_name = Self::workspace_display_name(workspace);
-            let is_working = self.status_is_visually_working(
-                Some(workspace.path.as_path()),
-                workspace.status,
-                true,
-            );
-            let branch_label = if workspace.branch != workspace_name {
-                Some(workspace.branch.clone())
+        let selected_workspace_header =
+            if self.preview_tab == PreviewTab::Home && self.selected_task_supports_parent_agent() {
+                self.state.selected_task().map(|task| {
+                    let is_working = self.selected_task_preview_session_if_ready().is_some();
+                    let branch_label = (task.branch != task.name).then_some(task.branch.clone());
+                    (
+                        task.name.clone(),
+                        branch_label,
+                        String::new(),
+                        is_working,
+                        false,
+                    )
+                })
             } else {
-                None
+                selected_workspace.map(|workspace| {
+                    let workspace_name = Self::workspace_display_name(workspace);
+                    let is_working = self.status_is_visually_working(
+                        Some(workspace.path.as_path()),
+                        workspace.status,
+                        true,
+                    );
+                    let branch_label = if workspace.branch != workspace_name {
+                        Some(workspace.branch.clone())
+                    } else {
+                        None
+                    };
+                    let age_label = self.relative_age_label(workspace.last_activity_unix_secs);
+                    (
+                        workspace_name,
+                        branch_label,
+                        age_label,
+                        is_working,
+                        workspace.is_orphaned,
+                    )
+                })
             };
-            let age_label = self.relative_age_label(workspace.last_activity_unix_secs);
-            (
-                workspace_name,
-                branch_label,
-                age_label,
-                is_working,
-                workspace.is_orphaned,
-            )
-        });
 
         let mut text_lines =
             vec![
@@ -92,7 +107,15 @@ impl GroveApp {
                 tab_spans.push(FtSpan::styled(format!(" {} ", tab.title), style));
             }
         }
-        if let Some(workspace) = selected_workspace {
+        if self.preview_tab == PreviewTab::Home && self.selected_task_supports_parent_agent() {
+            if let Some(task) = self.state.selected_task() {
+                tab_spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                tab_spans.push(FtSpan::styled(
+                    task.root_path.display().to_string(),
+                    Style::new().fg(theme.overlay0),
+                ));
+            }
+        } else if let Some(workspace) = selected_workspace {
             tab_spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
             tab_spans.push(FtSpan::styled(
                 workspace.path.display().to_string(),

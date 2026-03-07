@@ -13,10 +13,10 @@ use crate::application::agent_runtime::{
     reconcile_with_sessions, session_name_for_workspace_in_project,
     workspace_status_targets_for_polling_with_live_preview,
 };
-use crate::domain::Workspace;
+use crate::domain::{Task, Workspace, WorkspaceStatus, Worktree};
 use crate::infrastructure::adapters::benchmark_discovery_from_synthetic_fixture;
 
-const WORKSPACE_COUNTS: [usize; 3] = [10, 100, 500];
+const TASK_COUNTS: [usize; 3] = [10, 100, 500];
 const WARMUP_RUNS: usize = 2;
 const MEASURED_RUNS: usize = 15;
 const DEFAULT_SEVERE_REGRESSION_PCT: u64 = 35;
@@ -52,12 +52,12 @@ pub(crate) struct ScaleBenchmarkReport {
 struct ScaleBenchmarkConfig {
     warmup_runs: usize,
     measured_runs: usize,
-    workspace_counts: Vec<usize>,
+    task_counts: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ScaleBenchmarkCaseReport {
-    workspace_count: usize,
+    task_count: usize,
     discovery: FlowStats,
     status_target_generation: FlowStats,
     sort_update_pipeline: FlowStats,
@@ -113,17 +113,18 @@ pub(crate) fn run_scale_benchmark(options: ScaleBenchmarkOptions) -> io::Result<
 }
 
 fn run_scale_benchmarks() -> io::Result<ScaleBenchmarkReport> {
-    let mut cases = Vec::with_capacity(WORKSPACE_COUNTS.len());
+    let mut cases = Vec::with_capacity(TASK_COUNTS.len());
 
-    for workspace_count in WORKSPACE_COUNTS {
-        let fixture = SyntheticScaleFixture::create(workspace_count)?;
+    for task_count in TASK_COUNTS {
+        let fixture = SyntheticScaleFixture::create(task_count)?;
 
         let discovery = measure_flow(WARMUP_RUNS, MEASURED_RUNS, || {
-            let discovered = fixture.discover()?;
+            let discovered = fixture.discover_tasks()?;
             Ok(discovered.len())
         })?;
 
-        let discovered = fixture.discover()?;
+        let discovered_tasks = fixture.discover_tasks()?;
+        let discovered = flatten_benchmark_tasks(discovered_tasks.as_slice());
         let seeded_for_status_targets = reconcile_with_sessions(
             &discovered,
             &fixture.running_sessions,
@@ -189,7 +190,7 @@ fn run_scale_benchmarks() -> io::Result<ScaleBenchmarkReport> {
         })?;
 
         cases.push(ScaleBenchmarkCaseReport {
-            workspace_count,
+            task_count,
             discovery,
             status_target_generation,
             sort_update_pipeline,
@@ -202,22 +203,22 @@ fn run_scale_benchmarks() -> io::Result<ScaleBenchmarkReport> {
         config: ScaleBenchmarkConfig {
             warmup_runs: WARMUP_RUNS,
             measured_runs: MEASURED_RUNS,
-            workspace_counts: WORKSPACE_COUNTS.to_vec(),
+            task_counts: TASK_COUNTS.to_vec(),
         },
         cases,
     })
 }
 
 fn print_human_report(report: &ScaleBenchmarkReport, warnings: &[String]) {
-    println!("workspace scale benchmark");
+    println!("task scale benchmark");
     println!(
         "runs: warmup={} measured={} counts={:?}",
-        report.config.warmup_runs, report.config.measured_runs, report.config.workspace_counts
+        report.config.warmup_runs, report.config.measured_runs, report.config.task_counts
     );
     println!("generated_at_unix_secs={}", report.generated_at_unix_secs);
 
     for case in &report.cases {
-        println!("N={}", case.workspace_count);
+        println!("N={}", case.task_count);
         print_flow_line("discovery", &case.discovery);
         print_flow_line("status-targets", &case.status_target_generation);
         print_flow_line("sort-update", &case.sort_update_pipeline);
@@ -279,11 +280,11 @@ fn compare_against_baseline(
         let Some(baseline_case) = baseline
             .cases
             .iter()
-            .find(|case| case.workspace_count == current_case.workspace_count)
+            .find(|case| case.task_count == current_case.task_count)
         else {
             warnings.push(format!(
-                "missing baseline case for N={} workspaces",
-                current_case.workspace_count
+                "missing baseline case for N={} tasks",
+                current_case.task_count
             ));
             continue;
         };
@@ -297,7 +298,7 @@ fn compare_against_baseline(
             else {
                 warnings.push(format!(
                     "missing baseline flow '{flow_name}' for N={}",
-                    current_case.workspace_count
+                    current_case.task_count
                 ));
                 continue;
             };
@@ -306,7 +307,7 @@ fn compare_against_baseline(
             if current_flow.p95_ms > allowed_p95 {
                 warnings.push(format!(
                     "N={} flow={} p95 {:.3}ms exceeded baseline {:.3}ms (+{}%, allowed {:.3}ms)",
-                    current_case.workspace_count,
+                    current_case.task_count,
                     flow_name,
                     current_flow.p95_ms,
                     baseline_flow.p95_ms,
@@ -321,7 +322,7 @@ fn compare_against_baseline(
                 if current_flow.p99_ms > allowed_p99 {
                     warnings.push(format!(
                         "N={} flow={} p99 {:.3}ms exceeded baseline {:.3}ms (+{}%, allowed {:.3}ms)",
-                        current_case.workspace_count,
+                        current_case.task_count,
                         flow_name,
                         current_flow.p99_ms,
                         baseline_flow.p99_ms,
@@ -464,16 +465,16 @@ struct SyntheticScaleFixture {
 }
 
 impl SyntheticScaleFixture {
-    fn create(workspace_count: usize) -> io::Result<Self> {
-        if workspace_count < 2 {
+    fn create(task_count: usize) -> io::Result<Self> {
+        if task_count == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "workspace_count must be at least 2",
+                "task_count must be greater than zero",
             ));
         }
 
         let root = std::env::temp_dir().join(format!(
-            "grove-scale-bench-{}-{}-{workspace_count}",
+            "grove-scale-bench-{}-{}-{task_count}",
             std::process::id(),
             unix_now_nanos()
         ));
@@ -493,7 +494,7 @@ impl SyntheticScaleFixture {
         let mut status_output_by_workspace = HashMap::new();
         let mut live_preview_session = None;
 
-        for index in 1..workspace_count {
+        for index in 1..task_count {
             let workspace_name = format!("feature-{index:04}");
             let branch_name = workspace_name.clone();
             let workspace_directory = root.join(format!("{repo_name}-{workspace_name}"));
@@ -555,6 +556,14 @@ impl SyntheticScaleFixture {
         .map_err(|error| io::Error::other(error.message()))
     }
 
+    fn discover_tasks(&self) -> io::Result<Vec<Task>> {
+        let workspaces = self.discover()?;
+        Ok(workspaces
+            .iter()
+            .map(task_from_benchmark_workspace)
+            .collect())
+    }
+
     fn live_preview_target(&self) -> Option<LivePreviewTarget> {
         self.live_preview_session
             .as_ref()
@@ -600,11 +609,77 @@ fn synthetic_status_output(index: usize) -> String {
     "applying changes\n".to_string()
 }
 
+fn flatten_benchmark_tasks(tasks: &[Task]) -> Vec<Workspace> {
+    tasks
+        .iter()
+        .flat_map(|task| {
+            task.worktrees
+                .iter()
+                .map(|worktree| Workspace {
+                    name: worktree.repository_name.clone(),
+                    path: worktree.path.clone(),
+                    project_name: Some(worktree.repository_name.clone()),
+                    project_path: Some(worktree.repository_path.clone()),
+                    branch: worktree.branch.clone(),
+                    base_branch: worktree.base_branch.clone(),
+                    last_activity_unix_secs: worktree.last_activity_unix_secs,
+                    agent: worktree.agent,
+                    status: if worktree.status == WorkspaceStatus::Main {
+                        WorkspaceStatus::Idle
+                    } else {
+                        worktree.status
+                    },
+                    is_main: false,
+                    is_orphaned: worktree.is_orphaned,
+                    supported_agent: worktree.supported_agent,
+                    pull_requests: worktree.pull_requests.clone(),
+                })
+                .collect::<Vec<Workspace>>()
+        })
+        .collect()
+}
+
+fn task_from_benchmark_workspace(workspace: &Workspace) -> Task {
+    let repository_path = workspace
+        .project_path
+        .clone()
+        .unwrap_or_else(|| workspace.path.clone());
+    let repository_name = workspace.project_name.clone().unwrap_or_else(|| {
+        repository_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map_or_else(|| workspace.name.clone(), ToString::to_string)
+    });
+    let worktree = Worktree::try_new(
+        repository_name,
+        repository_path,
+        workspace.path.clone(),
+        workspace.branch.clone(),
+        workspace.agent,
+        workspace.status,
+    )
+    .expect("benchmark worktree should be valid")
+    .with_base_branch(workspace.base_branch.clone())
+    .with_last_activity_unix_secs(workspace.last_activity_unix_secs)
+    .with_supported_agent(workspace.supported_agent)
+    .with_orphaned(workspace.is_orphaned)
+    .with_pull_requests(workspace.pull_requests.clone());
+
+    Task::try_new(
+        workspace.name.clone(),
+        workspace.name.clone(),
+        workspace.path.clone(),
+        workspace.branch.clone(),
+        vec![worktree],
+    )
+    .expect("benchmark task should be valid")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         FlowStats, ScaleBenchmarkCaseReport, ScaleBenchmarkConfig, ScaleBenchmarkReport,
-        compare_against_baseline,
+        SyntheticScaleFixture, compare_against_baseline,
     };
 
     fn stats(p50_ms: f64, p95_ms: f64) -> FlowStats {
@@ -620,9 +695,9 @@ mod tests {
         }
     }
 
-    fn case(workspace_count: usize, p95_ms: f64) -> ScaleBenchmarkCaseReport {
+    fn case(task_count: usize, p95_ms: f64) -> ScaleBenchmarkCaseReport {
         ScaleBenchmarkCaseReport {
-            workspace_count,
+            task_count,
             discovery: stats(1.0, p95_ms),
             status_target_generation: stats(1.0, p95_ms),
             sort_update_pipeline: stats(1.0, p95_ms),
@@ -647,7 +722,7 @@ mod tests {
             config: ScaleBenchmarkConfig {
                 warmup_runs: 2,
                 measured_runs: 15,
-                workspace_counts: vec![100],
+                task_counts: vec![100],
             },
             cases: vec![case(100, 150.0)],
         };
@@ -657,7 +732,7 @@ mod tests {
             config: ScaleBenchmarkConfig {
                 warmup_runs: 2,
                 measured_runs: 15,
-                workspace_counts: vec![100],
+                task_counts: vec![100],
             },
             cases: vec![case(100, 100.0)],
         };
@@ -665,5 +740,14 @@ mod tests {
         let warnings = compare_against_baseline(&current, &baseline, 35);
         assert!(!warnings.is_empty());
         assert!(warnings[0].contains("N=100"));
+    }
+
+    #[test]
+    fn synthetic_scale_fixture_discovers_tasks() {
+        let fixture = SyntheticScaleFixture::create(10).expect("fixture should build");
+        let tasks = fixture.discover_tasks().expect("tasks should discover");
+
+        assert_eq!(tasks.len(), 10);
+        assert!(tasks.iter().all(|task| task.worktrees.len() == 1));
     }
 }

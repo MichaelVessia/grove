@@ -41,9 +41,9 @@ use crate::application::agent_runtime::capture::{
 };
 use crate::application::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
-    WorkspaceStatusTarget, agent_supports_in_pane_restart, execute_command_with,
+    TaskLaunchRequest, WorkspaceStatusTarget, agent_supports_in_pane_restart, execute_command_with,
     git_session_name_for_workspace, infer_workspace_skip_permissions, poll_interval,
-    restart_workspace_in_pane_with_io, session_name_for_workspace_in_project,
+    restart_workspace_in_pane_with_io, session_name_for_task, session_name_for_workspace_in_project,
     session_name_for_workspace_ref,
     shell_session_name_for_workspace, tmux_launch_error_indicates_duplicate_session,
     trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
@@ -58,24 +58,29 @@ use crate::application::interactive::{
 use crate::application::preview::PreviewState;
 use crate::application::session_cleanup::{
     SessionCleanupOptions, SessionCleanupPlan, SessionCleanupReason, apply_session_cleanup,
-    plan_session_cleanup_for_workspaces,
+    plan_session_cleanup_for_tasks,
+};
+use crate::application::task_lifecycle::{
+    CreateTaskRequest, CreateTaskResult, DeleteTaskRequest, TaskLifecycleError, create_task,
+    create_task_in_root, delete_task, task_lifecycle_error_message,
 };
 use crate::application::services::runtime_service::{
     detect_status_with_session_override, execute_launch_request_with_result_for_mode,
+    execute_stop_task_with_result_for_mode,
+    execute_task_launch_request_with_result_for_mode,
     execute_restart_workspace_in_pane_with_result, execute_shell_launch_request_for_mode,
     execute_stop_workspace_with_result_for_mode, latest_assistant_attention_marker,
     launch_request_for_workspace, shell_launch_request_for_workspace,
 };
 use crate::application::services::workspace_service::{
-    create_workspace_with_template, delete_workspace, merge_workspace, update_workspace_from_base,
-    workspace_lifecycle_error_message, write_workspace_base_marker,
+    merge_workspace, update_workspace_from_base, workspace_lifecycle_error_message,
+    write_workspace_base_marker,
 };
 use crate::application::workspace_lifecycle::{
-    BranchMode, CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner,
-    CreateWorkspaceRequest, CreateWorkspaceResult, DeleteWorkspaceRequest, MergeWorkspaceRequest,
-    UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
+    CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner,
+    MergeWorkspaceRequest, UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
 };
-use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+use crate::domain::{AgentType, Task, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
 use crate::infrastructure::config::{
     AgentEnvDefaults, GroveConfig, ProjectConfig, ThemeName, WorkspaceAttentionAckConfig,
@@ -93,9 +98,8 @@ use ansi::ansi_lines_to_styled_lines_for_theme;
 #[cfg(test)]
 use bootstrap_config::AppDependencies;
 use bootstrap_config::{
-    filter_branches, load_local_branches, project_display_name, read_workspace_init_command,
-    read_workspace_launch_prompt, read_workspace_skip_permissions, write_workspace_init_command,
-    write_workspace_skip_permissions,
+    project_display_name, read_workspace_init_command, read_workspace_launch_prompt,
+    read_workspace_skip_permissions, write_workspace_init_command, write_workspace_skip_permissions,
 };
 use bootstrap_discovery::bootstrap_data_for_projects;
 use terminal::{
@@ -115,9 +119,10 @@ use commands::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct QueuedDeleteWorkspace {
-    request: DeleteWorkspaceRequest,
+    request: DeleteTaskRequest,
     workspace_name: String,
     workspace_path: PathBuf,
+    requested_workspace_paths: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,9 +234,6 @@ struct DialogState {
     active_dialog: Option<ActiveDialog>,
     keybind_help_open: bool,
     command_palette: CommandPalette,
-    create_branch_all: Vec<String>,
-    create_branch_filtered: Vec<String>,
-    create_branch_index: usize,
     refresh_in_flight: bool,
     last_manual_refresh_requested_at: Option<Instant>,
     manual_refresh_feedback_pending: bool,
@@ -293,6 +295,8 @@ struct GroveApp {
     sidebar_list_state: RefCell<VirtualizedListState>,
     last_sidebar_mouse_scroll_at: Option<Instant>,
     last_sidebar_mouse_scroll_delta: i8,
+    #[cfg(test)]
+    task_root_override: Option<PathBuf>,
 }
 
 impl Model for GroveApp {

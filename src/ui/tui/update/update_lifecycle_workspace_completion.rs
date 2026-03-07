@@ -66,9 +66,11 @@ impl GroveApp {
         &mut self,
         completion: DeleteWorkspaceCompletion,
     ) {
-        self.dialogs
-            .delete_requested_workspaces
-            .remove(&completion.workspace_path);
+        for workspace_path in &completion.requested_workspace_paths {
+            self.dialogs
+                .delete_requested_workspaces
+                .remove(workspace_path);
+        }
         if self
             .dialogs
             .delete_in_flight_workspace
@@ -80,8 +82,8 @@ impl GroveApp {
         match completion.result {
             Ok(()) => {
                 self.telemetry.event_log.log(
-                    LogEvent::new("workspace_lifecycle", "workspace_deleted")
-                        .with_data("workspace", Value::from(completion.workspace_name.clone()))
+                    LogEvent::new("task_lifecycle", "task_deleted")
+                        .with_data("task", Value::from(completion.workspace_name.clone()))
                         .with_data(
                             "warning_count",
                             Value::from(usize_to_u64(completion.warnings.len())),
@@ -91,24 +93,24 @@ impl GroveApp {
                 self.refresh_workspaces(None);
                 if completion.warnings.is_empty() {
                     self.show_success_toast(format!(
-                        "workspace '{}' deleted",
+                        "task '{}' deleted",
                         completion.workspace_name
                     ));
                 } else if let Some(first_warning) = completion.warnings.first() {
                     self.show_info_toast(format!(
-                        "workspace '{}' deleted, warning: {}",
+                        "task '{}' deleted, warning: {}",
                         completion.workspace_name, first_warning
                     ));
                 }
             }
             Err(error) => {
                 self.telemetry.event_log.log(
-                    LogEvent::new("workspace_lifecycle", "workspace_delete_failed")
-                        .with_data("workspace", Value::from(completion.workspace_name))
+                    LogEvent::new("task_lifecycle", "task_delete_failed")
+                        .with_data("task", Value::from(completion.workspace_name))
                         .with_data("error", Value::from(error.clone())),
                 );
                 self.session.last_tmux_error = Some(error.clone());
-                self.show_error_toast(format!("workspace delete failed: {error}"));
+                self.show_error_toast(format!("task delete failed: {error}"));
             }
         }
         self.start_next_queued_delete_workspace();

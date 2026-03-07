@@ -4,8 +4,9 @@ use std::path::Path;
 use crate::domain::{Task, WorkspaceStatus, Worktree};
 
 use super::{
-    CreateTaskRequest, CreateTaskResult, GROVE_SETUP_SCRIPT_FILE, TaskLifecycleError,
-    create_task_domain, repo_directory_name, write_task_manifest,
+    CreateTaskRequest, CreateTaskResult, GROVE_SETUP_SCRIPT_FILE, TaskBranchSource,
+    TaskLifecycleError, create_task_domain, repo_directory_name, resolve_repository_base_branch,
+    write_task_manifest,
 };
 use crate::application::workspace_lifecycle::{
     GitCommandRunner, SetupCommandContext, SetupCommandRunner, SetupScriptContext,
@@ -29,23 +30,49 @@ pub(super) fn create_task_in_root(
     let mut worktrees = Vec::new();
 
     for repository in &request.repositories {
+        let base_branch = resolve_repository_base_branch(repository)?;
         let repository_dir = repo_directory_name(repository)?;
         let worktree_path = task_root.join(repository_dir);
-        let args = vec![
-            "worktree".to_string(),
-            "add".to_string(),
-            "-b".to_string(),
-            request.task_name.clone(),
-            worktree_path.to_string_lossy().to_string(),
-            request.base_branch.clone(),
-        ];
-        git_runner
-            .run(repository.path.as_path(), &args)
-            .map_err(TaskLifecycleError::GitCommandFailed)?;
+        match &request.branch_source {
+            TaskBranchSource::BaseBranch => {
+                let args = vec![
+                    "worktree".to_string(),
+                    "add".to_string(),
+                    "-b".to_string(),
+                    request.task_name.clone(),
+                    worktree_path.to_string_lossy().to_string(),
+                    base_branch.clone(),
+                ];
+                git_runner
+                    .run(repository.path.as_path(), &args)
+                    .map_err(TaskLifecycleError::GitCommandFailed)?;
+            }
+            TaskBranchSource::PullRequest { number } => {
+                let fetch_args = vec![
+                    "fetch".to_string(),
+                    "origin".to_string(),
+                    format!("pull/{number}/head"),
+                ];
+                git_runner
+                    .run(repository.path.as_path(), &fetch_args)
+                    .map_err(TaskLifecycleError::GitCommandFailed)?;
+                let args = vec![
+                    "worktree".to_string(),
+                    "add".to_string(),
+                    "-b".to_string(),
+                    request.task_name.clone(),
+                    worktree_path.to_string_lossy().to_string(),
+                    "FETCH_HEAD".to_string(),
+                ];
+                git_runner
+                    .run(repository.path.as_path(), &args)
+                    .map_err(TaskLifecycleError::GitCommandFailed)?;
+            }
+        }
 
         fs::create_dir_all(&worktree_path)
             .map_err(|error| TaskLifecycleError::Io(error.to_string()))?;
-        write_workspace_base_marker(&worktree_path, request.base_branch.as_str())
+        write_workspace_base_marker(&worktree_path, base_branch.as_str())
             .map_err(|error| TaskLifecycleError::Io(format!("{error:?}")))?;
         ensure_grove_git_exclude_entries(repository.path.as_path())
             .map_err(|error| TaskLifecycleError::Io(format!("{error:?}")))?;
@@ -92,7 +119,7 @@ pub(super) fn create_task_in_root(
             WorkspaceStatus::Idle,
         )
         .map_err(|error| TaskLifecycleError::TaskInvalid(format!("{error:?}")))?
-        .with_base_branch(Some(request.base_branch.clone()));
+        .with_base_branch(Some(base_branch));
         worktrees.push(worktree);
     }
 

@@ -117,11 +117,7 @@ pub(super) struct SessionCleanupDialogState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DeleteDialogState {
-    pub(super) project_name: Option<String>,
-    pub(super) project_path: Option<PathBuf>,
-    pub(super) workspace_name: String,
-    pub(super) branch: String,
-    pub(super) path: PathBuf,
+    pub(super) task: Task,
     pub(super) is_missing: bool,
     pub(super) delete_local_branch: bool,
     pub(super) kill_tmux_sessions: bool,
@@ -296,11 +292,19 @@ impl LaunchDialogField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CreateDialogState {
     pub(super) tab: CreateDialogTab,
-    pub(super) workspace_name: String,
+    pub(super) task_name: String,
     pub(super) pr_url: String,
     pub(super) project_index: usize,
-    pub(super) base_branch: String,
+    pub(super) selected_repository_indices: Vec<usize>,
+    pub(super) project_picker: Option<CreateProjectPickerState>,
     pub(super) focused_field: CreateDialogField,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct CreateProjectPickerState {
+    pub(super) filter: String,
+    pub(super) filtered_project_indices: Vec<usize>,
+    pub(super) selected_filtered_index: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -328,7 +332,6 @@ pub(super) enum CreateDialogField {
     WorkspaceName,
     PullRequestUrl,
     Project,
-    BaseBranch,
     CreateButton,
     CancelButton,
 }
@@ -343,7 +346,7 @@ impl CreateDialogTab {
     pub(super) fn label(self) -> &'static str {
         match self {
             Self::Manual => "Manual",
-            Self::PullRequest => "From PR URL",
+            Self::PullRequest => "From GitHub PR",
         }
     }
 
@@ -393,8 +396,7 @@ impl CreateDialogField {
         match tab {
             CreateDialogTab::Manual => match self {
                 Self::WorkspaceName => Self::Project,
-                Self::Project => Self::BaseBranch,
-                Self::BaseBranch => Self::CreateButton,
+                Self::Project => Self::CreateButton,
                 Self::CreateButton => Self::CancelButton,
                 Self::CancelButton => Self::WorkspaceName,
                 Self::PullRequestUrl => Self::Project,
@@ -404,7 +406,7 @@ impl CreateDialogField {
                 Self::PullRequestUrl => Self::CreateButton,
                 Self::CreateButton => Self::CancelButton,
                 Self::CancelButton => Self::Project,
-                Self::WorkspaceName | Self::BaseBranch => Self::Project,
+                Self::WorkspaceName => Self::Project,
             },
         }
     }
@@ -414,8 +416,7 @@ impl CreateDialogField {
             CreateDialogTab::Manual => match self {
                 Self::WorkspaceName => Self::CancelButton,
                 Self::Project => Self::WorkspaceName,
-                Self::BaseBranch => Self::Project,
-                Self::CreateButton => Self::BaseBranch,
+                Self::CreateButton => Self::Project,
                 Self::CancelButton => Self::CreateButton,
                 Self::PullRequestUrl => Self::Project,
             },
@@ -424,7 +425,7 @@ impl CreateDialogField {
                 Self::PullRequestUrl => Self::Project,
                 Self::CreateButton => Self::PullRequestUrl,
                 Self::CancelButton => Self::CreateButton,
-                Self::WorkspaceName | Self::BaseBranch => Self::Project,
+                Self::WorkspaceName => Self::Project,
             },
         }
     }
@@ -435,7 +436,6 @@ impl CreateDialogField {
             Self::WorkspaceName => "name",
             Self::PullRequestUrl => "pr_url",
             Self::Project => "project",
-            Self::BaseBranch => "base_branch",
             Self::CreateButton => "create",
             Self::CancelButton => "cancel",
         }

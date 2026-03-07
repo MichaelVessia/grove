@@ -1,4 +1,5 @@
 use super::update_prelude::*;
+use crate::application::task_lifecycle::TaskBranchSource;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedGitHubPullRequest {
@@ -8,6 +9,18 @@ struct ParsedGitHubPullRequest {
 }
 
 impl GroveApp {
+    fn create_task_root_override(&self) -> Option<PathBuf> {
+        #[cfg(test)]
+        {
+            self.task_root_override.clone()
+        }
+
+        #[cfg(not(test))]
+        {
+            None
+        }
+    }
+
     pub(super) fn confirm_create_dialog(&mut self) {
         if self.dialogs.create_in_flight {
             return;
@@ -20,15 +33,22 @@ impl GroveApp {
             self.show_info_toast("project is required");
             return;
         };
+        let repositories = match dialog.tab {
+            CreateDialogTab::Manual => self.selected_create_dialog_projects(),
+            CreateDialogTab::PullRequest => vec![project.clone()],
+        };
 
-        let (workspace_name, branch_mode, branch_mode_label, branch_value) = match dialog.tab {
+        let (task_name, branch_mode_label, branch_value, branch_source): (
+            String,
+            String,
+            String,
+            TaskBranchSource,
+        ) = match dialog.tab {
             CreateDialogTab::Manual => (
-                dialog.workspace_name.trim().to_string(),
-                BranchMode::NewBranch {
-                    base_branch: dialog.base_branch.trim().to_string(),
-                },
-                "new".to_string(),
-                dialog.base_branch.clone(),
+                dialog.task_name.trim().to_string(),
+                "implicit".to_string(),
+                "project_defaults_or_git".to_string(),
+                TaskBranchSource::BaseBranch,
             ),
             CreateDialogTab::PullRequest => {
                 let parsed = match parse_github_pull_request_url(dialog.pr_url.as_str()) {
@@ -45,12 +65,11 @@ impl GroveApp {
 
                 (
                     format!("pr-{}", parsed.number),
-                    BranchMode::PullRequest {
-                        number: parsed.number,
-                        base_branch: dialog.base_branch.trim().to_string(),
-                    },
                     "pull_request".to_string(),
                     dialog.pr_url.clone(),
+                    TaskBranchSource::PullRequest {
+                        number: parsed.number,
+                    },
                 )
             }
         };
@@ -58,58 +77,45 @@ impl GroveApp {
             "create",
             "dialog_confirmed",
             [
-                (
-                    "workspace_name".to_string(),
-                    Value::from(workspace_name.clone()),
-                ),
+                ("task_name".to_string(), Value::from(task_name.clone())),
                 ("branch_mode".to_string(), Value::from(branch_mode_label)),
                 ("branch_value".to_string(), Value::from(branch_value)),
                 (
                     "project_index".to_string(),
                     Value::from(usize_to_u64(dialog.project_index)),
                 ),
+                (
+                    "repository_count".to_string(),
+                    Value::from(usize_to_u64(repositories.len())),
+                ),
             ],
         );
-        let request = CreateWorkspaceRequest {
-            workspace_name: workspace_name.clone(),
-            branch_mode,
+        let request = CreateTaskRequest {
+            task_name: task_name.clone(),
+            repositories,
+            agent: self
+                .state
+                .selected_workspace()
+                .map(|workspace| workspace.agent)
+                .unwrap_or(AgentType::Codex),
+            branch_source,
         };
 
         if let Err(error) = request.validate() {
-            self.show_info_toast(workspace_lifecycle_error_message(&error));
+            self.show_info_toast(task_lifecycle_error_message(&error));
             return;
         }
 
-        let repo_root = project.path;
+        let task_root_override = self.create_task_root_override();
         if !self.tmux_input.supports_background_launch() {
-            let git = CommandGitRunner;
-            let setup = CommandSetupScriptRunner;
-            let setup_command = CommandSetupCommandRunner;
-            let result = create_workspace_with_template(
-                &repo_root,
-                &request,
-                None,
-                &git,
-                &setup,
-                &setup_command,
-            );
+            let result = execute_create_task_request(&request, task_root_override.as_deref());
             self.apply_create_workspace_completion(CreateWorkspaceCompletion { request, result });
             return;
         }
 
         self.dialogs.create_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let git = CommandGitRunner;
-            let setup = CommandSetupScriptRunner;
-            let setup_command = CommandSetupCommandRunner;
-            let result = create_workspace_with_template(
-                &repo_root,
-                &request,
-                None,
-                &git,
-                &setup,
-                &setup_command,
-            );
+            let result = execute_create_task_request(&request, task_root_override.as_deref());
             Msg::CreateWorkspaceCompleted(CreateWorkspaceCompletion { request, result })
         }));
     }
@@ -119,31 +125,49 @@ impl GroveApp {
         completion: CreateWorkspaceCompletion,
     ) {
         self.dialogs.create_in_flight = false;
-        let workspace_name = completion.request.workspace_name;
+        let task_name = completion.request.task_name;
         match completion.result {
             Ok(result) => {
                 self.close_active_dialog();
-                self.clear_create_branch_picker();
-                self.refresh_workspaces(Some(result.workspace_path));
+                let preferred_workspace_path = result
+                    .task
+                    .worktrees
+                    .first()
+                    .map(|worktree| worktree.path.clone());
+                self.refresh_workspaces(preferred_workspace_path);
                 self.state.mode = UiMode::List;
                 self.state.focus = PaneFocus::WorkspaceList;
                 if result.warnings.is_empty() {
-                    self.show_success_toast(format!("workspace '{}' created", workspace_name));
+                    self.show_success_toast(format!("task '{}' created", task_name));
                 } else if let Some(first_warning) = result.warnings.first() {
                     self.show_info_toast(format!(
-                        "workspace '{}' created, warning: {}",
-                        workspace_name, first_warning
+                        "task '{}' created, warning: {}",
+                        task_name, first_warning
                     ));
                 }
             }
             Err(error) => {
                 self.show_error_toast(format!(
-                    "workspace create failed: {}",
-                    workspace_lifecycle_error_message(&error)
+                    "task create failed: {}",
+                    task_lifecycle_error_message(&error)
                 ));
             }
         }
     }
+}
+
+fn execute_create_task_request(
+    request: &CreateTaskRequest,
+    tasks_root_override: Option<&Path>,
+) -> Result<CreateTaskResult, TaskLifecycleError> {
+    let git = CommandGitRunner;
+    let setup = CommandSetupScriptRunner;
+    let setup_command = CommandSetupCommandRunner;
+    if let Some(tasks_root) = tasks_root_override {
+        return create_task_in_root(tasks_root, request, &git, &setup, &setup_command);
+    }
+
+    create_task(request, &git, &setup, &setup_command)
 }
 
 fn parse_github_pull_request_url(url: &str) -> Result<ParsedGitHubPullRequest, String> {

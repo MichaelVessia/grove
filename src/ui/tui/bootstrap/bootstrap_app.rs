@@ -1,5 +1,7 @@
+use crate::application::task_discovery::{TaskBootstrapData, TaskDiscoveryState};
 use crate::infrastructure::adapters::BootstrapData;
 use crate::infrastructure::config::ProjectConfig;
+use crate::infrastructure::paths::tasks_root;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -8,7 +10,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use super::bootstrap_config::{AppDependencies, load_runtime_config};
-use super::bootstrap_discovery::bootstrap_data_for_projects;
+use super::bootstrap_discovery::{bootstrap_data_for_projects, bootstrap_task_data_for_root};
 use super::*;
 #[cfg(test)]
 use crate::infrastructure::paths::refer_to_same_location;
@@ -34,18 +36,25 @@ impl GroveApp {
 
     pub(super) fn new(event_log: Box<dyn EventLogger>, debug_record_start_ts: Option<u64>) -> Self {
         let (config, config_path, _config_error) = load_runtime_config();
+        let dependencies = AppDependencies {
+            tmux_input: Box::new(CommandTmuxInput),
+            clipboard: Box::new(SystemClipboardAccess::default()),
+            config_path,
+            event_log,
+            debug_record_start_ts,
+        };
+
+        if let Some(tasks_root) = tasks_root() {
+            let bootstrap = bootstrap_task_data_for_root(tasks_root.as_path());
+            return Self::from_task_parts_with_clipboard_and_projects(
+                bootstrap,
+                config.projects,
+                dependencies,
+            );
+        }
+
         let bootstrap = bootstrap_data_for_projects(&config.projects);
-        Self::from_parts_with_clipboard_and_projects(
-            bootstrap,
-            config.projects,
-            AppDependencies {
-                tmux_input: Box::new(CommandTmuxInput),
-                clipboard: Box::new(SystemClipboardAccess::default()),
-                config_path,
-                event_log,
-                debug_record_start_ts,
-            },
-        )
+        Self::from_parts_with_clipboard_and_projects(bootstrap, config.projects, dependencies)
     }
 
     #[cfg(test)]
@@ -103,6 +112,46 @@ impl GroveApp {
         projects: Vec<ProjectConfig>,
         dependencies: AppDependencies,
     ) -> Self {
+        Self::from_state_with_clipboard_and_projects(
+            bootstrap.repo_name,
+            AppState::from_workspaces(bootstrap.workspaces),
+            bootstrap.discovery_state,
+            projects,
+            dependencies,
+        )
+    }
+
+    fn from_task_parts_with_clipboard_and_projects(
+        bootstrap: TaskBootstrapData,
+        projects: Vec<ProjectConfig>,
+        dependencies: AppDependencies,
+    ) -> Self {
+        let repo_name = if bootstrap.tasks.is_empty() {
+            "tasks".to_string()
+        } else {
+            format!("{} tasks", bootstrap.tasks.len())
+        };
+        let discovery_state = match bootstrap.discovery_state {
+            TaskDiscoveryState::Ready => DiscoveryState::Ready,
+            TaskDiscoveryState::Empty => DiscoveryState::Empty,
+            TaskDiscoveryState::Error(message) => DiscoveryState::Error(message),
+        };
+        Self::from_state_with_clipboard_and_projects(
+            repo_name,
+            AppState::new(bootstrap.tasks),
+            discovery_state,
+            projects,
+            dependencies,
+        )
+    }
+
+    fn from_state_with_clipboard_and_projects(
+        repo_name: String,
+        state: AppState,
+        discovery_state: DiscoveryState,
+        projects: Vec<ProjectConfig>,
+        dependencies: AppDependencies,
+    ) -> Self {
         let AppDependencies {
             tmux_input,
             clipboard,
@@ -128,14 +177,13 @@ impl GroveApp {
                 .disable_sequences()
                 .validated(),
         );
-        let state = AppState::new(bootstrap.workspaces);
         let (workspace_tabs, last_agent_selection) =
             Self::default_workspace_tabs_and_last_agent(&state.workspaces);
         let mut app = Self {
-            repo_name: bootstrap.repo_name,
+            repo_name,
             projects,
             state,
-            discovery_state: bootstrap.discovery_state,
+            discovery_state,
             preview_tab: PreviewTab::Agent,
             workspace_tabs,
             last_agent_selection,
@@ -153,9 +201,6 @@ impl GroveApp {
                 active_dialog: None,
                 keybind_help_open: false,
                 command_palette: CommandPalette::new().with_max_visible(12),
-                create_branch_all: Vec::new(),
-                create_branch_filtered: Vec::new(),
-                create_branch_index: 0,
                 refresh_in_flight: false,
                 last_manual_refresh_requested_at: None,
                 manual_refresh_feedback_pending: false,
@@ -230,6 +275,8 @@ impl GroveApp {
             sidebar_list_state: RefCell::new(VirtualizedListState::new().with_overscan(0)),
             last_sidebar_mouse_scroll_at: None,
             last_sidebar_mouse_scroll_delta: 0,
+            #[cfg(test)]
+            task_root_override: None,
         };
         app.sync_workspace_tab_maps();
         app.rebuild_workspace_tabs_from_tmux_metadata();

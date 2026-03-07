@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub(crate) fn refer_to_same_location(left: &Path, right: &Path) -> bool {
     match (left.canonicalize().ok(), right.canonicalize().ok()) {
@@ -7,13 +7,17 @@ pub(crate) fn refer_to_same_location(left: &Path, right: &Path) -> bool {
     }
 }
 
+pub(crate) fn tasks_root() -> Option<PathBuf> {
+    dirs::home_dir().map(|home| home.join(".grove").join("tasks"))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    use super::refer_to_same_location;
+    use super::{refer_to_same_location, tasks_root};
 
     #[derive(Debug)]
     struct TestDir {
@@ -67,5 +71,18 @@ mod tests {
         let right = PathBuf::from("/tmp/grove-paths-right");
 
         assert!(!refer_to_same_location(&left, &right));
+    }
+
+    #[test]
+    fn tasks_root_defaults_under_home_directory() {
+        let Some(actual) = tasks_root() else {
+            return;
+        };
+
+        let Some(home) = dirs::home_dir() else {
+            return;
+        };
+
+        assert_eq!(actual, home.join(".grove").join("tasks"));
     }
 }

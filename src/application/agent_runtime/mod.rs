@@ -22,10 +22,12 @@ pub use execution::{
     execute_command_with, execute_commands_for_mode, execute_commands_with,
     execute_commands_with_executor, execute_launch_plan_for_mode, execute_launch_plan_with,
     execute_launch_plan_with_executor, execute_launch_request_with_result_for_mode,
-    execute_shell_launch_request_for_mode, execute_stop_workspace_with_result_for_mode,
+    execute_shell_launch_request_for_mode, execute_stop_task_with_result_for_mode,
+    execute_stop_workspace_with_result_for_mode, execute_task_launch_request_with_result_for_mode,
+    kill_task_session_commands, kill_task_session_commands_for_existing_sessions,
     kill_workspace_session_command, kill_workspace_session_commands,
-    kill_workspace_session_commands_for_existing_sessions, workspace_session_name_matches,
-    workspace_session_names_for_cleanup,
+    kill_workspace_session_commands_for_existing_sessions, task_session_names_for_cleanup,
+    workspace_session_name_matches, workspace_session_names_for_cleanup,
 };
 #[cfg(test)]
 pub use execution::{execute_commands, execute_launch_plan};

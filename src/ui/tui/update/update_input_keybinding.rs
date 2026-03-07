@@ -18,7 +18,7 @@ impl GroveApp {
             return dialog.start_config.is_input_nonempty();
         }
         if let Some(dialog) = self.create_dialog() {
-            return !dialog.workspace_name.is_empty() || !dialog.base_branch.is_empty();
+            return !dialog.task_name.is_empty() || !dialog.pr_url.is_empty();
         }
         if let Some(project_dialog) = self.project_dialog() {
             if !project_dialog.filter.is_empty() {
@@ -54,9 +54,6 @@ impl GroveApp {
                 }
                 if let Some(kind) = self.active_dialog_kind() {
                     self.log_dialog_event(kind, "dialog_cancelled");
-                    if kind == "create" {
-                        self.clear_create_branch_picker();
-                    }
                     if kind == "settings" {
                         self.cancel_settings_dialog();
                     } else {
@@ -77,20 +74,12 @@ impl GroveApp {
                     return false;
                 }
                 if let Some(dialog) = self.create_dialog_mut() {
-                    let mut refresh_base_branch = false;
                     match dialog.focused_field {
-                        CreateDialogField::WorkspaceName => dialog.workspace_name.clear(),
+                        CreateDialogField::WorkspaceName => dialog.task_name.clear(),
                         CreateDialogField::PullRequestUrl => dialog.pr_url.clear(),
-                        CreateDialogField::BaseBranch => {
-                            dialog.base_branch.clear();
-                            refresh_base_branch = true;
-                        }
                         CreateDialogField::Project
                         | CreateDialogField::CreateButton
                         | CreateDialogField::CancelButton => {}
-                    }
-                    if refresh_base_branch {
-                        self.refresh_create_branch_filtered();
                     }
                 }
                 false

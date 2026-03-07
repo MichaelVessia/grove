@@ -290,6 +290,18 @@ impl GroveApp {
         None
     }
 
+    pub(super) fn selected_task_preview_session_if_ready(&self) -> Option<String> {
+        if !self.selected_task_supports_parent_agent() {
+            return None;
+        }
+        let task = self.state.selected_task()?;
+        let session_name = session_name_for_task(&task.slug);
+        self.session
+            .agent_sessions
+            .is_ready(&session_name)
+            .then_some(session_name)
+    }
+
     pub(super) fn selected_shell_preview_session_if_ready(&self) -> Option<String> {
         let session_name = self.selected_shell_tab_session_name()?;
         self.session
@@ -300,7 +312,7 @@ impl GroveApp {
 
     pub(super) fn can_enter_interactive_session(&self) -> bool {
         match self.preview_tab {
-            PreviewTab::Home => false,
+            PreviewTab::Home => self.selected_task_preview_session_if_ready().is_some(),
             PreviewTab::Git => {
                 workspace_can_enter_interactive(self.state.selected_workspace(), true)
             }
@@ -310,6 +322,9 @@ impl GroveApp {
     }
 
     pub(super) fn ensure_agent_preview_session_for_interactive(&mut self) -> Option<String> {
+        if self.preview_tab == PreviewTab::Home {
+            return self.selected_task_preview_session_if_ready();
+        }
         if let Some(session_name) = self.selected_agent_preview_session_if_ready() {
             return Some(session_name);
         }
@@ -322,7 +337,7 @@ impl GroveApp {
 
     pub(super) fn prepare_live_preview_session(&mut self) -> Option<LivePreviewTarget> {
         let session_name = match self.preview_tab {
-            PreviewTab::Home => return None,
+            PreviewTab::Home => self.selected_task_preview_session_if_ready()?,
             PreviewTab::Git => self.ensure_lazygit_session_for_selected_workspace()?,
             PreviewTab::Shell => self.selected_shell_preview_session_if_ready()?,
             PreviewTab::Agent => self.selected_agent_preview_session_if_ready()?,
@@ -427,6 +442,12 @@ impl GroveApp {
                         })
                     });
                 if self.preview_tab == PreviewTab::Home {
+                    if self.selected_task_supports_parent_agent() {
+                        let Some(task) = self.state.selected_task() else {
+                            return "No task selected".to_string();
+                        };
+                        return self.task_home_splash(task);
+                    }
                     if workspace.is_main {
                         return self.main_worktree_splash();
                     }
@@ -458,6 +479,14 @@ impl GroveApp {
             "Workspace Home",
             format!("Workspace: {}", workspace.name).as_str(),
             "Launch tabs here, or create another workspace when needed.",
+        )
+    }
+
+    fn task_home_splash(&self, task: &Task) -> String {
+        self.home_splash(
+            "Task Home",
+            format!("Task: {}", task.name).as_str(),
+            "Launch a parent agent here for planning and cross-repository coordination.",
         )
     }
 

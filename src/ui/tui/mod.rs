@@ -230,12 +230,14 @@ mod tests {
     };
     use crate::application::interactive::InteractiveState;
     use crate::application::services::runtime_service::workspace_status_targets_for_polling_with_live_preview;
-    use crate::application::workspace_lifecycle::{
-        BranchMode, CreateWorkspaceRequest, CreateWorkspaceResult,
+    use crate::application::task_lifecycle::{
+        CreateTaskRequest, CreateTaskResult, TaskBranchSource,
     };
-    use crate::domain::{AgentType, PullRequest, PullRequestStatus, Workspace, WorkspaceStatus};
+    use crate::domain::{
+        AgentType, PullRequest, PullRequestStatus, Task, Workspace, WorkspaceStatus, Worktree,
+    };
     use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
-    use crate::infrastructure::config::{ProjectConfig, ThemeName};
+    use crate::infrastructure::config::{ProjectConfig, ProjectDefaults, ThemeName};
     use crate::infrastructure::event_log::{Event as LoggedEvent, NullEventLogger};
     use crate::ui::state::{PaneFocus, UiMode};
     use ftui::core::event::{
@@ -571,6 +573,57 @@ mod tests {
         )
     }
 
+    fn fixture_task(slug: &str, repository_names: &[&str]) -> Task {
+        let worktrees = repository_names
+            .iter()
+            .map(|repository_name| {
+                Worktree::try_new(
+                    (*repository_name).to_string(),
+                    PathBuf::from(format!("/repos/{repository_name}")),
+                    PathBuf::from(format!("/tasks/{slug}/{repository_name}")),
+                    slug.to_string(),
+                    AgentType::Codex,
+                    WorkspaceStatus::Idle,
+                )
+                .expect("worktree should be valid")
+            })
+            .collect();
+        Task::try_new(
+            slug.to_string(),
+            slug.to_string(),
+            PathBuf::from(format!("/tasks/{slug}")),
+            slug.to_string(),
+            worktrees,
+        )
+        .expect("task should be valid")
+    }
+
+    fn fixture_task_app() -> GroveApp {
+        let mut app = fixture_app();
+        app.state = crate::ui::state::AppState::new(vec![fixture_task(
+            "flohome-launch",
+            &["flohome", "terraform-fastly"],
+        )]);
+        app.sync_workspace_tab_maps();
+        app.refresh_preview_summary();
+        app
+    }
+
+    fn fixture_task_app_with_calls(
+        captures: Vec<Result<String, String>>,
+        cursor_captures: Vec<Result<String, String>>,
+    ) -> FixtureAppWithCalls {
+        let (mut app, commands, captures, cursor_captures, calls) =
+            fixture_app_with_tmux_and_calls(WorkspaceStatus::Idle, captures, cursor_captures);
+        app.state = crate::ui::state::AppState::new(vec![fixture_task(
+            "flohome-launch",
+            &["flohome", "terraform-fastly"],
+        )]);
+        app.sync_workspace_tab_maps();
+        app.refresh_preview_summary();
+        (app, commands, captures, cursor_captures, calls)
+    }
+
     fn event_kinds(events: &RecordedEvents) -> Vec<String> {
         let Ok(events) = events.lock() else {
             return Vec::new();
@@ -657,6 +710,24 @@ mod tests {
         }
         app.session.agent_sessions.mark_ready(session_name);
         app.sync_preview_tab_from_active_workspace_tab();
+    }
+
+    fn focus_home_preview_tab(app: &mut GroveApp) {
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        app.sync_workspace_tab_maps();
+        let Some(workspace) = app.state.selected_workspace().cloned() else {
+            return;
+        };
+        let Some(tabs) = app.workspace_tabs.get_mut(workspace.path.as_path()) else {
+            return;
+        };
+        let Some(home_id) = tabs.find_kind(WorkspaceTabKind::Home).map(|tab| tab.id) else {
+            return;
+        };
+        tabs.active_tab_id = home_id;
+        app.sync_preview_tab_from_active_workspace_tab();
+        app.refresh_preview_summary();
     }
 
     fn insert_running_agent_tab(
@@ -820,6 +891,62 @@ mod tests {
         ));
         fs::create_dir_all(&path).expect("temp workspace directory should exist");
         path
+    }
+
+    fn init_git_repo(label: &str, default_branch: &str) -> PathBuf {
+        let repo_dir = unique_temp_workspace_dir(label);
+        let init_output = std::process::Command::new("git")
+            .current_dir(&repo_dir)
+            .args(["init", "-b", default_branch])
+            .output()
+            .expect("git init should run");
+        assert!(
+            init_output.status.success(),
+            "git init failed: {}",
+            String::from_utf8_lossy(&init_output.stderr)
+        );
+        let user_name_output = std::process::Command::new("git")
+            .current_dir(&repo_dir)
+            .args(["config", "user.name", "Grove Tests"])
+            .output()
+            .expect("git config user.name should run");
+        assert!(
+            user_name_output.status.success(),
+            "git config user.name failed: {}",
+            String::from_utf8_lossy(&user_name_output.stderr)
+        );
+        let user_email_output = std::process::Command::new("git")
+            .current_dir(&repo_dir)
+            .args(["config", "user.email", "grove-tests@example.com"])
+            .output()
+            .expect("git config user.email should run");
+        assert!(
+            user_email_output.status.success(),
+            "git config user.email failed: {}",
+            String::from_utf8_lossy(&user_email_output.stderr)
+        );
+        fs::write(repo_dir.join("README.md"), format!("{label}\n")).expect("write should succeed");
+        let add_output = std::process::Command::new("git")
+            .current_dir(&repo_dir)
+            .args(["add", "README.md"])
+            .output()
+            .expect("git add should run");
+        assert!(
+            add_output.status.success(),
+            "git add failed: {}",
+            String::from_utf8_lossy(&add_output.stderr)
+        );
+        let commit_output = std::process::Command::new("git")
+            .current_dir(&repo_dir)
+            .args(["commit", "-m", "initial"])
+            .output()
+            .expect("git commit should run");
+        assert!(
+            commit_output.status.success(),
+            "git commit failed: {}",
+            String::from_utf8_lossy(&commit_output.stderr)
+        );
+        repo_dir
     }
 
     fn fixture_app_with_tmux(
@@ -1046,6 +1173,35 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 .get(workspace_path.as_path())
                 .copied(),
             Some(AgentType::Codex),
+        );
+    }
+
+    #[test]
+    fn startup_restores_running_task_root_sessions() {
+        let rows = "grove-task-flohome-launch\t\t\t\t\t\n";
+        let mut app = GroveApp::from_parts_with_clipboard_and_projects(
+            fixture_bootstrap(WorkspaceStatus::Idle),
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(RestoreMetadataTmuxInput {
+                    rows: rows.to_string(),
+                }),
+                clipboard: test_clipboard(),
+                config_path: unique_config_path("restore-task-sessions"),
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+        app.state = crate::ui::state::AppState::new(vec![fixture_task(
+            "flohome-launch",
+            &["flohome", "terraform-fastly"],
+        )]);
+        app.rebuild_workspace_tabs_from_tmux_metadata();
+
+        assert!(
+            app.session
+                .agent_sessions
+                .is_ready("grove-task-flohome-launch")
         );
     }
 
@@ -1940,11 +2096,48 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
             assert!(
-                status_text.contains("project: grove")
-                    && status_text.contains("workspace: feature-a")
+                status_text.contains("task: feature-a")
+                    && status_text.contains("worktree: grove")
                     && status_text.contains("? help")
                     && status_text.contains("Ctrl+K palette"),
                 "status row should show compact context + key hints, got: {status_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn status_row_uses_task_and_worktree_context_labels() {
+        let app = fixture_task_app();
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(
+                status_text.contains("task: flohome-launch")
+                    && status_text.contains("worktree: flohome"),
+                "status row should show task/worktree context, got: {status_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn sidebar_renders_task_headers_with_nested_worktrees() {
+        let app = fixture_task_app();
+        let layout = GroveApp::view_layout_for_size(100, 24, app.sidebar_width_pct, false);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 100, 24, |frame| {
+            let task_row = find_row_containing(frame, "flohome-launch", x_start, x_end);
+            assert!(task_row.is_some(), "task header should be rendered");
+
+            let flohome_row = find_row_containing(frame, "flohome", x_start, x_end);
+            assert!(flohome_row.is_some(), "first worktree should be rendered");
+
+            let terraform_row = find_row_containing(frame, "terraform-fastly", x_start, x_end);
+            assert!(
+                terraform_row.is_some(),
+                "second worktree should be rendered"
             );
         });
     }
@@ -2042,8 +2235,8 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             };
             assert_row_bg(frame, selected_row, x_start, x_end, ui_theme().surface1);
 
-            let Some(unselected_row) = find_dialog_row("[Name]") else {
-                panic!("unselected name row should be rendered");
+            let Some(unselected_row) = find_dialog_row("[Task]") else {
+                panic!("unselected task row should be rendered");
             };
             assert_row_bg(frame, unselected_row, x_start, x_end, ui_theme().base);
 
@@ -2075,8 +2268,8 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 (y_start..y_end).find(|&row| row_text(frame, row, x_start, x_end).contains(needle))
             };
 
-            let Some(name_row) = find_dialog_row("[Name]") else {
-                panic!("name row should be rendered");
+            let Some(name_row) = find_dialog_row("[Task]") else {
+                panic!("task row should be rendered");
             };
             assert_row_bg(frame, name_row, x_start, x_end, ui_theme().surface1);
 
@@ -2085,6 +2278,229 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             };
             assert_row_bg(frame, project_row, x_start, x_end, ui_theme().base);
         });
+    }
+
+    #[test]
+    fn create_dialog_project_picker_opens_from_project_field() {
+        let mut app = fixture_app();
+        app.projects.push(ProjectConfig {
+            name: "site".to_string(),
+            path: PathBuf::from("/repos/site"),
+            defaults: Default::default(),
+        });
+        app.open_create_dialog();
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(
+            app.create_dialog()
+                .and_then(|dialog| dialog.project_picker.as_ref())
+                .is_some()
+        );
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let dialog_width = frame.width().saturating_sub(8).min(90);
+            let dialog_height = 25u16;
+            let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+            let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+            let x_start = dialog_x.saturating_add(1);
+            let x_end = dialog_x.saturating_add(dialog_width.saturating_sub(1));
+            let y_start = dialog_y.saturating_add(1);
+            let y_end = dialog_y.saturating_add(dialog_height.saturating_sub(1));
+
+            let rows = (y_start..y_end)
+                .map(|row| row_text(frame, row, x_start, x_end))
+                .collect::<Vec<String>>();
+            let text = rows.join("\n");
+
+            assert!(text.contains("[Filter]"));
+            assert!(text.contains("grove"));
+            assert!(text.contains("site"));
+            assert!(text.contains("Enter select"));
+        });
+    }
+
+    #[test]
+    fn create_dialog_project_picker_selection_updates_defaults() {
+        let mut app = fixture_app();
+        let mut defaults = ProjectDefaults::default();
+        defaults.base_branch = "develop".to_string();
+        app.projects.push(ProjectConfig {
+            name: "site".to_string(),
+            path: PathBuf::from("/repos/site"),
+            defaults,
+        });
+        app.open_create_dialog();
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Down).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            app.create_dialog().map(|dialog| dialog.project_index),
+            Some(1)
+        );
+        assert!(
+            app.create_dialog()
+                .and_then(|dialog| dialog.project_picker.as_ref())
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn create_dialog_pr_tab_uses_repo_scoped_copy() {
+        assert_eq!(CreateDialogTab::PullRequest.label(), "From GitHub PR");
+    }
+
+    #[test]
+    fn create_dialog_pr_mode_uses_single_selected_project() {
+        let mut app = fixture_app();
+        app.projects.push(ProjectConfig {
+            name: "site".to_string(),
+            path: PathBuf::from("/repos/site"),
+            defaults: Default::default(),
+        });
+        app.open_create_dialog();
+        let dialog = app.create_dialog_mut().expect("dialog should open");
+        dialog.tab = CreateDialogTab::PullRequest;
+        dialog.project_index = 1;
+        dialog.selected_repository_indices = vec![0, 1];
+
+        let repositories = app.selected_create_dialog_projects();
+
+        assert_eq!(repositories.len(), 1);
+        assert_eq!(repositories[0].name, "site");
+    }
+
+    #[test]
+    fn create_dialog_pr_mode_hides_included_projects_row() {
+        let mut app = fixture_app();
+        app.open_create_dialog();
+        let dialog = app.create_dialog_mut().expect("dialog should open");
+        dialog.tab = CreateDialogTab::PullRequest;
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let dialog_width = frame.width().saturating_sub(8).min(90);
+            let dialog_height = 25u16;
+            let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+            let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+            let x_start = dialog_x.saturating_add(1);
+            let x_end = dialog_x.saturating_add(dialog_width.saturating_sub(1));
+            let y_start = dialog_y.saturating_add(1);
+            let y_end = dialog_y.saturating_add(dialog_height.saturating_sub(1));
+
+            let text = (y_start..y_end)
+                .map(|row| row_text(frame, row, x_start, x_end))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            assert!(!text.contains("[Included]"), "rendered dialog: {text}");
+            assert!(text.contains("[Project]"));
+            assert!(text.contains("[PR URL]"));
+        });
+    }
+
+    #[test]
+    fn create_dialog_pr_project_picker_hides_multi_select_hint() {
+        let mut app = fixture_app();
+        app.projects.push(ProjectConfig {
+            name: "site".to_string(),
+            path: PathBuf::from("/repos/site"),
+            defaults: Default::default(),
+        });
+        app.open_create_dialog();
+        let dialog = app.create_dialog_mut().expect("dialog should open");
+        dialog.tab = CreateDialogTab::PullRequest;
+        dialog.focused_field = CreateDialogField::Project;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let dialog_width = frame.width().saturating_sub(8).min(90);
+            let dialog_height = 25u16;
+            let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+            let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+            let x_start = dialog_x.saturating_add(1);
+            let x_end = dialog_x.saturating_add(dialog_width.saturating_sub(1));
+            let y_start = dialog_y.saturating_add(1);
+            let y_end = dialog_y.saturating_add(dialog_height.saturating_sub(1));
+
+            let text = (y_start..y_end)
+                .map(|row| row_text(frame, row, x_start, x_end))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            assert!(
+                !text.contains("Space toggle included repos"),
+                "picker: {text}"
+            );
+            assert!(!text.contains("[x]"));
+            assert!(!text.contains("[ ]"));
+            assert!(text.contains("Enter select"));
+        });
+    }
+
+    #[test]
+    fn new_task_dialog_does_not_render_base_branch_field() {
+        let mut app = fixture_app();
+        app.open_create_dialog();
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let dialog_width = frame.width().saturating_sub(8).min(90);
+            let dialog_height = 25u16;
+            let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+            let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+            let x_start = dialog_x.saturating_add(1);
+            let x_end = dialog_x.saturating_add(dialog_width.saturating_sub(1));
+            let y_start = dialog_y.saturating_add(1);
+            let y_end = dialog_y.saturating_add(dialog_height.saturating_sub(1));
+
+            let text = (y_start..y_end)
+                .map(|row| row_text(frame, row, x_start, x_end))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            assert!(
+                !text.contains("[BaseBranch]"),
+                "new task dialog should not render a base branch field: {text}"
+            );
+        });
+    }
+
+    #[test]
+    fn create_dialog_no_projects_toast_mentions_p_and_ctrl_a() {
+        let mut app = fixture_app();
+        app.projects.clear();
+
+        app.open_create_dialog();
+
+        assert!(app.create_dialog().is_none());
+        assert!(
+            app.status_bar_line()
+                .contains("press p, then Ctrl+A to add one")
+        );
     }
 
     #[test]
@@ -2292,8 +2708,8 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
             assert!(!status_text.contains("Agent started"));
-            assert!(status_text.contains("project: grove"));
-            assert!(status_text.contains("workspace: grove"));
+            assert!(status_text.contains("task: grove"));
+            assert!(status_text.contains("worktree: grove"));
             assert!(status_text.contains("? help"));
             assert!(status_text.contains("Ctrl+K palette"));
         });
@@ -2309,8 +2725,8 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         with_rendered_frame(&app, 220, 24, |frame| {
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
-            assert!(status_text.contains("project: grove"));
-            assert!(status_text.contains("workspace: grove"));
+            assert!(status_text.contains("task: grove"));
+            assert!(status_text.contains("worktree: grove"));
             assert!(status_text.contains("? help"));
             assert!(status_text.contains("Ctrl+K palette"));
         });
@@ -3393,6 +3809,28 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     }
 
     #[test]
+    fn keybind_help_mentions_tasks_and_worktrees() {
+        let mut app = fixture_app();
+        app.dialogs.keybind_help_open = true;
+
+        with_rendered_frame(&app, 160, 28, |frame| {
+            let text = (0..frame.height())
+                .map(|row| row_text(frame, row, 0, frame.width()))
+                .collect::<Vec<String>>()
+                .join("\n")
+                .to_lowercase();
+            assert!(
+                text.contains("task"),
+                "help overlay should mention task: {text}"
+            );
+            assert!(
+                text.contains("worktree"),
+                "help overlay should mention worktree: {text}"
+            );
+        });
+    }
+
+    #[test]
     fn keybind_help_lists_mouse_capture_toggle() {
         let mut app = fixture_app();
         app.dialogs.keybind_help_open = true;
@@ -3513,11 +3951,17 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             else {
                 panic!("create dialog wrapped hint first row should be rendered");
             };
-            let Some(second_row) = ((first_row.saturating_add(1))..y_end).find(|&row| {
-                row_text(frame, row, x_start, x_end).contains("Enter create, Esc cancel")
-            }) else {
-                panic!("create dialog wrapped hint second row should be rendered");
-            };
+            let second_row = first_row.saturating_add(1);
+            assert!(
+                second_row < y_end,
+                "create dialog wrapped hint second row should exist"
+            );
+            assert!(
+                !row_text(frame, second_row, x_start, x_end)
+                    .trim()
+                    .is_empty(),
+                "create dialog wrapped hint second row should be rendered"
+            );
 
             assert_row_fg(frame, first_row, x_start, x_end, ui_theme().overlay0);
             assert_row_fg(frame, second_row, x_start, x_end, ui_theme().overlay0);
@@ -3539,8 +3983,8 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
             assert!(status_text.contains("Interactive"));
-            assert!(status_text.contains("project: grove"));
-            assert!(status_text.contains("workspace: grove"));
+            assert!(status_text.contains("task: grove"));
+            assert!(status_text.contains("worktree: grove"));
             assert!(status_text.contains("? help"));
             assert!(status_text.contains("Ctrl+K palette"));
             assert!(!status_text.contains("Esc Esc/Ctrl+\\ exit"));
@@ -4351,6 +4795,94 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                             "grove-ws-feature-a".to_string(),
                         ]
                 }));
+            }
+
+            #[test]
+            fn task_home_tab_launches_parent_agent_in_task_root_session() {
+                let (mut app, commands, _captures, _cursor_captures, _calls) =
+                    fixture_task_app_with_calls(Vec::new(), Vec::new());
+                focus_home_preview_tab(&mut app);
+
+                app.open_start_dialog();
+                app.confirm_start_dialog();
+
+                assert_eq!(app.preview_tab, PreviewTab::Home);
+                assert!(
+                    app.session
+                        .agent_sessions
+                        .is_ready("grove-task-flohome-launch")
+                );
+                assert!(commands.borrow().iter().any(|command| {
+                    command
+                        == &vec![
+                            "tmux".to_string(),
+                            "new-session".to_string(),
+                            "-d".to_string(),
+                            "-s".to_string(),
+                            "grove-task-flohome-launch".to_string(),
+                            "-c".to_string(),
+                            "/tasks/flohome-launch".to_string(),
+                        ]
+                }));
+            }
+
+            #[test]
+            fn task_home_tab_stop_dialog_targets_parent_agent_session() {
+                let (mut app, commands, _captures, _cursor_captures, _calls) =
+                    fixture_task_app_with_calls(Vec::new(), Vec::new());
+                focus_home_preview_tab(&mut app);
+                app.session
+                    .agent_sessions
+                    .mark_ready("grove-task-flohome-launch".to_string());
+
+                app.open_stop_dialog();
+                assert_eq!(
+                    app.stop_dialog().map(|dialog| dialog.session_name.as_str()),
+                    Some("grove-task-flohome-launch")
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(
+                    !app.session
+                        .agent_sessions
+                        .is_ready("grove-task-flohome-launch")
+                );
+                assert!(commands.borrow().iter().any(|command| {
+                    command
+                        == &vec![
+                            "tmux".to_string(),
+                            "kill-session".to_string(),
+                            "-t".to_string(),
+                            "grove-task-flohome-launch".to_string(),
+                        ]
+                }));
+            }
+
+            #[test]
+            fn task_home_tab_polls_parent_agent_preview_session() {
+                let (mut app, _commands, _captures, _cursor_captures, calls) =
+                    fixture_task_app_with_calls(
+                        vec![Ok("parent task output".to_string())],
+                        Vec::new(),
+                    );
+                focus_home_preview_tab(&mut app);
+                app.session
+                    .agent_sessions
+                    .mark_ready("grove-task-flohome-launch".to_string());
+
+                app.poll_preview_sync();
+
+                assert!(
+                    calls
+                        .borrow()
+                        .iter()
+                        .any(|call| { call.starts_with("capture:grove-task-flohome-launch:") })
+                );
+                assert_eq!(app.preview.lines, vec!["parent task output".to_string()]);
             }
 
             #[test]
@@ -8030,8 +8562,8 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 );
 
                 assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.base_branch.clone()),
-                    Some("main".to_string())
+                    app.create_dialog().map(|dialog| dialog.focused_field),
+                    Some(CreateDialogField::WorkspaceName)
                 );
             }
 
@@ -8324,8 +8856,8 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 let Some(dialog) = app.delete_dialog() else {
                     panic!("delete dialog should be open");
                 };
-                assert_eq!(dialog.workspace_name, "feature-a");
-                assert_eq!(dialog.branch, "feature-a");
+                assert_eq!(dialog.task.name, "feature-a");
+                assert_eq!(dialog.task.branch, "feature-a");
                 assert_eq!(dialog.focused_field, DeleteDialogField::DeleteLocalBranch);
                 assert!(dialog.kill_tmux_sessions);
             }
@@ -9464,9 +9996,10 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         }
         mod projects_and_creation {
             use super::*;
+            use std::process::Command;
 
             #[test]
-            fn create_dialog_confirmed_event_includes_branch_payload() {
+            fn create_dialog_confirmed_event_includes_implicit_branch_payload() {
                 let (mut app, _commands, _captures, _cursor_captures, events) =
                     fixture_app_with_tmux_and_events(WorkspaceStatus::Idle, Vec::new(), Vec::new());
 
@@ -9482,7 +10015,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         ),
                     );
                 }
-                for _ in 0..3 {
+                for _ in 0..2 {
                     ftui::Model::update(
                         &mut app,
                         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -9502,15 +10035,153 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         .data
                         .get("branch_mode")
                         .and_then(Value::as_str),
-                    Some("new")
+                    Some("implicit")
                 );
                 assert_eq!(
                     dialog_confirmed
                         .data
-                        .get("workspace_name")
+                        .get("branch_value")
+                        .and_then(Value::as_str),
+                    Some("project_defaults_or_git")
+                );
+                assert_eq!(
+                    dialog_confirmed
+                        .data
+                        .get("task_name")
                         .and_then(Value::as_str),
                     Some("foo")
                 );
+            }
+
+            #[test]
+            fn create_dialog_creates_task_with_multiple_repositories() {
+                let mut app = fixture_app();
+                let tasks_root = unique_temp_workspace_dir("create-task-root");
+                let flohome_repo = init_git_repo("create-task-flohome", "main");
+                let terraform_repo = init_git_repo("create-task-terraform-fastly", "main");
+                app.projects = vec![
+                    ProjectConfig {
+                        name: "flohome".to_string(),
+                        path: flohome_repo,
+                        defaults: Default::default(),
+                    },
+                    ProjectConfig {
+                        name: "terraform-fastly".to_string(),
+                        path: terraform_repo,
+                        defaults: Default::default(),
+                    },
+                ];
+                app.task_root_override = Some(tasks_root.clone());
+
+                app.open_create_dialog();
+                let dialog = app
+                    .create_dialog_mut()
+                    .expect("create dialog should be open");
+                dialog.task_name = "flohome-launch".to_string();
+                dialog.selected_repository_indices = vec![0, 1];
+                dialog.focused_field = CreateDialogField::CreateButton;
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(app.create_dialog().is_none());
+                assert!(
+                    app.status_bar_line()
+                        .contains("task 'flohome-launch' created")
+                );
+                assert_eq!(app.state.tasks.len(), 1);
+                assert_eq!(
+                    app.state.selected_task().map(|task| task.slug.as_str()),
+                    Some("flohome-launch")
+                );
+                assert_eq!(
+                    app.state.selected_task().map(|task| task.worktrees.len()),
+                    Some(2)
+                );
+                assert!(
+                    tasks_root
+                        .join("flohome-launch")
+                        .join(".grove/task.toml")
+                        .exists()
+                );
+            }
+
+            #[test]
+            fn create_dialog_pr_mode_creates_task_with_single_repository() {
+                let mut app = fixture_app();
+                let tasks_root = unique_temp_workspace_dir("create-task-pr-root");
+                let flohome_repo = init_git_repo("create-pr-task-flohome", "main");
+                let terraform_repo = init_git_repo("create-pr-task-terraform-fastly", "main");
+                Command::new("git")
+                    .current_dir(&flohome_repo)
+                    .args([
+                        "remote",
+                        "add",
+                        "origin",
+                        "git@github.com:flocasts/flohome.git",
+                    ])
+                    .status()
+                    .expect("git remote add origin should run");
+                Command::new("git")
+                    .current_dir(&terraform_repo)
+                    .args([
+                        "remote",
+                        "add",
+                        "origin",
+                        "git@github.com:flocasts/terraform-fastly.git",
+                    ])
+                    .status()
+                    .expect("git remote add origin should run");
+                app.projects = vec![
+                    ProjectConfig {
+                        name: "flohome".to_string(),
+                        path: flohome_repo,
+                        defaults: Default::default(),
+                    },
+                    ProjectConfig {
+                        name: "terraform-fastly".to_string(),
+                        path: terraform_repo,
+                        defaults: Default::default(),
+                    },
+                ];
+                app.task_root_override = Some(tasks_root.clone());
+
+                app.open_create_dialog();
+                let dialog = app
+                    .create_dialog_mut()
+                    .expect("create dialog should be open");
+                dialog.tab = CreateDialogTab::PullRequest;
+                dialog.project_index = 0;
+                dialog.selected_repository_indices = vec![0, 1];
+                dialog.pr_url = "https://github.com/flocasts/flohome/pull/123".to_string();
+                dialog.focused_field = CreateDialogField::CreateButton;
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(app.create_dialog().is_none());
+                assert!(app.status_bar_line().contains("task 'pr-123' created"));
+                assert_eq!(app.state.tasks.len(), 1);
+                assert_eq!(
+                    app.state.selected_task().map(|task| task.slug.as_str()),
+                    Some("pr-123")
+                );
+                assert_eq!(
+                    app.state.selected_task().map(|task| task.worktrees.len()),
+                    Some(1)
+                );
+                assert_eq!(
+                    app.state
+                        .selected_task()
+                        .and_then(|task| task.worktrees.first())
+                        .map(|worktree| worktree.repository_name.as_str()),
+                    Some("flohome")
+                );
+                assert!(tasks_root.join("pr-123").join(".grove/task.toml").exists());
             }
 
             #[test]
@@ -10249,23 +10920,27 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 );
 
                 assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.base_branch.clone()),
-                    Some("develop".to_string())
+                    app.create_dialog().map(|dialog| dialog.project_index),
+                    Some(0)
                 );
             }
 
             #[test]
             fn create_workspace_completed_success_queues_refresh_task_in_background_mode() {
                 let mut app = fixture_background_app(WorkspaceStatus::Idle);
-                let request = CreateWorkspaceRequest {
-                    workspace_name: "feature-x".to_string(),
-                    branch_mode: BranchMode::NewBranch {
-                        base_branch: "main".to_string(),
-                    },
+                let request = CreateTaskRequest {
+                    task_name: "feature-x".to_string(),
+                    repositories: vec![ProjectConfig {
+                        name: "grove".to_string(),
+                        path: PathBuf::from("/repos/grove"),
+                        defaults: Default::default(),
+                    }],
+                    agent: AgentType::Codex,
+                    branch_source: TaskBranchSource::BaseBranch,
                 };
-                let result = CreateWorkspaceResult {
-                    workspace_path: PathBuf::from("/repos/grove-feature-x"),
-                    branch: "feature-x".to_string(),
+                let result = CreateTaskResult {
+                    task_root: PathBuf::from("/tasks/feature-x"),
+                    task: fixture_task("feature-x", &["grove"]),
                     warnings: Vec::new(),
                 };
 
@@ -10331,6 +11006,17 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 )
             }
 
+            fn fixture_background_task_app() -> GroveApp {
+                let mut app = fixture_background_app(WorkspaceStatus::Idle);
+                app.state = crate::ui::state::AppState::new(vec![fixture_task(
+                    "flohome-launch",
+                    &["flohome", "terraform-fastly"],
+                )]);
+                app.sync_workspace_tab_maps();
+                app.refresh_preview_summary();
+                app
+            }
+
             #[test]
             fn delete_dialog_confirm_queues_background_task() {
                 let mut app = fixture_background_app(WorkspaceStatus::Idle);
@@ -10354,6 +11040,37 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     app.dialogs
                         .delete_requested_workspaces
                         .contains(&app.state.workspaces[1].path)
+                );
+            }
+
+            #[test]
+            fn delete_dialog_confirm_marks_all_worktrees_in_selected_task() {
+                let mut app = fixture_background_task_app();
+                let task_root = app.state.tasks[0].root_path.clone();
+                let first_path = app.state.tasks[0].worktrees[0].path.clone();
+                let second_path = app.state.tasks[0].worktrees[1].path.clone();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+                );
+                let cmd = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(cmd_contains_task(&cmd));
+                assert!(app.dialogs.delete_in_flight);
+                assert_eq!(app.dialogs.delete_in_flight_workspace, Some(task_root));
+                assert!(
+                    app.dialogs
+                        .delete_requested_workspaces
+                        .contains(&first_path)
+                );
+                assert!(
+                    app.dialogs
+                        .delete_requested_workspaces
+                        .contains(&second_path)
                 );
             }
 
@@ -10433,6 +11150,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
                         workspace_name: "feature-a".to_string(),
                         workspace_path: first_workspace_path.clone(),
+                        requested_workspace_paths: vec![first_workspace_path.clone()],
                         result: Ok(()),
                         warnings: Vec::new(),
                     }),
@@ -10472,6 +11190,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
                         workspace_name: "feature-a".to_string(),
                         workspace_path: deleting_path.clone(),
+                        requested_workspace_paths: vec![deleting_path.clone()],
                         result: Ok(()),
                         warnings: Vec::new(),
                     }),
@@ -10764,85 +11483,13 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             }
 
             #[test]
-            fn create_dialog_j_and_k_on_project_field_switch_project() {
-                let mut app = fixture_app();
-                app.projects.push(ProjectConfig {
-                    name: "other".to_string(),
-                    path: PathBuf::from("/repos/other"),
-                    defaults: Default::default(),
-                });
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-                );
-
-                assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.project_index),
-                    Some(1)
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
-                );
-                assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.project_index),
-                    Some(0)
-                );
-            }
-
-            #[test]
-            fn create_dialog_branch_field_edits_base_branch_in_new_mode() {
-                let mut app = fixture_app();
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
-
-                for _ in 0..4 {
-                    ftui::Model::update(
-                        &mut app,
-                        Msg::Key(KeyEvent::new(KeyCode::Backspace).with_kind(KeyEventKind::Press)),
-                    );
-                }
-                for character in ['d', 'e', 'v'] {
-                    ftui::Model::update(
-                        &mut app,
-                        Msg::Key(
-                            KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press),
-                        ),
-                    );
-                }
-
-                assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.base_branch.clone()),
-                    Some("dev".to_string())
-                );
-            }
-
-            #[test]
             fn create_dialog_ctrl_n_and_ctrl_p_follow_tab_navigation() {
                 let mut app = fixture_app();
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
-                for _ in 0..3 {
+                for _ in 0..2 {
                     ftui::Model::update(
                         &mut app,
                         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -10875,28 +11522,16 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             }
 
             #[test]
-            fn create_dialog_ctrl_n_and_ctrl_p_move_focus_from_base_branch() {
+            fn create_dialog_ctrl_n_and_ctrl_p_move_focus_from_project() {
                 let mut app = fixture_app();
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
-                app.dialogs.create_branch_all = vec![
-                    "main".to_string(),
-                    "develop".to_string(),
-                    "release".to_string(),
-                ];
-                if let Some(dialog) = app.create_dialog_mut() {
-                    dialog.base_branch.clear();
-                }
-                app.refresh_create_branch_filtered();
-
-                for _ in 0..2 {
-                    ftui::Model::update(
-                        &mut app,
-                        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                    );
-                }
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+                );
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(
@@ -10919,60 +11554,35 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 );
                 assert_eq!(
                     app.create_dialog().map(|dialog| dialog.focused_field),
-                    Some(CreateDialogField::BaseBranch)
+                    Some(CreateDialogField::Project)
                 );
             }
 
             #[test]
-            fn create_dialog_base_branch_dropdown_selects_with_enter() {
+            fn create_dialog_manual_mode_hint_mentions_project_defaults() {
                 let mut app = fixture_app();
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
 
-                app.dialogs.create_branch_all = vec![
-                    "main".to_string(),
-                    "develop".to_string(),
-                    "release".to_string(),
-                ];
-                app.refresh_create_branch_filtered();
+                with_rendered_frame(&app, 80, 24, |frame| {
+                    let dialog_width = frame.width().saturating_sub(8).min(90);
+                    let dialog_height = 25u16;
+                    let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+                    let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+                    let x_start = dialog_x.saturating_add(1);
+                    let x_end = dialog_x.saturating_add(dialog_width.saturating_sub(1));
+                    let y_start = dialog_y.saturating_add(1);
+                    let y_end = dialog_y.saturating_add(dialog_height.saturating_sub(1));
 
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
-                for _ in 0..4 {
-                    ftui::Model::update(
-                        &mut app,
-                        Msg::Key(KeyEvent::new(KeyCode::Backspace).with_kind(KeyEventKind::Press)),
-                    );
-                }
-                for character in ['d', 'e'] {
-                    ftui::Model::update(
-                        &mut app,
-                        Msg::Key(
-                            KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press),
-                        ),
-                    );
-                }
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
+                    let text = (y_start..y_end)
+                        .map(|row| row_text(frame, row, x_start, x_end))
+                        .collect::<Vec<String>>()
+                        .join("\n");
 
-                assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.base_branch.clone()),
-                    Some("develop".to_string())
-                );
-                assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.focused_field),
-                    Some(CreateDialogField::CreateButton)
-                );
+                    assert!(text.contains("Project Defaults"));
+                });
             }
 
             #[test]
@@ -10990,8 +11600,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
 
                 assert_eq!(app.state.selected_index, 0);
                 assert_eq!(
-                    app.create_dialog()
-                        .map(|dialog| dialog.workspace_name.clone()),
+                    app.create_dialog().map(|dialog| dialog.task_name.clone()),
                     Some("j".to_string())
                 );
 
@@ -11010,7 +11619,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
-                for _ in 0..3 {
+                for _ in 0..2 {
                     ftui::Model::update(
                         &mut app,
                         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -11022,7 +11631,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 );
 
                 assert!(app.create_dialog().is_some());
-                assert!(app.status_bar_line().contains("workspace name is required"));
+                assert!(app.status_bar_line().contains("task name is required"));
             }
 
             #[test]
@@ -11033,7 +11642,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
-                for _ in 0..4 {
+                for _ in 0..3 {
                     ftui::Model::update(
                         &mut app,
                         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),

@@ -81,6 +81,13 @@ impl GroveApp {
                 return;
             }
         };
+        let session_names = metadata_rows
+            .lines()
+            .filter_map(|row| row.split('\t').next())
+            .map(str::trim)
+            .filter(|session_name| !session_name.is_empty())
+            .map(ToOwned::to_owned)
+            .collect::<std::collections::HashSet<String>>();
 
         for row in metadata_rows.lines() {
             if trimmed_nonempty(row).is_none() {
@@ -170,6 +177,13 @@ impl GroveApp {
                         .mark_ready(metadata.session_name);
                 }
                 WorkspaceTabKind::Home => {}
+            }
+        }
+
+        for task in &self.state.tasks {
+            let session_name = session_name_for_task(&task.slug);
+            if session_names.contains(&session_name) {
+                self.session.agent_sessions.mark_ready(session_name);
             }
         }
 

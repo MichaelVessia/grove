@@ -11,7 +11,10 @@ use serde_json::Value;
 
 use super::bootstrap_config::AppDependencies;
 use super::*;
-use crate::domain::{PullRequest, PullRequestStatus};
+use crate::application::task_lifecycle::{
+    CreateTaskRequest, CreateTaskResult, TaskBranchSource, TaskLifecycleError,
+};
+use crate::domain::{PullRequest, PullRequestStatus, Task, Worktree};
 use crate::infrastructure::config::ThemeName;
 
 const REPLAY_SCHEMA_VERSION: u64 = 1;
@@ -66,22 +69,42 @@ mod tests {
                 path: PathBuf::from("/tmp/grove"),
                 defaults: Default::default(),
             }],
-            workspaces: vec![ReplayWorkspace {
-                name: "main".to_string(),
-                path: PathBuf::from("/tmp/grove"),
-                project_name: Some("grove".to_string()),
-                project_path: Some(PathBuf::from("/tmp/grove")),
-                branch: "main".to_string(),
-                base_branch: Some("main".to_string()),
-                last_activity_unix_secs: None,
-                agent: ReplayAgentType::Claude,
-                status: ReplayWorkspaceStatus::Main,
-                is_main: true,
-                is_orphaned: false,
-                supported_agent: true,
-                pull_requests: Vec::new(),
+            tasks: vec![ReplayTask {
+                name: "flohome-launch".to_string(),
+                slug: "flohome-launch".to_string(),
+                root_path: PathBuf::from("/tmp/.grove/tasks/flohome-launch"),
+                branch: "flohome-launch".to_string(),
+                worktrees: vec![
+                    ReplayWorktree {
+                        repository_name: "flohome".to_string(),
+                        repository_path: PathBuf::from("/tmp/grove"),
+                        path: PathBuf::from("/tmp/.grove/tasks/flohome-launch/flohome"),
+                        branch: "flohome-launch".to_string(),
+                        base_branch: Some("main".to_string()),
+                        last_activity_unix_secs: None,
+                        agent: ReplayAgentType::Claude,
+                        status: ReplayWorkspaceStatus::Idle,
+                        is_orphaned: false,
+                        supported_agent: true,
+                        pull_requests: Vec::new(),
+                    },
+                    ReplayWorktree {
+                        repository_name: "terraform-fastly".to_string(),
+                        repository_path: PathBuf::from("/tmp/terraform-fastly"),
+                        path: PathBuf::from("/tmp/.grove/tasks/flohome-launch/terraform-fastly"),
+                        branch: "flohome-launch".to_string(),
+                        base_branch: Some("main".to_string()),
+                        last_activity_unix_secs: None,
+                        agent: ReplayAgentType::Claude,
+                        status: ReplayWorkspaceStatus::Idle,
+                        is_orphaned: false,
+                        supported_agent: true,
+                        pull_requests: Vec::new(),
+                    },
+                ],
             }],
-            selected_index: 0,
+            selected_task_index: 0,
+            selected_worktree_index: 0,
             focus: ReplayFocus::WorkspaceList,
             mode: ReplayMode::List,
             preview_tab: ReplayPreviewTab::Agent,
@@ -93,6 +116,24 @@ mod tests {
             launch_skip_permissions: false,
             theme_name: ThemeName::CatppuccinMocha,
         }
+    }
+
+    #[test]
+    fn replay_bootstrap_snapshot_restores_task_tree() {
+        let app = app_from_bootstrap(&minimal_bootstrap());
+
+        assert_eq!(app.state.tasks.len(), 1);
+        assert_eq!(app.state.tasks[0].worktrees.len(), 2);
+        assert_eq!(
+            app.state.selected_task().map(|task| task.slug.as_str()),
+            Some("flohome-launch")
+        );
+        assert_eq!(
+            app.state
+                .selected_worktree()
+                .map(|worktree| worktree.repository_name.as_str()),
+            Some("flohome")
+        );
     }
 
     #[test]
@@ -268,5 +309,16 @@ mod tests {
 
         let _ = fs::remove_file(trace_path);
         let _ = fs::remove_file(snapshot_path);
+    }
+
+    #[test]
+    fn replay_state_snapshot_tracks_task_and_worktree_selection() {
+        let app = app_from_bootstrap(&minimal_bootstrap());
+        let snapshot = ReplayStateSnapshot::from_app(&app);
+
+        assert_eq!(snapshot.task_count, 1);
+        assert_eq!(snapshot.worktree_count, 2);
+        assert_eq!(snapshot.selected_task.as_deref(), Some("flohome-launch"));
+        assert_eq!(snapshot.selected_worktree.as_deref(), Some("flohome"));
     }
 }

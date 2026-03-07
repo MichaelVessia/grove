@@ -187,7 +187,12 @@ impl GroveApp {
 
     pub(super) fn enter_interactive(&mut self, now: Instant) -> bool {
         let session_name = match self.preview_tab {
-            PreviewTab::Home => return false,
+            PreviewTab::Home => {
+                let Some(session_name) = self.ensure_agent_preview_session_for_interactive() else {
+                    return false;
+                };
+                session_name
+            }
             PreviewTab::Git => {
                 let Some(target) = self.prepare_live_preview_session() else {
                     return false;

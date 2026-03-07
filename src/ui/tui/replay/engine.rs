@@ -1,6 +1,7 @@
 use super::fixtures::replay_config_path;
 use super::trace_parser::parse_replay_trace;
 use super::*;
+use crate::ui::state::AppState;
 
 pub fn replay_debug_record(path: &Path, options: &ReplayOptions) -> io::Result<ReplayOutcome> {
     let trace = parse_replay_trace(path)?;
@@ -111,13 +112,28 @@ pub(crate) fn app_from_bootstrap(snapshot: &ReplayBootstrapSnapshot) -> GroveApp
         },
     );
 
-    app.state.selected_index = if app.state.workspaces.is_empty() {
-        0
-    } else {
-        snapshot
-            .selected_index
-            .min(app.state.workspaces.len().saturating_sub(1))
-    };
+    let tasks = snapshot.to_tasks();
+    let selected_index = flat_index_for_task_selection(
+        tasks.as_slice(),
+        snapshot.selected_task_index,
+        snapshot.selected_worktree_index,
+    );
+    app.state = AppState::new(tasks);
+    app.state.selected_index = selected_index;
+    app.state.selected_task_index = snapshot
+        .selected_task_index
+        .min(app.state.tasks.len().saturating_sub(1));
+    app.state.selected_worktree_index = app
+        .state
+        .selected_task()
+        .map(|task| {
+            snapshot
+                .selected_worktree_index
+                .min(task.worktrees.len().saturating_sub(1))
+        })
+        .unwrap_or(0);
+    app.sync_workspace_tab_maps();
+    app.refresh_preview_summary();
     app.state.focus = snapshot.focus.to_focus();
     app.state.mode = snapshot.mode.to_mode();
     app.preview_tab = snapshot.preview_tab.to_preview_tab();
@@ -130,6 +146,25 @@ pub(crate) fn app_from_bootstrap(snapshot: &ReplayBootstrapSnapshot) -> GroveApp
     app.theme_name = snapshot.theme_name;
     app.telemetry.replay_msg_seq_counter = 0;
     app
+}
+
+fn flat_index_for_task_selection(
+    tasks: &[Task],
+    selected_task_index: usize,
+    selected_worktree_index: usize,
+) -> usize {
+    let mut flat_index = 0usize;
+
+    for (task_index, task) in tasks.iter().enumerate() {
+        if task_index == selected_task_index {
+            return flat_index.saturating_add(
+                selected_worktree_index.min(task.worktrees.len().saturating_sub(1)),
+            );
+        }
+        flat_index = flat_index.saturating_add(task.worktrees.len());
+    }
+
+    0
 }
 
 fn verify_invariants(app: &GroveApp) -> Result<(), String> {

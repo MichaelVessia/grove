@@ -85,9 +85,10 @@ impl GroveApp {
         }
         if let Some(dialog) = self.delete_dialog() {
             lines.push(String::new());
-            lines.push("Delete Workspace Dialog".to_string());
-            lines.push(format!("Workspace: {}", dialog.workspace_name));
-            lines.push(format!("Branch: {}", dialog.branch));
+            lines.push("Delete Task Dialog".to_string());
+            lines.push(format!("Task: {}", dialog.task.name));
+            lines.push(format!("Branch: {}", dialog.task.branch));
+            lines.push(format!("Worktrees: {}", dialog.task.worktrees.len()));
             lines.push(format!(
                 "Delete local branch: {}",
                 if dialog.delete_local_branch {
