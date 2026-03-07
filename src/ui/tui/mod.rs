@@ -2908,11 +2908,19 @@ mod tests {
     }
 
     #[test]
-    fn backslash_toggles_sidebar_visibility() {
+    fn ctrl_b_toggles_sidebar_visibility_and_backslash_is_noop() {
         let mut app = fixture_app();
         assert!(!app.sidebar_hidden);
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('\\')).with_kind(KeyEventKind::Press));
+
+        assert!(!app.sidebar_hidden);
+
+        let _ = app.handle_key(
+            KeyEvent::new(KeyCode::Char('b'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        );
 
         assert!(app.sidebar_hidden);
         let hidden_layout = GroveApp::view_layout_for_size(120, 40, 33, true);
@@ -2920,8 +2928,23 @@ mod tests {
         assert_eq!(hidden_layout.divider.width, 0);
         assert_eq!(hidden_layout.preview.width, 120);
 
-        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('\\')).with_kind(KeyEventKind::Press));
+        let _ = app.handle_key(
+            KeyEvent::new(KeyCode::Char('b'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        );
         assert!(!app.sidebar_hidden);
+    }
+
+    #[test]
+    fn ctrl_b_control_character_toggles_sidebar_visibility() {
+        let mut app = fixture_app();
+        assert!(!app.sidebar_hidden);
+
+        let _ =
+            app.handle_key(KeyEvent::new(KeyCode::Char('\u{02}')).with_kind(KeyEventKind::Press));
+
+        assert!(app.sidebar_hidden);
     }
 
     #[test]
@@ -5830,11 +5853,64 @@ mod tests {
                 assert!(combined.contains("Task Home"));
                 assert!(combined.contains("Press 'A' to start parent agent."));
                 assert!(combined.contains("Then use 'a' for workspace agent tabs"));
+                assert!(combined.contains("'[' and ']' switch tabs."));
                 assert!(combined.contains(
                     "Launch a parent agent here for planning and cross-repository coordination."
                 ));
                 assert!(!combined.contains("Preparing session for feature-a"));
                 assert!(!combined.contains("No sessions running in this workspace."));
+            }
+
+            #[test]
+            fn workspace_home_summary_mentions_bracket_tab_navigation() {
+                let config_path = unique_config_path("workspace-home");
+                let workspace_path = PathBuf::from("/tmp/.grove/tasks/solo/grove");
+                let mut app = GroveApp::from_task_state(
+                    "grove".to_string(),
+                    crate::ui::state::AppState::new(vec![
+                        Task::try_new(
+                            "solo".to_string(),
+                            "solo".to_string(),
+                            workspace_path.clone(),
+                            "solo".to_string(),
+                            vec![
+                                Worktree::try_new(
+                                    "grove".to_string(),
+                                    PathBuf::from("/repos/grove"),
+                                    workspace_path,
+                                    "solo".to_string(),
+                                    AgentType::Codex,
+                                    WorkspaceStatus::Idle,
+                                )
+                                .expect("workspace worktree should be valid")
+                                .with_base_branch(Some("main".to_string())),
+                            ],
+                        )
+                        .expect("workspace task should be valid"),
+                    ]),
+                    DiscoveryState::Ready,
+                    fixture_projects(),
+                    AppDependencies {
+                        tmux_input: Box::new(RecordingTmuxInput {
+                            commands: Rc::new(RefCell::new(Vec::new())),
+                            captures: Rc::new(RefCell::new(Vec::new())),
+                            cursor_captures: Rc::new(RefCell::new(Vec::new())),
+                            calls: Rc::new(RefCell::new(Vec::new())),
+                        }),
+                        clipboard: test_clipboard(),
+                        config_path,
+                        event_log: Box::new(NullEventLogger),
+                        debug_record_start_ts: None,
+                    },
+                );
+                app.sync_preview_tab_from_active_workspace_tab();
+
+                app.refresh_preview_summary();
+
+                let combined = app.preview.lines.join("\n");
+                assert!(combined.contains("Workspace Home"));
+                assert!(combined.contains("Then use 'a' for agent tabs"));
+                assert!(combined.contains("'[' and ']' switch tabs."));
             }
 
             #[test]

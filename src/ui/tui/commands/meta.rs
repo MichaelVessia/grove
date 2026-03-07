@@ -35,18 +35,18 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_sidebar",
             title: "Toggle Sidebar",
-            description: "Show or hide workspace sidebar (\\)",
-            tags: &["sidebar", "layout", "\\", "toggle"],
+            description: "Show or hide workspace sidebar (Ctrl+B)",
+            tags: &["sidebar", "layout", "ctrl+b", "toggle"],
             category: "Navigation",
         }),
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Global,
-            label: "\\ toggle sidebar",
+            label: "Ctrl+B toggle sidebar",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
-            code: KeyCodeMatch::Char('\\'),
-            modifiers: KeyModifiersMatch::Any,
+            code: KeyCodeMatch::CtrlChar('b'),
+            modifiers: KeyModifiersMatch::None,
         }],
     },
     UiCommandMeta {

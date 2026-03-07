@@ -480,7 +480,7 @@ impl GroveApp {
             format!("Workspace: {}", workspace.name).as_str(),
             "Launch tabs here, or create another workspace when needed.",
             "Press 'n' to create a workspace.",
-            "Then use 'a' for agent tabs, 's' for shell tabs, 'g' for git tab.",
+            "Then use 'a' for agent tabs, 's' for shell tabs, 'g' for git tab, '[' and ']' switch tabs.",
         )
     }
 
@@ -490,7 +490,7 @@ impl GroveApp {
             format!("Task: {}", task.name).as_str(),
             "Launch a parent agent here for planning and cross-repository coordination.",
             "Press 'A' to start parent agent.",
-            "Then use 'a' for workspace agent tabs, 's' for shell tabs, 'g' for git tab.",
+            "Then use 'a' for workspace agent tabs, 's' for shell tabs, 'g' for git tab, '[' and ']' switch tabs.",
         )
     }
 
