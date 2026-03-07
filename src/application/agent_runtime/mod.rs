@@ -54,10 +54,11 @@ use sessions::sanitize_workspace_name;
 pub use sessions::session_name_for_workspace;
 pub use sessions::{
     git_preview_session_if_ready, git_session_name_for_workspace, live_preview_agent_session,
-    live_preview_capture_target_for_tab, live_preview_session_for_tab,
-    session_name_for_workspace_in_project, session_name_for_workspace_ref,
-    shell_session_name_for_workspace, workspace_can_enter_interactive, workspace_can_start_agent,
-    workspace_can_stop_agent, workspace_session_for_preview_tab,
+    live_preview_capture_target_for_tab, live_preview_session_for_tab, session_name_for_task,
+    session_name_for_task_worktree, session_name_for_workspace_in_project,
+    session_name_for_workspace_ref, shell_session_name_for_workspace,
+    workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
+    workspace_session_for_preview_tab,
 };
 #[cfg(test)]
 use status::{
@@ -130,6 +131,19 @@ pub struct LaunchRequest {
     pub project_name: Option<String>,
     pub workspace_name: String,
     pub workspace_path: PathBuf,
+    pub agent: AgentType,
+    pub prompt: Option<String>,
+    pub workspace_init_command: Option<String>,
+    pub skip_permissions: bool,
+    pub agent_env: Vec<(String, String)>,
+    pub capture_cols: Option<u16>,
+    pub capture_rows: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskLaunchRequest {
+    pub task_slug: String,
+    pub task_root: PathBuf,
     pub agent: AgentType,
     pub prompt: Option<String>,
     pub workspace_init_command: Option<String>,

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::domain::{AgentType, Workspace};
 
-use super::sessions::session_name_for_workspace_in_project;
+use super::sessions::{session_name_for_task, session_name_for_workspace_in_project};
 use super::{
     GROVE_LAUNCHER_SCRIPT_PATH, LaunchPlan, LaunchRequest, LauncherScript,
     OPENCODE_UNSAFE_PERMISSION_JSON, ShellLaunchRequest,
@@ -65,6 +65,37 @@ pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
         request.workspace_init_command.as_deref(),
     );
     let mut plan = tmux_launch_plan(request, session_name, launch_agent_cmd);
+    if let Some(resize_cmd) = launch_resize_window_command(
+        &plan.session_name,
+        request.capture_cols,
+        request.capture_rows,
+    ) {
+        plan.pre_launch_cmds.push(resize_cmd);
+    }
+    plan
+}
+
+pub fn build_task_launch_plan(request: &super::TaskLaunchRequest) -> LaunchPlan {
+    let session_name = session_name_for_task(request.task_slug.as_str());
+    let agent_cmd = build_agent_command(request.agent, request.skip_permissions);
+    let launch_agent_cmd = launch_command_with_workspace_init(
+        &request.task_root,
+        agent_cmd,
+        request.workspace_init_command.as_deref(),
+    );
+    let shared = LaunchRequest {
+        project_name: None,
+        workspace_name: request.task_slug.clone(),
+        workspace_path: request.task_root.clone(),
+        agent: request.agent,
+        prompt: request.prompt.clone(),
+        workspace_init_command: request.workspace_init_command.clone(),
+        skip_permissions: request.skip_permissions,
+        agent_env: request.agent_env.clone(),
+        capture_cols: request.capture_cols,
+        capture_rows: request.capture_rows,
+    };
+    let mut plan = tmux_launch_plan(&shared, session_name, launch_agent_cmd);
     if let Some(resize_cmd) = launch_resize_window_command(
         &plan.session_name,
         request.capture_cols,
@@ -324,4 +355,54 @@ fn build_launcher_script(agent_cmd: &str, prompt: &str, launcher_path: &Path) ->
         "#!/bin/bash\nexport NVM_DIR=\"${{NVM_DIR:-$HOME/.nvm}}\"\n[ -s \"$NVM_DIR/nvm.sh\" ] && source \"$NVM_DIR/nvm.sh\" 2>/dev/null\nif ! command -v node &>/dev/null; then\n  [ -f \"$HOME/.zshrc\" ] && source \"$HOME/.zshrc\" 2>/dev/null\n  [ -f \"$HOME/.bashrc\" ] && source \"$HOME/.bashrc\" 2>/dev/null\nfi\n{agent_cmd} \"$(cat <<'GROVE_PROMPT_EOF'\n{prompt}\nGROVE_PROMPT_EOF\n)\"\nrm -f {}\n",
         launcher_path.to_string_lossy()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_task_launch_plan;
+    use crate::application::agent_runtime::TaskLaunchRequest;
+    use crate::domain::AgentType;
+    use std::path::PathBuf;
+
+    #[test]
+    fn build_task_launch_plan_targets_task_root_session() {
+        let request = TaskLaunchRequest {
+            task_slug: "flohome-launch".to_string(),
+            task_root: PathBuf::from("/tmp/.grove/tasks/flohome-launch"),
+            agent: AgentType::Codex,
+            prompt: None,
+            workspace_init_command: None,
+            skip_permissions: false,
+            agent_env: Vec::new(),
+            capture_cols: None,
+            capture_rows: None,
+        };
+
+        let plan = build_task_launch_plan(&request);
+
+        assert_eq!(plan.session_name, "grove-task-flohome-launch");
+        assert_eq!(
+            plan.pre_launch_cmds[0],
+            vec![
+                "tmux".to_string(),
+                "new-session".to_string(),
+                "-d".to_string(),
+                "-s".to_string(),
+                "grove-task-flohome-launch".to_string(),
+                "-c".to_string(),
+                "/tmp/.grove/tasks/flohome-launch".to_string(),
+            ]
+        );
+        assert_eq!(
+            plan.launch_cmd,
+            vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-task-flohome-launch".to_string(),
+                "codex".to_string(),
+                "Enter".to_string(),
+            ]
+        );
+    }
 }

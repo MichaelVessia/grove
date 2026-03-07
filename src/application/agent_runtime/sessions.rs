@@ -4,6 +4,9 @@ use crate::domain::{Workspace, WorkspaceStatus};
 
 use super::{LivePreviewTarget, TMUX_SESSION_PREFIX};
 
+const TASK_SESSION_PREFIX: &str = "grove-task-";
+const TASK_WORKTREE_SESSION_PREFIX: &str = "grove-wt-";
+
 pub(crate) fn sanitize_workspace_name(name: &str) -> String {
     let mut out = String::new();
     let mut last_dash = false;
@@ -42,6 +45,21 @@ pub fn session_name_for_workspace(workspace_name: &str) -> String {
 
 pub fn session_name_for_workspace_ref(workspace: &Workspace) -> String {
     session_name_for_workspace_in_project(workspace.project_name.as_deref(), &workspace.name)
+}
+
+pub fn session_name_for_task(task_slug: &str) -> String {
+    format!(
+        "{TASK_SESSION_PREFIX}{}",
+        sanitize_workspace_name(task_slug)
+    )
+}
+
+pub fn session_name_for_task_worktree(task_slug: &str, repository_name: &str) -> String {
+    format!(
+        "{TASK_WORKTREE_SESSION_PREFIX}{}-{}",
+        sanitize_workspace_name(task_slug),
+        sanitize_workspace_name(repository_name)
+    )
 }
 
 pub fn git_session_name_for_workspace(workspace: &Workspace) -> String {
@@ -164,4 +182,34 @@ pub fn live_preview_capture_target_for_tab(
         session_name,
         include_escape_sequences: true,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{sanitize_workspace_name, session_name_for_task, session_name_for_task_worktree};
+
+    #[test]
+    fn session_names_distinguish_task_root_and_worktree_scope() {
+        assert_eq!(
+            session_name_for_task("flohome-launch"),
+            "grove-task-flohome-launch"
+        );
+        assert_eq!(
+            session_name_for_task_worktree("flohome-launch", "flohome"),
+            "grove-wt-flohome-launch-flohome"
+        );
+    }
+
+    #[test]
+    fn task_session_names_reuse_workspace_sanitization() {
+        assert_eq!(sanitize_workspace_name(" infra/base "), "infra-base");
+        assert_eq!(
+            session_name_for_task(" infra/base "),
+            "grove-task-infra-base"
+        );
+        assert_eq!(
+            session_name_for_task_worktree(" infra/base ", "terraform.fastly"),
+            "grove-wt-infra-base-terraform-fastly"
+        );
+    }
 }
