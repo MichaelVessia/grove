@@ -8889,7 +8889,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             }
 
             #[test]
-            fn delete_key_on_main_workspace_shows_guard_toast() {
+            fn delete_key_on_main_workspace_opens_non_destructive_remove_dialog() {
                 let mut app = fixture_app();
 
                 ftui::Model::update(
@@ -8897,11 +8897,12 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
                 );
 
-                assert!(app.delete_dialog().is_none());
-                assert!(
-                    app.status_bar_line()
-                        .contains("cannot delete base workspace")
-                );
+                let Some(dialog) = app.delete_dialog() else {
+                    panic!("delete dialog should be open");
+                };
+                assert_eq!(dialog.task.name, "grove");
+                assert!(!dialog.delete_local_branch);
+                assert!(dialog.kill_tmux_sessions);
             }
 
             #[test]

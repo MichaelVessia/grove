@@ -118,10 +118,17 @@ pub(super) struct SessionCleanupDialogState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DeleteDialogState {
     pub(super) task: Task,
+    pub(super) is_base_task: bool,
     pub(super) is_missing: bool,
     pub(super) delete_local_branch: bool,
     pub(super) kill_tmux_sessions: bool,
     pub(super) focused_field: DeleteDialogField,
+}
+
+impl DeleteDialogState {
+    pub(super) fn delete_local_branch_enabled(&self) -> bool {
+        !self.is_base_task
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

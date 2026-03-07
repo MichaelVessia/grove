@@ -14,7 +14,12 @@ impl GroveApp {
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let focused = |field| dialog.focused_field == field;
-        let warning_lines = if dialog.is_missing {
+        let warning_lines = if dialog.is_base_task {
+            (
+                "  • Remove the task manifest from Grove's task list",
+                "  • Keep the primary checkout and local branch untouched",
+            )
+        } else if dialog.is_missing {
             (
                 "  • Task root already removed",
                 "  • Clean up git worktree metadata in each repository",
@@ -26,7 +31,9 @@ impl GroveApp {
             )
         };
         let cleanup_focused = focused(DeleteDialogField::DeleteLocalBranch);
-        let cleanup_state = if dialog.delete_local_branch {
+        let cleanup_state = if dialog.is_base_task {
+            "disabled, base task keeps its local branch".to_string()
+        } else if dialog.delete_local_branch {
             format!(
                 "enabled, remove '{}' branch in each repository",
                 dialog.task.branch
@@ -83,8 +90,21 @@ impl GroveApp {
                 theme.overlay0,
             ),
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("  [Risk] Changes are destructive", content_width),
-                Style::new().fg(theme.peach).bold(),
+                pad_or_truncate_to_display_width(
+                    if dialog.is_base_task {
+                        "  [Info] Remove from Grove only"
+                    } else {
+                        "  [Risk] Changes are destructive"
+                    },
+                    content_width,
+                ),
+                Style::new()
+                    .fg(if dialog.is_base_task {
+                        theme.blue
+                    } else {
+                        theme.peach
+                    })
+                    .bold(),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 warning_lines.0,
@@ -102,7 +122,9 @@ impl GroveApp {
                 cleanup_state.as_str(),
                 cleanup_focused,
                 theme.peach,
-                if dialog.delete_local_branch {
+                if dialog.is_base_task {
+                    theme.overlay0
+                } else if dialog.delete_local_branch {
                     theme.red
                 } else {
                     theme.text
@@ -125,7 +147,11 @@ impl GroveApp {
             modal_actions_row(
                 content_width,
                 theme,
-                "Delete",
+                if dialog.is_base_task {
+                    "Remove"
+                } else {
+                    "Delete"
+                },
                 "Cancel",
                 delete_focused,
                 cancel_focused,
@@ -134,7 +160,11 @@ impl GroveApp {
         lines.extend(modal_wrapped_hint_rows(
             content_width,
             theme,
-            "Tab/C-n next, S-Tab/C-p prev, Space toggle option, Enter or D delete task, Esc cancel",
+            if dialog.is_base_task {
+                "Tab/C-n next, S-Tab/C-p prev, Space toggle option, Enter or D remove task, Esc cancel"
+            } else {
+                "Tab/C-n next, S-Tab/C-p prev, Space toggle option, Enter or D delete task, Esc cancel"
+            },
         ));
         let body = FtText::from_lines(lines);
         render_modal_dialog(
@@ -144,9 +174,17 @@ impl GroveApp {
             ModalDialogSpec {
                 dialog_width,
                 dialog_height,
-                title: "Delete Task?",
+                title: if dialog.is_base_task {
+                    "Remove Task From List?"
+                } else {
+                    "Delete Task?"
+                },
                 theme,
-                border_color: theme.red,
+                border_color: if dialog.is_base_task {
+                    theme.blue
+                } else {
+                    theme.red
+                },
                 hit_id: HIT_ID_DELETE_DIALOG,
             },
         );

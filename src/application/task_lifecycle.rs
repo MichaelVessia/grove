@@ -849,4 +849,56 @@ mod tests {
         assert!(!workspace_root.exists());
         assert!(!manifest_task_root.exists());
     }
+
+    #[test]
+    fn delete_base_task_removes_only_manifest_directory() {
+        let temp = TestDir::new("delete-base-task");
+        let manifest_tasks_root = temp.path.join("tasks");
+        let manifest_task_root = manifest_tasks_root.join("grove-main");
+        let repo_root = temp.path.join("repos").join("grove");
+
+        fs::create_dir_all(manifest_task_root.join(".grove"))
+            .expect("manifest task dir should exist");
+        fs::create_dir_all(&repo_root).expect("repo root should exist");
+        fs::write(
+            task_manifest_path(&manifest_task_root),
+            "name = 'grove-main'\n",
+        )
+        .expect("task manifest should exist");
+
+        let task = crate::domain::Task::try_new(
+            "grove-main".to_string(),
+            "grove-main".to_string(),
+            repo_root.clone(),
+            "main".to_string(),
+            vec![
+                crate::domain::Worktree::try_new(
+                    "grove".to_string(),
+                    repo_root.clone(),
+                    repo_root.clone(),
+                    "main".to_string(),
+                    AgentType::Codex,
+                    crate::domain::WorkspaceStatus::Main,
+                )
+                .expect("worktree should be valid"),
+            ],
+        )
+        .expect("task should be valid");
+        let git = StubGitRunner::default();
+
+        let result = delete_task_with_runner_in_manifest_root(
+            DeleteTaskRequest {
+                task,
+                delete_local_branch: true,
+                kill_tmux_sessions: false,
+            },
+            &git,
+            Some(manifest_tasks_root.as_path()),
+        );
+
+        assert_eq!(result.0, Ok(()));
+        assert!(repo_root.exists());
+        assert!(!manifest_task_root.exists());
+        assert!(git.calls().is_empty());
+    }
 }

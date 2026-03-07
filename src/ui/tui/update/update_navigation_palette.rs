@@ -126,11 +126,10 @@ impl GroveApp {
                         .selected_active_tab()
                         .is_some_and(|tab| tab.kind != WorkspaceTabKind::Home)
             }
-            UiCommand::DeleteWorkspace => {
-                self.state.selected_workspace().is_some_and(|workspace| {
-                    !workspace.is_main && !self.workspace_delete_requested(&workspace.path)
-                })
-            }
+            UiCommand::DeleteWorkspace => self
+                .state
+                .selected_task()
+                .is_some_and(|task| !self.task_delete_requested(task)),
             UiCommand::DeleteProject => {
                 !self.dialogs.project_delete_in_flight
                     && self.state.selected_workspace().is_some_and(|workspace| {

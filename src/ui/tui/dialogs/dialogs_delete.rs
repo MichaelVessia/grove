@@ -7,7 +7,7 @@ impl GroveApp {
             .contains(workspace_path)
     }
 
-    fn task_delete_requested(&self, task: &Task) -> bool {
+    pub(super) fn task_delete_requested(&self, task: &Task) -> bool {
         task.worktrees
             .iter()
             .any(|worktree| self.workspace_delete_requested(worktree.path.as_path()))
@@ -105,7 +105,9 @@ impl GroveApp {
         match key_event.code {
             KeyCode::Enter => match dialog.focused_field {
                 DeleteDialogField::DeleteLocalBranch => {
-                    dialog.delete_local_branch = !dialog.delete_local_branch;
+                    if dialog.delete_local_branch_enabled() {
+                        dialog.delete_local_branch = !dialog.delete_local_branch;
+                    }
                 }
                 DeleteDialogField::KillTmuxSessions => {
                     dialog.kill_tmux_sessions = !dialog.kill_tmux_sessions;
@@ -136,7 +138,9 @@ impl GroveApp {
                 dialog.focused_field = dialog.focused_field.next();
             }
             KeyCode::Char(' ') if no_modifiers => {
-                if dialog.focused_field == DeleteDialogField::DeleteLocalBranch {
+                if dialog.focused_field == DeleteDialogField::DeleteLocalBranch
+                    && dialog.delete_local_branch_enabled()
+                {
                     dialog.delete_local_branch = !dialog.delete_local_branch;
                 } else if dialog.focused_field == DeleteDialogField::KillTmuxSessions {
                     dialog.kill_tmux_sessions = !dialog.kill_tmux_sessions;
@@ -176,26 +180,24 @@ impl GroveApp {
             self.show_info_toast("no workspace selected");
             return;
         };
-        if self
-            .state
-            .selected_workspace()
-            .is_some_and(|workspace| workspace.is_main)
-        {
-            self.show_info_toast("cannot delete base workspace");
-            return;
-        }
         if self.task_delete_requested(&task) {
             self.show_info_toast(format!("task '{}' delete already requested", task.name));
             return;
         }
 
+        let is_base_task = task.has_base_worktree();
         let is_missing = !task.root_path.exists();
         self.set_delete_dialog(DeleteDialogState {
             task: task.clone(),
+            is_base_task,
             is_missing,
-            delete_local_branch: is_missing,
+            delete_local_branch: is_missing && !is_base_task,
             kill_tmux_sessions: true,
-            focused_field: DeleteDialogField::DeleteLocalBranch,
+            focused_field: if is_base_task {
+                DeleteDialogField::KillTmuxSessions
+            } else {
+                DeleteDialogField::DeleteLocalBranch
+            },
         });
         self.log_dialog_event_with_fields(
             "delete",
@@ -211,6 +213,7 @@ impl GroveApp {
                     "worktree_count".to_string(),
                     Value::from(usize_to_u64(task.worktrees.len())),
                 ),
+                ("is_base_task".to_string(), Value::from(is_base_task)),
                 ("is_missing".to_string(), Value::from(is_missing)),
             ],
         );
@@ -237,7 +240,7 @@ impl GroveApp {
                 ),
                 (
                     "delete_local_branch".to_string(),
-                    Value::from(dialog.delete_local_branch),
+                    Value::from(dialog.delete_local_branch && !dialog.is_base_task),
                 ),
                 (
                     "kill_tmux_sessions".to_string(),
@@ -247,6 +250,7 @@ impl GroveApp {
                     "worktree_count".to_string(),
                     Value::from(usize_to_u64(dialog.task.worktrees.len())),
                 ),
+                ("is_base_task".to_string(), Value::from(dialog.is_base_task)),
                 ("is_missing".to_string(), Value::from(dialog.is_missing)),
             ],
         );
@@ -261,7 +265,7 @@ impl GroveApp {
             .collect::<Vec<PathBuf>>();
         let request = DeleteTaskRequest {
             task: dialog.task,
-            delete_local_branch: dialog.delete_local_branch,
+            delete_local_branch: dialog.delete_local_branch && !dialog.is_base_task,
             kill_tmux_sessions: dialog.kill_tmux_sessions,
         };
         if !self.tmux_input.supports_background_launch() {

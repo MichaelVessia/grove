@@ -707,13 +707,13 @@ static COMMAND_META: [UiCommandMeta; 39] = [
         palette: Some(PaletteCommandSpec {
             id: "palette:delete_workspace",
             title: "Delete Task",
-            description: "Open delete dialog for selected task (D)",
+            description: "Open delete or remove dialog for selected task (D)",
             tags: &["delete", "task", "workspace", "worktree", "D"],
             category: "Task",
         }),
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
-            label: "D delete task",
+            label: "D delete/remove task",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,

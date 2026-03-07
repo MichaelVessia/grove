@@ -242,6 +242,10 @@ impl Workspace {
 }
 
 impl Worktree {
+    pub fn is_main_checkout(&self) -> bool {
+        self.status == WorkspaceStatus::Main || self.path == self.repository_path
+    }
+
     pub fn try_new(
         repository_name: String,
         repository_path: PathBuf,
@@ -305,6 +309,10 @@ impl Worktree {
 }
 
 impl Task {
+    pub fn has_base_worktree(&self) -> bool {
+        self.worktrees.iter().any(Worktree::is_main_checkout)
+    }
+
     pub fn try_new(
         name: String,
         slug: String,

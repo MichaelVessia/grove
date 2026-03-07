@@ -18,6 +18,7 @@ pub(super) fn delete_task_with_runner(
         delete_local_branch,
         kill_tmux_sessions,
     } = request;
+    let is_base_task = task.has_base_worktree();
     let task_root = task.root_path.clone();
     let manifest_task_root =
         manifest_task_root(manifest_tasks_root, task.slug.as_str(), task_root.as_path());
@@ -25,6 +26,19 @@ pub(super) fn delete_task_with_runner(
 
     if kill_tmux_sessions {
         stop_sessions(&task);
+    }
+
+    if is_base_task {
+        let Some(manifest_task_root) = manifest_task_root else {
+            return (
+                Err("cannot remove base task without separate manifest entry".to_string()),
+                warnings,
+            );
+        };
+        if let Err(error) = remove_task_root(manifest_task_root.as_path()) {
+            return (Err(error), warnings);
+        }
+        return (Ok(()), warnings);
     }
 
     for worktree in &task.worktrees {
