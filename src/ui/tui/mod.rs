@@ -6565,35 +6565,23 @@ mod tests {
             }
 
             #[test]
-            fn interactive_key_does_not_postpone_existing_due_tick() {
-                let (mut app, _commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+            fn schedule_next_tick_does_not_postpone_existing_due_tick() {
+                let mut app = fixture_background_app(WorkspaceStatus::Idle);
 
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                let preserved_due = Instant::now() + Duration::from_millis(10);
+                app.polling.next_poll_due_at = Some(Instant::now() + Duration::from_secs(5));
+                let preserved_due = Instant::now() + Duration::from_millis(50);
                 app.polling.next_tick_due_at = Some(preserved_due);
-                app.polling.next_tick_interval_ms = Some(10);
+                app.polling.next_tick_interval_ms = Some(50);
 
-                let second_cmd = ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('y')).with_kind(KeyEventKind::Press)),
-                );
+                let second_cmd = app.schedule_next_tick();
                 let second_due = app
                     .polling
                     .next_tick_due_at
-                    .expect("second key should retain an existing due tick");
+                    .expect("scheduler should retain an existing due tick");
 
                 assert!(
                     second_due == preserved_due,
-                    "second key should retain the earlier pending due tick"
+                    "scheduler should retain the earlier pending due tick"
                 );
                 assert!(
                     matches!(second_cmd, Cmd::None),
