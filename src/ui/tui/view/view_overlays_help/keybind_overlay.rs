@@ -184,7 +184,7 @@ impl GroveApp {
             content_width,
             label_width,
             "Reserved",
-            "Ctrl+K palette, Esc Esc/Ctrl+\\ exit, Alt+J/K browse, Alt+[/] tabs, Alt+Left/Right or Alt+H/L resize (Alt+B/F fallback), Alt+C copy, Alt+V paste",
+            "Ctrl+K palette, Ctrl+\\ exit, Alt+J/K browse, Alt+[/] tabs, Alt+Left/Right or Alt+H/L resize (Alt+B/F fallback), Alt+C copy, Alt+V paste",
             theme,
         );
         Self::keybind_help_push_section_gap(&mut lines, section_gap);

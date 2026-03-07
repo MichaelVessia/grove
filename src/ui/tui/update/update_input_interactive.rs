@@ -7,6 +7,12 @@ impl GroveApp {
         self.clear_preview_selection();
     }
 
+    pub(super) fn exit_interactive_to_preview(&mut self) {
+        self.session.interactive = None;
+        reduce(&mut self.state, Action::EnterPreviewMode);
+        self.clear_preview_selection();
+    }
+
     fn map_interactive_key(key_event: KeyEvent) -> Option<InteractiveKey> {
         let ctrl = key_event.modifiers.contains(Modifiers::CTRL);
         let alt = key_event.modifiers.contains(Modifiers::ALT);
@@ -123,7 +129,7 @@ impl GroveApp {
 
         match action {
             InteractiveAction::ExitInteractive => {
-                self.exit_interactive_to_list();
+                self.exit_interactive_to_preview();
                 Cmd::None
             }
             InteractiveAction::CopySelection => {

@@ -1,6 +1,4 @@
 use std::time::{Duration, Instant};
-
-const DOUBLE_ESCAPE_WINDOW_MS: u64 = 150;
 const SPLIT_MOUSE_FRAGMENT_START_WINDOW_MS: u64 = 10;
 const SPLIT_MOUSE_FRAGMENT_MAX_AGE_MS: u64 = 50;
 
@@ -18,7 +16,6 @@ pub struct InteractiveState {
     pub bracketed_paste: bool,
     last_mouse_event_time: Option<Instant>,
     mouse_fragment_started_at: Option<Instant>,
-    last_escape_time: Option<Instant>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,7 +74,6 @@ impl InteractiveState {
             bracketed_paste: false,
             last_mouse_event_time: None,
             mouse_fragment_started_at: None,
-            last_escape_time: None,
         }
     }
 
@@ -85,36 +81,10 @@ impl InteractiveState {
         self.last_key_time = now;
 
         match key {
-            InteractiveKey::CtrlBackslash => {
-                self.last_escape_time = None;
-                InteractiveAction::ExitInteractive
-            }
-            InteractiveKey::Escape => {
-                let should_exit = self.last_escape_time.is_some_and(|last_escape_time| {
-                    now.saturating_duration_since(last_escape_time)
-                        <= Duration::from_millis(DOUBLE_ESCAPE_WINDOW_MS)
-                });
-
-                if should_exit {
-                    self.last_escape_time = None;
-                    InteractiveAction::ExitInteractive
-                } else {
-                    self.last_escape_time = Some(now);
-                    InteractiveAction::SendNamed("Escape".to_string())
-                }
-            }
-            InteractiveKey::AltC => {
-                self.last_escape_time = None;
-                InteractiveAction::CopySelection
-            }
-            InteractiveKey::AltV => {
-                self.last_escape_time = None;
-                InteractiveAction::PasteClipboard
-            }
-            other => {
-                self.last_escape_time = None;
-                key_to_action(other)
-            }
+            InteractiveKey::CtrlBackslash => InteractiveAction::ExitInteractive,
+            InteractiveKey::AltC => InteractiveAction::CopySelection,
+            InteractiveKey::AltV => InteractiveAction::PasteClipboard,
+            other => key_to_action(other),
         }
     }
 
@@ -215,6 +185,7 @@ fn key_to_action(key: InteractiveKey) -> InteractiveAction {
         InteractiveKey::End => InteractiveAction::SendNamed("End".to_string()),
         InteractiveKey::PageUp => InteractiveAction::SendNamed("PPage".to_string()),
         InteractiveKey::PageDown => InteractiveAction::SendNamed("NPage".to_string()),
+        InteractiveKey::Escape => InteractiveAction::SendNamed("Escape".to_string()),
         InteractiveKey::Ctrl(character) if character.is_ascii_alphabetic() => {
             InteractiveAction::SendNamed(format!("C-{}", character.to_ascii_lowercase()))
         }
@@ -372,7 +343,7 @@ mod tests {
     };
 
     #[test]
-    fn double_escape_exits_within_window() {
+    fn double_escape_is_forwarded_to_the_session() {
         let now = Instant::now();
         let mut state =
             InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
@@ -382,13 +353,13 @@ mod tests {
             InteractiveAction::SendNamed("Escape".to_string())
         );
         assert_eq!(
-            state.handle_key(InteractiveKey::Escape, now + Duration::from_millis(120)),
-            InteractiveAction::ExitInteractive
+            state.handle_key(InteractiveKey::Escape, now),
+            InteractiveAction::SendNamed("Escape".to_string())
         );
     }
 
     #[test]
-    fn escape_outside_window_is_forwarded_again() {
+    fn repeated_escape_is_forwarded_again() {
         let now = Instant::now();
         let mut state =
             InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
@@ -398,7 +369,7 @@ mod tests {
             InteractiveAction::SendNamed("Escape".to_string())
         );
         assert_eq!(
-            state.handle_key(InteractiveKey::Escape, now + Duration::from_millis(200)),
+            state.handle_key(InteractiveKey::Escape, now),
             InteractiveAction::SendNamed("Escape".to_string())
         );
     }

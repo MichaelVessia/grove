@@ -4032,6 +4032,10 @@ mod tests {
                 .any(|row| row_text(frame, row, 0, frame.width()).contains("Shift+Enter"));
             let has_reserved = (0..frame.height())
                 .any(|row| row_text(frame, row, 0, frame.width()).contains("Ctrl+K palette"));
+            let has_ctrl_backslash_exit = (0..frame.height())
+                .any(|row| row_text(frame, row, 0, frame.width()).contains("Ctrl+\\ exit"));
+            let has_double_escape_exit = (0..frame.height())
+                .any(|row| row_text(frame, row, 0, frame.width()).contains("Esc Esc"));
             let has_palette_nav = (0..frame.height()).any(|row| {
                 row_text(frame, row, 0, frame.width()).contains("[Palette] Type search")
             });
@@ -4039,6 +4043,8 @@ mod tests {
             assert!(has_shift_tab);
             assert!(has_shift_enter);
             assert!(has_reserved);
+            assert!(has_ctrl_backslash_exit);
+            assert!(!has_double_escape_exit);
             assert!(has_palette_nav);
         });
     }
@@ -6349,7 +6355,7 @@ mod tests {
             }
 
             #[test]
-            fn double_escape_exits_interactive_mode() {
+            fn double_escape_stays_in_interactive_mode_and_sends_both_escapes() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
 
@@ -6371,18 +6377,27 @@ mod tests {
                     Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
                 );
 
-                assert!(app.session.interactive.is_none());
-                assert_eq!(app.state.mode, UiMode::List);
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert!(app.session.interactive.is_some());
+                assert_eq!(app.state.mode, UiMode::Preview);
+                assert_eq!(app.state.focus, PaneFocus::Preview);
                 assert_eq!(
                     commands.borrow().as_slice(),
-                    &[vec![
-                        "tmux".to_string(),
-                        "send-keys".to_string(),
-                        "-t".to_string(),
-                        feature_workspace_session(),
-                        "Escape".to_string(),
-                    ]]
+                    &[
+                        vec![
+                            "tmux".to_string(),
+                            "send-keys".to_string(),
+                            "-t".to_string(),
+                            feature_workspace_session(),
+                            "Escape".to_string(),
+                        ],
+                        vec![
+                            "tmux".to_string(),
+                            "send-keys".to_string(),
+                            "-t".to_string(),
+                            feature_workspace_session(),
+                            "Escape".to_string(),
+                        ],
+                    ]
                 );
             }
 
@@ -6410,8 +6425,8 @@ mod tests {
                 );
 
                 assert!(app.session.interactive.is_none());
-                assert_eq!(app.state.mode, UiMode::List);
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.state.mode, UiMode::Preview);
+                assert_eq!(app.state.focus, PaneFocus::Preview);
                 assert!(commands.borrow().is_empty());
             }
 
@@ -6435,9 +6450,38 @@ mod tests {
                 );
 
                 assert!(app.session.interactive.is_none());
-                assert_eq!(app.state.mode, UiMode::List);
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.state.mode, UiMode::Preview);
+                assert_eq!(app.state.focus, PaneFocus::Preview);
                 assert!(commands.borrow().is_empty());
+            }
+
+            #[test]
+            fn double_escape_does_not_focus_sidebar() {
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(app.session.interactive.is_some());
+                assert_eq!(app.state.mode, UiMode::Preview);
+                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(commands.borrow().len(), 2);
             }
 
             #[test]
