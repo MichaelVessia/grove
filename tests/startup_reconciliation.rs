@@ -62,7 +62,7 @@ fn startup_reconciliation_identifies_orphaned_workspaces_and_sessions() {
     ]);
     let previously_running = HashSet::from(["feature-b".to_string()]);
 
-    let reconciled = reconcile_with_sessions(&workspaces, &running_sessions, &previously_running);
+    let reconciled = reconcile_with_sessions(workspaces, &running_sessions, &previously_running);
 
     assert_eq!(reconciled.workspaces[1].status, WorkspaceStatus::Active);
     assert!(reconciled.workspaces[2].is_orphaned);

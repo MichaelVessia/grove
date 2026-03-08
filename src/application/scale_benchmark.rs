@@ -126,7 +126,7 @@ fn run_scale_benchmarks() -> io::Result<ScaleBenchmarkReport> {
         let discovered_tasks = fixture.discover_tasks()?;
         let discovered = flatten_benchmark_tasks(discovered_tasks.as_slice());
         let seeded_for_status_targets = reconcile_with_sessions(
-            &discovered,
+            discovered.to_vec(),
             &fixture.running_sessions,
             &fixture.previously_running_workspace_names,
         )
@@ -143,7 +143,7 @@ fn run_scale_benchmarks() -> io::Result<ScaleBenchmarkReport> {
 
         let sort_update_pipeline = measure_flow(WARMUP_RUNS, MEASURED_RUNS, || {
             let mut updated = reconcile_with_sessions(
-                &discovered,
+                discovered.to_vec(),
                 &fixture.running_sessions,
                 &fixture.previously_running_workspace_names,
             )

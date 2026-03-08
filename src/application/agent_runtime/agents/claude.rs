@@ -125,7 +125,7 @@ pub(super) fn latest_attention_marker_in_home(
     None
 }
 
-fn project_dir_name(abs_path: &Path) -> String {
+pub(crate) fn project_dir_name(abs_path: &Path) -> String {
     abs_path
         .to_string_lossy()
         .chars()

@@ -250,21 +250,6 @@ pub(super) fn latest_opencode_assistant_attention_marker_in_home(
     agents::latest_attention_marker_in_home(AgentType::OpenCode, workspace_path, home_dir)
 }
 
-#[cfg(test)]
-pub(super) fn claude_project_dir_name(abs_path: &Path) -> String {
-    abs_path
-        .to_string_lossy()
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || character == '-' {
-                character
-            } else {
-                '-'
-            }
-        })
-        .collect()
-}
-
 fn has_unclosed_tag(text: &str, open_tag: &str, close_tag: &str) -> bool {
     let Some(open_index) = text.rfind(open_tag) else {
         return false;

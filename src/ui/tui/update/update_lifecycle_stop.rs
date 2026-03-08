@@ -82,13 +82,7 @@ impl GroveApp {
             return;
         }
 
-        if agent_supports_in_pane_restart(workspace.agent) {
-            self.restart_workspace_agent_in_pane(workspace);
-            return;
-        }
-
-        self.session.pending_restart_workspace_path = Some(workspace.path.clone());
-        self.stop_workspace_agent(workspace);
+        self.restart_workspace_agent_in_pane(workspace);
     }
 
     #[allow(dead_code)]

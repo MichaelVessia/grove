@@ -7,18 +7,6 @@ use super::status::detect_status;
 use super::{ReconciliationResult, SessionActivity};
 
 pub fn reconcile_with_sessions(
-    workspaces: &[Workspace],
-    running_sessions: &HashSet<String>,
-    previously_running_workspace_names: &HashSet<String>,
-) -> ReconciliationResult {
-    reconcile_with_sessions_owned(
-        workspaces.to_vec(),
-        running_sessions,
-        previously_running_workspace_names,
-    )
-}
-
-pub fn reconcile_with_sessions_owned(
     mut workspaces: Vec<Workspace>,
     running_sessions: &HashSet<String>,
     previously_running_workspace_names: &HashSet<String>,

@@ -41,7 +41,7 @@ use crate::application::agent_runtime::capture::{
 };
 use crate::application::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
-    TaskLaunchRequest, WorkspaceStatusTarget, agent_supports_in_pane_restart, execute_command_with,
+    TaskLaunchRequest, WorkspaceStatusTarget, execute_command_with,
     git_session_name_for_workspace, infer_workspace_skip_permissions, poll_interval,
     restart_workspace_in_pane_with_io, session_name_for_task, session_name_for_workspace_ref,
     shell_session_name_for_workspace, tmux_launch_error_indicates_duplicate_session,

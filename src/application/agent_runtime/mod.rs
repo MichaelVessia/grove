@@ -13,6 +13,8 @@ pub mod restart;
 mod sessions;
 pub mod status;
 
+#[cfg(test)]
+use agents::claude_project_dir_name;
 pub(crate) use capture::evaluate_capture_change;
 #[cfg(test)]
 use capture::strip_mouse_fragments;
@@ -42,13 +44,12 @@ pub use polling::{
     poll_interval, workspace_should_poll_status, workspace_status_session_target,
     workspace_status_targets_for_polling, workspace_status_targets_for_polling_with_live_preview,
 };
-pub use reconciliation::{reconcile_with_sessions, reconcile_with_sessions_owned};
+pub use reconciliation::reconcile_with_sessions;
 #[cfg(test)]
 use restart::restart_workspace_in_pane_with_io_in_home;
 pub use restart::{
-    agent_supports_in_pane_restart, execute_restart_workspace_in_pane_with_result,
-    extract_agent_resume_command, infer_workspace_skip_permissions,
-    restart_workspace_in_pane_with_io,
+    execute_restart_workspace_in_pane_with_result, extract_agent_resume_command,
+    infer_workspace_skip_permissions, restart_workspace_in_pane_with_io,
 };
 #[cfg(test)]
 use sessions::sanitize_workspace_name;
@@ -64,7 +65,7 @@ pub use sessions::{
 };
 #[cfg(test)]
 use status::{
-    StatusOverrideContext, claude_project_dir_name, codex_session_skip_permissions_mode,
+    StatusOverrideContext, codex_session_skip_permissions_mode,
     detect_agent_session_status_in_home, detect_status_with_session_override_in_home,
     infer_claude_skip_permissions_in_home, infer_codex_skip_permissions_in_home,
     infer_opencode_skip_permissions_in_home, latest_claude_assistant_attention_marker_in_home,
@@ -244,10 +245,9 @@ mod tests {
 
         pub(super) use super::super::{
             CaptureChange, CommandExecutionMode, CommandExecutor, LaunchPlan, LaunchRequest,
-            LauncherScript, LivePreviewTarget, SessionActivity, agent_supports_in_pane_restart,
-            build_launch_plan, build_shell_launch_plan, default_agent_command,
-            detect_agent_session_status_in_home, detect_status,
-            detect_status_with_session_override_in_home, detect_waiting_prompt,
+            LauncherScript, LivePreviewTarget, SessionActivity, build_launch_plan,
+            build_shell_launch_plan, default_agent_command, detect_agent_session_status_in_home,
+            detect_status, detect_status_with_session_override_in_home, detect_waiting_prompt,
             evaluate_capture_change, execute_command_with, execute_commands,
             execute_commands_for_mode, execute_commands_with, execute_commands_with_executor,
             execute_launch_plan, execute_launch_plan_for_mode, execute_launch_plan_with,
@@ -2439,13 +2439,6 @@ mod tests {
                 vec!["tmux", "kill-session", "-t", "grove-ws-auth-flow"]
             );
         }
-
-        #[test]
-        fn agent_supports_in_pane_restart_is_enabled_for_all_agents() {
-            assert!(agent_supports_in_pane_restart(AgentType::Claude));
-            assert!(agent_supports_in_pane_restart(AgentType::Codex));
-            assert!(agent_supports_in_pane_restart(AgentType::OpenCode));
-        }
     }
     mod status_reconcile {
         use super::*;
@@ -2915,7 +2908,7 @@ mod tests {
             let previously_running = HashSet::from(["feature-b".to_string()]);
 
             let result =
-                reconcile_with_sessions(&workspaces, &running_sessions, &previously_running);
+                reconcile_with_sessions(workspaces, &running_sessions, &previously_running);
             assert_eq!(result.workspaces[0].status, WorkspaceStatus::Active);
             assert_eq!(result.workspaces[1].status, WorkspaceStatus::Active);
             assert_eq!(result.workspaces[2].status, WorkspaceStatus::Idle);

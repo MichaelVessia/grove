@@ -8,12 +8,8 @@ use std::time::Duration;
 
 use crate::domain::{AgentType, WorkspaceStatus};
 
-pub(super) fn supports_in_pane_restart(agent: AgentType) -> bool {
-    matches!(
-        agent,
-        AgentType::Claude | AgentType::Codex | AgentType::OpenCode
-    )
-}
+#[cfg(test)]
+pub(super) use claude::project_dir_name as claude_project_dir_name;
 
 pub(super) fn restart_exit_input(agent: AgentType) -> Option<super::RestartExitInput> {
     match agent {
