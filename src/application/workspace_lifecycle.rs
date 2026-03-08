@@ -1,4 +1,8 @@
-use crate::infrastructure::process::stderr_trimmed;
+use crate::application::agent_runtime::{
+    kill_workspace_session_commands, kill_workspace_session_commands_for_existing_sessions,
+};
+use crate::application::session_cleanup::list_tmux_sessions;
+use crate::infrastructure::process::{execute_command, stderr_trimmed};
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -234,6 +238,43 @@ impl SessionTerminator for NoopSessionTerminator {
         _project_name: Option<&str>,
         _workspace_name: &str,
     ) {
+    }
+}
+
+/// Session terminator that kills tmux sessions via real commands.
+/// Used by runtime callers that need actual session teardown.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RuntimeSessionTerminator;
+
+impl SessionTerminator for RuntimeSessionTerminator {
+    fn stop_workspace_sessions(
+        &self,
+        task_slug: Option<&str>,
+        project_name: Option<&str>,
+        workspace_name: &str,
+    ) {
+        let commands = match list_tmux_sessions() {
+            Ok(sessions) => {
+                if sessions.is_empty() {
+                    return;
+                }
+                let names: Vec<String> = sessions.into_iter().map(|session| session.name).collect();
+                kill_workspace_session_commands_for_existing_sessions(
+                    task_slug,
+                    project_name,
+                    workspace_name,
+                    names.as_slice(),
+                )
+            }
+            Err(_) => kill_workspace_session_commands(task_slug, project_name, workspace_name),
+        };
+
+        for command in commands {
+            if command.is_empty() {
+                continue;
+            }
+            let _ = execute_command(&command);
+        }
     }
 }
 

@@ -70,13 +70,11 @@ use crate::application::agent_runtime::{
     execute_task_launch_request_with_result_for_mode, latest_assistant_attention_marker,
     launch_request_for_workspace, shell_launch_request_for_workspace,
 };
-use crate::application::services::workspace_service::{
-    merge_workspace, update_workspace_from_base, workspace_lifecycle_error_message,
-    write_workspace_base_marker,
-};
 use crate::application::workspace_lifecycle::{
-    CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner,
-    MergeWorkspaceRequest, UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
+    CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner, MergeWorkspaceRequest,
+    RuntimeSessionTerminator, UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
+    merge_workspace_with_terminator, update_workspace_from_base_with_terminator,
+    workspace_lifecycle_error_message, write_workspace_base_marker,
 };
 use crate::domain::{AgentType, Task, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::DiscoveryState;

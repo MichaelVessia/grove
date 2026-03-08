@@ -224,7 +224,8 @@ impl GroveApp {
         };
 
         if !self.tmux_input.supports_background_launch() {
-            let (result, warnings) = merge_workspace(request);
+            let (result, warnings) =
+                merge_workspace_with_terminator(request, &RuntimeSessionTerminator);
             self.apply_merge_workspace_completion(MergeWorkspaceCompletion {
                 workspace_name,
                 workspace_path,
@@ -238,7 +239,8 @@ impl GroveApp {
 
         self.dialogs.merge_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let (result, warnings) = merge_workspace(request);
+            let (result, warnings) =
+                merge_workspace_with_terminator(request, &RuntimeSessionTerminator);
             Msg::MergeWorkspaceCompleted(MergeWorkspaceCompletion {
                 workspace_name,
                 workspace_path,

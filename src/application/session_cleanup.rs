@@ -1,9 +1,7 @@
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::application::agent_runtime::{
-    kill_task_session_commands, task_session_names_for_cleanup,
-};
+use crate::application::agent_runtime::task_session_names_for_cleanup;
 use crate::application::task_discovery::bootstrap_task_data_for_root;
 use crate::domain::Task;
 use crate::infrastructure::paths::tasks_root;
@@ -46,10 +44,10 @@ pub struct SessionCleanupApplyResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SessionRecord {
-    name: String,
-    created_unix_secs: Option<u64>,
-    attached_clients: u32,
+pub(crate) struct SessionRecord {
+    pub(crate) name: String,
+    pub(crate) created_unix_secs: Option<u64>,
+    pub(crate) attached_clients: u32,
 }
 
 pub fn plan_session_cleanup(options: SessionCleanupOptions) -> Result<SessionCleanupPlan, String> {
@@ -106,11 +104,7 @@ pub fn apply_session_cleanup(plan: &SessionCleanupPlan) -> SessionCleanupApplyRe
     }
 }
 
-pub fn cleanup_commands_for_task(task: &Task) -> Vec<Vec<String>> {
-    kill_task_session_commands(task)
-}
-
-fn list_tmux_sessions() -> Result<Vec<SessionRecord>, String> {
+pub(crate) fn list_tmux_sessions() -> Result<Vec<SessionRecord>, String> {
     let output = Command::new("tmux")
         .args([
             "list-sessions",
@@ -274,9 +268,10 @@ fn now_unix_secs() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        SessionCleanupOptions, SessionCleanupReason, SessionRecord, cleanup_commands_for_task,
-        parse_tmux_sessions_output, plan_session_cleanup_from_task_inputs,
+        SessionCleanupOptions, SessionCleanupReason, SessionRecord, parse_tmux_sessions_output,
+        plan_session_cleanup_from_task_inputs,
     };
+    use crate::application::agent_runtime::kill_task_session_commands;
     use crate::domain::{AgentType, Task, WorkspaceStatus, Worktree};
     use std::path::PathBuf;
 
@@ -312,7 +307,7 @@ mod tests {
 
     #[test]
     fn session_cleanup_targets_task_and_worktree_sessions() {
-        let commands = cleanup_commands_for_task(&fixture_task());
+        let commands = kill_task_session_commands(&fixture_task());
         let rendered = commands
             .iter()
             .map(|command| command.join(" "))

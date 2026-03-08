@@ -199,7 +199,8 @@ impl GroveApp {
         };
 
         if !self.tmux_input.supports_background_launch() {
-            let (result, warnings) = update_workspace_from_base(request);
+            let (result, warnings) =
+                update_workspace_from_base_with_terminator(request, &RuntimeSessionTerminator);
             self.apply_update_from_base_completion(UpdateWorkspaceFromBaseCompletion {
                 workspace_name,
                 workspace_path,
@@ -213,7 +214,8 @@ impl GroveApp {
 
         self.dialogs.update_from_base_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let (result, warnings) = update_workspace_from_base(request);
+            let (result, warnings) =
+                update_workspace_from_base_with_terminator(request, &RuntimeSessionTerminator);
             Msg::UpdateWorkspaceFromBaseCompleted(UpdateWorkspaceFromBaseCompletion {
                 workspace_name,
                 workspace_path,
