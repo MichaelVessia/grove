@@ -10692,16 +10692,55 @@ mod tests {
                 let tasks_root = unique_temp_workspace_dir("create-task-pr-root");
                 let flohome_repo = init_git_repo("create-pr-task-flohome", "main");
                 let terraform_repo = init_git_repo("create-pr-task-terraform-fastly", "main");
-                Command::new("git")
-                    .current_dir(&flohome_repo)
-                    .args([
-                        "remote",
-                        "add",
-                        "origin",
-                        "git@github.com:flocasts/flohome.git",
-                    ])
-                    .status()
-                    .expect("git remote add origin should run");
+
+                // Create a local bare repo whose path contains "github.com/flocasts/flohome"
+                // so that `git remote get-url origin` returns a URL the slug parser recognises
+                // AND `git fetch origin pull/123/head` works without network access.
+                let bare_parent = unique_temp_workspace_dir("pr-bare-remote");
+                let bare_repo = bare_parent
+                    .join("github.com")
+                    .join("flocasts")
+                    .join("flohome");
+                fs::create_dir_all(bare_repo.parent().unwrap())
+                    .expect("bare repo parent dir should be created");
+                assert!(
+                    Command::new("git")
+                        .args(["clone", "--bare"])
+                        .arg(&flohome_repo)
+                        .arg(&bare_repo)
+                        .status()
+                        .expect("git clone --bare should run")
+                        .success()
+                );
+                let head_rev = String::from_utf8(
+                    Command::new("git")
+                        .current_dir(&bare_repo)
+                        .args(["rev-parse", "HEAD"])
+                        .output()
+                        .expect("git rev-parse should run")
+                        .stdout,
+                )
+                .expect("valid utf8")
+                .trim()
+                .to_string();
+                assert!(
+                    Command::new("git")
+                        .current_dir(&bare_repo)
+                        .args(["update-ref", "refs/pull/123/head", &head_rev])
+                        .status()
+                        .expect("git update-ref should run")
+                        .success()
+                );
+
+                let origin_url = format!("file://{}", bare_repo.display());
+                assert!(
+                    Command::new("git")
+                        .current_dir(&flohome_repo)
+                        .args(["remote", "add", "origin", &origin_url])
+                        .status()
+                        .expect("git remote add origin should run")
+                        .success()
+                );
                 Command::new("git")
                     .current_dir(&terraform_repo)
                     .args([
