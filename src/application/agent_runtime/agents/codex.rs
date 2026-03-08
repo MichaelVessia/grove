@@ -400,20 +400,11 @@ fn parse_response_message_role(line: &str) -> Option<&str> {
 mod tests {
     use std::fs;
     use std::path::PathBuf;
-    use std::process;
-    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant, UNIX_EPOCH};
 
     use super::*;
 
-    fn unique_test_dir(prefix: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock should be after unix epoch")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!("{prefix}-{}-{nanos}", process::id()));
-        fs::create_dir_all(&path).expect("test directory should be created");
-        path
-    }
+    use crate::test_support::unique_test_dir;
 
     fn write_codex_session_file(path: &Path, cwd: &Path) {
         let line = format!(
