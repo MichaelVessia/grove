@@ -229,8 +229,8 @@ mod tests {
         decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data, parse_cursor_metadata,
         ui_theme, ui_theme_for, usize_to_u64,
     };
+    use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
     use crate::application::interactive::InteractiveState;
-    use crate::application::services::runtime_service::workspace_status_targets_for_polling_with_live_preview;
     use crate::application::task_lifecycle::{
         CreateTaskRequest, CreateTaskResult, TaskBranchSource,
     };

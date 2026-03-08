@@ -63,12 +63,11 @@ use crate::application::task_lifecycle::{
     CreateTaskRequest, CreateTaskResult, DeleteTaskRequest, TaskLifecycleError, create_task,
     create_task_in_root, delete_task, task_lifecycle_error_message,
 };
-use crate::application::services::runtime_service::{
+use crate::application::agent_runtime::{
     detect_status_with_session_override, execute_launch_request_with_result_for_mode,
-    execute_stop_task_with_result_for_mode,
-    execute_task_launch_request_with_result_for_mode,
     execute_restart_workspace_in_pane_with_result, execute_shell_launch_request_for_mode,
-    execute_stop_workspace_with_result_for_mode, latest_assistant_attention_marker,
+    execute_stop_task_with_result_for_mode, execute_stop_workspace_with_result_for_mode,
+    execute_task_launch_request_with_result_for_mode, latest_assistant_attention_marker,
     launch_request_for_workspace, shell_launch_request_for_workspace,
 };
 use crate::application::services::workspace_service::{
