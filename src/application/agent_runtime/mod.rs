@@ -238,8 +238,7 @@ mod tests {
         pub(super) use std::collections::HashSet;
         pub(super) use std::fs;
         pub(super) use std::path::PathBuf;
-        pub(super) use std::process;
-        pub(super) use std::time::{Duration, SystemTime, UNIX_EPOCH};
+        pub(super) use std::time::Duration;
 
         pub(super) use rusqlite::Connection;
 
@@ -293,15 +292,7 @@ mod tests {
             .expect("workspace should be valid")
         }
 
-        pub(super) fn unique_test_dir(prefix: &str) -> PathBuf {
-            let nanos = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock should be after unix epoch")
-                .as_nanos();
-            let path = std::env::temp_dir().join(format!("{prefix}-{}-{nanos}", process::id()));
-            fs::create_dir_all(&path).expect("test directory should be created");
-            path
-        }
+        pub(super) use crate::test_support::unique_test_dir;
 
         #[derive(Default)]
         pub(super) struct RecordingCommandExecutor {

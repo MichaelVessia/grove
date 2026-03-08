@@ -418,20 +418,11 @@ fn file_state(path: &Path) -> Option<DatabaseFileState> {
 mod tests {
     use std::fs;
     use std::path::PathBuf;
-    use std::process;
-    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant};
 
     use super::*;
 
-    fn unique_test_dir(prefix: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock should be after unix epoch")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!("{prefix}-{}-{nanos}", process::id()));
-        fs::create_dir_all(&path).expect("test directory should be created");
-        path
-    }
+    use crate::test_support::unique_test_dir;
 
     fn create_opencode_db(database_path: &Path, workspace_path: &Path, session_id: &str) {
         let connection = Connection::open(database_path).expect("database should be created");
