@@ -1,6 +1,8 @@
 .reference/
 /target/
 .direnv/
+.agents/worktrees/
+.claude/worktrees/
 .grove/
 .grove/debug-snapshot.json
 .sidecar/
