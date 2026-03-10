@@ -236,6 +236,20 @@ impl GroveApp {
         true
     }
 
+    fn project_dialog_list_row_at_pointer(&self, x: u16, y: u16) -> Option<usize> {
+        self.last_hit_grid
+            .borrow()
+            .as_ref()
+            .and_then(|grid| grid.hit_test(x, y))
+            .and_then(|(id, _region, data)| {
+                if id.id() == HIT_ID_PROJECT_DIALOG_LIST {
+                    usize::try_from(data).ok()
+                } else {
+                    None
+                }
+            })
+    }
+
     pub(super) fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {
         if let Some(state) = self.session.interactive.as_mut() {
             state.note_mouse_event(Instant::now());
@@ -269,6 +283,15 @@ impl GroveApp {
         self.telemetry.event_log.log(event);
 
         if self.modal_open() {
+            if self.project_dialog().is_some()
+                && matches!(mouse_event.kind, MouseEventKind::Down(MouseButton::Left))
+                && let Some(index) =
+                    self.project_dialog_list_row_at_pointer(mouse_event.x, mouse_event.y)
+                && let Some(dialog) = self.project_dialog_mut()
+            {
+                dialog.set_selected_filtered_index(index);
+                return;
+            }
             if matches!(mouse_event.kind, MouseEventKind::Down(MouseButton::Left))
                 && let Some(next_tab) = self
                     .create_dialog_tab_from_hit_grid(mouse_event.x, mouse_event.y)

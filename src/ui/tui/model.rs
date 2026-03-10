@@ -19,7 +19,6 @@ use ftui::render::frame::{Frame, HitGrid, HitId, HitRegion as FrameHitRegion};
 use ftui::text::{
     Line as FtLine, Span as FtSpan, Text as FtText, display_width as text_display_width,
 };
-use ftui::widgets::Widget;
 use ftui::widgets::block::{Alignment as BlockAlignment, Block};
 use ftui::widgets::borders::Borders;
 use ftui::widgets::command_palette::{
@@ -30,10 +29,11 @@ use ftui::widgets::notification_queue::{
     NotificationPriority, NotificationQueue, NotificationStack, QueueConfig,
 };
 use ftui::widgets::input::TextInput;
-use ftui::widgets::list::ListState;
+use ftui::widgets::list::{List, ListItem, ListState};
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::toast::{Toast, ToastIcon, ToastPosition, ToastStyle};
 use ftui::widgets::virtualized::VirtualizedListState;
+use ftui::widgets::{StatefulWidget, Widget};
 use ftui::{Cmd, Model, PackedRgba, Style};
 use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
 use serde_json::Value;

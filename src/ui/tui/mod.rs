@@ -215,10 +215,10 @@ mod tests {
         AppDependencies, ClipboardAccess, CommandTmuxInput, CreateDialogField, CreateDialogTab,
         CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
         DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_CREATE_DIALOG_TAB,
-        HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST,
-        HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW, HelpHintContext, LaunchDialogField,
-        LaunchDialogState, LaunchDialogTarget, LazygitLaunchCompletion, LivePreviewCapture,
-        MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
+        HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_PROJECT_DIALOG_LIST, HIT_ID_STATUS,
+        HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW, HelpHintContext,
+        LaunchDialogField, LaunchDialogState, LaunchDialogTarget, LazygitLaunchCompletion,
+        LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
         PendingResizeVerification, PreviewPollCompletion, PreviewTab, ProjectAddDialogField,
         ProjectDefaultsDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
         StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
@@ -11100,6 +11100,52 @@ mod tests {
                     app.project_dialog()
                         .and_then(|dialog| dialog.project_list.selected()),
                     Some(0)
+                );
+            }
+
+            #[test]
+            fn project_dialog_native_switcher_mouse_click_selects_project_row() {
+                let mut app = fixture_app();
+                app.projects.push(ProjectConfig {
+                    name: "site".to_string(),
+                    path: PathBuf::from("/repos/site"),
+                    defaults: Default::default(),
+                });
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+
+                let mut target = None;
+                with_rendered_frame(&app, 100, 24, |frame| {
+                    for y in 0..frame.height() {
+                        for x in 0..frame.width() {
+                            let Some((hit_id, _region, data)) = frame.hit_test(x, y) else {
+                                continue;
+                            };
+                            if hit_id == HitId::new(HIT_ID_PROJECT_DIALOG_LIST) && data == 1 {
+                                target = Some((x, y));
+                                return;
+                            }
+                        }
+                    }
+                });
+
+                let (x, y) = target.expect("second project row should register a hit");
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Mouse(MouseEvent::new(
+                        MouseEventKind::Down(MouseButton::Left),
+                        x,
+                        y,
+                    )),
+                );
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.project_list.selected()),
+                    Some(1)
                 );
             }
 
