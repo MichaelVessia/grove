@@ -1,3 +1,4 @@
+use super::panes::PaneRole;
 use super::view_prelude::*;
 
 impl GroveApp {
@@ -99,27 +100,58 @@ impl GroveApp {
         }
 
         let (viewport_width, viewport_height) = self.effective_viewport_size();
-        let layout = self.view_layout();
-
         if x >= viewport_width || y >= viewport_height {
             return (HitRegion::Outside, None);
         }
-        if y < layout.header.bottom() {
+
+        let viewport = Rect::from_size(viewport_width, viewport_height);
+        let pane_layout = self.panes.solve(viewport);
+
+        if let Some(header_rect) = self.panes.rect_for_role(&pane_layout, PaneRole::Header)
+            && y < header_rect.bottom()
+        {
             return (HitRegion::Header, None);
         }
-        if y >= layout.status.y {
+        if let Some(status_rect) = self.panes.rect_for_role(&pane_layout, PaneRole::Status)
+            && y >= status_rect.y
+        {
             return (HitRegion::StatusLine, None);
         }
 
-        let divider_area = Self::divider_hit_area(layout.divider, viewport_width);
-        if x >= divider_area.x && x < divider_area.right() {
-            return (HitRegion::Divider, None);
+        if let Some(workspace_list_rect) = self
+            .panes
+            .rect_for_role(&pane_layout, PaneRole::WorkspaceList)
+            && !self.sidebar_hidden
+        {
+            // Divider sits at the right edge of workspace_list (first column of preview pane)
+            let preview_rect = self
+                .panes
+                .rect_for_role(&pane_layout, PaneRole::Preview)
+                .unwrap_or_default();
+            let divider_rect = Rect::new(
+                preview_rect.x,
+                preview_rect.y,
+                DIVIDER_WIDTH,
+                preview_rect.height,
+            );
+            let divider_area = Self::divider_hit_area(divider_rect, viewport_width);
+            if x >= divider_area.x && x < divider_area.right() {
+                return (HitRegion::Divider, None);
+            }
+            if x >= workspace_list_rect.x && x < workspace_list_rect.right() {
+                return (HitRegion::WorkspaceList, None);
+            }
         }
-        if x >= layout.sidebar.x && x < layout.sidebar.right() {
-            return (HitRegion::WorkspaceList, None);
-        }
-        if x >= layout.preview.x && x < layout.preview.right() {
-            return (HitRegion::Preview, None);
+
+        if let Some(preview_rect) = self.panes.rect_for_role(&pane_layout, PaneRole::Preview) {
+            let adjusted_x = if self.sidebar_hidden {
+                preview_rect.x
+            } else {
+                preview_rect.x + DIVIDER_WIDTH
+            };
+            if x >= adjusted_x && x < preview_rect.right() {
+                return (HitRegion::Preview, None);
+            }
         }
 
         (HitRegion::Outside, None)

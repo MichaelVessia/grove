@@ -1362,6 +1362,73 @@ mod tests {
         }
     }
 
+    mod pane_tree_hit_regions {
+        use super::*;
+        use crate::ui::tui::panes::PaneRole;
+        use crate::ui::tui::{HitRegion, STATUS_HEIGHT};
+        use ftui::core::geometry::Rect;
+
+        #[test]
+        fn point_in_header_classifies_as_header() {
+            let app = fixture_app();
+            let (region, _) = app.hit_region_for_point(10, 0);
+            assert_eq!(region, HitRegion::Header);
+        }
+
+        #[test]
+        fn point_in_status_classifies_as_status() {
+            let app = fixture_app();
+            let status_y = app.viewport_height - STATUS_HEIGHT;
+            let (region, _) = app.hit_region_for_point(10, status_y);
+            assert_eq!(region, HitRegion::StatusLine);
+        }
+
+        #[test]
+        fn point_in_workspace_list_classifies_as_workspace_list() {
+            let app = fixture_app();
+            let pane_layout = app
+                .panes
+                .solve(Rect::from_size(app.viewport_width, app.viewport_height));
+            let list_rect = app
+                .panes
+                .rect_for_role(&pane_layout, PaneRole::WorkspaceList)
+                .expect("workspace list rect");
+            let mid_x = list_rect.x + list_rect.width / 2;
+            let mid_y = list_rect.y + list_rect.height / 2;
+            let (region, _) = app.hit_region_for_point(mid_x, mid_y);
+            assert_eq!(region, HitRegion::WorkspaceList);
+        }
+
+        #[test]
+        fn point_in_preview_classifies_as_preview() {
+            let app = fixture_app();
+            let pane_layout = app
+                .panes
+                .solve(Rect::from_size(app.viewport_width, app.viewport_height));
+            let preview_rect = app
+                .panes
+                .rect_for_role(&pane_layout, PaneRole::Preview)
+                .expect("preview rect");
+            // Use a point well inside the preview pane (not near the divider edge)
+            let x = preview_rect.x + preview_rect.width / 2;
+            let y = preview_rect.y + preview_rect.height / 2;
+            let (region, _) = app.hit_region_for_point(x, y);
+            assert_eq!(region, HitRegion::Preview);
+        }
+
+        #[test]
+        fn hit_grid_still_wins_when_available() {
+            // After a render, the hit grid should provide fine-grained results
+            let app = fixture_app();
+            let mut pool = GraphemePool::new();
+            let mut frame = Frame::new(80, 24, &mut pool);
+            ftui::Model::view(&app, &mut frame);
+            // After render, hit grid is populated
+            let (region, _) = app.hit_region_for_point(0, 0);
+            assert_eq!(region, HitRegion::Header);
+        }
+    }
+
     #[test]
     fn startup_restores_workspace_tabs_from_tmux_metadata() {
         let rows = format!(
