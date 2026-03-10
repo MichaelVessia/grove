@@ -11788,6 +11788,110 @@ mod tests {
             }
 
             #[test]
+            fn create_dialog_base_tab_creates_base_task() {
+                let mut app = fixture_app();
+                let tasks_root = unique_temp_workspace_dir("create-base-task-root");
+                let repo = init_git_repo("create-base-task-repo", "main");
+
+                app.projects = vec![ProjectConfig {
+                    name: "my-repo".to_string(),
+                    path: repo.clone(),
+                    defaults: Default::default(),
+                }];
+                app.task_root_override = Some(tasks_root.clone());
+
+                app.open_create_dialog();
+                let dialog = app
+                    .create_dialog_mut()
+                    .expect("create dialog should be open");
+                dialog.tab = CreateDialogTab::Base;
+                dialog.project_index = 0;
+                dialog.focused_field = CreateDialogField::CreateButton;
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(app.create_dialog().is_none());
+
+                let repo_dir_name = repo
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .expect("repo dir name");
+                assert!(
+                    app.status_bar_line()
+                        .contains(&format!("task '{}' created", repo_dir_name))
+                );
+                assert_eq!(app.state.tasks.len(), 1);
+
+                let task = app
+                    .state
+                    .selected_task()
+                    .expect("a task should be selected");
+                assert_eq!(task.slug, repo_dir_name);
+                assert_eq!(task.worktrees.len(), 1);
+
+                let worktree = &task.worktrees[0];
+                assert_eq!(worktree.path, worktree.repository_path);
+                assert!(worktree.is_main_checkout());
+            }
+
+            #[test]
+            fn create_dialog_base_tab_filters_projects_with_existing_base() {
+                let mut app = fixture_app();
+                let repo_a = init_git_repo("base-filter-repo-a", "main");
+                let repo_b = init_git_repo("base-filter-repo-b", "main");
+
+                app.projects = vec![
+                    ProjectConfig {
+                        name: "repo-a".to_string(),
+                        path: repo_a.clone(),
+                        defaults: Default::default(),
+                    },
+                    ProjectConfig {
+                        name: "repo-b".to_string(),
+                        path: repo_b.clone(),
+                        defaults: Default::default(),
+                    },
+                ];
+
+                // Simulate repo-a already having a base workspace (is_main = true).
+                app.state.workspaces.push(Workspace {
+                    name: "repo-a-base".to_string(),
+                    task_slug: Some("repo-a-base".to_string()),
+                    path: repo_a.clone(),
+                    project_name: Some("repo-a".to_string()),
+                    project_path: Some(repo_a.clone()),
+                    branch: "main".to_string(),
+                    base_branch: None,
+                    last_activity_unix_secs: None,
+                    agent: AgentType::Codex,
+                    status: WorkspaceStatus::Main,
+                    is_main: true,
+                    is_orphaned: false,
+                    supported_agent: true,
+                    pull_requests: Vec::new(),
+                });
+
+                app.open_create_dialog();
+                let dialog = app
+                    .create_dialog_mut()
+                    .expect("create dialog should be open");
+                dialog.tab = CreateDialogTab::Base;
+
+                app.open_create_project_picker();
+
+                let picker = app
+                    .create_dialog()
+                    .and_then(|dialog| dialog.project_picker.as_ref())
+                    .expect("project picker should be open");
+
+                // Only repo-b (index 1) should be available; repo-a is filtered out.
+                assert_eq!(picker.filtered_project_indices, vec![1]);
+            }
+
+            #[test]
             fn project_add_dialog_accepts_shift_modified_uppercase_path_characters() {
                 let mut app = fixture_app();
 
