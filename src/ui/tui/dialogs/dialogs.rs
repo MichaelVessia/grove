@@ -438,13 +438,6 @@ impl GroveApp {
         RenameTabDialogState
     );
     active_dialog_accessors!(
-        project_dialog,
-        project_dialog_mut,
-        set_project_dialog,
-        Project,
-        ProjectDialogState
-    );
-    active_dialog_accessors!(
         settings_dialog,
         settings_dialog_mut,
         set_settings_dialog,
@@ -454,6 +447,24 @@ impl GroveApp {
 
     pub(super) fn allows_text_input_modifiers(modifiers: Modifiers) -> bool {
         modifiers.is_empty() || modifiers == Modifiers::SHIFT
+    }
+
+    pub(super) fn project_dialog(&self) -> Option<&ProjectDialogState> {
+        match self.dialogs.active_dialog.as_ref() {
+            Some(ActiveDialog::Project(dialog)) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    pub(super) fn project_dialog_mut(&mut self) -> Option<&mut ProjectDialogState> {
+        match self.dialogs.active_dialog.as_mut() {
+            Some(ActiveDialog::Project(dialog)) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    pub(super) fn set_project_dialog(&mut self, dialog: ProjectDialogState) {
+        self.dialogs.active_dialog = Some(ActiveDialog::Project(Box::new(dialog)));
     }
 
     pub(super) fn handle_keybind_help_key(&mut self, key_event: KeyEvent) {

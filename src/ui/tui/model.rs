@@ -29,6 +29,8 @@ use ftui::widgets::modal::{BackdropConfig, Modal, ModalSizeConstraints};
 use ftui::widgets::notification_queue::{
     NotificationPriority, NotificationQueue, NotificationStack, QueueConfig,
 };
+use ftui::widgets::input::TextInput;
+use ftui::widgets::list::ListState;
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::toast::{Toast, ToastIcon, ToastPosition, ToastStyle};
 use ftui::widgets::virtualized::VirtualizedListState;
@@ -183,7 +185,7 @@ impl SessionTracker {
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 enum ActiveDialog {
     Launch(LaunchDialogState),
     Stop(StopDialogState),
@@ -195,7 +197,7 @@ enum ActiveDialog {
     Create(CreateDialogState),
     Edit(EditDialogState),
     RenameTab(RenameTabDialogState),
-    Project(ProjectDialogState),
+    Project(Box<ProjectDialogState>),
     Settings(SettingsDialogState),
 }
 

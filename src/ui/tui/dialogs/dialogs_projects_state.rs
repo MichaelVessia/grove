@@ -24,7 +24,7 @@ impl GroveApp {
 
     pub(super) fn refresh_project_dialog_filtered(&mut self) {
         let query = match self.project_dialog() {
-            Some(dialog) => dialog.filter.clone(),
+            Some(dialog) => dialog.filter().to_string(),
             None => return,
         };
         let filtered = self.filtered_project_indices(&query);
@@ -34,12 +34,16 @@ impl GroveApp {
 
         dialog.filtered_project_indices = filtered;
         if dialog.filtered_project_indices.is_empty() {
-            dialog.selected_filtered_index = 0;
+            dialog.project_list.select(None);
             return;
         }
-        if dialog.selected_filtered_index >= dialog.filtered_project_indices.len() {
-            dialog.selected_filtered_index =
-                dialog.filtered_project_indices.len().saturating_sub(1);
+        let selected = dialog.selected_filtered_index();
+        if selected >= dialog.filtered_project_indices.len() {
+            dialog.set_selected_filtered_index(
+                dialog.filtered_project_indices.len().saturating_sub(1),
+            );
+        } else if dialog.project_list.selected().is_none() {
+            dialog.set_selected_filtered_index(0);
         }
     }
 
@@ -50,7 +54,7 @@ impl GroveApp {
         }
         dialog
             .filtered_project_indices
-            .get(dialog.selected_filtered_index)
+            .get(dialog.selected_filtered_index())
             .copied()
     }
 
@@ -103,10 +107,14 @@ impl GroveApp {
             .iter()
             .position(|index| *index == selected_project_index)
             .unwrap_or(0);
+        let mut project_list = ListState::default();
+        if !filtered_project_indices.is_empty() {
+            project_list.select(Some(selected_filtered_index));
+        }
         self.set_project_dialog(ProjectDialogState {
-            filter: String::new(),
+            filter_input: TextInput::new().with_focused(true),
             filtered_project_indices,
-            selected_filtered_index,
+            project_list,
             add_dialog: None,
             defaults_dialog: None,
         });
@@ -116,10 +124,12 @@ impl GroveApp {
         let Some(project_dialog) = self.project_dialog_mut() else {
             return;
         };
-        project_dialog.add_dialog = Some(ProjectAddDialogState {
-            name: String::new(),
-            path: String::new(),
+        let mut add_dialog = ProjectAddDialogState {
+            name_input: TextInput::new().with_focused(true),
+            path_input: TextInput::new(),
             focused_field: ProjectAddDialogField::Name,
-        });
+        };
+        add_dialog.sync_focus();
+        project_dialog.add_dialog = Some(add_dialog);
     }
 }

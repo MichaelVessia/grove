@@ -458,31 +458,69 @@ impl CreateDialogField {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(super) struct ProjectDialogState {
-    pub(super) filter: String,
+    pub(super) filter_input: TextInput,
     pub(super) filtered_project_indices: Vec<usize>,
-    pub(super) selected_filtered_index: usize,
+    pub(super) project_list: ListState,
     pub(super) add_dialog: Option<ProjectAddDialogState>,
     pub(super) defaults_dialog: Option<ProjectDefaultsDialogState>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl ProjectDialogState {
+    pub(super) fn filter(&self) -> &str {
+        self.filter_input.value()
+    }
+
+    pub(super) fn selected_filtered_index(&self) -> usize {
+        self.project_list.selected().unwrap_or(0)
+    }
+
+    pub(super) fn set_selected_filtered_index(&mut self, index: usize) {
+        self.project_list.select(Some(index));
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct ProjectAddDialogState {
-    pub(super) name: String,
-    pub(super) path: String,
+    pub(super) name_input: TextInput,
+    pub(super) path_input: TextInput,
     pub(super) focused_field: ProjectAddDialogField,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl ProjectAddDialogState {
+    pub(super) fn sync_focus(&mut self) {
+        self.name_input
+            .set_focused(self.focused_field == ProjectAddDialogField::Name);
+        self.path_input
+            .set_focused(self.focused_field == ProjectAddDialogField::Path);
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct ProjectDefaultsDialogState {
     pub(super) project_index: usize,
-    pub(super) base_branch: String,
-    pub(super) workspace_init_command: String,
-    pub(super) claude_env: String,
-    pub(super) codex_env: String,
-    pub(super) opencode_env: String,
+    pub(super) base_branch_input: TextInput,
+    pub(super) workspace_init_command_input: TextInput,
+    pub(super) claude_env_input: TextInput,
+    pub(super) codex_env_input: TextInput,
+    pub(super) opencode_env_input: TextInput,
     pub(super) focused_field: ProjectDefaultsDialogField,
+}
+
+impl ProjectDefaultsDialogState {
+    pub(super) fn sync_focus(&mut self) {
+        self.base_branch_input
+            .set_focused(self.focused_field == ProjectDefaultsDialogField::BaseBranch);
+        self.workspace_init_command_input
+            .set_focused(self.focused_field == ProjectDefaultsDialogField::WorkspaceInitCommand);
+        self.claude_env_input
+            .set_focused(self.focused_field == ProjectDefaultsDialogField::ClaudeEnv);
+        self.codex_env_input
+            .set_focused(self.focused_field == ProjectDefaultsDialogField::CodexEnv);
+        self.opencode_env_input
+            .set_focused(self.focused_field == ProjectDefaultsDialogField::OpenCodeEnv);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

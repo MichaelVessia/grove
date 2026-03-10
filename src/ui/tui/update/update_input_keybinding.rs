@@ -21,18 +21,22 @@ impl GroveApp {
             return !dialog.task_name.is_empty() || !dialog.pr_url.is_empty();
         }
         if let Some(project_dialog) = self.project_dialog() {
-            if !project_dialog.filter.is_empty() {
+            if !project_dialog.filter().is_empty() {
                 return true;
             }
             if let Some(add_dialog) = project_dialog.add_dialog.as_ref() {
-                return !add_dialog.name.is_empty() || !add_dialog.path.is_empty();
+                return !add_dialog.name_input.value().is_empty()
+                    || !add_dialog.path_input.value().is_empty();
             }
             if let Some(defaults_dialog) = project_dialog.defaults_dialog.as_ref() {
-                return !defaults_dialog.base_branch.is_empty()
-                    || !defaults_dialog.workspace_init_command.is_empty()
-                    || !defaults_dialog.claude_env.is_empty()
-                    || !defaults_dialog.codex_env.is_empty()
-                    || !defaults_dialog.opencode_env.is_empty();
+                return !defaults_dialog.base_branch_input.value().is_empty()
+                    || !defaults_dialog
+                        .workspace_init_command_input
+                        .value()
+                        .is_empty()
+                    || !defaults_dialog.claude_env_input.value().is_empty()
+                    || !defaults_dialog.codex_env_input.value().is_empty()
+                    || !defaults_dialog.opencode_env_input.value().is_empty();
             }
         }
 

@@ -21,7 +21,7 @@ impl GroveApp {
                     content_width,
                     theme,
                     "Name",
-                    add_dialog.name.as_str(),
+                    add_dialog.name_input.value(),
                     "Optional, defaults to directory name",
                     focused(ProjectAddDialogField::Name),
                 ),
@@ -29,7 +29,7 @@ impl GroveApp {
                     content_width,
                     theme,
                     "Path",
-                    add_dialog.path.as_str(),
+                    add_dialog.path_input.value(),
                     "Absolute path or ~/path to repo root",
                     focused(ProjectAddDialogField::Path),
                 ),
@@ -104,7 +104,7 @@ impl GroveApp {
                     content_width,
                     theme,
                     "BaseBranch",
-                    defaults_dialog.base_branch.as_str(),
+                    defaults_dialog.base_branch_input.value(),
                     "Optional override (empty uses selected branch)",
                     focused(ProjectDefaultsDialogField::BaseBranch),
                 ),
@@ -112,7 +112,7 @@ impl GroveApp {
                     content_width,
                     theme,
                     "InitCmd",
-                    defaults_dialog.workspace_init_command.as_str(),
+                    defaults_dialog.workspace_init_command_input.value(),
                     "Runs once per workspace start (agent/shell/git share)",
                     focused(ProjectDefaultsDialogField::WorkspaceInitCommand),
                 ),
@@ -120,7 +120,7 @@ impl GroveApp {
                     content_width,
                     theme,
                     "ClaudeEnv",
-                    defaults_dialog.claude_env.as_str(),
+                    defaults_dialog.claude_env_input.value(),
                     "KEY=VALUE; KEY2=VALUE",
                     focused(ProjectDefaultsDialogField::ClaudeEnv),
                 ),
@@ -128,7 +128,7 @@ impl GroveApp {
                     content_width,
                     theme,
                     "CodexEnv",
-                    defaults_dialog.codex_env.as_str(),
+                    defaults_dialog.codex_env_input.value(),
                     "KEY=VALUE; KEY2=VALUE",
                     focused(ProjectDefaultsDialogField::CodexEnv),
                 ),
@@ -136,7 +136,7 @@ impl GroveApp {
                     content_width,
                     theme,
                     "OpenCodeEnv",
-                    defaults_dialog.opencode_env.as_str(),
+                    defaults_dialog.opencode_env_input.value(),
                     "KEY=VALUE; KEY2=VALUE",
                     focused(ProjectDefaultsDialogField::OpenCodeEnv),
                 ),
@@ -196,7 +196,7 @@ impl GroveApp {
             .max(1)
             .min(dialog.filtered_project_indices.len());
         let scroll_offset = Self::project_dialog_scroll_offset(
-            dialog.selected_filtered_index,
+            dialog.selected_filtered_index(),
             dialog.filtered_project_indices.len(),
             visible_projects,
         );
@@ -206,7 +206,7 @@ impl GroveApp {
             content_width,
             theme,
             "Filter",
-            dialog.filter.as_str(),
+            dialog.filter(),
             "Type project name or path",
             true,
         ));
@@ -236,7 +236,7 @@ impl GroveApp {
                 let Some(project) = self.projects.get(*project_index) else {
                     continue;
                 };
-                let selected = filtered_index == dialog.selected_filtered_index;
+                let selected = filtered_index == dialog.selected_filtered_index();
                 let marker = if selected { ">" } else { " " };
                 let name_style = if selected {
                     Style::new().fg(theme.mauve).bold()

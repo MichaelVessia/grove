@@ -17,15 +17,17 @@ impl GroveApp {
         let opencode_env = format_agent_env_vars(&project.defaults.agent_env.opencode);
 
         if let Some(project_dialog) = self.project_dialog_mut() {
-            project_dialog.defaults_dialog = Some(ProjectDefaultsDialogState {
+            let mut defaults_dialog = ProjectDefaultsDialogState {
                 project_index,
-                base_branch,
-                workspace_init_command,
-                claude_env,
-                codex_env,
-                opencode_env,
+                base_branch_input: TextInput::new().with_value(base_branch).with_focused(true),
+                workspace_init_command_input: TextInput::new().with_value(workspace_init_command),
+                claude_env_input: TextInput::new().with_value(claude_env),
+                codex_env_input: TextInput::new().with_value(codex_env),
+                opencode_env_input: TextInput::new().with_value(opencode_env),
                 focused_field: ProjectDefaultsDialogField::BaseBranch,
-            });
+            };
+            defaults_dialog.sync_focus();
+            project_dialog.defaults_dialog = Some(defaults_dialog);
         }
     }
 
@@ -36,21 +38,21 @@ impl GroveApp {
         else {
             return;
         };
-        let claude_env = match encode_agent_env_vars(&dialog_state.claude_env) {
+        let claude_env = match encode_agent_env_vars(dialog_state.claude_env_input.value()) {
             Ok(env) => env,
             Err(error) => {
                 self.show_info_toast(format!("invalid Claude env: {error}"));
                 return;
             }
         };
-        let codex_env = match encode_agent_env_vars(&dialog_state.codex_env) {
+        let codex_env = match encode_agent_env_vars(dialog_state.codex_env_input.value()) {
             Ok(env) => env,
             Err(error) => {
                 self.show_info_toast(format!("invalid Codex env: {error}"));
                 return;
             }
         };
-        let opencode_env = match encode_agent_env_vars(&dialog_state.opencode_env) {
+        let opencode_env = match encode_agent_env_vars(dialog_state.opencode_env_input.value()) {
             Ok(env) => env,
             Err(error) => {
                 self.show_info_toast(format!("invalid OpenCode env: {error}"));
@@ -63,9 +65,13 @@ impl GroveApp {
                 return;
             };
 
-            project.defaults.base_branch = dialog_state.base_branch.trim().to_string();
-            project.defaults.workspace_init_command =
-                dialog_state.workspace_init_command.trim().to_string();
+            project.defaults.base_branch =
+                dialog_state.base_branch_input.value().trim().to_string();
+            project.defaults.workspace_init_command = dialog_state
+                .workspace_init_command_input
+                .value()
+                .trim()
+                .to_string();
             project.defaults.agent_env = AgentEnvDefaults {
                 claude: claude_env,
                 codex: codex_env,

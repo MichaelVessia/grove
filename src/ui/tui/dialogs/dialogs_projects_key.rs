@@ -26,15 +26,19 @@ impl GroveApp {
             }
             KeyCode::Tab => {
                 defaults_dialog.focused_field = defaults_dialog.focused_field.next();
+                defaults_dialog.sync_focus();
             }
             KeyCode::BackTab => {
                 defaults_dialog.focused_field = defaults_dialog.focused_field.previous();
+                defaults_dialog.sync_focus();
             }
             KeyCode::Char(_) if ctrl_n => {
                 defaults_dialog.focused_field = defaults_dialog.focused_field.next();
+                defaults_dialog.sync_focus();
             }
             KeyCode::Char(_) if ctrl_p => {
                 defaults_dialog.focused_field = defaults_dialog.focused_field.previous();
+                defaults_dialog.sync_focus();
             }
             KeyCode::Enter => match defaults_dialog.focused_field {
                 ProjectDefaultsDialogField::SaveButton => post_action = PostAction::Save,
@@ -45,23 +49,39 @@ impl GroveApp {
                 | ProjectDefaultsDialogField::CodexEnv
                 | ProjectDefaultsDialogField::OpenCodeEnv => {
                     defaults_dialog.focused_field = defaults_dialog.focused_field.next();
+                    defaults_dialog.sync_focus();
                 }
             },
-            KeyCode::Backspace => match defaults_dialog.focused_field {
+            KeyCode::Backspace
+            | KeyCode::Delete
+            | KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Home
+            | KeyCode::End => match defaults_dialog.focused_field {
                 ProjectDefaultsDialogField::BaseBranch => {
-                    defaults_dialog.base_branch.pop();
+                    let _ = defaults_dialog
+                        .base_branch_input
+                        .handle_event(&Event::Key(key_event));
                 }
                 ProjectDefaultsDialogField::WorkspaceInitCommand => {
-                    defaults_dialog.workspace_init_command.pop();
+                    let _ = defaults_dialog
+                        .workspace_init_command_input
+                        .handle_event(&Event::Key(key_event));
                 }
                 ProjectDefaultsDialogField::ClaudeEnv => {
-                    defaults_dialog.claude_env.pop();
+                    let _ = defaults_dialog
+                        .claude_env_input
+                        .handle_event(&Event::Key(key_event));
                 }
                 ProjectDefaultsDialogField::CodexEnv => {
-                    defaults_dialog.codex_env.pop();
+                    let _ = defaults_dialog
+                        .codex_env_input
+                        .handle_event(&Event::Key(key_event));
                 }
                 ProjectDefaultsDialogField::OpenCodeEnv => {
-                    defaults_dialog.opencode_env.pop();
+                    let _ = defaults_dialog
+                        .opencode_env_input
+                        .handle_event(&Event::Key(key_event));
                 }
                 ProjectDefaultsDialogField::SaveButton
                 | ProjectDefaultsDialogField::CancelButton => {}
@@ -78,33 +98,34 @@ impl GroveApp {
                     } else {
                         ProjectDefaultsDialogField::SaveButton
                     };
+                    defaults_dialog.sync_focus();
                     return;
                 }
                 match defaults_dialog.focused_field {
                     ProjectDefaultsDialogField::BaseBranch => {
-                        if !character.is_control() {
-                            defaults_dialog.base_branch.push(character);
-                        }
+                        let _ = defaults_dialog
+                            .base_branch_input
+                            .handle_event(&Event::Key(key_event));
                     }
                     ProjectDefaultsDialogField::WorkspaceInitCommand => {
-                        if !character.is_control() {
-                            defaults_dialog.workspace_init_command.push(character);
-                        }
+                        let _ = defaults_dialog
+                            .workspace_init_command_input
+                            .handle_event(&Event::Key(key_event));
                     }
                     ProjectDefaultsDialogField::ClaudeEnv => {
-                        if !character.is_control() {
-                            defaults_dialog.claude_env.push(character);
-                        }
+                        let _ = defaults_dialog
+                            .claude_env_input
+                            .handle_event(&Event::Key(key_event));
                     }
                     ProjectDefaultsDialogField::CodexEnv => {
-                        if !character.is_control() {
-                            defaults_dialog.codex_env.push(character);
-                        }
+                        let _ = defaults_dialog
+                            .codex_env_input
+                            .handle_event(&Event::Key(key_event));
                     }
                     ProjectDefaultsDialogField::OpenCodeEnv => {
-                        if !character.is_control() {
-                            defaults_dialog.opencode_env.push(character);
-                        }
+                        let _ = defaults_dialog
+                            .opencode_env_input
+                            .handle_event(&Event::Key(key_event));
                     }
                     ProjectDefaultsDialogField::SaveButton
                     | ProjectDefaultsDialogField::CancelButton => {}
@@ -143,36 +164,50 @@ impl GroveApp {
             }
             KeyCode::Tab => {
                 add_dialog.focused_field = add_dialog.focused_field.next();
+                add_dialog.sync_focus();
             }
             KeyCode::BackTab => {
                 add_dialog.focused_field = add_dialog.focused_field.previous();
+                add_dialog.sync_focus();
             }
             KeyCode::Char(_) if ctrl_n => {
                 add_dialog.focused_field = add_dialog.focused_field.next();
+                add_dialog.sync_focus();
             }
             KeyCode::Char(_) if ctrl_p => {
                 add_dialog.focused_field = add_dialog.focused_field.previous();
+                add_dialog.sync_focus();
             }
             KeyCode::Enter => match add_dialog.focused_field {
                 ProjectAddDialogField::AddButton => self.add_project_from_dialog(),
                 ProjectAddDialogField::CancelButton => project_dialog.add_dialog = None,
                 ProjectAddDialogField::Name | ProjectAddDialogField::Path => {
                     add_dialog.focused_field = add_dialog.focused_field.next();
+                    add_dialog.sync_focus();
                 }
             },
-            KeyCode::Backspace => match add_dialog.focused_field {
+            KeyCode::Backspace
+            | KeyCode::Delete
+            | KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Home
+            | KeyCode::End => match add_dialog.focused_field {
                 ProjectAddDialogField::Name => {
-                    add_dialog.name.pop();
+                    let _ = add_dialog.name_input.handle_event(&Event::Key(key_event));
                 }
                 ProjectAddDialogField::Path => {
-                    add_dialog.path.pop();
+                    let _ = add_dialog.path_input.handle_event(&Event::Key(key_event));
                 }
                 ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton => {}
             },
-            KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
+            KeyCode::Char(_) if Self::allows_text_input_modifiers(key_event.modifiers) => {
                 match add_dialog.focused_field {
-                    ProjectAddDialogField::Name => add_dialog.name.push(character),
-                    ProjectAddDialogField::Path => add_dialog.path.push(character),
+                    ProjectAddDialogField::Name => {
+                        let _ = add_dialog.name_input.handle_event(&Event::Key(key_event));
+                    }
+                    ProjectAddDialogField::Path => {
+                        let _ = add_dialog.path_input.handle_event(&Event::Key(key_event));
+                    }
                     ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton => {}
                 }
             }
@@ -208,9 +243,9 @@ impl GroveApp {
         match key_event.code {
             KeyCode::Escape => {
                 if let Some(dialog) = self.project_dialog_mut()
-                    && !dialog.filter.is_empty()
+                    && !dialog.filter().is_empty()
                 {
-                    dialog.filter.clear();
+                    dialog.filter_input.clear();
                     self.refresh_project_dialog_filtered();
                     return;
                 }
@@ -224,27 +259,26 @@ impl GroveApp {
             }
             KeyCode::Up => {
                 if let Some(dialog) = self.project_dialog_mut()
-                    && dialog.selected_filtered_index > 0
+                    && dialog.project_list.selected().is_some()
                 {
-                    dialog.selected_filtered_index =
-                        dialog.selected_filtered_index.saturating_sub(1);
+                    dialog.project_list.select_previous();
                 }
             }
             KeyCode::Down => {
                 if let Some(dialog) = self.project_dialog_mut()
-                    && dialog.selected_filtered_index.saturating_add(1)
-                        < dialog.filtered_project_indices.len()
+                    && !dialog.filtered_project_indices.is_empty()
                 {
-                    dialog.selected_filtered_index =
-                        dialog.selected_filtered_index.saturating_add(1);
+                    dialog
+                        .project_list
+                        .select_next(dialog.filtered_project_indices.len());
                 }
             }
             KeyCode::Tab => {
                 if let Some(dialog) = self.project_dialog_mut() {
                     let len = dialog.filtered_project_indices.len();
                     if len > 0 {
-                        dialog.selected_filtered_index =
-                            dialog.selected_filtered_index.saturating_add(1) % len;
+                        let next = dialog.selected_filtered_index().saturating_add(1) % len;
+                        dialog.set_selected_filtered_index(next);
                     }
                 }
             }
@@ -252,11 +286,12 @@ impl GroveApp {
                 if let Some(dialog) = self.project_dialog_mut() {
                     let len = dialog.filtered_project_indices.len();
                     if len > 0 {
-                        dialog.selected_filtered_index = if dialog.selected_filtered_index == 0 {
+                        let selected = dialog.selected_filtered_index();
+                        dialog.set_selected_filtered_index(if selected == 0 {
                             len.saturating_sub(1)
                         } else {
-                            dialog.selected_filtered_index.saturating_sub(1)
-                        };
+                            selected.saturating_sub(1)
+                        });
                     }
                 }
             }
@@ -264,8 +299,8 @@ impl GroveApp {
                 if let Some(dialog) = self.project_dialog_mut() {
                     let len = dialog.filtered_project_indices.len();
                     if len > 0 {
-                        dialog.selected_filtered_index =
-                            dialog.selected_filtered_index.saturating_add(1) % len;
+                        let next = dialog.selected_filtered_index().saturating_add(1) % len;
+                        dialog.set_selected_filtered_index(next);
                     }
                 }
             }
@@ -273,17 +308,18 @@ impl GroveApp {
                 if let Some(dialog) = self.project_dialog_mut() {
                     let len = dialog.filtered_project_indices.len();
                     if len > 0 {
-                        dialog.selected_filtered_index = if dialog.selected_filtered_index == 0 {
+                        let selected = dialog.selected_filtered_index();
+                        dialog.set_selected_filtered_index(if selected == 0 {
                             len.saturating_sub(1)
                         } else {
-                            dialog.selected_filtered_index.saturating_sub(1)
-                        };
+                            selected.saturating_sub(1)
+                        });
                     }
                 }
             }
             KeyCode::Backspace => {
                 if let Some(dialog) = self.project_dialog_mut() {
-                    dialog.filter.pop();
+                    let _ = dialog.filter_input.handle_event(&Event::Key(key_event));
                 }
                 self.refresh_project_dialog_filtered();
             }
@@ -309,8 +345,10 @@ impl GroveApp {
                 self.open_selected_project_defaults_dialog();
             }
             KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
-                if let Some(dialog) = self.project_dialog_mut() {
-                    dialog.filter.push(character);
+                if let Some(dialog) = self.project_dialog_mut()
+                    && !character.is_control()
+                {
+                    let _ = dialog.filter_input.handle_event(&Event::Key(key_event));
                 }
                 self.refresh_project_dialog_filtered();
             }

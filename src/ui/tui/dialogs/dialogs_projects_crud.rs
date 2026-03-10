@@ -127,7 +127,7 @@ impl GroveApp {
             return;
         };
 
-        let path_input = add_dialog.path.trim();
+        let path_input = add_dialog.path_input.value().trim();
         if path_input.is_empty() {
             self.show_info_toast("project path is required");
             return;
@@ -176,10 +176,10 @@ impl GroveApp {
             return;
         }
 
-        let project_name = if add_dialog.name.trim().is_empty() {
+        let project_name = if add_dialog.name_input.value().trim().is_empty() {
             project_display_name(&repo_root)
         } else {
-            add_dialog.name.trim().to_string()
+            add_dialog.name_input.value().trim().to_string()
         };
         self.projects.push(ProjectConfig {
             name: project_name.clone(),

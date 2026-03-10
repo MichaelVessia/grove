@@ -10883,8 +10883,91 @@ mod tests {
                 assert_eq!(
                     app.project_dialog()
                         .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.path.clone()),
+                        .map(|dialog| dialog.path_input.value().to_string()),
                     Some("/US".to_string())
+                );
+            }
+
+            #[test]
+            fn project_dialog_native_state_opens_with_focused_filter_input() {
+                let mut app = fixture_app();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+
+                assert_eq!(
+                    app.project_dialog()
+                        .map(|dialog| dialog.filter_input.focused()),
+                    Some(true)
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.project_list.selected()),
+                    Some(0)
+                );
+            }
+
+            #[test]
+            fn project_dialog_native_state_add_dialog_opens_with_native_inputs() {
+                let mut app = fixture_app();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('a'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.name_input.focused()),
+                    Some(true)
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.path_input.focused()),
+                    Some(false)
+                );
+            }
+
+            #[test]
+            fn project_dialog_native_state_defaults_dialog_opens_with_native_inputs() {
+                let mut app = fixture_app();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('e'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.defaults_dialog.as_ref())
+                        .map(|dialog| dialog.base_branch_input.focused()),
+                    Some(true)
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.defaults_dialog.as_ref())
+                        .map(|dialog| dialog.workspace_init_command_input.focused()),
+                    Some(false)
                 );
             }
 
@@ -10906,7 +10989,8 @@ mod tests {
                 );
 
                 assert_eq!(
-                    app.project_dialog().map(|dialog| dialog.filter.clone()),
+                    app.project_dialog()
+                        .map(|dialog| dialog.filter_input.value().to_string()),
                     Some("G".to_string())
                 );
             }
@@ -10929,7 +11013,8 @@ mod tests {
                 );
 
                 assert_eq!(
-                    app.project_dialog().map(|dialog| dialog.filter.clone()),
+                    app.project_dialog()
+                        .map(|dialog| dialog.filter_input.value().to_string()),
                     Some("jk".to_string())
                 );
             }
@@ -10950,7 +11035,7 @@ mod tests {
 
                 assert_eq!(
                     app.project_dialog()
-                        .map(|dialog| dialog.selected_filtered_index),
+                        .and_then(|dialog| dialog.project_list.selected()),
                     Some(0)
                 );
 
@@ -10960,7 +11045,7 @@ mod tests {
                 );
                 assert_eq!(
                     app.project_dialog()
-                        .map(|dialog| dialog.selected_filtered_index),
+                        .and_then(|dialog| dialog.project_list.selected()),
                     Some(1)
                 );
 
@@ -10970,7 +11055,7 @@ mod tests {
                 );
                 assert_eq!(
                     app.project_dialog()
-                        .map(|dialog| dialog.selected_filtered_index),
+                        .and_then(|dialog| dialog.project_list.selected()),
                     Some(0)
                 );
             }
@@ -10999,7 +11084,7 @@ mod tests {
                 );
                 assert_eq!(
                     app.project_dialog()
-                        .map(|dialog| dialog.selected_filtered_index),
+                        .and_then(|dialog| dialog.project_list.selected()),
                     Some(1)
                 );
 
@@ -11013,7 +11098,7 @@ mod tests {
                 );
                 assert_eq!(
                     app.project_dialog()
-                        .map(|dialog| dialog.selected_filtered_index),
+                        .and_then(|dialog| dialog.project_list.selected()),
                     Some(0)
                 );
             }
@@ -11412,7 +11497,7 @@ mod tests {
                 assert_eq!(
                     app.project_dialog()
                         .and_then(|dialog| dialog.defaults_dialog.as_ref())
-                        .map(|dialog| dialog.workspace_init_command.clone()),
+                        .map(|dialog| dialog.workspace_init_command_input.value().to_string()),
                     Some(String::new())
                 );
             }
