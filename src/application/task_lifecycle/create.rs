@@ -5,9 +5,9 @@ use std::process::Command;
 use crate::domain::{Task, WorkspaceStatus, Worktree};
 
 use super::{
-    CreateTaskRequest, CreateTaskResult, GROVE_SETUP_SCRIPT_FILE, TaskBranchSource,
-    TaskLifecycleError, create_task_domain, repo_directory_name, resolve_repository_base_branch,
-    write_task_manifest,
+    CreateBaseTaskRequest, CreateTaskRequest, CreateTaskResult, GROVE_SETUP_SCRIPT_FILE,
+    TaskBranchSource, TaskLifecycleError, create_task_domain, repo_directory_name,
+    resolve_repository_base_branch, write_task_manifest,
 };
 use crate::application::workspace_lifecycle::{
     GitCommandRunner, SetupCommandContext, SetupCommandRunner, SetupScriptContext,
@@ -168,6 +168,42 @@ pub(super) fn create_task_in_root(
         task_root,
         task,
         warnings,
+    })
+}
+
+pub(super) fn create_base_task_in_root(
+    tasks_root: &Path,
+    request: &CreateBaseTaskRequest,
+) -> Result<CreateTaskResult, TaskLifecycleError> {
+    let repo_name = repo_directory_name(&request.repository)?;
+    if !request.repository.path.exists() {
+        return Err(TaskLifecycleError::Io(format!(
+            "repository path does not exist: {}",
+            request.repository.path.display()
+        )));
+    }
+
+    let task_root = tasks_root.join(&repo_name);
+    fs::create_dir_all(&task_root).map_err(|error| TaskLifecycleError::Io(error.to_string()))?;
+
+    let worktree = Worktree::try_new(
+        request.repository.name.clone(),
+        request.repository.path.clone(),
+        request.repository.path.clone(),
+        request.base_branch.clone(),
+        request.agent,
+        WorkspaceStatus::Main,
+    )
+    .map_err(|error| TaskLifecycleError::TaskInvalid(format!("{error:?}")))?
+    .with_base_branch(Some(request.base_branch.clone()));
+
+    let task = create_task_domain(&repo_name, &request.base_branch, &task_root, vec![worktree])?;
+    write_task_manifest(&task_root, &task)?;
+
+    Ok(CreateTaskResult {
+        task_root,
+        task,
+        warnings: Vec::new(),
     })
 }
 

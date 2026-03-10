@@ -76,6 +76,13 @@ pub struct CreateTaskResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateBaseTaskRequest {
+    pub repository: RepositoryConfig,
+    pub agent: AgentType,
+    pub base_branch: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteTaskRequest {
     pub task: Task,
     pub delete_local_branch: bool,
@@ -128,6 +135,21 @@ pub fn create_task_in_root(
         setup_script_runner,
         setup_command_runner,
     )
+}
+
+pub fn create_base_task(
+    request: &CreateBaseTaskRequest,
+) -> Result<CreateTaskResult, TaskLifecycleError> {
+    let home_directory = dirs::home_dir().ok_or(TaskLifecycleError::HomeDirectoryUnavailable)?;
+    let tasks_root = home_directory.join(".grove").join("tasks");
+    create_base_task_in_root(tasks_root.as_path(), request)
+}
+
+pub fn create_base_task_in_root(
+    tasks_root: &Path,
+    request: &CreateBaseTaskRequest,
+) -> Result<CreateTaskResult, TaskLifecycleError> {
+    create::create_base_task_in_root(tasks_root, request)
 }
 
 pub fn delete_task(request: DeleteTaskRequest) -> (Result<(), String>, Vec<String>) {
@@ -305,9 +327,9 @@ fn stop_task_sessions(task: &Task) {
 #[cfg(test)]
 mod tests {
     use super::{
-        CreateTaskRequest, DeleteTaskRequest, TaskBranchSource, create_task_in_root,
-        delete_task_with_runner_in_manifest_root, detect_repository_base_branch,
-        repo_directory_name, task_manifest_path,
+        CreateBaseTaskRequest, CreateTaskRequest, DeleteTaskRequest, TaskBranchSource,
+        create_base_task_in_root, create_task_in_root, delete_task_with_runner_in_manifest_root,
+        detect_repository_base_branch, repo_directory_name, task_manifest_path,
     };
     use crate::application::workspace_lifecycle::{
         GitCommandRunner, SetupCommandContext, SetupCommandRunner, SetupScriptContext,
@@ -1066,5 +1088,46 @@ mod tests {
         assert!(repo_root.exists());
         assert!(!manifest_task_root.exists());
         assert!(git.calls().is_empty());
+    }
+
+    #[test]
+    fn create_base_task_registers_repo_root_as_main_worktree() {
+        let temp = TestDir::new("create-base");
+        let tasks_root = temp.path.join("tasks");
+        let repo_root = temp.path.join("repos").join("flo360");
+        fs::create_dir_all(&repo_root).expect("repo root should exist");
+
+        let request = CreateBaseTaskRequest {
+            repository: repository(repo_root.clone()),
+            agent: AgentType::Codex,
+            base_branch: "main".to_string(),
+        };
+        let result = create_base_task_in_root(tasks_root.as_path(), &request)
+            .expect("base task should create");
+
+        assert_eq!(result.task.name, "flo360");
+        assert_eq!(result.task.worktrees.len(), 1);
+        let worktree = &result.task.worktrees[0];
+        assert_eq!(worktree.path, repo_root);
+        assert_eq!(worktree.repository_path, repo_root);
+        assert_eq!(worktree.branch, "main");
+        assert!(worktree.is_main_checkout());
+        assert!(task_manifest_path(&result.task_root).exists());
+    }
+
+    #[test]
+    fn create_base_task_validates_repository_path_exists() {
+        let temp = TestDir::new("create-base-missing");
+        let tasks_root = temp.path.join("tasks");
+        let repo_root = temp.path.join("repos").join("nonexistent");
+
+        let request = CreateBaseTaskRequest {
+            repository: repository(repo_root),
+            agent: AgentType::Codex,
+            base_branch: "main".to_string(),
+        };
+        let result = create_base_task_in_root(tasks_root.as_path(), &request);
+
+        assert!(result.is_err());
     }
 }
