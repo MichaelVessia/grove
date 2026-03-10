@@ -354,12 +354,6 @@ impl GroveApp {
         true
     }
 
-    fn next_tab_ordinal(tabs: &WorkspaceTabsState, kind: WorkspaceTabKind) -> u64 {
-        let count = tabs.tabs.iter().filter(|tab| tab.kind == kind).count();
-        let count_u64 = u64::try_from(count).unwrap_or(0);
-        count_u64.saturating_add(1)
-    }
-
     fn new_session_name_for_tab(
         workspace: &Workspace,
         kind: WorkspaceTabKind,
@@ -392,7 +386,7 @@ impl GroveApp {
                 tabs.active_tab_id = existing_id;
                 existing_id
             } else {
-                let ordinal = Self::next_tab_ordinal(tabs, kind);
+                let ordinal = tabs.next_tab_ordinal(kind);
                 let session_name = Self::new_session_name_for_tab(&workspace, kind, ordinal);
                 let title = match kind {
                     WorkspaceTabKind::Agent => {
@@ -617,7 +611,7 @@ impl GroveApp {
         let Some(tabs) = self.workspace_tabs.get_mut(workspace.path.as_path()) else {
             return;
         };
-        let ordinal = Self::next_tab_ordinal(tabs, WorkspaceTabKind::Shell);
+        let ordinal = tabs.next_tab_ordinal(WorkspaceTabKind::Shell);
         let Some(session_name) =
             Self::new_session_name_for_tab(&workspace, WorkspaceTabKind::Shell, ordinal)
         else {
@@ -719,7 +713,7 @@ impl GroveApp {
         let Some(tabs) = self.workspace_tabs.get_mut(workspace.path.as_path()) else {
             return Err("workspace tabs unavailable".to_string());
         };
-        let ordinal = Self::next_tab_ordinal(tabs, WorkspaceTabKind::Agent);
+        let ordinal = tabs.next_tab_ordinal(WorkspaceTabKind::Agent);
         let Some(session_name) =
             Self::new_session_name_for_tab(&workspace, WorkspaceTabKind::Agent, ordinal)
         else {
@@ -763,9 +757,7 @@ impl GroveApp {
             &request,
             CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
         );
-        if let Err(error) = completion.result
-            && !tmux_launch_error_indicates_duplicate_session(&error)
-        {
+        if let Err(error) = completion.result {
             self.session.agent_sessions.mark_failed(session_name);
             self.set_tab_state_by_id(&workspace.path, tab_id, WorkspaceTabRuntimeState::Failed);
             self.session.last_tmux_error = Some(error.clone());

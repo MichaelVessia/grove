@@ -684,12 +684,40 @@ impl WorkspaceTabsState {
         if tab.kind == WorkspaceTabKind::Git && self.find_kind(WorkspaceTabKind::Git).is_some() {
             return false;
         }
+        if let Some(ref session_name) = tab.session_name
+            && self
+                .tabs
+                .iter()
+                .any(|existing| existing.session_name.as_deref() == Some(session_name.as_str()))
+        {
+            return false;
+        }
 
         self.next_seq = self.next_seq.max(tab.id.saturating_add(1));
         self.tabs.push(tab);
         self.tabs
             .sort_by_key(|entry| (entry.kind != WorkspaceTabKind::Home, entry.id));
         true
+    }
+
+    pub(super) fn next_tab_ordinal(&self, kind: WorkspaceTabKind) -> u64 {
+        let suffix = match kind {
+            WorkspaceTabKind::Agent => "-agent-",
+            WorkspaceTabKind::Shell => "-shell-",
+            _ => {
+                return 1;
+            }
+        };
+        let max_ordinal = self
+            .tabs
+            .iter()
+            .filter(|tab| tab.kind == kind)
+            .filter_map(|tab| tab.session_name.as_deref())
+            .filter_map(|name| name.rsplit_once(suffix))
+            .filter_map(|(_, ordinal_str)| ordinal_str.parse::<u64>().ok())
+            .max()
+            .unwrap_or(0);
+        max_ordinal.saturating_add(1)
     }
 
     pub(super) fn close_tab(&mut self, tab_id: u64) -> Option<WorkspaceTab> {
@@ -805,4 +833,96 @@ pub(super) struct InteractiveSendCompletion {
     pub(super) send: QueuedInteractiveSend,
     pub(super) tmux_send_ms: u64,
     pub(super) error: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn agent_tab(session_name: &str) -> WorkspaceTab {
+        WorkspaceTab {
+            id: 0,
+            kind: WorkspaceTabKind::Agent,
+            title: String::new(),
+            session_name: Some(session_name.to_string()),
+            agent_type: None,
+            state: WorkspaceTabRuntimeState::Running,
+        }
+    }
+
+    fn shell_tab(session_name: &str) -> WorkspaceTab {
+        WorkspaceTab {
+            id: 0,
+            kind: WorkspaceTabKind::Shell,
+            title: String::new(),
+            session_name: Some(session_name.to_string()),
+            agent_type: None,
+            state: WorkspaceTabRuntimeState::Running,
+        }
+    }
+
+    #[test]
+    fn next_tab_ordinal_returns_1_when_no_tabs_of_kind() {
+        let tabs = WorkspaceTabsState::new();
+        assert_eq!(tabs.next_tab_ordinal(WorkspaceTabKind::Agent), 1);
+        assert_eq!(tabs.next_tab_ordinal(WorkspaceTabKind::Shell), 1);
+    }
+
+    #[test]
+    fn next_tab_ordinal_uses_max_not_count() {
+        let mut tabs = WorkspaceTabsState::new();
+        // Insert agents 1 and 3 (simulating agent 2 was closed)
+        tabs.insert_tab_adjacent(agent_tab("ws-agent-1"));
+        tabs.insert_tab_adjacent(agent_tab("ws-agent-3"));
+        // With count-based logic this would return 3, colliding with agent-3.
+        // With max-based logic it returns 4.
+        assert_eq!(tabs.next_tab_ordinal(WorkspaceTabKind::Agent), 4);
+    }
+
+    #[test]
+    fn next_tab_ordinal_sequential_agents() {
+        let mut tabs = WorkspaceTabsState::new();
+        tabs.insert_tab_adjacent(agent_tab("ws-agent-1"));
+        tabs.insert_tab_adjacent(agent_tab("ws-agent-2"));
+        assert_eq!(tabs.next_tab_ordinal(WorkspaceTabKind::Agent), 3);
+    }
+
+    #[test]
+    fn next_tab_ordinal_ignores_other_kinds() {
+        let mut tabs = WorkspaceTabsState::new();
+        tabs.insert_tab_adjacent(shell_tab("ws-shell-5"));
+        assert_eq!(tabs.next_tab_ordinal(WorkspaceTabKind::Agent), 1);
+        assert_eq!(tabs.next_tab_ordinal(WorkspaceTabKind::Shell), 6);
+    }
+
+    #[test]
+    fn next_tab_ordinal_returns_1_for_home_and_git() {
+        let tabs = WorkspaceTabsState::new();
+        assert_eq!(tabs.next_tab_ordinal(WorkspaceTabKind::Home), 1);
+        assert_eq!(tabs.next_tab_ordinal(WorkspaceTabKind::Git), 1);
+    }
+
+    #[test]
+    fn insert_restored_tab_rejects_duplicate_session_name() {
+        let mut tabs = WorkspaceTabsState::new();
+        let tab1 = WorkspaceTab {
+            id: 10,
+            kind: WorkspaceTabKind::Agent,
+            title: "Agent 1".to_string(),
+            session_name: Some("ws-agent-1".to_string()),
+            agent_type: None,
+            state: WorkspaceTabRuntimeState::Running,
+        };
+        assert!(tabs.insert_restored_tab(tab1));
+
+        let tab2 = WorkspaceTab {
+            id: 20,
+            kind: WorkspaceTabKind::Agent,
+            title: "Agent 2".to_string(),
+            session_name: Some("ws-agent-1".to_string()),
+            agent_type: None,
+            state: WorkspaceTabRuntimeState::Running,
+        };
+        assert!(!tabs.insert_restored_tab(tab2));
+    }
 }
