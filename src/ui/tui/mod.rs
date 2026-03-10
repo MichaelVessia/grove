@@ -68,6 +68,7 @@ mod selection;
 pub use runner::{run_with_debug_record, run_with_event_log};
 mod replay;
 pub use replay::{ReplayOptions, emit_replay_fixture, replay_debug_record};
+mod panes;
 #[path = "tasks.rs"]
 mod tasks;
 mod text;
@@ -1170,6 +1171,105 @@ mod tests {
         );
         seed_running_agent_tabs_for_running_workspaces(&mut app);
         app
+    }
+
+    mod pane_tree_bootstrap {
+        use super::*;
+        use crate::ui::tui::panes::{GrovePaneModel, PaneRole};
+        use crate::ui::tui::{HEADER_HEIGHT, STATUS_HEIGHT};
+        use ftui::core::geometry::Rect;
+
+        #[test]
+        fn canonical_tree_resolves_all_required_roles() {
+            let model = GrovePaneModel::canonical(30);
+            for role in PaneRole::ALL {
+                assert!(
+                    model.id_for_role(*role).is_some(),
+                    "missing pane id for role {role:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn canonical_tree_solves_for_normal_viewport() {
+            let model = GrovePaneModel::canonical(30);
+            let viewport = Rect::new(0, 0, 120, 40);
+            let layout = model.solve(viewport);
+            for role in PaneRole::ALL {
+                let rect = model.rect_for_role(&layout, *role);
+                assert!(
+                    rect.is_some(),
+                    "role {role:?} should have a solved rect in normal viewport"
+                );
+                let rect = rect.unwrap();
+                assert!(rect.width > 0, "role {role:?} should have non-zero width");
+                assert!(rect.height > 0, "role {role:?} should have non-zero height");
+            }
+        }
+
+        #[test]
+        fn canonical_tree_solves_for_tiny_viewport() {
+            let model = GrovePaneModel::canonical(30);
+            let viewport = Rect::new(0, 0, 10, 5);
+            let layout = model.solve(viewport);
+            for role in PaneRole::ALL {
+                let rect = model.rect_for_role(&layout, *role);
+                assert!(
+                    rect.is_some(),
+                    "role {role:?} should have a solved rect in tiny viewport"
+                );
+            }
+        }
+
+        #[test]
+        fn header_and_status_are_fixed_height() {
+            let model = GrovePaneModel::canonical(30);
+            let viewport = Rect::new(0, 0, 120, 40);
+            let layout = model.solve(viewport);
+
+            let header = model
+                .rect_for_role(&layout, PaneRole::Header)
+                .expect("header rect");
+            assert_eq!(header.height, HEADER_HEIGHT);
+            assert_eq!(header.y, 0);
+
+            let status = model
+                .rect_for_role(&layout, PaneRole::Status)
+                .expect("status rect");
+            assert_eq!(status.height, STATUS_HEIGHT);
+            assert_eq!(status.y, viewport.height - STATUS_HEIGHT);
+        }
+
+        #[test]
+        fn workspace_list_and_preview_fill_middle() {
+            let model = GrovePaneModel::canonical(30);
+            let viewport = Rect::new(0, 0, 120, 40);
+            let layout = model.solve(viewport);
+
+            let list = model
+                .rect_for_role(&layout, PaneRole::WorkspaceList)
+                .expect("workspace list rect");
+            let preview = model
+                .rect_for_role(&layout, PaneRole::Preview)
+                .expect("preview rect");
+
+            // They should be side by side horizontally
+            assert_eq!(list.y, preview.y);
+            assert_eq!(list.height, preview.height);
+            assert_eq!(list.x + list.width, preview.x);
+
+            // Together they should span the full width
+            assert_eq!(list.width + preview.width, viewport.width);
+        }
+
+        #[test]
+        fn app_bootstrap_creates_pane_model() {
+            let app = fixture_app();
+            let viewport = Rect::new(0, 0, 80, 24);
+            let layout = app.panes.solve(viewport);
+            let header = app.panes.rect_for_role(&layout, PaneRole::Header);
+            assert!(header.is_some(), "app should have a pane model with header");
+        }
     }
 
     #[test]

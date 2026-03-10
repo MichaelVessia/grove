@@ -186,6 +186,7 @@ impl GroveApp {
             viewport_width: 120,
             viewport_height: 40,
             sidebar_width_pct,
+            panes: panes::GrovePaneModel::canonical(sidebar_width_pct),
             theme_name,
             sidebar_hidden: false,
             mouse_capture_enabled: true,

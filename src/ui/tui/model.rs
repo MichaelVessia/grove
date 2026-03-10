@@ -287,6 +287,8 @@ struct GroveApp {
     viewport_width: u16,
     viewport_height: u16,
     sidebar_width_pct: u16,
+    #[cfg_attr(not(test), allow(dead_code))]
+    panes: panes::GrovePaneModel,
     theme_name: ThemeName,
     sidebar_hidden: bool,
     mouse_capture_enabled: bool,
