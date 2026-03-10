@@ -4165,6 +4165,26 @@ mod tests {
     }
 
     #[test]
+    fn project_dialog_wraps_help_text_without_truncation() {
+        let mut app = fixture_app();
+        app.open_project_dialog();
+
+        with_rendered_frame(&app, 60, 24, |frame| {
+            let text = (0..frame.height())
+                .map(|row| row_text(frame, row, 0, frame.width()))
+                .collect::<Vec<_>>();
+            assert!(
+                text.iter().any(|row| row.contains("Ctrl+X/Del remove")),
+                "project dialog help should wrap instead of clipping: {text:?}"
+            );
+            assert!(
+                text.iter().any(|row| row.contains("Esc close")),
+                "project dialog help should keep trailing hint text visible: {text:?}"
+            );
+        });
+    }
+
+    #[test]
     fn launch_dialog_keeps_compact_footer() {
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
@@ -11711,6 +11731,49 @@ mod tests {
                     assert!(
                         text.iter().any(|row| row.contains("Already added")),
                         "duplicate marker should be rendered: {text:?}"
+                    );
+                });
+            }
+
+            #[test]
+            fn project_add_dialog_wraps_hints_and_keeps_gap_above_buttons() {
+                let mut app = fixture_app();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('a'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+
+                with_rendered_frame(&app, 60, 24, |frame| {
+                    let text = (0..frame.height())
+                        .map(|row| row_text(frame, row, 0, frame.width()))
+                        .collect::<Vec<_>>();
+                    assert!(
+                        text.iter().any(|row| row.contains("Esc back")),
+                        "add dialog hint should wrap instead of clipping: {text:?}"
+                    );
+
+                    let name_row = text
+                        .iter()
+                        .position(|row| row.contains("Optional, defaults to repo directory name"))
+                        .expect("name placeholder row should render");
+                    let add_row = text
+                        .iter()
+                        .position(|row| row.contains("Add") && row.contains("Cancel"))
+                        .expect("button row should render");
+
+                    assert_eq!(
+                        add_row,
+                        name_row + 2,
+                        "buttons should have a blank spacer row above them: {text:?}"
                     );
                 });
             }

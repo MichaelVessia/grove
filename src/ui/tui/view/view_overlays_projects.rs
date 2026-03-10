@@ -110,10 +110,11 @@ fn project_add_dialog_layout(area: Rect) -> Option<ProjectAddDialogLayout> {
             Constraint::Fixed(1),
             Constraint::Fixed(1),
             Constraint::Fixed(1),
-            Constraint::Fixed(2),
+            Constraint::Fixed(1),
+            Constraint::Fixed(3),
         ])
         .split(inner);
-    let (add_button, cancel_button) = modal_button_rects(rows[6]);
+    let (add_button, cancel_button) = modal_button_rects(rows[7]);
 
     Some(ProjectAddDialogLayout {
         dialog_area,
@@ -123,10 +124,10 @@ fn project_add_dialog_layout(area: Rect) -> Option<ProjectAddDialogLayout> {
         results: rows[3],
         name_label: rows[4],
         name_input: rows[5],
-        actions: rows[6],
+        actions: rows[7],
         add_button,
         cancel_button,
-        hints: rows[7],
+        hints: rows[8],
     })
 }
 
@@ -255,7 +256,7 @@ impl Widget for ProjectListModalContent<'_> {
                 Constraint::Fixed(1),
                 Constraint::Fixed(1),
                 Constraint::Min(1),
-                Constraint::Fixed(2),
+                Constraint::Fixed(3),
             ])
             .split(inner);
 
@@ -316,6 +317,7 @@ impl Widget for ProjectListModalContent<'_> {
         }
 
         Paragraph::new("Enter open, Up/Down or Tab/S-Tab/C-n/C-p navigate, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close")
+            .wrap(ftui::text::WrapMode::Word)
             .style(Style::new().fg(self.theme.overlay0))
             .render(rows[3], frame);
     }
@@ -401,6 +403,7 @@ impl Widget for ProjectAddModalContent<'_> {
                 "No repo matches".to_string()
             };
             Paragraph::new(empty_label)
+                .wrap(ftui::text::WrapMode::Word)
                 .style(Style::new().fg(self.theme.subtext0))
                 .render(layout.results, frame);
         } else {
@@ -513,6 +516,7 @@ impl Widget for ProjectAddModalContent<'_> {
         Paragraph::new(
             "Enter accept match or confirm, Up/Down browse matches, already added repos are informational, Tab/S-Tab move, Esc back",
         )
+        .wrap(ftui::text::WrapMode::Word)
         .style(Style::new().fg(self.theme.overlay0))
         .render(layout.hints, frame);
     }
