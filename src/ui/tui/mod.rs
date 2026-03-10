@@ -1858,7 +1858,7 @@ mod tests {
     #[test]
     fn sidebar_shows_workspace_names() {
         let app = fixture_app();
-        let layout = GroveApp::view_layout_for_size(160, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(160, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -1888,7 +1888,7 @@ mod tests {
 
         with_rendered_frame(&app, 80, 3, |_frame| {});
 
-        let layout = GroveApp::view_layout_for_size(80, 16, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 16);
         let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
@@ -1918,7 +1918,7 @@ mod tests {
         let expected_age = app.relative_age_label(app.state.workspaces[0].last_activity_unix_secs);
         let expected_age_prefix = expected_age.chars().take(2).collect::<String>();
 
-        let layout = GroveApp::view_layout_for_size(160, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(160, 24);
         let sidebar_x_start = layout.sidebar.x.saturating_add(1);
         let sidebar_x_end = layout.sidebar.right().saturating_sub(1);
         let preview_x_start = layout.preview.x.saturating_add(1);
@@ -1958,7 +1958,7 @@ mod tests {
         let mut app = fixture_app();
         select_workspace(&mut app, 0);
 
-        let layout = GroveApp::view_layout_for_size(140, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(140, 24);
         let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
         let preview_x_start = layout.preview.x.saturating_add(1);
         let preview_x_end = layout.preview.right().saturating_sub(1);
@@ -1985,7 +1985,7 @@ mod tests {
         app.state.workspaces[1].status = WorkspaceStatus::Thinking;
         focus_agent_preview_tab(&mut app);
 
-        let layout = GroveApp::view_layout_for_size(140, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(140, 24);
         let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
         let preview_x_start = layout.preview.x.saturating_add(1);
         let preview_x_end = layout.preview.right().saturating_sub(1);
@@ -2013,7 +2013,7 @@ mod tests {
         select_workspace(&mut app, 1);
         app.state.workspaces[1].status = WorkspaceStatus::Thinking;
 
-        let layout = GroveApp::view_layout_for_size(140, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(140, 24);
         let sidebar_x_start = layout.sidebar.x.saturating_add(1);
         let sidebar_x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2043,7 +2043,7 @@ mod tests {
         let mut app = fixture_app();
         select_workspace(&mut app, 1);
 
-        let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(120, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2063,7 +2063,7 @@ mod tests {
     fn sidebar_row_omits_duplicate_workspace_and_branch_text() {
         let mut app = fixture_app();
         select_workspace(&mut app, 1);
-        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2095,7 +2095,7 @@ mod tests {
             .delete_requested_workspaces
             .insert(app.state.workspaces[1].path.clone());
 
-        let layout = GroveApp::view_layout_for_size(160, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(160, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2141,7 +2141,7 @@ mod tests {
             },
         ];
 
-        let layout = GroveApp::view_layout_for_size(180, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(180, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
         let theme = ui_theme();
@@ -2210,7 +2210,7 @@ mod tests {
             status: PullRequestStatus::Open,
         }];
 
-        let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(120, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2240,7 +2240,7 @@ mod tests {
             status: PullRequestStatus::Open,
         }];
 
-        let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(120, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2300,7 +2300,7 @@ mod tests {
             true
         ));
 
-        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2376,7 +2376,7 @@ mod tests {
             true
         ));
 
-        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2402,7 +2402,7 @@ mod tests {
             true
         ));
 
-        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2432,7 +2432,7 @@ mod tests {
             true
         ));
 
-        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2454,7 +2454,7 @@ mod tests {
         app.workspace_attention
             .insert(feature_workspace_path(), WorkspaceAttention::NeedsAttention);
 
-        let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(120, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2484,7 +2484,7 @@ mod tests {
         app.workspace_attention
             .insert(feature_workspace_path(), WorkspaceAttention::NeedsAttention);
 
-        let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(120, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2508,7 +2508,7 @@ mod tests {
         app.workspace_attention
             .insert(feature_workspace_path(), WorkspaceAttention::NeedsAttention);
 
-        let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(120, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2532,7 +2532,7 @@ mod tests {
         app.workspace_attention
             .insert(feature_workspace_path(), WorkspaceAttention::NeedsAttention);
 
-        let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(120, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2597,7 +2597,7 @@ mod tests {
             true
         ));
 
-        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -2638,7 +2638,7 @@ mod tests {
     #[test]
     fn sidebar_renders_task_headers_with_nested_worktrees() {
         let app = fixture_task_app();
-        let layout = GroveApp::view_layout_for_size(100, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(100, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -3325,10 +3325,12 @@ mod tests {
         );
 
         assert!(app.sidebar_hidden);
-        let hidden_layout = GroveApp::view_layout_for_size(120, 40, 33, true);
-        assert_eq!(hidden_layout.sidebar.width, 0);
-        assert_eq!(hidden_layout.divider.width, 0);
-        assert_eq!(hidden_layout.preview.width, 120);
+        app.viewport_width = 120;
+        app.viewport_height = 40;
+        let (sidebar, divider, preview) = app.effective_workspace_rects();
+        assert_eq!(sidebar.width, 0);
+        assert_eq!(divider.width, 0);
+        assert_eq!(preview.width, 120);
 
         let _ = app.handle_key(
             KeyEvent::new(KeyCode::Char('b'))
@@ -4365,7 +4367,7 @@ mod tests {
         app.preview.render_lines = app.preview.lines.clone();
         app.preview.offset = 0;
 
-        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(100, 40);
         let content_x = layout.preview.x.saturating_add(1);
         let content_y = layout
             .preview
@@ -4886,7 +4888,7 @@ mod tests {
         app.preview.lines = vec!["Success: all tests passed".to_string()];
         app.preview.render_lines = vec!["\u{1b}[32mSuccess\u{1b}[0m: all tests passed".to_string()];
 
-        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 24);
         let x_start = layout.preview.x.saturating_add(1);
         let x_end = layout.preview.right().saturating_sub(1);
 
@@ -4908,7 +4910,7 @@ mod tests {
         app.state.mode = UiMode::Preview;
         app.state.focus = PaneFocus::Preview;
 
-        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 24);
         with_rendered_frame(&app, 80, 24, |frame| {
             let Some(corner_cell) = frame.buffer.get(layout.preview.x, layout.preview.y) else {
                 panic!("preview border corner should exist");
@@ -4939,7 +4941,7 @@ mod tests {
             78,
         ));
 
-        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 24);
         with_rendered_frame(&app, 80, 24, |frame| {
             let Some(corner_cell) = frame.buffer.get(layout.preview.x, layout.preview.y) else {
                 panic!("preview border corner should exist");
@@ -4971,7 +4973,7 @@ mod tests {
         app.preview.lines = vec!["Success: all tests passed".to_string()];
         app.preview.render_lines = vec!["\u{1b}[32mSuccess\u{1b}[0m: all tests passed".to_string()];
 
-        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 24);
         let x_start = layout.preview.x.saturating_add(1);
         let x_end = layout.preview.right().saturating_sub(1);
 
@@ -4990,7 +4992,7 @@ mod tests {
     #[test]
     fn view_registers_hit_regions_for_panes_and_workspace_rows() {
         let app = fixture_app();
-        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 24);
         let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
 
         with_rendered_frame(&app, 80, 24, |frame| {
@@ -5038,7 +5040,7 @@ mod tests {
         let mut app = fixture_app();
         let mut target = None;
         with_rendered_frame(&app, 100, 40, |frame| {
-            let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+            let layout = app.panes.test_rects(100, 40);
             let x_start = layout.sidebar.x.saturating_add(1);
             let x_end = layout.sidebar.right().saturating_sub(1);
             let Some(row_y) = find_workspace_row(frame, 1, x_start, x_end) else {
@@ -5072,7 +5074,7 @@ mod tests {
             status: PullRequestStatus::Open,
         }];
 
-        let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(120, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
         let mut target = None;
@@ -5145,7 +5147,7 @@ mod tests {
             ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('j'))));
         }
 
-        let layout = GroveApp::view_layout_for_size(80, 16, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(80, 16);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
         with_rendered_frame(&app, 80, 16, |frame| {
@@ -5159,7 +5161,7 @@ mod tests {
     #[test]
     fn mouse_wheel_on_sidebar_moves_workspace_selection() {
         let mut app = fixture_app();
-        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(100, 40);
         let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
 
         ftui::Model::update(
@@ -5194,7 +5196,7 @@ mod tests {
     #[test]
     fn sidebar_mouse_wheel_burst_same_direction_is_debounced() {
         let mut app = fixture_app();
-        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(100, 40);
         let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
         let x = sidebar_inner.x.saturating_add(1);
         let y = sidebar_inner.y.saturating_add(1);
@@ -5226,7 +5228,7 @@ mod tests {
     #[test]
     fn sidebar_mouse_wheel_allows_fast_direction_change() {
         let mut app = fixture_app();
-        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+        let layout = app.panes.test_rects(100, 40);
         let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
         let x = sidebar_inner.x.saturating_add(1);
         let y = sidebar_inner.y.saturating_add(1);
@@ -7627,8 +7629,7 @@ mod tests {
                     },
                 );
                 with_rendered_frame(&app, 100, 40, |frame| {
-                    let layout =
-                        GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+                    let layout = app.panes.test_rects(100, 40);
                     let x_start = layout.sidebar.x.saturating_add(1);
                     let x_end = layout.sidebar.right().saturating_sub(1);
                     let Some(row_y) = find_workspace_row(frame, 1, x_start, x_end) else {
@@ -7658,7 +7659,7 @@ mod tests {
                 select_workspace(&mut app, 1);
                 assert!(app.enter_interactive(Instant::now()));
 
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+                let layout = app.panes.test_rects(100, 40);
                 let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
                 let first_row_y = sidebar_inner.y.saturating_add(1);
 
@@ -7688,7 +7689,7 @@ mod tests {
             use super::*;
 
             fn preview_tab_click_point(app: &GroveApp, tab_kind: WorkspaceTabKind) -> (u16, u16) {
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+                let layout = app.panes.test_rects(100, 40);
                 let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
                 let tab_y = preview_inner.y.saturating_add(1);
                 let mut tab_x = preview_inner.x;
@@ -7811,7 +7812,7 @@ mod tests {
                         height: 40,
                     },
                 );
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+                let layout = app.panes.test_rects(100, 40);
 
                 ftui::Model::update(
                     &mut app,
@@ -7835,7 +7836,7 @@ mod tests {
                 focus_agent_preview_tab(&mut app);
                 assert!(app.enter_interactive(Instant::now()));
 
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+                let layout = app.panes.test_rects(100, 40);
                 let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
                 let second_row_y = sidebar_inner
                     .y
@@ -8060,7 +8061,7 @@ mod tests {
                     },
                 );
 
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+                let layout = app.panes.test_rects(100, 40);
                 let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
                 let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
                 let x_start = layout.preview.x.saturating_add(1);
@@ -8089,7 +8090,7 @@ mod tests {
                     },
                 );
 
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+                let layout = app.panes.test_rects(100, 40);
                 let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
                 let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
 
@@ -8124,7 +8125,7 @@ mod tests {
                     },
                 );
 
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+                let layout = app.panes.test_rects(100, 40);
                 let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
                 let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
 
@@ -8354,7 +8355,7 @@ mod tests {
                 app.open_new_shell_tab();
                 app.open_or_focus_git_tab();
 
-                let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+                let layout = app.panes.test_rects(100, 40);
                 let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
                 let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
                 let x_start = preview_inner.x;

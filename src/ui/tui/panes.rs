@@ -197,6 +197,54 @@ impl GrovePaneModel {
     }
 }
 
+#[cfg(test)]
+pub(super) struct PaneRects {
+    pub(super) header: Rect,
+    pub(super) sidebar: Rect,
+    pub(super) preview: Rect,
+    pub(super) status: Rect,
+}
+
+impl GrovePaneModel {
+    #[cfg(test)]
+    pub(super) fn test_rects(&self, width: u16, height: u16) -> PaneRects {
+        use super::DIVIDER_WIDTH;
+
+        let viewport = Rect::from_size(width, height);
+        let pane_layout = self
+            .solve(viewport)
+            .expect("viewport too small for pane tree");
+        let header = self
+            .rect_for_role(&pane_layout, PaneRole::Header)
+            .unwrap_or_default();
+        let status = self
+            .rect_for_role(&pane_layout, PaneRole::Status)
+            .unwrap_or_default();
+        let sidebar = self
+            .rect_for_role(&pane_layout, PaneRole::WorkspaceList)
+            .unwrap_or_default();
+        let preview_raw = self
+            .rect_for_role(&pane_layout, PaneRole::Preview)
+            .unwrap_or_default();
+        let preview = if preview_raw.width > DIVIDER_WIDTH {
+            Rect::new(
+                preview_raw.x + DIVIDER_WIDTH,
+                preview_raw.y,
+                preview_raw.width - DIVIDER_WIDTH,
+                preview_raw.height,
+            )
+        } else {
+            preview_raw
+        };
+        PaneRects {
+            header,
+            sidebar,
+            preview,
+            status,
+        }
+    }
+}
+
 fn no_margin_constraints() -> PaneConstraints {
     PaneConstraints {
         min_width: 1,

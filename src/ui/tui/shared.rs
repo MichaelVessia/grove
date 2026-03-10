@@ -25,7 +25,6 @@ use std::time::Instant;
 use crate::domain::AgentType;
 use crate::infrastructure::config::ThemeName;
 use ftui::PackedRgba;
-use ftui::core::geometry::Rect;
 
 pub(super) const WORKSPACE_LAUNCH_PROMPT_FILENAME: &str = ".grove/prompt";
 pub(super) const WORKSPACE_INIT_COMMAND_FILENAME: &str = ".grove/init_command";
@@ -768,15 +767,6 @@ impl WorkspaceTabsState {
             home.title = title.to_string();
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct ViewLayout {
-    pub(super) header: Rect,
-    pub(super) sidebar: Rect,
-    pub(super) divider: Rect,
-    pub(super) preview: Rect,
-    pub(super) status: Rect,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

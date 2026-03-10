@@ -171,13 +171,28 @@ impl GroveApp {
                 Value::from(interactive.pane_height),
             ));
 
-            let layout = Self::view_layout_for_size(
-                frame.buffer.width(),
-                frame.buffer.height(),
-                self.sidebar_width_pct,
-                false,
-            );
-            let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+            let viewport = Rect::from_size(frame.buffer.width(), frame.buffer.height());
+            let preview_rect = self
+                .panes
+                .solve(viewport)
+                .and_then(|pane_layout| {
+                    self.panes
+                        .rect_for_role(&pane_layout, panes::PaneRole::Preview)
+                })
+                .unwrap_or_default();
+            let preview_with_divider = if preview_rect.width > DIVIDER_WIDTH {
+                Rect::new(
+                    preview_rect.x + DIVIDER_WIDTH,
+                    preview_rect.y,
+                    preview_rect.width - DIVIDER_WIDTH,
+                    preview_rect.height,
+                )
+            } else {
+                preview_rect
+            };
+            let preview_inner = Block::new()
+                .borders(Borders::ALL)
+                .inner(preview_with_divider);
             let preview_height = usize::from(
                 preview_inner
                     .height

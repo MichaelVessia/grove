@@ -2,46 +2,6 @@ use super::panes::PaneRole;
 use super::view_prelude::*;
 
 impl GroveApp {
-    pub(super) fn view_layout_for_size(
-        width: u16,
-        height: u16,
-        sidebar_width_pct: u16,
-        sidebar_hidden: bool,
-    ) -> ViewLayout {
-        let area = Rect::from_size(width, height);
-        let rows = Flex::vertical()
-            .constraints([
-                Constraint::Fixed(HEADER_HEIGHT),
-                Constraint::Fill,
-                Constraint::Fixed(STATUS_HEIGHT),
-            ])
-            .split(area);
-
-        let sidebar_width = if sidebar_hidden {
-            0
-        } else {
-            ((u32::from(rows[1].width) * u32::from(sidebar_width_pct)) / 100)
-                .try_into()
-                .unwrap_or(rows[1].width)
-        };
-        let divider_width = if sidebar_hidden { 0 } else { DIVIDER_WIDTH };
-        let cols = Flex::horizontal()
-            .constraints([
-                Constraint::Fixed(sidebar_width),
-                Constraint::Fixed(divider_width),
-                Constraint::Fill,
-            ])
-            .split(rows[1]);
-
-        ViewLayout {
-            header: rows[0],
-            sidebar: cols[0],
-            divider: cols[1],
-            preview: cols[2],
-            status: rows[2],
-        }
-    }
-
     fn effective_viewport_size(&self) -> (u16, u16) {
         let from_hit_grid = self
             .last_hit_grid
