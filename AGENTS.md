@@ -4,34 +4,46 @@ A minimal workspace manager for AI coding agents. Rust + FrankenTUI.
 
 ## Reference Codebases
 
-The `.reference/` directory contains two codebases you should consult heavily:
+The `.reference/` directory contains reference codebases:
 
 - `.reference/frankentui/` -- the TUI framework Grove is built on (Elm/MVU
   architecture, widgets, layout, subscriptions, hit testing, rendering)
-- `.reference/sidecar/` -- the Go application Grove is a simplified port of
-  (tmux integration, interactive mode, polling, status detection, worktree
-  management, mouse handling, modal dialogs, pane resize)
+- `.reference/sidecar/` -- a Go TUI app useful for tmux interaction patterns
+  (session lifecycle, key forwarding, escape handling, mouse fragment
+  suppression). Consult selectively for low-level terminal behavior only.
 
-**Use these before inventing anything.** Grove is largely a subset of sidecar
-rewritten in Rust on FrankenTUI. Most architectural decisions (especially around
-terminal management, tmux session lifecycle, adaptive polling, cursor overlay,
-key forwarding, output capture) should match sidecar's proven patterns. When
-you're unsure how to implement something, read the corresponding sidecar code
-first. When you're unsure how to use an ftui API, read the FrankenTUI source and
-examples.
+## FrankenTUI-First UI Development (MANDATORY)
 
-Specific mapping:
+**NEVER build custom UI components without first searching the ftui crates for
+an existing implementation.** FrankenTUI is a large, feature-rich framework.
+Always use native widgets over custom implementations.
 
-| Grove concern                            | Sidecar reference                     |
-| ---------------------------------------- | ------------------------------------- |
-| Tmux sessions, capture, send-keys        | `internal/tty/`                       |
-| Interactive mode, key forwarding         | `internal/tty/model.go`, `keymap.go`  |
-| Polling, output buffer, change detection | `internal/tty/output_buffer.go`       |
-| Mouse hit testing, drag-to-resize        | `internal/mouse/`                     |
-| Modal dialogs                            | `internal/modal/`                     |
-| Workspace list, status icons             | `internal/plugins/workspace/`         |
-| Agent status detection                   | `internal/plugins/workspace/agent.go` |
-| Worktree operations                      | `internal/app/git.go`                 |
+Before writing ANY new UI code (widgets, layout helpers, text utilities, input
+handling, overlays, animations, styling), you MUST:
+
+1. Search `.reference/frankentui/crates/` for existing widgets, traits, or
+   utilities that solve the problem.
+2. Read the relevant ftui source to understand its API surface.
+3. Only build custom if you can confirm no native ftui solution exists, and
+   document why in a code comment.
+
+ftui provides far more than basic widgets. Areas commonly overlooked:
+
+- **Overlays/Modals**: `Modal`, `ModalStack`, `Dialog`, `Toast`,
+  `NotificationQueue`, `FocusTrap`
+- **Command palette**: `CommandPalette` with fuzzy scoring, match highlighting
+- **Help system**: `HelpRegistry`, `Help`, `HelpIndex`, `HintRanker`
+- **Focus**: `FocusManager`, `FocusGroup`, `FocusTrap`, `FocusIndicator`,
+  spatial navigation
+- **Text**: `TextArea` (selection, line numbers, scrolling), `Editor`, `Wrap`,
+  `FitMetrics`, `Measurable`
+- **Theming**: `Theme`, `ThemeBuilder`, `AdaptiveColor`, `StyleSheet`
+- **Lists**: `VirtualizedList`, `Tree`, `Table` with persist/undo support
+- **Animation**: `Animation` (spring, timeline, stagger), `Spinner`, `Progress`
+- **Layout**: `Responsive`, `Grid`, `Columns`, `Workspace` pane layout
+- **Interaction**: `Drag` protocol, `Scrollbar`, `StatusLine`, `Badge`, `Rule`
+- **Terminal**: `TerminalParser` (ANSI/VT), `Sanitize`
+- **Rendering**: `CachedWidget`, `Budgeted`, `DegradationLevel`
 
 | Grove concern                 | FrankenTUI reference                   |
 | ----------------------------- | -------------------------------------- |
