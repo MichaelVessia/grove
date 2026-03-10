@@ -56,6 +56,8 @@ mod dialogs_state;
 mod dialogs_stop;
 #[path = "dialogs/dialogs_update_from_base.rs"]
 mod dialogs_update_from_base;
+#[path = "help_catalog.rs"]
+mod help_catalog;
 #[path = "logging/logging_frame.rs"]
 mod logging_frame;
 #[path = "logging/logging_input.rs"]
@@ -4351,11 +4353,43 @@ mod tests {
                 let is_listed = listed
                     .iter()
                     .any(|listed_command| listed_command == command);
-                let has_label = command.help_hint_label(context).is_some();
+                let has_label = command.help_hint(context).is_some();
                 assert_eq!(
                     is_listed, has_label,
                     "context {:?} command {:?} should have list/label parity",
                     context, command
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ui_command_help_entries_are_structured() {
+        let contexts = [
+            HelpHintContext::Global,
+            HelpHintContext::Workspace,
+            HelpHintContext::List,
+            HelpHintContext::PreviewAgent,
+            HelpHintContext::PreviewShell,
+            HelpHintContext::PreviewGit,
+        ];
+
+        for context in contexts {
+            for command in UiCommand::all() {
+                let Some(help_entry) = command.help_hint(context) else {
+                    continue;
+                };
+                assert!(
+                    !help_entry.key.is_empty(),
+                    "help entry key missing for {:?} in {:?}",
+                    command,
+                    context
+                );
+                assert!(
+                    !help_entry.action.is_empty(),
+                    "help entry action missing for {:?} in {:?}",
+                    command,
+                    context
                 );
             }
         }
@@ -4375,6 +4409,47 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn help_registry_includes_current_discoverability_entries() {
+        let app = fixture_task_app();
+        let registry = app.build_help_registry();
+        let mut entries = Vec::new();
+        for id in registry.ids() {
+            let Some(content) = registry.peek(id) else {
+                continue;
+            };
+            let keys = content
+                .keybindings
+                .iter()
+                .map(|binding| format!("{} {}", binding.key, binding.action))
+                .collect::<Vec<String>>()
+                .join(" | ");
+            entries.push(format!("{} :: {}", content.short, keys));
+        }
+        let rendered = entries.join("\n").to_lowercase();
+
+        assert!(
+            rendered.contains("? help"),
+            "missing help entry: {rendered}"
+        );
+        assert!(
+            rendered.contains("ctrl+k command palette"),
+            "missing command palette entry: {rendered}"
+        );
+        assert!(
+            rendered.contains("m toggle mouse capture"),
+            "missing mouse capture entry: {rendered}"
+        );
+        assert!(
+            rendered.contains("a start parent agent"),
+            "missing parent agent entry: {rendered}"
+        );
+        assert!(
+            rendered.contains("ctrl+x/del remove"),
+            "missing project modal remove entry: {rendered}"
+        );
     }
 
     #[test]
@@ -4422,7 +4497,7 @@ mod tests {
             }
             let has_help_hint = contexts
                 .iter()
-                .any(|context| command.help_hint_label(*context).is_some());
+                .any(|context| command.help_hint(*context).is_some());
             assert!(
                 has_help_hint || command.palette_spec().is_some(),
                 "keybound command {:?} must be discoverable in help and/or palette",
@@ -4681,8 +4756,29 @@ mod tests {
                 "help overlay missing title: {status_text}"
             );
             assert!(
-                status_text.contains("[Global]"),
+                status_text.contains("Global"),
                 "help overlay missing global section: {status_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn keybind_help_overlay_uses_native_bracketed_entries() {
+        let mut app = fixture_app();
+        app.dialogs.keybind_help_open = true;
+
+        with_rendered_frame(&app, 120, 32, |frame| {
+            let text = (0..frame.height())
+                .map(|row| row_text(frame, row, 0, frame.width()))
+                .collect::<Vec<String>>()
+                .join("\n");
+            assert!(
+                text.contains("[Core]"),
+                "help overlay should render native bracketed key entries: {text}"
+            );
+            assert!(
+                text.contains("Ctrl+K command palette"),
+                "help overlay should render command action text: {text}"
             );
         });
     }

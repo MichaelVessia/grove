@@ -1,3 +1,44 @@
+use ftui::widgets::help::KeybindingHints;
+
+#[derive(Debug, Clone)]
+struct KeybindHelpModalContent {
+    hints: KeybindingHints,
+    theme: UiTheme,
+}
+
+impl Widget for KeybindHelpModalContent {
+    fn render(&self, area: Rect, frame: &mut Frame) {
+        if area.is_empty() {
+            return;
+        }
+
+        let content_style = Style::new().bg(self.theme.base).fg(self.theme.text);
+        Paragraph::new("").style(content_style).render(area, frame);
+
+        let block = Block::new()
+            .title("Keybind Help")
+            .title_alignment(BlockAlignment::Center)
+            .borders(Borders::ALL)
+            .style(content_style)
+            .border_style(Style::new().fg(self.theme.blue).bold());
+        let inner = block.inner(area);
+        block.render(area, frame);
+
+        if inner.is_empty() {
+            return;
+        }
+
+        let rows = Flex::vertical()
+            .constraints([Constraint::Min(1), Constraint::Fixed(1)])
+            .split(inner);
+
+        Widget::render(&self.hints, rows[0], frame);
+        Paragraph::new("Close help: Esc, Enter, or ?")
+            .style(Style::new().fg(self.theme.lavender).bg(self.theme.base).bold())
+            .render(rows[1], frame);
+    }
+}
+
 impl GroveApp {
     pub(super) fn render_keybind_help_overlay(&self, frame: &mut Frame, area: Rect) {
         if !self.dialogs.keybind_help_open {
@@ -18,258 +59,9 @@ impl GroveApp {
             .saturating_sub(Self::KEYBIND_HELP_VERTICAL_MARGIN.saturating_mul(2))
             .max(Self::KEYBIND_HELP_MIN_HEIGHT);
         let theme = self.active_ui_theme();
-        let content_width = usize::from(dialog_width.saturating_sub(2));
-        let section_gap = if dialog_height >= 42 { 1 } else { 0 };
-        let label_width = if content_width >= 132 {
-            18
-        } else if content_width >= 96 {
-            15
-        } else {
-            12
-        };
-        let global_hints = Self::keybind_help_hints(HelpHintContext::Global);
-        let workspace_hints = Self::keybind_help_hints(HelpHintContext::Workspace);
-        let list_hints = Self::keybind_help_hints(HelpHintContext::List);
-        let preview_agent_hints = Self::keybind_help_hints(HelpHintContext::PreviewAgent);
-        let preview_shell_hints = Self::keybind_help_hints(HelpHintContext::PreviewShell);
-        let preview_git_hints = Self::keybind_help_hints(HelpHintContext::PreviewGit);
-        let global_core =
-            Self::keybind_help_join_hint_indexes(global_hints.as_slice(), &[0, 1, 11]);
-        let global_focus =
-            Self::keybind_help_join_hint_indexes(global_hints.as_slice(), &[2, 6, 10]);
-        let global_layout =
-            Self::keybind_help_join_hint_indexes(global_hints.as_slice(), &[3, 4, 5]);
-        let global_tabs = Self::keybind_help_join_hint_indexes(global_hints.as_slice(), &[7, 8, 9]);
-        let workspace_actions = workspace_hints.join(", ");
-
-        let mut lines = vec![Self::keybind_help_section_title(
-            content_width,
+        let content = KeybindHelpModalContent {
+            hints: self.build_keybind_help_hints(),
             theme,
-            "Global",
-        )];
-        Self::keybind_help_push_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Core",
-            global_core.as_str(),
-            theme,
-        );
-        Self::keybind_help_push_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Focus",
-            global_focus.as_str(),
-            theme,
-        );
-        Self::keybind_help_push_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Layout",
-            global_layout.as_str(),
-            theme,
-        );
-        Self::keybind_help_push_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Workspace nav",
-            global_tabs.as_str(),
-            theme,
-        );
-        Self::keybind_help_push_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Workspace",
-            workspace_actions.as_str(),
-            theme,
-        );
-        Self::keybind_help_push_section_gap(&mut lines, section_gap);
-
-        lines.push(Self::keybind_help_section_title(
-            content_width,
-            theme,
-            "Palette",
-        ));
-        Self::keybind_help_push_palette_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Search",
-            "[Palette] Type search",
-            theme,
-        );
-        Self::keybind_help_push_palette_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Navigate",
-            "Up/Down or C-n/C-p move selection",
-            theme,
-        );
-        Self::keybind_help_push_palette_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Run/Close",
-            "Enter run, Esc close",
-            theme,
-        );
-        Self::keybind_help_push_section_gap(&mut lines, section_gap);
-
-        lines.push(Self::keybind_help_section_title(
-            content_width,
-            theme,
-            "List",
-        ));
-        Self::keybind_help_push_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Move",
-            list_hints.join(", ").as_str(),
-            theme,
-        );
-        Self::keybind_help_push_section_gap(&mut lines, section_gap);
-
-        lines.push(Self::keybind_help_section_title(
-            content_width,
-            theme,
-            "Preview",
-        ));
-        Self::keybind_help_push_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Agent tab",
-            preview_agent_hints.join(", ").as_str(),
-            theme,
-        );
-        Self::keybind_help_push_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Shell tab",
-            preview_shell_hints.join(", ").as_str(),
-            theme,
-        );
-        Self::keybind_help_push_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Git tab",
-            preview_git_hints.join(", ").as_str(),
-            theme,
-        );
-        Self::keybind_help_push_section_gap(&mut lines, section_gap);
-
-        lines.push(Self::keybind_help_section_title(
-            content_width,
-            theme,
-            "Interactive",
-        ));
-        Self::keybind_help_push_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Input",
-            "typing sends input to attached session, includes Shift+Tab and Shift+Enter",
-            theme,
-        );
-        Self::keybind_help_push_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Reserved",
-            "Ctrl+K palette, Ctrl+\\ exit, Alt+J/K browse, Alt+[/] tabs, Alt+Left/Right or Alt+H/L resize (Alt+B/F fallback), Alt+C copy, Alt+V paste",
-            theme,
-        );
-        Self::keybind_help_push_section_gap(&mut lines, section_gap);
-
-        lines.push(Self::keybind_help_section_title(
-            content_width,
-            theme,
-            "Modals",
-        ));
-        Self::keybind_help_push_modal_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Create",
-            "Tab/S-Tab/C-n/C-p fields, click mode tabs or Alt+[/Alt+], Enter browse projects, picker supports filter + Up/Down + Space toggle, base branch comes from Project Defaults or git, Enter/Esc",
-            theme,
-        );
-        Self::keybind_help_push_modal_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Edit",
-            "Tab/S-Tab/C-n/C-p fields, type/backspace base branch (or branch on main), Enter/Esc",
-            theme,
-        );
-        Self::keybind_help_push_modal_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Rename tab",
-            "Tab/S-Tab/C-n/C-p fields, type/backspace title, Enter rename, Esc cancel",
-            theme,
-        );
-        Self::keybind_help_push_modal_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Start",
-            "Tab/S-Tab or C-n/C-p fields, Space toggle unsafe, h/l buttons, Enter/Esc",
-            theme,
-        );
-        Self::keybind_help_push_modal_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Delete",
-            "Tab/S-Tab or C-n/C-p fields, j/k move, Space toggle, Enter/D delete task, Esc",
-            theme,
-        );
-        Self::keybind_help_push_modal_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Merge",
-            "Tab/S-Tab or C-n/C-p fields, j/k move, Space toggle, Enter/m merge worktree, Esc",
-            theme,
-        );
-        Self::keybind_help_push_modal_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Update",
-            "Tab/S-Tab or C-n/C-p fields, h/l buttons, Enter/u update worktree, Esc",
-            theme,
-        );
-        Self::keybind_help_push_modal_row(
-            &mut lines,
-            content_width,
-            label_width,
-            "Projects",
-            "Type filter, Up/Down or Tab/S-Tab/C-n/C-p move, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Enter/Esc",
-            theme,
-        );
-        Self::keybind_help_push_section_gap(&mut lines, section_gap);
-        lines.extend(modal_wrapped_rows(
-            content_width,
-            "Close help: Esc, Enter, or ?",
-            Style::new().fg(theme.lavender).bg(theme.base).bold(),
-        ));
-
-        let content = OverlayModalContent {
-            title: "Keybind Help",
-            body: FtText::from_lines(lines),
-            theme,
-            border_color: theme.blue,
         };
 
         Modal::new(content)

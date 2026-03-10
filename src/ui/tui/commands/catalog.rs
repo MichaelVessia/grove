@@ -57,6 +57,8 @@ pub(super) struct PaletteCommandSpec {
 pub(super) struct HelpHintSpec {
     pub(super) context: HelpHintContext,
     pub(super) label: &'static str,
+    pub(super) key: &'static str,
+    pub(super) action: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

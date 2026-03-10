@@ -12,6 +12,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Global,
             label: "Tab/h/l switch pane",
+            key: "Tab/h/l",
+            action: "switch pane",
         }],
         keybindings: &[
             KeybindingSpec {
@@ -42,6 +44,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Global,
             label: "Ctrl+B toggle sidebar",
+            key: "Ctrl+B",
+            action: "toggle sidebar",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -60,6 +64,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Global,
             label: "Enter open/attach",
+            key: "Enter",
+            action: "open/attach",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -86,14 +92,20 @@ static COMMAND_META: [UiCommandMeta; 40] = [
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
                 label: "Enter attach shell/agent",
+                key: "Enter",
+                action: "attach shell/agent",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewShell,
                 label: "Enter attach shell",
+                key: "Enter",
+                action: "attach shell",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewGit,
                 label: "Enter attach lazygit",
+                key: "Enter",
+                action: "attach lazygit",
             },
         ],
         keybindings: &[KeybindingSpec {
@@ -118,6 +130,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Global,
             label: "Esc list pane",
+            key: "Esc",
+            action: "list pane",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -169,10 +183,14 @@ static COMMAND_META: [UiCommandMeta; 40] = [
             HelpHintSpec {
                 context: HelpHintContext::Global,
                 label: "Alt+J/K workspace",
+                key: "Alt+J/K",
+                action: "workspace",
             },
             HelpHintSpec {
                 context: HelpHintContext::List,
                 label: "j/k or Up/Down move selection",
+                key: "j/k or Up/Down",
+                action: "move selection",
             },
         ],
         keybindings: &[
@@ -232,10 +250,14 @@ static COMMAND_META: [UiCommandMeta; 40] = [
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
                 label: "j/k or Up/Down scroll",
+                key: "j/k or Up/Down",
+                action: "scroll",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewShell,
                 label: "j/k or Up/Down scroll",
+                key: "j/k or Up/Down",
+                action: "scroll",
             },
         ],
         keybindings: &[
@@ -278,10 +300,14 @@ static COMMAND_META: [UiCommandMeta; 40] = [
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
                 label: "PgUp/PgDn page",
+                key: "PgUp/PgDn",
+                action: "page",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewShell,
                 label: "PgUp/PgDn page",
+                key: "PgUp/PgDn",
+                action: "page",
             },
         ],
         keybindings: &[KeybindingSpec {
@@ -302,10 +328,14 @@ static COMMAND_META: [UiCommandMeta; 40] = [
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
                 label: "G or End bottom",
+                key: "G or End",
+                action: "bottom",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewShell,
                 label: "G or End bottom",
+                key: "G or End",
+                action: "bottom",
             },
         ],
         keybindings: &[
@@ -335,18 +365,26 @@ static COMMAND_META: [UiCommandMeta; 40] = [
             HelpHintSpec {
                 context: HelpHintContext::Global,
                 label: "Alt+[ prev tab",
+                key: "Alt+[",
+                action: "prev tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
                 label: "[ prev tab",
+                key: "[",
+                action: "prev tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewShell,
                 label: "[ prev tab",
+                key: "[",
+                action: "prev tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewGit,
                 label: "[ prev tab",
+                key: "[",
+                action: "prev tab",
             },
         ],
         keybindings: &[
@@ -376,18 +414,26 @@ static COMMAND_META: [UiCommandMeta; 40] = [
             HelpHintSpec {
                 context: HelpHintContext::Global,
                 label: "Alt+] next tab",
+                key: "Alt+]",
+                action: "next tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
                 label: "] next tab",
+                key: "]",
+                action: "next tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewShell,
                 label: "] next tab",
+                key: "]",
+                action: "next tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewGit,
                 label: "] next tab",
+                key: "]",
+                action: "next tab",
             },
         ],
         keybindings: &[
@@ -416,6 +462,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Global,
             label: "Alt+Left/Right or Alt+H/L resize (Alt+B/F fallback)",
+            key: "Alt+Left/Right or Alt+H/L",
+            action: "resize sidebar (Alt+B/F fallback)",
         }],
         keybindings: &[
             KeybindingSpec {
@@ -503,6 +551,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
             label: "n new task",
+            key: "n",
+            action: "new task",
         }],
         keybindings: &[
             KeybindingSpec {
@@ -528,6 +578,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
             label: "e edit/switch",
+            key: "e",
+            action: "edit/switch",
         }],
         keybindings: &[
             KeybindingSpec {
@@ -554,18 +606,26 @@ static COMMAND_META: [UiCommandMeta; 40] = [
             HelpHintSpec {
                 context: HelpHintContext::Workspace,
                 label: "a new agent tab",
+                key: "a",
+                action: "new agent tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
                 label: "a new agent tab",
+                key: "a",
+                action: "new agent tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewShell,
                 label: "a new agent tab",
+                key: "a",
+                action: "new agent tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewGit,
                 label: "a new agent tab",
+                key: "a",
+                action: "new agent tab",
             },
         ],
         keybindings: &[KeybindingSpec {
@@ -585,6 +645,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
             label: "A start parent agent",
+            key: "A",
+            action: "start parent agent",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -604,18 +666,26 @@ static COMMAND_META: [UiCommandMeta; 40] = [
             HelpHintSpec {
                 context: HelpHintContext::Workspace,
                 label: "s new shell tab",
+                key: "s",
+                action: "new shell tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
                 label: "s new shell tab",
+                key: "s",
+                action: "new shell tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewShell,
                 label: "s new shell tab",
+                key: "s",
+                action: "new shell tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewGit,
                 label: "s new shell tab",
+                key: "s",
+                action: "new shell tab",
             },
         ],
         keybindings: &[KeybindingSpec {
@@ -636,18 +706,26 @@ static COMMAND_META: [UiCommandMeta; 40] = [
             HelpHintSpec {
                 context: HelpHintContext::Workspace,
                 label: "g git tab",
+                key: "g",
+                action: "git tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
                 label: "g git tab",
+                key: "g",
+                action: "git tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewShell,
                 label: "g git tab",
+                key: "g",
+                action: "git tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewGit,
                 label: "g git tab",
+                key: "g",
+                action: "git tab",
             },
         ],
         keybindings: &[KeybindingSpec {
@@ -668,18 +746,26 @@ static COMMAND_META: [UiCommandMeta; 40] = [
             HelpHintSpec {
                 context: HelpHintContext::Workspace,
                 label: ", rename tab",
+                key: ",",
+                action: "rename tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
                 label: ", rename tab",
+                key: ",",
+                action: "rename tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewShell,
                 label: ", rename tab",
+                key: ",",
+                action: "rename tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewGit,
                 label: ", rename tab",
+                key: ",",
+                action: "rename tab",
             },
         ],
         keybindings: &[KeybindingSpec {
@@ -705,14 +791,20 @@ static COMMAND_META: [UiCommandMeta; 40] = [
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
                 label: "x close tab",
+                key: "x",
+                action: "close tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewShell,
                 label: "x close tab",
+                key: "x",
+                action: "close tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewGit,
                 label: "x close tab",
+                key: "x",
+                action: "close tab",
             },
         ],
         keybindings: &[KeybindingSpec {
@@ -732,6 +824,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
             label: "D delete/remove task",
+            key: "D",
+            action: "delete/remove task",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -750,6 +844,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
             label: "m merge worktree",
+            key: "m",
+            action: "merge worktree",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -768,6 +864,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
             label: "u update worktree",
+            key: "u",
+            action: "update worktree",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -786,6 +884,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
             label: "R refresh",
+            key: "R",
+            action: "refresh",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -804,6 +904,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
             label: "p projects",
+            key: "p",
+            action: "projects",
         }],
         keybindings: &[
             KeybindingSpec {
@@ -829,6 +931,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::List,
             label: "Ctrl+R reorder tasks",
+            key: "Ctrl+R",
+            action: "reorder tasks",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -865,6 +969,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
             label: "S settings",
+            key: "S",
+            action: "settings",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -883,6 +989,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Global,
             label: "M toggle mouse capture",
+            key: "M",
+            action: "toggle mouse capture",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -901,6 +1009,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
             label: "! unsafe toggle",
+            key: "!",
+            action: "unsafe toggle",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -919,6 +1029,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Global,
             label: "Palette cleanup sessions",
+            key: "Palette",
+            action: "cleanup sessions",
         }],
         keybindings: &[],
     },
@@ -933,6 +1045,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Global,
             label: "? help",
+            key: "?",
+            action: "help",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -945,6 +1059,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Global,
             label: "Ctrl+K command palette",
+            key: "Ctrl+K",
+            action: "command palette",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -963,6 +1079,8 @@ static COMMAND_META: [UiCommandMeta; 40] = [
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Global,
             label: "q quit (confirm, Ctrl+C prompts)",
+            key: "q",
+            action: "quit (confirm, Ctrl+C prompts)",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,

@@ -17,6 +17,5 @@ impl GroveApp {
     }
 }
 
-include!("view_overlays_help/rows.rs");
 include!("view_overlays_help/palette_overlay.rs");
 include!("view_overlays_help/keybind_overlay.rs");
