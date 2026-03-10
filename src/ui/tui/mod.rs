@@ -3862,40 +3862,54 @@ mod tests {
     }
 
     #[test]
-    fn command_palette_overlay_uses_near_full_width() {
+    fn command_palette_overlay_uses_native_widget_width() {
         let mut app = fixture_app();
         app.open_command_palette();
 
         with_rendered_frame(&app, 80, 24, |frame| {
             let title_row = find_row_containing(frame, "Command Palette", 0, frame.width())
                 .expect("command palette title row should exist");
-            let left_border = find_cell_with_char(frame, title_row, 0, frame.width(), '┌')
+            let left_border = find_cell_with_char(frame, title_row, 0, frame.width(), '╭')
                 .expect("left border should exist");
-            let right_border = find_cell_with_char(frame, title_row, 0, frame.width(), '┐')
+            let right_border = find_cell_with_char(frame, title_row, 0, frame.width(), '╮')
                 .expect("right border should exist");
             assert!(
-                left_border <= 4,
-                "palette should use near-full width, left border x={left_border}"
+                left_border >= 14,
+                "palette should use native centered width, left border x={left_border}"
             );
             assert!(
-                right_border >= frame.width().saturating_sub(5),
-                "palette should use near-full width, right border x={right_border}"
+                right_border <= 65,
+                "palette should use native centered width, right border x={right_border}"
             );
         });
     }
 
     #[test]
-    fn command_palette_keeps_keybind_visible_on_narrow_width() {
+    fn command_palette_renders_full_category_labels() {
         let mut app = fixture_app();
         app.open_command_palette();
-        app.dialogs.command_palette.set_query("toggle pane focus");
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let has_full_label = (0..frame.height())
+                .any(|row| row_text(frame, row, 0, frame.width()).contains("[Navigation]"));
+            assert!(
+                has_full_label,
+                "expected native command palette row to render full category label"
+            );
+        });
+    }
+
+    #[test]
+    fn command_palette_keeps_full_category_visible_on_narrow_width() {
+        let mut app = fixture_app();
+        app.open_command_palette();
 
         with_rendered_frame(&app, 60, 24, |frame| {
-            let has_keybind = (0..frame.height())
-                .any(|row| row_text(frame, row, 0, frame.width()).contains("[Tab/h/l]"));
+            let has_category = (0..frame.height())
+                .any(|row| row_text(frame, row, 0, frame.width()).contains("[Navigation]"));
             assert!(
-                has_keybind,
-                "expected keybind hint to remain visible in command palette rows"
+                has_category,
+                "expected native command palette row to keep full category label visible"
             );
         });
     }

@@ -23,7 +23,7 @@ use ftui::text::{
 use ftui::widgets::block::{Alignment as BlockAlignment, Block};
 use ftui::widgets::borders::Borders;
 use ftui::widgets::command_palette::{
-    ActionItem as PaletteActionItem, CommandPalette, PaletteAction,
+    ActionItem as PaletteActionItem, CommandPalette, PaletteAction, PaletteStyle,
 };
 use ftui::widgets::modal::{BackdropConfig, Modal, ModalSizeConstraints};
 use ftui::widgets::notification_queue::{

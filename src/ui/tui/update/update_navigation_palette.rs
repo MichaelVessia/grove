@@ -3,6 +3,20 @@ use super::update_prelude::*;
 impl GroveApp {
     const COMMAND_PALETTE_MAX_VISIBLE_ROWS: usize = 30;
 
+    fn command_palette_style(&self) -> PaletteStyle {
+        let theme = self.active_ui_theme();
+        PaletteStyle {
+            border: Style::new().fg(theme.blue).bg(theme.base).bold(),
+            input: Style::new().fg(theme.text).bg(theme.base),
+            item: Style::new().fg(theme.subtext0).bg(theme.base),
+            item_selected: Style::new().fg(theme.text).bg(theme.surface0).bold(),
+            match_highlight: Style::new().fg(theme.yellow).bg(theme.base).bold(),
+            description: Style::new().fg(theme.overlay0).bg(theme.base),
+            category: Style::new().fg(theme.blue).bg(theme.base).bold(),
+            hint: Style::new().fg(theme.overlay0).bg(theme.base),
+        }
+    }
+
     fn has_non_palette_modal_open(&self) -> bool {
         self.dialogs.active_dialog.is_some() || self.dialogs.keybind_help_open
     }
@@ -70,8 +84,9 @@ impl GroveApp {
             return;
         }
 
-        self.dialogs.command_palette =
-            CommandPalette::new().with_max_visible(self.command_palette_max_visible());
+        self.dialogs.command_palette = CommandPalette::new()
+            .with_max_visible(self.command_palette_max_visible())
+            .with_style(self.command_palette_style());
         self.refresh_command_palette_actions();
         self.dialogs.command_palette.open();
     }
