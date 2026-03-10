@@ -52,9 +52,50 @@ impl GroveApp {
         (width.max(1), height.max(1))
     }
 
-    pub(super) fn view_layout(&self) -> ViewLayout {
+    /// Returns (sidebar, divider, preview) rects resolved from the pane tree,
+    /// with divider carved from preview's left edge.
+    /// When sidebar is hidden, sidebar and divider are empty and preview absorbs
+    /// the workspace list's width.
+    pub(super) fn effective_workspace_rects(&self) -> (Rect, Rect, Rect) {
         let (width, height) = self.effective_viewport_size();
-        Self::view_layout_for_size(width, height, self.sidebar_width_pct, self.sidebar_hidden)
+        let viewport = Rect::from_size(width, height);
+        let Some(pane_layout) = self.panes.solve(viewport) else {
+            return (Rect::default(), Rect::default(), Rect::default());
+        };
+        let workspace_list_rect = self
+            .panes
+            .rect_for_role(&pane_layout, PaneRole::WorkspaceList)
+            .unwrap_or_default();
+        let preview_rect = self
+            .panes
+            .rect_for_role(&pane_layout, PaneRole::Preview)
+            .unwrap_or_default();
+
+        if self.sidebar_hidden {
+            let full_preview = Rect::new(
+                workspace_list_rect.x,
+                workspace_list_rect.y,
+                workspace_list_rect.width + preview_rect.width,
+                preview_rect.height,
+            );
+            (Rect::default(), Rect::default(), full_preview)
+        } else if preview_rect.width > DIVIDER_WIDTH {
+            let divider = Rect::new(
+                preview_rect.x,
+                preview_rect.y,
+                DIVIDER_WIDTH,
+                preview_rect.height,
+            );
+            let adjusted_preview = Rect::new(
+                preview_rect.x + DIVIDER_WIDTH,
+                preview_rect.y,
+                preview_rect.width - DIVIDER_WIDTH,
+                preview_rect.height,
+            );
+            (workspace_list_rect, divider, adjusted_preview)
+        } else {
+            (workspace_list_rect, Rect::default(), preview_rect)
+        }
     }
 
     pub(super) fn divider_hit_area(divider: Rect, viewport_width: u16) -> Rect {
@@ -105,7 +146,9 @@ impl GroveApp {
         }
 
         let viewport = Rect::from_size(viewport_width, viewport_height);
-        let pane_layout = self.panes.solve(viewport);
+        let Some(pane_layout) = self.panes.solve(viewport) else {
+            return (HitRegion::Outside, None);
+        };
 
         if let Some(header_rect) = self.panes.rect_for_role(&pane_layout, PaneRole::Header)
             && y < header_rect.bottom()

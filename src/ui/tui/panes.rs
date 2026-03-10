@@ -178,10 +178,10 @@ impl GrovePaneModel {
     }
 
     /// Solve the pane tree layout for a given viewport.
-    pub(super) fn solve(&self, viewport: Rect) -> PaneLayout {
-        self.tree
-            .solve_layout(viewport)
-            .expect("canonical tree solve should always succeed")
+    /// Returns `None` when the viewport is too small to satisfy constraints
+    /// (e.g. 1x1), so callers never panic on tiny viewports.
+    pub(super) fn solve(&self, viewport: Rect) -> Option<PaneLayout> {
+        self.tree.solve_layout(viewport).ok()
     }
 
     /// Look up the solved rect for a semantic pane role.

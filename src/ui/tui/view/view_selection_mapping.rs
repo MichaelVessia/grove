@@ -18,11 +18,11 @@ impl GroveApp {
     }
 
     pub(super) fn preview_content_viewport(&self) -> Option<PreviewContentViewport> {
-        let layout = self.view_layout();
-        if layout.preview.is_empty() {
+        let (_, _, preview_rect) = self.effective_workspace_rects();
+        if preview_rect.is_empty() {
             return None;
         }
-        let inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let inner = Block::new().borders(Borders::ALL).inner(preview_rect);
         if inner.is_empty() {
             return None;
         }

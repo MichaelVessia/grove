@@ -1194,7 +1194,7 @@ mod tests {
         fn canonical_tree_solves_for_normal_viewport() {
             let model = GrovePaneModel::canonical(30);
             let viewport = Rect::new(0, 0, 120, 40);
-            let layout = model.solve(viewport);
+            let layout = model.solve(viewport).expect("solve");
             for role in PaneRole::ALL {
                 let rect = model.rect_for_role(&layout, *role);
                 assert!(
@@ -1211,7 +1211,7 @@ mod tests {
         fn canonical_tree_solves_for_tiny_viewport() {
             let model = GrovePaneModel::canonical(30);
             let viewport = Rect::new(0, 0, 10, 5);
-            let layout = model.solve(viewport);
+            let layout = model.solve(viewport).expect("solve");
             for role in PaneRole::ALL {
                 let rect = model.rect_for_role(&layout, *role);
                 assert!(
@@ -1225,7 +1225,7 @@ mod tests {
         fn header_and_status_are_fixed_height() {
             let model = GrovePaneModel::canonical(30);
             let viewport = Rect::new(0, 0, 120, 40);
-            let layout = model.solve(viewport);
+            let layout = model.solve(viewport).expect("solve");
 
             let header = model
                 .rect_for_role(&layout, PaneRole::Header)
@@ -1244,7 +1244,7 @@ mod tests {
         fn workspace_list_and_preview_fill_middle() {
             let model = GrovePaneModel::canonical(30);
             let viewport = Rect::new(0, 0, 120, 40);
-            let layout = model.solve(viewport);
+            let layout = model.solve(viewport).expect("solve");
 
             let list = model
                 .rect_for_role(&layout, PaneRole::WorkspaceList)
@@ -1266,7 +1266,7 @@ mod tests {
         fn app_bootstrap_creates_pane_model() {
             let app = fixture_app();
             let viewport = Rect::new(0, 0, 80, 24);
-            let layout = app.panes.solve(viewport);
+            let layout = app.panes.solve(viewport).expect("solve");
             let header = app.panes.rect_for_role(&layout, PaneRole::Header);
             assert!(header.is_some(), "app should have a pane model with header");
         }
@@ -1284,7 +1284,10 @@ mod tests {
             let mut pool = GraphemePool::new();
             let mut frame = Frame::new(width, height, &mut pool);
             ftui::Model::view(&app, &mut frame);
-            let pane_layout = app.panes.solve(Rect::from_size(width, height));
+            let pane_layout = app
+                .panes
+                .solve(Rect::from_size(width, height))
+                .expect("solve");
             let header_rect = app
                 .panes
                 .rect_for_role(&pane_layout, PaneRole::Header)
@@ -1304,7 +1307,10 @@ mod tests {
             let mut pool = GraphemePool::new();
             let mut frame = Frame::new(width, height, &mut pool);
             ftui::Model::view(&app, &mut frame);
-            let pane_layout = app.panes.solve(Rect::from_size(width, height));
+            let pane_layout = app
+                .panes
+                .solve(Rect::from_size(width, height))
+                .expect("solve");
             let status_rect = app
                 .panes
                 .rect_for_role(&pane_layout, PaneRole::Status)
@@ -1324,7 +1330,10 @@ mod tests {
             let mut pool = GraphemePool::new();
             let mut frame = Frame::new(width, height, &mut pool);
             ftui::Model::view(&app, &mut frame);
-            let pane_layout = app.panes.solve(Rect::from_size(width, height));
+            let pane_layout = app
+                .panes
+                .solve(Rect::from_size(width, height))
+                .expect("solve");
             let list_rect = app
                 .panes
                 .rect_for_role(&pane_layout, PaneRole::WorkspaceList)
@@ -1346,7 +1355,10 @@ mod tests {
             let mut pool = GraphemePool::new();
             let mut frame = Frame::new(width, height, &mut pool);
             ftui::Model::view(&app, &mut frame);
-            let pane_layout = app.panes.solve(Rect::from_size(width, height));
+            let pane_layout = app
+                .panes
+                .solve(Rect::from_size(width, height))
+                .expect("solve");
             let preview_rect = app
                 .panes
                 .rect_for_role(&pane_layout, PaneRole::Preview)
@@ -1388,7 +1400,8 @@ mod tests {
             let app = fixture_app();
             let pane_layout = app
                 .panes
-                .solve(Rect::from_size(app.viewport_width, app.viewport_height));
+                .solve(Rect::from_size(app.viewport_width, app.viewport_height))
+                .expect("solve");
             let list_rect = app
                 .panes
                 .rect_for_role(&pane_layout, PaneRole::WorkspaceList)
@@ -1404,7 +1417,8 @@ mod tests {
             let app = fixture_app();
             let pane_layout = app
                 .panes
-                .solve(Rect::from_size(app.viewport_width, app.viewport_height));
+                .solve(Rect::from_size(app.viewport_width, app.viewport_height))
+                .expect("solve");
             let preview_rect = app
                 .panes
                 .rect_for_role(&pane_layout, PaneRole::Preview)
@@ -1426,6 +1440,135 @@ mod tests {
             // After render, hit grid is populated
             let (region, _) = app.hit_region_for_point(0, 0);
             assert_eq!(region, HitRegion::Header);
+        }
+    }
+
+    mod pane_tree_workspace_preview_interactions {
+        use super::*;
+        use crate::ui::tui::{HitRegion, PREVIEW_METADATA_ROWS};
+
+        #[test]
+        fn clicking_workspace_row_selects_workspace() {
+            let mut app = fixture_app();
+            assert_eq!(app.state.selected_index, 0);
+
+            let (sidebar_rect, _, _) = app.effective_workspace_rects();
+            let inner = Block::new().borders(Borders::ALL).inner(sidebar_rect);
+            if inner.is_empty() {
+                return;
+            }
+
+            // Click in the middle of the sidebar area. The row mapping determines
+            // which workspace index the click maps to, but we can at least verify
+            // the region is correct and the method doesn't panic.
+            let mid_x = inner.x + inner.width / 2;
+            let mid_y = inner.y + inner.height / 2;
+            let (region, _) = app.hit_region_for_point(mid_x, mid_y);
+            assert_eq!(region, HitRegion::WorkspaceList);
+            app.select_workspace_by_mouse(mid_x, mid_y);
+        }
+
+        #[test]
+        fn preview_tab_id_at_pointer_uses_pane_rect() {
+            let app = fixture_app();
+            let (_, _, preview_rect) = app.effective_workspace_rects();
+            if preview_rect.is_empty() {
+                return;
+            }
+
+            let inner = Block::new().borders(Borders::ALL).inner(preview_rect);
+            if inner.is_empty() || inner.height < PREVIEW_METADATA_ROWS {
+                return;
+            }
+
+            // The tab row is at inner.y + 1. Click outside x bounds should return None.
+            let tab_row_y = inner.y.saturating_add(1);
+            let result = app.preview_tab_id_at_pointer(0, tab_row_y);
+            assert!(
+                result.is_none(),
+                "clicking at x=0 (outside preview) should not match a tab"
+            );
+        }
+
+        #[test]
+        fn preview_output_dimensions_uses_pane_rect() {
+            let app = fixture_app();
+            let dims = app.preview_output_dimensions();
+            let (_, _, preview_rect) = app.effective_workspace_rects();
+            if preview_rect.is_empty() {
+                assert!(dims.is_none());
+                return;
+            }
+
+            let inner = Block::new().borders(Borders::ALL).inner(preview_rect);
+            if inner.is_empty() || inner.width == 0 {
+                assert!(dims.is_none());
+                return;
+            }
+
+            let (width, height) = dims.expect("should have dimensions for non-empty preview");
+            assert_eq!(width, inner.width);
+            let expected_height = inner.height.saturating_sub(PREVIEW_METADATA_ROWS).max(1);
+            assert_eq!(height, expected_height);
+        }
+
+        #[test]
+        fn preview_content_viewport_uses_pane_rect() {
+            let app = fixture_app();
+            let viewport = app.preview_content_viewport();
+            let (_, _, preview_rect) = app.effective_workspace_rects();
+            if preview_rect.is_empty() {
+                assert!(viewport.is_none());
+                return;
+            }
+
+            let inner = Block::new().borders(Borders::ALL).inner(preview_rect);
+            if inner.is_empty() {
+                assert!(viewport.is_none());
+                return;
+            }
+
+            let vp = viewport.expect("should have viewport for non-empty preview");
+            assert_eq!(vp.output_x, inner.x);
+            assert_eq!(vp.output_y, inner.y.saturating_add(PREVIEW_METADATA_ROWS));
+        }
+
+        #[test]
+        fn sidebar_workspace_index_uses_pane_rect() {
+            let app = fixture_app();
+            let (sidebar_rect, _, _) = app.effective_workspace_rects();
+            if sidebar_rect.is_empty() {
+                return;
+            }
+
+            let inner = Block::new().borders(Borders::ALL).inner(sidebar_rect);
+            if inner.is_empty() {
+                return;
+            }
+
+            // Point above sidebar should return None
+            let above = sidebar_rect.y.saturating_sub(1);
+            assert!(
+                app.sidebar_workspace_index_at_point(inner.x, above)
+                    .is_none(),
+                "point above sidebar should not match"
+            );
+        }
+
+        #[test]
+        fn effective_workspace_rects_sidebar_hidden() {
+            let mut app = fixture_app();
+            app.sidebar_hidden = true;
+            let (sidebar, divider, preview) = app.effective_workspace_rects();
+            assert!(sidebar.is_empty(), "sidebar should be empty when hidden");
+            assert!(
+                divider.is_empty(),
+                "divider should be empty when sidebar hidden"
+            );
+            assert!(
+                preview.width > 0,
+                "preview should absorb full width when sidebar hidden"
+            );
         }
     }
 

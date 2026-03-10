@@ -24,7 +24,12 @@ impl GroveApp {
             .style(Style::new().bg(theme.base))
             .render(area, frame);
 
-        let pane_layout = self.panes.solve(area);
+        let Some(pane_layout) = self.panes.solve(area) else {
+            // Viewport too small to solve constraints. Skip pane rendering but
+            // still update hit grid so the rest of the system stays consistent.
+            self.last_hit_grid.replace(frame.hit_grid.clone());
+            return;
+        };
         let header_rect = self
             .panes
             .rect_for_role(&pane_layout, PaneRole::Header)

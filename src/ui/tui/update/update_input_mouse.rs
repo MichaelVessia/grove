@@ -6,13 +6,13 @@ impl GroveApp {
     const SIDEBAR_MOUSE_SCROLL_DEBOUNCE_MS: u64 = 50;
     const CREATE_DIALOG_TAB_ROW_OFFSET: u16 = 2;
 
-    fn preview_tab_id_at_pointer(&self, x: u16, y: u16) -> Option<u64> {
-        let layout = self.view_layout();
-        if layout.preview.is_empty() {
+    pub(super) fn preview_tab_id_at_pointer(&self, x: u16, y: u16) -> Option<u64> {
+        let (_, _, preview_rect) = self.effective_workspace_rects();
+        if preview_rect.is_empty() {
             return None;
         }
 
-        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(preview_rect);
         if preview_inner.is_empty() || preview_inner.height < PREVIEW_METADATA_ROWS {
             return None;
         }
@@ -103,13 +103,13 @@ impl GroveApp {
     }
 
     fn sidebar_ratio_for_drag_pointer(&self, pointer_x: i32) -> u16 {
-        let layout = self.view_layout();
-        let total_width = layout.preview.right().saturating_sub(layout.sidebar.x);
+        let (sidebar_rect, _, preview_rect) = self.effective_workspace_rects();
+        let total_width = preview_rect.right().saturating_sub(sidebar_rect.x);
         if total_width == 0 {
             return self.sidebar_width_pct;
         }
 
-        let left = i32::from(layout.sidebar.x);
+        let left = i32::from(sidebar_rect.x);
         let right = left.saturating_add(i32::from(total_width).saturating_sub(1));
         let clamped_x = pointer_x.clamp(left, right);
         let relative_x = clamped_x.saturating_sub(left);
@@ -120,9 +120,9 @@ impl GroveApp {
         ratio_from_drag(total_width, relative_x_u16)
     }
 
-    fn sidebar_workspace_index_at_point(&self, x: u16, y: u16) -> Option<usize> {
-        let layout = self.view_layout();
-        let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
+    pub(super) fn sidebar_workspace_index_at_point(&self, x: u16, y: u16) -> Option<usize> {
+        let (sidebar_rect, _, _) = self.effective_workspace_rects();
+        let sidebar_inner = Block::new().borders(Borders::ALL).inner(sidebar_rect);
         if y < sidebar_inner.y || y >= sidebar_inner.bottom() {
             return None;
         }
@@ -148,7 +148,7 @@ impl GroveApp {
         row_map.get(row_index).copied().flatten()
     }
 
-    fn select_workspace_by_mouse(&mut self, x: u16, y: u16) {
+    pub(super) fn select_workspace_by_mouse(&mut self, x: u16, y: u16) {
         let Some(row) = self.sidebar_workspace_index_at_point(x, y) else {
             return;
         };
@@ -497,9 +497,9 @@ impl GroveApp {
             MouseEventKind::Down(MouseButton::Left) => match region {
                 HitRegion::Divider => {
                     self.divider_drag_active = true;
-                    let layout = self.view_layout();
+                    let (_, divider_rect, _) = self.effective_workspace_rects();
                     self.divider_drag_pointer_offset =
-                        i32::from(mouse_event.x).saturating_sub(i32::from(layout.divider.x));
+                        i32::from(mouse_event.x).saturating_sub(i32::from(divider_rect.x));
                 }
                 HitRegion::WorkspaceList => {
                     if self.session.interactive.is_some() {
