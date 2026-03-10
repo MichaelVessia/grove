@@ -113,17 +113,22 @@ impl GroveApp {
 
                 match self.state.mode {
                     UiMode::List => format!("Status: list, unsafe={}", self.unsafe_label()),
-                    UiMode::Preview => format!(
-                        "Status: preview, autoscroll={}, offset={}, split={}%, unsafe={}",
-                        if self.preview.auto_scroll {
-                            "on"
-                        } else {
-                            "off"
-                        },
-                        self.preview.offset,
-                        self.sidebar_width_pct,
-                        self.unsafe_label(),
-                    ),
+                    UiMode::Preview => {
+                        let preview_height = self
+                            .preview_output_dimensions()
+                            .map_or(1, |(_, height)| usize::from(height));
+                        format!(
+                            "Status: preview, autoscroll={}, offset={}, split={}%, unsafe={}",
+                            if self.preview_auto_scroll_for_height(preview_height) {
+                                "on"
+                            } else {
+                                "off"
+                            },
+                            self.preview_scroll_offset_for_height(preview_height),
+                            self.sidebar_width_pct,
+                            self.unsafe_label(),
+                        )
+                    }
                 }
             }
         }

@@ -33,7 +33,7 @@ use ftui::widgets::input::TextInput;
 use ftui::widgets::list::{List, ListItem, ListState};
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::toast::{Toast, ToastIcon, ToastPosition, ToastStyle};
-use ftui::widgets::virtualized::VirtualizedListState;
+use ftui::widgets::virtualized::{Virtualized, VirtualizedListState};
 use ftui::widgets::{StatefulWidget, Widget};
 use ftui::{Cmd, Model, PackedRgba, Style};
 use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
@@ -300,6 +300,7 @@ struct GroveApp {
     copied_text: Option<String>,
     telemetry: TelemetryState,
     last_hit_grid: RefCell<Option<HitGrid>>,
+    preview_scroll: RefCell<Virtualized<()>>,
     sidebar_list_state: RefCell<VirtualizedListState>,
     last_sidebar_mouse_scroll_at: Option<Instant>,
     last_sidebar_mouse_scroll_delta: i8,

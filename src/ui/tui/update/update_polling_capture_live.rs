@@ -328,44 +328,51 @@ impl GroveApp {
         let viewport_height = self
             .preview_output_dimensions()
             .map_or(1, |(_, height)| usize::from(height));
-        let old_offset = self.preview.offset;
-        let old_auto_scroll = self.preview.auto_scroll;
-        let changed = self.preview.scroll(delta, Instant::now(), viewport_height);
+        let old_offset = self.preview_scroll_offset_for_height(viewport_height);
+        let old_auto_scroll = self.preview_auto_scroll_for_height(viewport_height);
+        let changed = self.preview_scroll_by(delta, viewport_height);
+        let next_offset = self.preview_scroll_offset_for_height(viewport_height);
+        let next_auto_scroll = self.preview_auto_scroll_for_height(viewport_height);
         if changed {
-            let offset = usize_to_u64(self.preview.offset);
+            let offset = usize_to_u64(next_offset);
             self.telemetry.event_log.log(
                 LogEvent::new("preview_update", "scrolled")
                     .with_data("delta", Value::from(i64::from(delta)))
                     .with_data("offset", Value::from(offset)),
             );
         }
-        if old_auto_scroll != self.preview.auto_scroll {
+        if old_auto_scroll != next_auto_scroll {
             self.telemetry.event_log.log(
                 LogEvent::new("preview_update", "autoscroll_toggled")
-                    .with_data("enabled", Value::from(self.preview.auto_scroll))
-                    .with_data("offset", Value::from(usize_to_u64(self.preview.offset)))
+                    .with_data("enabled", Value::from(next_auto_scroll))
+                    .with_data("offset", Value::from(usize_to_u64(next_offset)))
                     .with_data("previous_offset", Value::from(usize_to_u64(old_offset))),
             );
         }
     }
 
     pub(super) fn jump_preview_to_bottom(&mut self) {
-        let old_offset = self.preview.offset;
-        let old_auto_scroll = self.preview.auto_scroll;
-        self.preview.jump_to_bottom();
-        if old_offset != self.preview.offset {
+        let viewport_height = self
+            .preview_output_dimensions()
+            .map_or(1, |(_, height)| usize::from(height));
+        let old_offset = self.preview_scroll_offset_for_height(viewport_height);
+        let old_auto_scroll = self.preview_auto_scroll_for_height(viewport_height);
+        self.preview_scroll_to_bottom(viewport_height);
+        let next_offset = self.preview_scroll_offset_for_height(viewport_height);
+        let next_auto_scroll = self.preview_auto_scroll_for_height(viewport_height);
+        if old_offset != next_offset {
             self.telemetry.event_log.log(
                 LogEvent::new("preview_update", "scrolled")
                     .with_data("delta", Value::from("jump_bottom"))
-                    .with_data("offset", Value::from(usize_to_u64(self.preview.offset)))
+                    .with_data("offset", Value::from(usize_to_u64(next_offset)))
                     .with_data("previous_offset", Value::from(usize_to_u64(old_offset))),
             );
         }
-        if old_auto_scroll != self.preview.auto_scroll {
+        if old_auto_scroll != next_auto_scroll {
             self.telemetry.event_log.log(
                 LogEvent::new("preview_update", "autoscroll_toggled")
-                    .with_data("enabled", Value::from(self.preview.auto_scroll))
-                    .with_data("offset", Value::from(usize_to_u64(self.preview.offset))),
+                    .with_data("enabled", Value::from(next_auto_scroll))
+                    .with_data("offset", Value::from(usize_to_u64(next_offset))),
             );
         }
     }

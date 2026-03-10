@@ -182,8 +182,7 @@ impl GroveApp {
             return None;
         }
 
-        let end = preview_len.saturating_sub(self.preview.offset);
-        let start = end.saturating_sub(preview_height);
+        let (start, end) = self.preview_visible_range_for_height(preview_height);
         if cursor_line < start || cursor_line >= end {
             return None;
         }

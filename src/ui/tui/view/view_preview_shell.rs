@@ -153,7 +153,8 @@ impl GroveApp {
         lines.push(String::new());
         lines.push("Preview Pane".to_string());
         lines.push(format!("Selected workspace: {}", selected_workspace));
-        let mut visible_lines = self.preview.visible_lines(preview_height);
+        let (visible_start, visible_end) = self.preview_visible_range_for_height(preview_height);
+        let mut visible_lines = self.preview_plain_lines_range(visible_start, visible_end);
         self.apply_interactive_cursor_overlay(&mut visible_lines, preview_height);
         if visible_lines.is_empty() {
             lines.push("(no preview output)".to_string());

@@ -137,8 +137,11 @@ impl GroveApp {
                 Cmd::None
             }
             InteractiveAction::PasteClipboard => {
-                if self.preview.offset > 0 {
-                    self.preview.jump_to_bottom();
+                let preview_height = self
+                    .preview_output_dimensions()
+                    .map_or(1, |(_, height)| usize::from(height));
+                if !self.preview_auto_scroll_for_height(preview_height) {
+                    self.jump_preview_to_bottom();
                 }
                 let send_cmd = self.paste_clipboard_text(
                     &target_session,

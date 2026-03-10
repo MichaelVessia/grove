@@ -207,6 +207,7 @@ impl GroveApp {
                 deferred_cmds: Vec::new(),
             },
             last_hit_grid: RefCell::new(None),
+            preview_scroll: RefCell::new(Virtualized::external(0, 0).with_follow(true)),
             sidebar_list_state: RefCell::new(VirtualizedListState::new().with_overscan(0)),
             last_sidebar_mouse_scroll_at: None,
             last_sidebar_mouse_scroll_delta: 0,

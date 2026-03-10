@@ -448,7 +448,10 @@ impl GroveApp {
             self.exit_interactive_to_list();
         }
         self.sync_preview_tab_from_active_workspace_tab();
-        self.preview.jump_to_bottom();
+        let preview_height = self
+            .preview_output_dimensions()
+            .map_or(1, |(_, height)| usize::from(height));
+        self.preview_scroll_to_bottom(preview_height);
         self.clear_agent_activity_tracking();
         self.clear_preview_selection();
         if self.selected_live_preview_session_if_ready().is_none() {

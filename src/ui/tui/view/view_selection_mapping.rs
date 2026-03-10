@@ -10,11 +10,12 @@ impl GroveApp {
             return (0, 0);
         }
 
-        let max_offset = self.preview.max_scroll_offset(preview_height);
-        let clamped_offset = self.preview.offset.min(max_offset);
-        let end = self.preview.lines.len().saturating_sub(clamped_offset);
-        let start = end.saturating_sub(preview_height);
-        (start, end)
+        let total_lines = self.preview.lines.len();
+        let mut preview_scroll = self.preview_scroll.borrow_mut();
+        preview_scroll.set_external_len(total_lines);
+        let viewport_height = u16::try_from(preview_height).unwrap_or(u16::MAX);
+        let visible = preview_scroll.visible_range(viewport_height);
+        (visible.start, visible.end)
     }
 
     pub(super) fn preview_content_viewport(&self) -> Option<PreviewContentViewport> {

@@ -752,6 +752,19 @@ mod tests {
         KeyEvent::new(code).with_kind(KeyEventKind::Press)
     }
 
+    fn preview_output_height(app: &GroveApp) -> usize {
+        app.preview_output_dimensions()
+            .map_or(1, |(_, height)| usize::from(height))
+    }
+
+    fn preview_scroll_offset(app: &GroveApp) -> usize {
+        app.preview_scroll_offset_for_height(preview_output_height(app))
+    }
+
+    fn preview_auto_scroll(app: &GroveApp) -> bool {
+        app.preview_auto_scroll_for_height(preview_output_height(app))
+    }
+
     fn select_workspace(app: &mut GroveApp, index: usize) {
         app.state.select_index(index);
         app.sync_preview_tab_from_active_workspace_tab();
@@ -2006,7 +2019,7 @@ mod tests {
             let mut app = fixture_app();
             for msg in msgs {
                 let _ = ftui::Model::update(&mut app, msg);
-                prop_assert!(app.preview.offset <= app.preview.lines.len());
+                prop_assert!(preview_scroll_offset(&app) <= app.preview.lines.len());
             }
         }
 
@@ -4553,7 +4566,6 @@ mod tests {
         app.preview_tab = PreviewTab::Agent;
         app.preview.lines = vec!["unstyled output".to_string()];
         app.preview.render_lines = app.preview.lines.clone();
-        app.preview.offset = 0;
 
         let layout = app.panes.test_rects(100, 40);
         let content_x = layout.preview.x.saturating_add(1);
@@ -8200,8 +8212,6 @@ mod tests {
             fn mouse_scroll_in_preview_scrolls_output() {
                 let mut app = fixture_app();
                 app.preview.lines = (1..=120).map(|value| value.to_string()).collect();
-                app.preview.offset = 0;
-                app.preview.auto_scroll = true;
                 focus_agent_preview_tab(&mut app);
 
                 ftui::Model::update(
@@ -8216,8 +8226,8 @@ mod tests {
                     Msg::Mouse(MouseEvent::new(MouseEventKind::ScrollUp, 90, 10)),
                 );
 
-                assert!(app.preview.offset >= 3);
-                assert!(!app.preview.auto_scroll);
+                assert!(preview_scroll_offset(&app) >= 3);
+                assert!(!preview_auto_scroll(&app));
             }
 
             #[test]
@@ -8392,21 +8402,26 @@ mod tests {
                 focus_agent_preview_tab(&mut app);
                 assert_eq!(app.state.mode, crate::ui::state::UiMode::Preview);
 
-                let was_auto_scroll = app.preview.auto_scroll;
+                let was_auto_scroll = preview_auto_scroll(&app);
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
                 );
                 assert!(was_auto_scroll);
-                assert!(!app.preview.auto_scroll);
-                assert!(app.preview.offset > 0);
+                assert!(!preview_auto_scroll(&app));
+                assert!(preview_scroll_offset(&app) > 0);
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('G')).with_kind(KeyEventKind::Press)),
                 );
-                assert_eq!(app.preview.offset, 0);
-                assert!(app.preview.auto_scroll);
+                let expected_bottom_offset = app
+                    .preview
+                    .lines
+                    .len()
+                    .saturating_sub(preview_output_height(&app));
+                assert_eq!(preview_scroll_offset(&app), expected_bottom_offset);
+                assert!(preview_auto_scroll(&app));
             }
 
             #[test]
@@ -8421,21 +8436,26 @@ mod tests {
                 assert_eq!(app.preview_tab, PreviewTab::Home);
                 assert_eq!(app.state.mode, crate::ui::state::UiMode::Preview);
 
-                let was_auto_scroll = app.preview.auto_scroll;
+                let was_auto_scroll = preview_auto_scroll(&app);
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
                 );
                 assert!(was_auto_scroll);
-                assert!(!app.preview.auto_scroll);
-                assert!(app.preview.offset > 0);
+                assert!(!preview_auto_scroll(&app));
+                assert!(preview_scroll_offset(&app) > 0);
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('G')).with_kind(KeyEventKind::Press)),
                 );
-                assert_eq!(app.preview.offset, 0);
-                assert!(app.preview.auto_scroll);
+                let expected_bottom_offset = app
+                    .preview
+                    .lines
+                    .len()
+                    .saturating_sub(preview_output_height(&app));
+                assert_eq!(preview_scroll_offset(&app), expected_bottom_offset);
+                assert!(preview_auto_scroll(&app));
             }
 
             #[test]
@@ -8459,26 +8479,62 @@ mod tests {
                 assert_eq!(app.state.mode, crate::ui::state::UiMode::Preview);
 
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Up)));
-                assert_eq!(app.preview.offset, 1);
-                assert!(!app.preview.auto_scroll);
+                assert_eq!(
+                    preview_scroll_offset(&app),
+                    app.preview
+                        .lines
+                        .len()
+                        .saturating_sub(preview_output_height(&app) + 1)
+                );
+                assert!(!preview_auto_scroll(&app));
 
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Down)));
-                assert_eq!(app.preview.offset, 0);
-                assert!(app.preview.auto_scroll);
+                assert_eq!(
+                    preview_scroll_offset(&app),
+                    app.preview
+                        .lines
+                        .len()
+                        .saturating_sub(preview_output_height(&app))
+                );
+                assert!(preview_auto_scroll(&app));
 
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::PageUp)));
-                assert_eq!(app.preview.offset, page_delta);
-                assert!(!app.preview.auto_scroll);
+                assert_eq!(
+                    preview_scroll_offset(&app),
+                    app.preview
+                        .lines
+                        .len()
+                        .saturating_sub(preview_output_height(&app).saturating_add(page_delta))
+                );
+                assert!(!preview_auto_scroll(&app));
 
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::PageDown)));
-                assert_eq!(app.preview.offset, 0);
-                assert!(app.preview.auto_scroll);
+                assert_eq!(
+                    preview_scroll_offset(&app),
+                    app.preview
+                        .lines
+                        .len()
+                        .saturating_sub(preview_output_height(&app))
+                );
+                assert!(preview_auto_scroll(&app));
 
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::PageUp)));
-                assert_eq!(app.preview.offset, page_delta);
+                assert_eq!(
+                    preview_scroll_offset(&app),
+                    app.preview
+                        .lines
+                        .len()
+                        .saturating_sub(preview_output_height(&app).saturating_add(page_delta))
+                );
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::End)));
-                assert_eq!(app.preview.offset, 0);
-                assert!(app.preview.auto_scroll);
+                assert_eq!(
+                    preview_scroll_offset(&app),
+                    app.preview
+                        .lines
+                        .len()
+                        .saturating_sub(preview_output_height(&app))
+                );
+                assert!(preview_auto_scroll(&app));
             }
 
             #[test]
@@ -8521,8 +8577,6 @@ mod tests {
                 let mut app = fixture_app();
                 app.preview.lines = (1..=120).map(|value| value.to_string()).collect();
                 app.preview.render_lines = app.preview.lines.clone();
-                app.preview.offset = 0;
-                app.preview.auto_scroll = true;
                 app.open_or_focus_git_tab();
                 assert_eq!(app.preview_tab, PreviewTab::Git);
 
@@ -8530,8 +8584,14 @@ mod tests {
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::PageDown)));
                 ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('G'))));
 
-                assert_eq!(app.preview.offset, 0);
-                assert!(app.preview.auto_scroll);
+                assert_eq!(
+                    preview_scroll_offset(&app),
+                    app.preview
+                        .lines
+                        .len()
+                        .saturating_sub(preview_output_height(&app))
+                );
+                assert!(preview_auto_scroll(&app));
             }
 
             #[test]
@@ -8870,8 +8930,6 @@ mod tests {
                 let mut app = fixture_app();
                 app.preview.lines = (1..=4).map(|value| value.to_string()).collect();
                 app.preview.render_lines = app.preview.lines.clone();
-                app.preview.offset = 0;
-                app.preview.auto_scroll = true;
 
                 ftui::Model::update(
                     &mut app,
@@ -8889,8 +8947,8 @@ mod tests {
                     Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
                 );
 
-                assert_eq!(app.preview.offset, 0);
-                assert!(app.preview.auto_scroll);
+                assert_eq!(preview_scroll_offset(&app), 0);
+                assert!(preview_auto_scroll(&app));
             }
 
             #[test]
@@ -11196,8 +11254,6 @@ mod tests {
                 select_workspace(&mut app, 1);
                 focus_agent_preview_tab(&mut app);
                 app.preview.lines = (1..=120).map(|value| value.to_string()).collect();
-                app.preview.offset = 0;
-                app.preview.auto_scroll = true;
 
                 ftui::Model::update(
                     &mut app,
@@ -11214,6 +11270,27 @@ mod tests {
                 let kinds = event_kinds(&events);
                 assert!(kinds.iter().any(|kind| kind == "scrolled"));
                 assert!(kinds.iter().any(|kind| kind == "autoscroll_toggled"));
+
+                let output_height = app
+                    .preview_output_dimensions()
+                    .map_or(1usize, |(_, height)| usize::from(height));
+                let expected_offset = app
+                    .preview
+                    .lines
+                    .len()
+                    .saturating_sub(output_height)
+                    .saturating_sub(3);
+                let recorded = recorded_events(&events);
+                let scrolled = recorded
+                    .iter()
+                    .find(|event| event.event == "preview_update" && event.kind == "scrolled")
+                    .expect("expected preview scrolled event");
+                let offset = scrolled
+                    .data
+                    .get("offset")
+                    .and_then(serde_json::Value::as_u64)
+                    .expect("scrolled event should include offset");
+                assert_eq!(offset, u64::try_from(expected_offset).unwrap_or(u64::MAX));
             }
         }
         mod projects_and_creation {

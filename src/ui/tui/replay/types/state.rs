@@ -61,8 +61,18 @@ impl ReplayStateSnapshot {
             preview_tab: ReplayPreviewTab::from_preview_tab(app.preview_tab),
             interactive_session: app.interactive_target_session(),
             poll_generation: app.polling.poll_generation,
-            preview_offset: app.preview.offset,
-            preview_auto_scroll: app.preview.auto_scroll,
+            preview_offset: {
+                let preview_height = app
+                    .preview_output_dimensions()
+                    .map_or(1, |(_, height)| usize::from(height));
+                app.preview_scroll_offset_for_height(preview_height)
+            },
+            preview_auto_scroll: {
+                let preview_height = app
+                    .preview_output_dimensions()
+                    .map_or(1, |(_, height)| usize::from(height));
+                app.preview_auto_scroll_for_height(preview_height)
+            },
             preview_line_count: app.preview.render_lines.len(),
             preview_line_hash,
             output_changing: app.polling.output_changing,

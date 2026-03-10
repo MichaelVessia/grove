@@ -23,6 +23,46 @@ impl GroveApp {
         Some((inner.width, output_height))
     }
 
+    pub(super) fn preview_scroll_offset_for_height(&self, preview_height: usize) -> usize {
+        self.preview_visible_range_for_height(preview_height).0
+    }
+
+    pub(super) fn preview_auto_scroll_for_height(&self, preview_height: usize) -> bool {
+        let total_lines = self.preview.lines.len();
+        let mut preview_scroll = self.preview_scroll.borrow_mut();
+        preview_scroll.set_external_len(total_lines);
+        let viewport_height = u16::try_from(preview_height).unwrap_or(u16::MAX);
+        let _ = preview_scroll.visible_range(viewport_height);
+        preview_scroll.follow_mode()
+    }
+
+    pub(super) fn preview_scroll_to_bottom(&mut self, preview_height: usize) {
+        let total_lines = self.preview.lines.len();
+        let mut preview_scroll = self.preview_scroll.borrow_mut();
+        preview_scroll.set_external_len(total_lines);
+        let viewport_height = u16::try_from(preview_height).unwrap_or(u16::MAX);
+        let _ = preview_scroll.visible_range(viewport_height);
+        preview_scroll.scroll_to_end();
+    }
+
+    pub(super) fn preview_scroll_by(&mut self, delta: i32, preview_height: usize) -> bool {
+        if delta == 0 {
+            return false;
+        }
+
+        let total_lines = self.preview.lines.len();
+        let mut preview_scroll = self.preview_scroll.borrow_mut();
+        preview_scroll.set_external_len(total_lines);
+        let viewport_height = u16::try_from(preview_height).unwrap_or(u16::MAX);
+        let previous_range = preview_scroll.visible_range(viewport_height);
+        preview_scroll.scroll(delta);
+        if preview_scroll.is_at_bottom() {
+            preview_scroll.set_follow(true);
+        }
+        let next_range = preview_scroll.visible_range(viewport_height);
+        previous_range.start != next_range.start
+    }
+
     pub(super) fn capture_dimensions(&self) -> (u16, u16) {
         let capture_cols = self
             .preview_output_dimensions()

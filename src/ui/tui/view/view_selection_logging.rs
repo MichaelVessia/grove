@@ -85,7 +85,12 @@ impl GroveApp {
             .with_data("focus", Value::from(self.state.focus.name()))
             .with_data(
                 "preview_offset",
-                Value::from(usize_to_u64(self.preview.offset)),
+                Value::from(usize_to_u64({
+                    let preview_height = self
+                        .preview_output_dimensions()
+                        .map_or(1, |(_, height)| usize::from(height));
+                    self.preview_scroll_offset_for_height(preview_height)
+                })),
             );
 
         if let Some(viewport) = self.preview_content_viewport() {

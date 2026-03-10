@@ -75,6 +75,9 @@ impl GroveApp {
             .map(|trace| trace.seq)
             .unwrap_or(0);
         let oldest_pending_input_age_ms = self.oldest_pending_input_age_ms(Instant::now());
+        let preview_height = self
+            .preview_output_dimensions()
+            .map_or(1, |(_, height)| usize::from(height));
 
         let mut frame_fields = vec![
             ("seq".to_string(), Value::from(seq_value)),
@@ -110,11 +113,13 @@ impl GroveApp {
             ),
             (
                 "preview_offset".to_string(),
-                Value::from(usize_to_u64(self.preview.offset)),
+                Value::from(usize_to_u64(
+                    self.preview_scroll_offset_for_height(preview_height),
+                )),
             ),
             (
                 "preview_auto_scroll".to_string(),
-                Value::from(self.preview.auto_scroll),
+                Value::from(self.preview_auto_scroll_for_height(preview_height)),
             ),
             (
                 "output_changing".to_string(),
