@@ -17,6 +17,7 @@ pub(super) enum Msg {
     DeleteWorkspaceCompleted(DeleteWorkspaceCompletion),
     MergeWorkspaceCompleted(MergeWorkspaceCompletion),
     UpdateWorkspaceFromBaseCompleted(UpdateWorkspaceFromBaseCompletion),
+    PullUpstreamCompleted(PullUpstreamCompletion),
     CreateWorkspaceCompleted(CreateWorkspaceCompletion),
     StartAgentCompleted(StartAgentCompletion),
     StopAgentCompleted(StopAgentCompletion),
@@ -117,6 +118,15 @@ pub(super) struct UpdateWorkspaceFromBaseCompletion {
     pub(super) base_branch: String,
     pub(super) result: Result<(), String>,
     pub(super) warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PullUpstreamCompletion {
+    pub(super) workspace_name: String,
+    pub(super) workspace_path: PathBuf,
+    pub(super) base_branch: String,
+    pub(super) result: Result<(), String>,
+    pub(super) propagate_target_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -31,6 +31,7 @@ pub(super) enum UiCommand {
     DeleteWorkspace,
     MergeWorkspace,
     UpdateFromBase,
+    PullUpstream,
     RefreshWorkspaces,
     OpenProjects,
     ReorderTasks,
@@ -181,7 +182,7 @@ fn control_character_for(character: char) -> Option<char> {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 40] = [
+    pub(super) const ALL: [UiCommand; 41] = [
         UiCommand::ToggleFocus,
         UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
@@ -211,6 +212,7 @@ impl UiCommand {
         UiCommand::DeleteWorkspace,
         UiCommand::MergeWorkspace,
         UiCommand::UpdateFromBase,
+        UiCommand::PullUpstream,
         UiCommand::RefreshWorkspaces,
         UiCommand::OpenProjects,
         UiCommand::ReorderTasks,

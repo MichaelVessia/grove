@@ -136,6 +136,16 @@ impl GroveApp {
             lines.push(format!("Branch: {}", dialog.workspace_branch));
             lines.push(format!("Base branch: {}", dialog.base_branch));
         }
+        if let Some(dialog) = self.pull_upstream_dialog() {
+            lines.push(String::new());
+            lines.push("Pull Upstream Dialog".to_string());
+            lines.push(format!("Workspace: {}", dialog.workspace_name));
+            lines.push(format!("Base branch: {}", dialog.base_branch));
+            lines.push(format!(
+                "Propagate targets: {}",
+                dialog.propagate_target_count
+            ));
+        }
 
         let selected_workspace = self
             .state

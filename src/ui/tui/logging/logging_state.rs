@@ -77,6 +77,7 @@ impl GroveApp {
             Msg::DeleteWorkspaceCompleted(_) => "delete_workspace_completed",
             Msg::MergeWorkspaceCompleted(_) => "merge_workspace_completed",
             Msg::UpdateWorkspaceFromBaseCompleted(_) => "update_workspace_from_base_completed",
+            Msg::PullUpstreamCompleted(_) => "pull_upstream_completed",
             Msg::CreateWorkspaceCompleted(_) => "create_workspace_completed",
             Msg::StartAgentCompleted(_) => "start_agent_completed",
             Msg::StopAgentCompleted(_) => "stop_agent_completed",

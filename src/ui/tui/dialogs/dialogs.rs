@@ -382,6 +382,7 @@ impl GroveApp {
             Some(ActiveDialog::Delete(_)) => Some("delete"),
             Some(ActiveDialog::Merge(_)) => Some("merge"),
             Some(ActiveDialog::UpdateFromBase(_)) => Some("update_from_base"),
+            Some(ActiveDialog::PullUpstream(_)) => Some("pull_upstream"),
             Some(ActiveDialog::Create(_)) => Some("create"),
             Some(ActiveDialog::Edit(_)) => Some("edit"),
             Some(ActiveDialog::RenameTab(_)) => Some("rename_tab"),
@@ -449,6 +450,18 @@ impl GroveApp {
         take_update_from_base_dialog,
         UpdateFromBase,
         UpdateFromBaseDialogState
+    );
+    active_dialog_accessors!(
+        pull_upstream_dialog,
+        pull_upstream_dialog_mut,
+        set_pull_upstream_dialog,
+        PullUpstream,
+        PullUpstreamDialogState
+    );
+    active_dialog_take_accessor!(
+        take_pull_upstream_dialog,
+        PullUpstream,
+        PullUpstreamDialogState
     );
     active_dialog_accessors!(
         create_dialog,

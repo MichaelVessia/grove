@@ -90,6 +90,7 @@ impl GroveApp {
         self.render_delete_dialog_overlay(frame, area);
         self.render_merge_dialog_overlay(frame, area);
         self.render_update_from_base_dialog_overlay(frame, area);
+        self.render_pull_upstream_dialog_overlay(frame, area);
         self.render_settings_dialog_overlay(frame, area);
         self.render_project_dialog_overlay(frame, area);
         self.render_keybind_help_overlay(frame, area);

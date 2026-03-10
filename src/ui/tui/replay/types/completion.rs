@@ -99,6 +99,15 @@ struct ReplayUpdateWorkspaceFromBaseCompletion {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct ReplayPullUpstreamCompletion {
+    workspace_name: String,
+    workspace_path: PathBuf,
+    base_branch: String,
+    result: ReplayUnitResult,
+    propagate_target_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct ReplayCreateWorkspaceCompletion {
     request: ReplayCreateWorkspaceRequest,
     result: ReplayCreateWorkspaceResult,
@@ -475,6 +484,28 @@ impl ReplayUpdateWorkspaceFromBaseCompletion {
             base_branch: self.base_branch.clone(),
             result: self.result.to_result(),
             warnings: self.warnings.clone(),
+        }
+    }
+}
+
+impl ReplayPullUpstreamCompletion {
+    fn from_completion(completion: &PullUpstreamCompletion) -> Self {
+        Self {
+            workspace_name: completion.workspace_name.clone(),
+            workspace_path: completion.workspace_path.clone(),
+            base_branch: completion.base_branch.clone(),
+            result: ReplayUnitResult::from_result(&completion.result),
+            propagate_target_count: completion.propagate_target_count,
+        }
+    }
+
+    fn to_completion(&self) -> PullUpstreamCompletion {
+        PullUpstreamCompletion {
+            workspace_name: self.workspace_name.clone(),
+            workspace_path: self.workspace_path.clone(),
+            base_branch: self.base_branch.clone(),
+            result: self.result.to_result(),
+            propagate_target_count: self.propagate_target_count,
         }
     }
 }

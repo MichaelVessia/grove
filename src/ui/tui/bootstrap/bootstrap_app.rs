@@ -143,6 +143,7 @@ impl GroveApp {
                 delete_requested_workspaces: HashSet::new(),
                 merge_in_flight: false,
                 update_from_base_in_flight: false,
+                pull_upstream_in_flight: false,
                 create_in_flight: false,
                 start_in_flight: false,
                 stop_in_flight: false,

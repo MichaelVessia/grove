@@ -82,6 +82,10 @@ impl GroveApp {
                 self.apply_update_from_base_completion(completion);
                 Cmd::None
             }
+            Msg::PullUpstreamCompleted(completion) => {
+                self.apply_pull_upstream_completion(completion);
+                Cmd::None
+            }
             Msg::CreateWorkspaceCompleted(completion) => {
                 self.apply_create_workspace_completion(completion);
                 Cmd::None

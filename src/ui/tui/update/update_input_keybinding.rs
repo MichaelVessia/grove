@@ -7,6 +7,7 @@ impl GroveApp {
             || self.dialogs.delete_in_flight
             || self.dialogs.merge_in_flight
             || self.dialogs.update_from_base_in_flight
+            || self.dialogs.pull_upstream_in_flight
             || self.dialogs.create_in_flight
             || self.dialogs.start_in_flight
             || self.dialogs.stop_in_flight

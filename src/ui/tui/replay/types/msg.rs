@@ -39,6 +39,9 @@ enum ReplayMsg {
     UpdateWorkspaceFromBaseCompleted {
         completion: ReplayUpdateWorkspaceFromBaseCompletion,
     },
+    PullUpstreamCompleted {
+        completion: ReplayPullUpstreamCompletion,
+    },
     CreateWorkspaceCompleted {
         completion: ReplayCreateWorkspaceCompletion,
     },
@@ -150,6 +153,7 @@ impl ReplayMsg {
             Self::DeleteWorkspaceCompleted { .. } => "delete_workspace_completed",
             Self::MergeWorkspaceCompleted { .. } => "merge_workspace_completed",
             Self::UpdateWorkspaceFromBaseCompleted { .. } => "update_workspace_from_base_completed",
+            Self::PullUpstreamCompleted { .. } => "pull_upstream_completed",
             Self::CreateWorkspaceCompleted { .. } => "create_workspace_completed",
             Self::StartAgentCompleted { .. } => "start_agent_completed",
             Self::StopAgentCompleted { .. } => "stop_agent_completed",
@@ -203,6 +207,9 @@ impl ReplayMsg {
                     ),
                 }
             }
+            Msg::PullUpstreamCompleted(completion) => Self::PullUpstreamCompleted {
+                completion: ReplayPullUpstreamCompletion::from_completion(completion),
+            },
             Msg::CreateWorkspaceCompleted(completion) => Self::CreateWorkspaceCompleted {
                 completion: ReplayCreateWorkspaceCompletion::from_completion(completion),
             },
@@ -255,6 +262,9 @@ impl ReplayMsg {
             }
             Self::UpdateWorkspaceFromBaseCompleted { completion } => {
                 Msg::UpdateWorkspaceFromBaseCompleted(completion.to_completion())
+            }
+            Self::PullUpstreamCompleted { completion } => {
+                Msg::PullUpstreamCompleted(completion.to_completion())
             }
             Self::CreateWorkspaceCompleted { completion } => {
                 Msg::CreateWorkspaceCompleted(completion.to_completion())

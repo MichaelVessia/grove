@@ -44,6 +44,8 @@ mod dialogs_projects_key;
 mod dialogs_projects_search;
 #[path = "dialogs/dialogs_projects_state.rs"]
 mod dialogs_projects_state;
+#[path = "dialogs/dialogs_pull_upstream.rs"]
+mod dialogs_pull_upstream;
 #[path = "dialogs/dialogs_rename_tab.rs"]
 mod dialogs_rename_tab;
 #[path = "dialogs/dialogs_session_cleanup.rs"]
@@ -146,6 +148,8 @@ mod view_overlays_edit;
 mod view_overlays_help;
 #[path = "view/view_overlays_projects.rs"]
 mod view_overlays_projects;
+#[path = "view/view_overlays_pull_upstream.rs"]
+mod view_overlays_pull_upstream;
 #[path = "view/view_overlays_rename_tab.rs"]
 mod view_overlays_rename_tab;
 #[path = "view/view_overlays_session_cleanup.rs"]
@@ -4483,12 +4487,12 @@ mod tests {
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
                 .count(),
-            37
+            38
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 13);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::Workspace).len(),
-            14
+            15
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::List).len(), 2);
         assert_eq!(

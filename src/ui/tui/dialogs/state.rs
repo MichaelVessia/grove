@@ -231,6 +231,28 @@ cyclic_field_nav!(pub(super) UpdateFromBaseDialogField {
     UpdateButton, CancelButton,
 });
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PullUpstreamDialogState {
+    pub(super) task_slug: Option<String>,
+    pub(super) project_name: String,
+    pub(super) project_path: PathBuf,
+    pub(super) workspace_name: String,
+    pub(super) workspace_path: PathBuf,
+    pub(super) base_branch: String,
+    pub(super) propagate_target_count: usize,
+    pub(super) focused_field: PullUpstreamDialogField,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PullUpstreamDialogField {
+    PullButton,
+    CancelButton,
+}
+
+cyclic_field_nav!(pub(super) PullUpstreamDialogField {
+    PullButton, CancelButton,
+});
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum StartAgentConfigField {
     Name,

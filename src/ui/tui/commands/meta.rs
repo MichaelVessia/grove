@@ -1,6 +1,6 @@
 use super::*;
 
-static COMMAND_META: [UiCommandMeta; 40] = [
+static COMMAND_META: [UiCommandMeta; 41] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_focus",
@@ -875,6 +875,26 @@ static COMMAND_META: [UiCommandMeta; 40] = [
     },
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
+            id: "palette:pull_upstream",
+            title: "Pull Upstream",
+            description: "Pull upstream and propagate to workspaces (U)",
+            tags: &["pull", "upstream", "sync", "fetch", "U"],
+            category: "Task",
+        }),
+        help_hints: &[HelpHintSpec {
+            context: HelpHintContext::Workspace,
+            label: "U pull upstream + propagate",
+            key: "U",
+            action: "pull upstream + propagate",
+        }],
+        keybindings: &[KeybindingSpec {
+            scope: KeybindingScope::NonInteractive,
+            code: KeyCodeMatch::Char('U'),
+            modifiers: KeyModifiersMatch::None,
+        }],
+    },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
             id: "palette:refresh_workspaces",
             title: "Refresh Tasks",
             description: "Refresh tasks, worktrees, and PR metadata (R)",
@@ -1122,17 +1142,18 @@ impl UiCommand {
             UiCommand::DeleteWorkspace => &COMMAND_META[26],
             UiCommand::MergeWorkspace => &COMMAND_META[27],
             UiCommand::UpdateFromBase => &COMMAND_META[28],
-            UiCommand::RefreshWorkspaces => &COMMAND_META[29],
-            UiCommand::OpenProjects => &COMMAND_META[30],
-            UiCommand::ReorderTasks => &COMMAND_META[31],
-            UiCommand::DeleteProject => &COMMAND_META[32],
-            UiCommand::OpenSettings => &COMMAND_META[33],
-            UiCommand::ToggleMouseCapture => &COMMAND_META[34],
-            UiCommand::ToggleUnsafe => &COMMAND_META[35],
-            UiCommand::CleanupSessions => &COMMAND_META[36],
-            UiCommand::OpenHelp => &COMMAND_META[37],
-            UiCommand::OpenCommandPalette => &COMMAND_META[38],
-            UiCommand::Quit => &COMMAND_META[39],
+            UiCommand::PullUpstream => &COMMAND_META[29],
+            UiCommand::RefreshWorkspaces => &COMMAND_META[30],
+            UiCommand::OpenProjects => &COMMAND_META[31],
+            UiCommand::ReorderTasks => &COMMAND_META[32],
+            UiCommand::DeleteProject => &COMMAND_META[33],
+            UiCommand::OpenSettings => &COMMAND_META[34],
+            UiCommand::ToggleMouseCapture => &COMMAND_META[35],
+            UiCommand::ToggleUnsafe => &COMMAND_META[36],
+            UiCommand::CleanupSessions => &COMMAND_META[37],
+            UiCommand::OpenHelp => &COMMAND_META[38],
+            UiCommand::OpenCommandPalette => &COMMAND_META[39],
+            UiCommand::Quit => &COMMAND_META[40],
         }
     }
 }

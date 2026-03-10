@@ -301,6 +301,10 @@ impl GroveApp {
             self.handle_update_from_base_dialog_key(*key_event);
             return true;
         }
+        if self.pull_upstream_dialog().is_some() {
+            self.handle_pull_upstream_dialog_key(*key_event);
+            return true;
+        }
         if self.project_dialog().is_some() {
             self.handle_project_dialog_key(*key_event);
             return true;

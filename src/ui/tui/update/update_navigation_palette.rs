@@ -174,6 +174,13 @@ impl GroveApp {
                 !self.dialogs.update_from_base_in_flight
                     && self.state.selected_workspace().is_some()
             }
+            UiCommand::PullUpstream => {
+                !self.dialogs.pull_upstream_in_flight
+                    && self
+                        .state
+                        .selected_workspace()
+                        .is_some_and(|workspace| workspace.is_main)
+            }
             UiCommand::RefreshWorkspaces => !self.dialogs.refresh_in_flight,
             UiCommand::FocusPreview | UiCommand::OpenCommandPalette => false,
         }
