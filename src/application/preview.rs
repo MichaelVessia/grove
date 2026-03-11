@@ -123,9 +123,20 @@ pub(crate) fn split_output_lines(output: &str) -> Vec<String> {
         return Vec::new();
     }
 
-    output
-        .split_terminator('\n')
-        .map(ToOwned::to_owned)
+    let split_lines: Vec<&str> = output.split_terminator('\n').collect();
+    let last_index = split_lines.len().saturating_sub(1);
+    let ends_with_newline = output.ends_with('\n');
+
+    split_lines
+        .into_iter()
+        .enumerate()
+        .map(|(index, line)| {
+            if index < last_index || ends_with_newline {
+                line.strip_suffix('\r').unwrap_or(line).to_owned()
+            } else {
+                line.to_owned()
+            }
+        })
         .collect()
 }
 
@@ -235,6 +246,14 @@ mod tests {
         assert_eq!(
             split_output_lines("a\n\n\n"),
             vec!["a".to_string(), "".to_string(), "".to_string()]
+        );
+    }
+
+    #[test]
+    fn split_output_lines_normalizes_crlf_line_endings() {
+        assert_eq!(
+            split_output_lines("alpha\r\nbeta\r\n"),
+            vec!["alpha".to_string(), "beta".to_string()]
         );
     }
 

@@ -45,8 +45,12 @@ pub(crate) fn evaluate_capture_change(
     }
 }
 
-fn is_safe_text_character(character: char) -> bool {
+fn is_safe_clean_text_character(character: char) -> bool {
     matches!(character, '\n' | '\t') || !character.is_control()
+}
+
+fn is_safe_render_text_character(character: char) -> bool {
+    matches!(character, '\r' | '\n' | '\t') || !character.is_control()
 }
 
 pub(crate) fn strip_mouse_fragments(input: &str) -> String {
@@ -137,8 +141,14 @@ fn strip_non_sgr_control_sequences(input: &str) -> (String, String) {
         if byte != b'\x1b' {
             if byte.is_ascii() {
                 let character = char::from(byte);
-                if is_safe_text_character(character) {
+                if character == '\r' && bytes.get(index.saturating_add(1)) == Some(&b'\n') {
+                    index = index.saturating_add(1);
+                    continue;
+                }
+                if is_safe_render_text_character(character) {
                     render_output.push(character);
+                }
+                if is_safe_clean_text_character(character) {
                     cleaned_without_sgr.push(character);
                 }
                 index = index.saturating_add(1);
@@ -148,8 +158,10 @@ fn strip_non_sgr_control_sequences(input: &str) -> (String, String) {
             let Some(character) = input[index..].chars().next() else {
                 break;
             };
-            if is_safe_text_character(character) {
+            if is_safe_render_text_character(character) {
                 render_output.push(character);
+            }
+            if is_safe_clean_text_character(character) {
                 cleaned_without_sgr.push(character);
             }
             index = index.saturating_add(character.len_utf8());
@@ -331,6 +343,14 @@ mod tests {
         let change = evaluate_capture_change(None, raw);
         assert_eq!(change.cleaned_output, "ABC\n");
         assert_eq!(change.render_output, "ABC\n");
+    }
+
+    #[test]
+    fn capture_change_preserves_carriage_return_for_render_output() {
+        let raw = "hello\rxy";
+        let change = evaluate_capture_change(None, raw);
+        assert_eq!(change.cleaned_output, "helloxy");
+        assert_eq!(change.render_output, "hello\rxy");
     }
 
     #[test]
