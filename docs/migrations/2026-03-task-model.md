@@ -57,6 +57,13 @@ Back up:
   - Linux: `~/.config/grove/config.toml`
   - Linux: `~/.config/grove/projects.toml`
 
+Current split-config shape:
+
+- `config.toml` stores only global settings such as `sidebar_width_pct`,
+  `theme`, and `launch_skip_permissions`
+- `projects.toml` stores repository discovery state under `[[projects]]`, plus
+  top-level `task_order` and `[[attention_acks]]`
+
 Do not delete legacy worktrees or tmux sessions first.
 
 ## What Counts As A Legacy Grove Workspace
@@ -171,13 +178,22 @@ Requirements:
 
 ### 1. Find The Configured Repositories
 
-Read Grove's `projects.toml`. The current schema still stores repository
-definitions under the `projects` key.
+Read Grove's `projects.toml` from the global config directory. Repository
+definitions live under `[[projects]]`.
+
+The same file may also contain:
+
+- top-level `task_order`
+- top-level `[[attention_acks]]`
+
+Those entries are part of real global config state but are not inputs to this
+task-manifest migration.
 
 Each repository entry needs:
 
 - `name`
 - `path`
+- optional `defaults.base_branch`
 
 These map to:
 
@@ -208,6 +224,7 @@ Collect:
 - workspace branch
 - repository name
 - repository root
+- configured project default base branch
 - base branch
 - agent
 
@@ -215,8 +232,14 @@ Decision rules:
 
 - `base_branch`
   - first choice: `<worktree>/.grove/base`
-  - otherwise: use the known historical base branch
-  - last resort: `"main"`
+  - otherwise: non-empty `projects.defaults.base_branch`
+  - otherwise: detect the same way Grove does:
+    - `git -C <repo-root> symbolic-ref --quiet --short refs/remotes/origin/HEAD`
+    - `git -C <repo-root> branch --show-current`
+    - local branch `main`
+    - local branch `master`
+  - if all of those fail, stop and choose a base branch explicitly, do not
+    silently invent `"main"`
 - `agent`
   - first choice: `<worktree>/.grove/agent`
   - otherwise: `"codex"`
