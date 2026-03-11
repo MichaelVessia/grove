@@ -3,6 +3,7 @@ use std::io::Write;
 use crate::infrastructure::process::{
     execute_command as execute_process_command, stderr_or_status, stderr_trimmed,
 };
+use crate::ui::tui::shared::LIVE_PREVIEW_FULL_SCROLLBACK_LINES;
 
 pub(in crate::ui::tui) trait TmuxInput {
     fn execute(&self, command: &[String]) -> std::io::Result<()>;
@@ -125,8 +126,16 @@ impl CommandTmuxInput {
         args.push("-t".to_string());
         args.push(target_session.to_string());
         args.push("-S".to_string());
-        args.push(format!("-{scrollback_lines}"));
+        args.push(Self::capture_start_line_arg(scrollback_lines));
         args
+    }
+
+    fn capture_start_line_arg(scrollback_lines: usize) -> String {
+        if scrollback_lines == LIVE_PREVIEW_FULL_SCROLLBACK_LINES {
+            return "-".to_string();
+        }
+
+        format!("-{scrollback_lines}")
     }
 
     pub(in crate::ui::tui) fn execute_command(command: &[String]) -> std::io::Result<()> {
@@ -308,6 +317,24 @@ mod tests {
                 "session-b".to_string(),
                 "-S".to_string(),
                 "-64".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn capture_pane_args_use_history_start_for_full_scrollback() {
+        let args = CommandTmuxInput::capture_pane_args("session-c", 0, true);
+        assert_eq!(
+            args,
+            vec![
+                "capture-pane".to_string(),
+                "-p".to_string(),
+                "-N".to_string(),
+                "-e".to_string(),
+                "-t".to_string(),
+                "session-c".to_string(),
+                "-S".to_string(),
+                "-".to_string(),
             ]
         );
     }

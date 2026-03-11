@@ -2584,7 +2584,30 @@ mod tests {
 
         assert_eq!(
             app.live_preview_scrollback_lines(),
-            super::LIVE_PREVIEW_SCROLLBACK_LINES
+            super::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
+        );
+    }
+
+    #[test]
+    fn live_preview_scrollback_lines_uses_full_history_when_preview_scrolled_up() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        app.preview.lines = (1..=240).map(|value| value.to_string()).collect();
+        app.preview.render_lines = app.preview.lines.clone();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+        focus_agent_preview_tab(&mut app);
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Up)));
+
+        assert_eq!(
+            app.live_preview_scrollback_lines(),
+            super::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
         );
     }
 
@@ -7016,9 +7039,13 @@ mod tests {
                     Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
                 );
 
-                assert!(calls.borrow().iter().any(
-                    |call| call == &format!("capture:{}:600:true", feature_workspace_session())
-                ));
+                assert!(calls.borrow().iter().any(|call| {
+                    call == &format!(
+                        "capture:{}:{}:true",
+                        feature_workspace_session(),
+                        crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
+                    )
+                }));
                 assert!(
                     calls
                         .borrow()
@@ -7055,7 +7082,11 @@ mod tests {
                     call.starts_with(format!("resize:{}:", feature_workspace_session()).as_str())
                 }));
                 assert!(calls.borrow().iter().any(|call| {
-                    call == &format!("capture:{}:{}:true", feature_workspace_session(), 600)
+                    call == &format!(
+                        "capture:{}:{}:true",
+                        feature_workspace_session(),
+                        crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
+                    )
                 }));
             }
 
@@ -7691,7 +7722,11 @@ mod tests {
                 assert_eq!(
                     calls.borrow().as_slice(),
                     &[
-                        format!("capture:{}:600:true", feature_workspace_session()),
+                        format!(
+                            "capture:{}:{}:true",
+                            feature_workspace_session(),
+                            crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
+                        ),
                         format!("cursor:{}", feature_workspace_session()),
                         format!(
                             "exec:tmux send-keys -l -t {} x",

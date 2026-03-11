@@ -96,7 +96,7 @@ impl PreviewState {
 
         if change.changed_raw {
             self.render_lines = split_output_lines(&change.render_output);
-            let preview_source = strip_mouse_fragments(raw_output);
+            let preview_source = strip_mouse_fragments(&change.render_output);
             let preview_source_lines = split_output_lines(&preview_source);
             let snapshot = parse_preview_snapshot(&preview_source_lines);
             self.lines = snapshot.plain_lines;
@@ -253,6 +253,24 @@ mod tests {
         assert!(!second.changed_cleaned);
         assert_eq!(state.lines, vec!["hello".to_string()]);
         assert_eq!(state.render_lines, vec!["hello".to_string()]);
+    }
+
+    #[test]
+    fn raw_only_control_sequence_change_does_not_rewrite_visible_preview() {
+        let mut state = PreviewState::new();
+
+        let first = state.apply_capture("hello");
+        assert!(first.changed_raw);
+        assert!(first.changed_cleaned);
+        assert_eq!(state.lines, vec!["hello".to_string()]);
+
+        let second = state.apply_capture("hello\u{1b}[2J");
+        assert!(second.changed_raw);
+        assert!(!second.changed_cleaned);
+        assert_eq!(state.lines, vec!["hello".to_string()]);
+        assert_eq!(state.parsed_lines.len(), 1);
+        assert_eq!(state.parsed_lines[0].spans.len(), 1);
+        assert_eq!(state.parsed_lines[0].spans[0].text, "hello".to_string());
     }
 
     #[test]

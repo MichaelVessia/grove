@@ -2,8 +2,8 @@ use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn live_preview_scrollback_lines(&self) -> usize {
-        if self.session.interactive.is_some() {
-            return LIVE_PREVIEW_SCROLLBACK_LINES;
+        if self.session.interactive.is_some() || self.preview_manual_scrollback_active() {
+            return LIVE_PREVIEW_FULL_SCROLLBACK_LINES;
         }
 
         if self.pending_input_depth() > 0
@@ -15,6 +15,14 @@ impl GroveApp {
         }
 
         LIVE_PREVIEW_IDLE_SCROLLBACK_LINES
+    }
+
+    fn preview_manual_scrollback_active(&self) -> bool {
+        let Some((_, preview_height)) = self.preview_output_dimensions() else {
+            return false;
+        };
+
+        !self.preview_auto_scroll_for_height(usize::from(preview_height))
     }
 
     pub(super) fn poll_preview_sync(&mut self) {
