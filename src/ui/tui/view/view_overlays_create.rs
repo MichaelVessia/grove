@@ -277,21 +277,23 @@ impl GroveApp {
                     theme.overlay0,
                     theme.subtext0,
                 ));
-                lines.push(modal_labeled_input_row(
-                    content_width,
-                    theme,
-                    "Project",
-                    format!("{selected_project_label}  Enter browse").as_str(),
-                    "Enter browse projects",
-                    focused(CreateDialogField::Project),
-                ));
-                if !dialog.register_as_base {
-                    lines.push(modal_static_badged_row(
+                if dialog.register_as_base {
+                    lines.push(modal_labeled_input_row(
+                        content_width,
+                        theme,
+                        "Project",
+                        format!("{selected_project_label}  Enter browse").as_str(),
+                        "Enter browse projects",
+                        focused(CreateDialogField::Project),
+                    ));
+                } else {
+                    lines.push(modal_focus_badged_row(
                         content_width,
                         theme,
                         "Included",
-                        selected_projects_label.as_str(),
-                        theme.overlay0,
+                        format!("{selected_projects_label}  Enter browse").as_str(),
+                        focused(CreateDialogField::Project),
+                        theme.blue,
                         theme.subtext0,
                     ));
                     lines.push(FtLine::from_spans(vec![FtSpan::styled(
@@ -328,6 +330,7 @@ impl GroveApp {
             }
         }
         if focused(CreateDialogField::Project)
+            && (dialog.tab != CreateDialogTab::Manual || dialog.register_as_base)
             && let Some(project) = self.projects.get(dialog.project_index)
         {
             lines.push(FtLine::from_spans(vec![FtSpan::styled(

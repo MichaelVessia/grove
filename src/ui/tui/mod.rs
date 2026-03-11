@@ -3238,6 +3238,74 @@ mod tests {
     }
 
     #[test]
+    fn create_dialog_manual_mode_uses_included_as_the_only_project_selection_row() {
+        let mut app = fixture_app();
+        app.projects.push(ProjectConfig {
+            name: "site".to_string(),
+            path: PathBuf::from("/repos/site"),
+            defaults: Default::default(),
+        });
+        app.open_create_dialog();
+        let dialog = app.create_dialog_mut().expect("dialog should open");
+        dialog.selected_repository_indices = vec![0, 1];
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let dialog_width = frame.width().saturating_sub(8).min(90);
+            let dialog_height = 25u16;
+            let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+            let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+            let x_start = dialog_x.saturating_add(1);
+            let x_end = dialog_x.saturating_add(dialog_width.saturating_sub(1));
+            let y_start = dialog_y.saturating_add(1);
+            let y_end = dialog_y.saturating_add(dialog_height.saturating_sub(1));
+
+            let text = (y_start..y_end)
+                .map(|row| row_text(frame, row, x_start, x_end))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            assert!(!text.contains("[Project]"), "rendered dialog: {text}");
+            assert!(text.contains("[Included]"), "rendered dialog: {text}");
+            assert!(text.contains("Enter browse"), "rendered dialog: {text}");
+            assert!(text.contains("grove, site"), "rendered dialog: {text}");
+        });
+    }
+
+    #[test]
+    fn create_dialog_manual_mode_selection_summary_ignores_project_cursor_state() {
+        let mut app = fixture_app();
+        app.projects.push(ProjectConfig {
+            name: "site".to_string(),
+            path: PathBuf::from("/repos/site"),
+            defaults: Default::default(),
+        });
+        app.open_create_dialog();
+        let dialog = app.create_dialog_mut().expect("dialog should open");
+        dialog.project_index = 1;
+        dialog.selected_repository_indices = vec![0];
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let dialog_width = frame.width().saturating_sub(8).min(90);
+            let dialog_height = 25u16;
+            let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
+            let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
+            let x_start = dialog_x.saturating_add(1);
+            let x_end = dialog_x.saturating_add(dialog_width.saturating_sub(1));
+            let y_start = dialog_y.saturating_add(1);
+            let y_end = dialog_y.saturating_add(dialog_height.saturating_sub(1));
+
+            let text = (y_start..y_end)
+                .map(|row| row_text(frame, row, x_start, x_end))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            assert!(!text.contains("[Project]"), "rendered dialog: {text}");
+            assert!(text.contains("[Included] grove"), "rendered dialog: {text}");
+            assert!(!text.contains("[Included] site"), "rendered dialog: {text}");
+        });
+    }
+
+    #[test]
     fn create_dialog_pr_project_picker_hides_multi_select_hint() {
         let mut app = fixture_app();
         app.projects.push(ProjectConfig {
