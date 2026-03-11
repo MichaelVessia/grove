@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::sync::MutexGuard;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -237,6 +239,14 @@ fn reset_caches_for_test() {
     }
 }
 
+#[cfg(test)]
+fn cache_test_guard() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("cache test lock should succeed")
+}
+
 fn find_session_for_path(sessions_dir: &Path, workspace_path: &Path) -> Option<PathBuf> {
     let mut pending = vec![sessions_dir.to_path_buf()];
     let mut best_path: Option<PathBuf> = None;
@@ -424,6 +434,7 @@ mod tests {
 
     #[test]
     fn session_lookup_cache_prunes_oldest_entries_when_over_limit() {
+        let _guard = cache_test_guard();
         reset_caches_for_test();
         let sessions_dir = PathBuf::from("/tmp/codex-cache-size");
         let now = Instant::now();
@@ -481,6 +492,7 @@ mod tests {
 
     #[test]
     fn session_lookup_cache_ttl_evicts_stale_entries_and_recomputes() {
+        let _guard = cache_test_guard();
         reset_caches_for_test();
         let root = unique_test_dir("codex-session-ttl");
         let sessions_dir = root.join("sessions");
@@ -520,6 +532,7 @@ mod tests {
 
     #[test]
     fn message_status_cache_keeps_old_entries_when_within_size_cap() {
+        let _guard = cache_test_guard();
         reset_caches_for_test();
         let root = unique_test_dir("codex-message-cap");
         let session_a = root.join("session-a.jsonl");
@@ -554,6 +567,7 @@ mod tests {
 
     #[test]
     fn session_cwd_cache_reloads_when_file_modification_changes() {
+        let _guard = cache_test_guard();
         reset_caches_for_test();
         let root = unique_test_dir("codex-cwd-cache");
         let workspace_a = root.join("workspace-a");
