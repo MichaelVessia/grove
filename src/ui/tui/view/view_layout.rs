@@ -1,5 +1,6 @@
 use super::panes::PaneRole;
 use super::view_prelude::*;
+use crate::application::preview::{PreviewParsedLine, PreviewParsedSpan, PreviewParsedStyle};
 
 impl GroveApp {
     fn effective_viewport_size(&self) -> (u16, u16) {
@@ -214,10 +215,9 @@ impl GroveApp {
         *line = render_cursor_overlay(line, cursor_col, cursor_visible);
     }
 
-    pub(super) fn apply_interactive_cursor_overlay_render(
+    pub(super) fn apply_interactive_cursor_overlay_parsed(
         &self,
-        plain_visible_lines: &[String],
-        render_visible_lines: &mut [String],
+        parsed_visible_lines: &mut [PreviewParsedLine],
         preview_height: usize,
     ) {
         let Some((visible_index, cursor_col, cursor_visible)) =
@@ -226,14 +226,90 @@ impl GroveApp {
             return;
         };
 
-        let Some(plain_line) = plain_visible_lines.get(visible_index) else {
-            return;
-        };
-        let Some(render_line) = render_visible_lines.get_mut(visible_index) else {
+        let Some(line) = parsed_visible_lines.get_mut(visible_index) else {
             return;
         };
 
-        *render_line =
-            render_cursor_overlay_ansi(render_line, plain_line, cursor_col, cursor_visible);
+        apply_cursor_overlay_to_parsed_line(line, cursor_col, cursor_visible);
+    }
+}
+
+fn apply_cursor_overlay_to_parsed_line(
+    line: &mut PreviewParsedLine,
+    cursor_col: usize,
+    cursor_visible: bool,
+) {
+    if !cursor_visible {
+        return;
+    }
+
+    let plain_text: String = line.spans.iter().map(|span| span.text.as_str()).collect();
+    let plain_len = plain_text.chars().count();
+    if cursor_col >= plain_len {
+        if cursor_col > plain_len {
+            line.spans.push(PreviewParsedSpan {
+                text: " ".repeat(cursor_col.saturating_sub(plain_len)),
+                style: plain_preview_style(),
+            });
+        }
+        line.spans.push(PreviewParsedSpan {
+            text: "|".to_string(),
+            style: plain_preview_style(),
+        });
+        return;
+    }
+
+    let mut rendered_spans = Vec::new();
+    let mut visible_index = 0usize;
+    let mut inserted = false;
+
+    for span in &line.spans {
+        let mut current = String::new();
+        for character in span.text.chars() {
+            if !inserted && visible_index == cursor_col {
+                if !current.is_empty() {
+                    rendered_spans.push(PreviewParsedSpan {
+                        text: std::mem::take(&mut current),
+                        style: span.style.clone(),
+                    });
+                }
+                rendered_spans.push(PreviewParsedSpan {
+                    text: "|".to_string(),
+                    style: plain_preview_style(),
+                });
+                inserted = true;
+            }
+            current.push(character);
+            visible_index = visible_index.saturating_add(1);
+        }
+        if !current.is_empty() {
+            rendered_spans.push(PreviewParsedSpan {
+                text: current,
+                style: span.style.clone(),
+            });
+        }
+    }
+
+    if !inserted {
+        rendered_spans.push(PreviewParsedSpan {
+            text: "|".to_string(),
+            style: plain_preview_style(),
+        });
+    }
+
+    line.spans = rendered_spans;
+}
+
+fn plain_preview_style() -> PreviewParsedStyle {
+    PreviewParsedStyle {
+        foreground_rgb: None,
+        background_rgb: None,
+        bold: false,
+        dim: false,
+        italic: false,
+        underline: false,
+        blink: false,
+        reverse: false,
+        strikethrough: false,
     }
 }

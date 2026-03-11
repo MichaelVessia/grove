@@ -159,11 +159,7 @@ impl GroveApp {
 
     pub(super) fn selected_preview_text_lines(&self) -> Option<Vec<String>> {
         let (start, end) = self.preview_selection.bounds()?;
-        let source_len = self
-            .preview
-            .lines
-            .len()
-            .max(self.preview.render_lines.len());
+        let source_len = self.preview.lines.len();
         if source_len == 0 {
             return None;
         }

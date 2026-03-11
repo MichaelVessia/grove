@@ -1,4 +1,3 @@
-mod ansi;
 #[path = "bootstrap/bootstrap_app.rs"]
 mod bootstrap_app;
 #[path = "bootstrap/bootstrap_config.rs"]
@@ -75,7 +74,6 @@ pub use replay::{ReplayOptions, emit_replay_fixture, replay_debug_record};
 mod panes;
 #[path = "tasks.rs"]
 mod tasks;
-mod text;
 #[path = "update/update.rs"]
 mod update;
 #[path = "update/update_core.rs"]
@@ -235,9 +233,8 @@ mod tests {
         StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput, UiCommand,
         UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
         WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind,
-        WorkspaceTabRuntimeState, ansi_16_color, ansi_lines_to_styled_lines,
-        ansi_lines_to_styled_lines_for_theme, decode_create_dialog_tab_hit_data,
-        decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
+        WorkspaceTabRuntimeState, decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data,
+        parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
     use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
     use crate::application::interactive::InteractiveState;
@@ -5420,8 +5417,8 @@ mod tests {
     #[test]
     fn preview_pane_renders_ansi_colors() {
         let mut app = fixture_app();
-        app.preview.lines = vec!["Success: all tests passed".to_string()];
-        app.preview.render_lines = vec!["\u{1b}[32mSuccess\u{1b}[0m: all tests passed".to_string()];
+        app.preview
+            .apply_capture("\u{1b}[32mSuccess\u{1b}[0m: all tests passed");
 
         let layout = app.panes.test_rects(80, 24);
         let x_start = layout.preview.x.saturating_add(1);
@@ -5435,7 +5432,13 @@ mod tests {
                 panic!("success row should include first character column");
             };
 
-            assert_row_fg(frame, row, s_col, s_col.saturating_add(7), ansi_16_color(2));
+            assert_row_fg(
+                frame,
+                row,
+                s_col,
+                s_col.saturating_add(7),
+                PackedRgba::rgb(0, 170, 0),
+            );
         });
     }
 
@@ -5505,8 +5508,8 @@ mod tests {
             34,
             78,
         ));
-        app.preview.lines = vec!["Success: all tests passed".to_string()];
-        app.preview.render_lines = vec!["\u{1b}[32mSuccess\u{1b}[0m: all tests passed".to_string()];
+        app.preview
+            .apply_capture("\u{1b}[32mSuccess\u{1b}[0m: all tests passed");
 
         let layout = app.panes.test_rects(80, 24);
         let x_start = layout.preview.x.saturating_add(1);
@@ -5520,7 +5523,13 @@ mod tests {
                 panic!("success row should include first character column");
             };
 
-            assert_row_fg(frame, row, s_col, s_col.saturating_add(7), ansi_16_color(2));
+            assert_row_fg(
+                frame,
+                row,
+                s_col,
+                s_col.saturating_add(7),
+                PackedRgba::rgb(0, 170, 0),
+            );
         });
     }
 
@@ -8007,72 +8016,6 @@ mod tests {
             }
 
             #[test]
-            fn ansi_line_parser_preserves_text_and_styles() {
-                let lines = ansi_lines_to_styled_lines(&["a\u{1b}[31mb\u{1b}[0mc".to_string()]);
-                let line = &lines[0];
-                assert_eq!(line.to_plain_text(), "abc");
-                assert_eq!(line.spans().len(), 3);
-                assert_eq!(line.spans()[1].as_str(), "b");
-                assert_eq!(
-                    line.spans()[1].style.and_then(|style| style.fg),
-                    Some(ansi_16_color(1))
-                );
-            }
-
-            #[test]
-            fn ansi_parser_uses_readable_latte_white_slots() {
-                let styled_lines = ansi_lines_to_styled_lines_for_theme(
-                    &[
-                        "\u{1b}[37mnormal-white".to_string(),
-                        "\u{1b}[97mbright-white".to_string(),
-                    ],
-                    ThemeName::CatppuccinLatte,
-                );
-                let latte = ui_theme_for(ThemeName::CatppuccinLatte);
-                assert_eq!(
-                    styled_lines[0].spans()[0].style.and_then(|style| style.fg),
-                    Some(latte.subtext1)
-                );
-                assert_eq!(
-                    styled_lines[1].spans()[0].style.and_then(|style| style.fg),
-                    Some(latte.subtext0)
-                );
-            }
-
-            #[test]
-            fn ansi_parser_dim_for_latte_uses_dim_foreground_color() {
-                let styled_lines = ansi_lines_to_styled_lines_for_theme(
-                    &["a\u{1b}[2mb".to_string()],
-                    ThemeName::CatppuccinLatte,
-                );
-                assert_eq!(
-                    styled_lines[0].spans()[1].style.and_then(|style| style.fg),
-                    Some(PackedRgba::rgb(140, 143, 161))
-                );
-            }
-
-            #[test]
-            fn ansi_parser_carries_style_across_lines_until_reset() {
-                let styled_lines = ansi_lines_to_styled_lines(&[
-                    "a\u{1b}[31mb".to_string(),
-                    "c".to_string(),
-                    "\u{1b}[0md".to_string(),
-                ]);
-                assert_eq!(styled_lines.len(), 3);
-                assert_eq!(styled_lines[0].to_plain_text(), "ab");
-                assert_eq!(styled_lines[1].to_plain_text(), "c");
-                assert_eq!(styled_lines[2].to_plain_text(), "d");
-                assert_eq!(
-                    styled_lines[1].spans()[0].style.and_then(|style| style.fg),
-                    Some(ansi_16_color(1))
-                );
-                assert_eq!(
-                    styled_lines[2].spans()[0].style.and_then(|style| style.fg),
-                    None
-                );
-            }
-
-            #[test]
             fn tick_polls_cursor_metadata_and_renders_overlay() {
                 let config_path = unique_config_path("cursor-overlay");
                 let (mut app, _commands, _captures, _cursor_captures) =
@@ -8648,11 +8591,11 @@ mod tests {
             }
 
             #[test]
-            fn preview_render_lines_align_with_plain_visible_range_when_lengths_differ() {
+            fn preview_plain_lines_render_when_parsed_lines_are_missing() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 app.preview.lines = (0..40).map(|index| format!("p{index}")).collect();
-                app.preview.render_lines = (0..42).map(|index| format!("r{index}")).collect();
+                app.preview.parsed_lines.clear();
 
                 ftui::Model::update(
                     &mut app,
@@ -8670,8 +8613,8 @@ mod tests {
                 with_rendered_frame(&app, 100, 40, |frame| {
                     let rendered = row_text(frame, output_y, x_start, x_end);
                     assert!(
-                        rendered.contains("r6"),
-                        "expected first visible rendered row to start from aligned render index, got: {rendered}"
+                        rendered.contains("p6"),
+                        "expected first visible rendered row to fall back to plain lines, got: {rendered}"
                     );
                 });
             }

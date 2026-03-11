@@ -81,11 +81,7 @@ impl GroveApp {
     }
 
     pub(super) fn preview_plain_line(&self, line_idx: usize) -> Option<String> {
-        self.preview
-            .render_lines
-            .get(line_idx)
-            .map(|line| ansi_line_to_plain_text(line))
-            .or_else(|| self.preview.lines.get(line_idx).cloned())
+        self.preview.lines.get(line_idx).cloned()
     }
 
     pub(super) fn preview_plain_lines_range(&self, start: usize, end: usize) -> Vec<String> {

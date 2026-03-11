@@ -55,7 +55,7 @@ use crate::application::agent_runtime::{
 use crate::application::interactive::render_cursor_overlay;
 use crate::application::interactive::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
-    multiplexer_send_input_command, render_cursor_overlay_ansi,
+    multiplexer_send_input_command,
 };
 use crate::application::preview::PreviewState;
 use crate::application::session_cleanup::{
@@ -92,11 +92,6 @@ use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
 
 #[cfg(test)]
-use ansi::ansi_16_color;
-#[cfg(test)]
-use ansi::ansi_lines_to_styled_lines;
-use ansi::ansi_lines_to_styled_lines_for_theme;
-#[cfg(test)]
 use bootstrap_config::AppDependencies;
 use bootstrap_config::{
     project_display_name, read_workspace_init_command, read_workspace_launch_prompt,
@@ -105,7 +100,6 @@ use bootstrap_config::{
 use terminal::{
     ClipboardAccess, CommandTmuxInput, SystemClipboardAccess, TmuxInput, parse_cursor_metadata,
 };
-use text::ansi_line_to_plain_text;
 use selection::{TextSelectionPoint, TextSelectionState};
 use msg::*;
 use shared::*;

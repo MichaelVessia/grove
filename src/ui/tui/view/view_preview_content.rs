@@ -1,4 +1,5 @@
 use super::view_prelude::*;
+use crate::application::preview::{PreviewParsedLine, PreviewParsedSpan, PreviewParsedStyle};
 
 type AnimatedPreviewLabels = Vec<(String, u16, u16)>;
 
@@ -136,43 +137,42 @@ impl GroveApp {
         (text_lines, animated_labels)
     }
 
-    fn preview_visible_render_lines(
+    fn preview_visible_parsed_lines(
         &self,
         visible_plain_lines: &[String],
         visible_start: usize,
         visible_end: usize,
         preview_height: usize,
         allow_cursor_overlay: bool,
-    ) -> Vec<String> {
-        let mut visible_render_lines = if self.preview.render_lines.is_empty() {
+    ) -> Vec<PreviewParsedLine> {
+        let mut visible_parsed_lines = if self.preview.parsed_lines.is_empty() {
             Vec::new()
         } else {
-            let render_start = visible_start.min(self.preview.render_lines.len());
-            let render_end = visible_end.min(self.preview.render_lines.len());
-            if render_start < render_end {
-                self.preview.render_lines[render_start..render_end].to_vec()
+            let parsed_start = visible_start.min(self.preview.parsed_lines.len());
+            let parsed_end = visible_end.min(self.preview.parsed_lines.len());
+            if parsed_start < parsed_end {
+                self.preview.parsed_lines[parsed_start..parsed_end].to_vec()
             } else {
                 Vec::new()
             }
         };
-        if visible_render_lines.len() < visible_plain_lines.len() {
-            visible_render_lines.extend(
-                visible_plain_lines[visible_render_lines.len()..]
+        if visible_parsed_lines.len() < visible_plain_lines.len() {
+            visible_parsed_lines.extend(
+                visible_plain_lines[visible_parsed_lines.len()..]
                     .iter()
-                    .cloned(),
+                    .map(|line| plain_preview_line(line)),
             );
         }
-        if visible_render_lines.is_empty() && !visible_plain_lines.is_empty() {
-            visible_render_lines = visible_plain_lines.to_vec();
+        if visible_parsed_lines.is_empty() && !visible_plain_lines.is_empty() {
+            visible_parsed_lines = visible_plain_lines
+                .iter()
+                .map(|line| plain_preview_line(line))
+                .collect();
         }
         if allow_cursor_overlay {
-            self.apply_interactive_cursor_overlay_render(
-                visible_plain_lines,
-                &mut visible_render_lines,
-                preview_height,
-            );
+            self.apply_interactive_cursor_overlay_parsed(&mut visible_parsed_lines, preview_height);
         }
-        visible_render_lines
+        visible_parsed_lines
     }
 
     fn preview_git_fallback_line(&self, selected_workspace: Option<&Workspace>) -> FtLine<'static> {
@@ -222,7 +222,7 @@ impl GroveApp {
         visible_end: usize,
         preview_height: usize,
     ) -> Vec<FtLine<'static>> {
-        let visible_render_lines = self.preview_visible_render_lines(
+        let visible_parsed_lines = self.preview_visible_parsed_lines(
             visible_plain_lines,
             visible_start,
             visible_end,
@@ -230,7 +230,7 @@ impl GroveApp {
             allow_cursor_overlay,
         );
 
-        if visible_render_lines.is_empty() {
+        if visible_parsed_lines.is_empty() {
             return vec![match self.preview_tab {
                 PreviewTab::Home => FtLine::raw("(home)"),
                 PreviewTab::Agent => FtLine::raw("(no preview output)"),
@@ -239,6 +239,91 @@ impl GroveApp {
             }];
         }
 
-        ansi_lines_to_styled_lines_for_theme(&visible_render_lines, self.theme_name)
+        visible_parsed_lines
+            .iter()
+            .map(parsed_preview_line_to_ft_line)
+            .collect()
+    }
+}
+
+fn plain_preview_line(line: &str) -> PreviewParsedLine {
+    PreviewParsedLine {
+        spans: vec![PreviewParsedSpan {
+            text: line.to_string(),
+            style: PreviewParsedStyle {
+                foreground_rgb: None,
+                background_rgb: None,
+                bold: false,
+                dim: false,
+                italic: false,
+                underline: false,
+                blink: false,
+                reverse: false,
+                strikethrough: false,
+            },
+        }],
+    }
+}
+
+fn parsed_preview_line_to_ft_line(line: &PreviewParsedLine) -> FtLine<'static> {
+    if line.spans.is_empty() {
+        return FtLine::raw("");
+    }
+
+    FtLine::from_spans(line.spans.iter().map(parsed_preview_span_to_ft_span))
+}
+
+fn parsed_preview_span_to_ft_span(span: &PreviewParsedSpan) -> FtSpan<'static> {
+    if let Some(style) = parsed_preview_style_to_ft_style(&span.style) {
+        FtSpan::styled(span.text.clone(), style)
+    } else {
+        FtSpan::raw(span.text.clone())
+    }
+}
+
+fn parsed_preview_style_to_ft_style(style: &PreviewParsedStyle) -> Option<Style> {
+    let mut ft_style = Style::new();
+
+    if let Some((r, g, b)) = style.foreground_rgb {
+        ft_style = ft_style.fg(PackedRgba::rgb(r, g, b));
+    }
+    if let Some((r, g, b)) = style.background_rgb {
+        ft_style = ft_style.bg(PackedRgba::rgb(r, g, b));
+    }
+    if style.bold {
+        ft_style = ft_style.bold();
+    }
+    if style.dim {
+        ft_style = ft_style.dim();
+    }
+    if style.italic {
+        ft_style = ft_style.italic();
+    }
+    if style.underline {
+        ft_style = ft_style.underline();
+    }
+    if style.blink {
+        ft_style = ft_style.blink();
+    }
+    if style.reverse {
+        ft_style = ft_style.reverse();
+    }
+    if style.strikethrough {
+        ft_style = ft_style.strikethrough();
+    }
+
+    if style.foreground_rgb.is_none()
+        && style.background_rgb.is_none()
+        && !style.bold
+        && !style.dim
+        && !style.italic
+        && !style.underline
+        && !style.blink
+        && !style.reverse
+        && !style.strikethrough
+    {
+        None
+    } else {
+        Some(ft_style)
     }
 }
