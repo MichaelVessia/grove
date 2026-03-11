@@ -1,6 +1,20 @@
 use super::view_prelude::*;
 
 impl GroveApp {
+    fn preview_has_missing_trailing_blank_row(&self) -> bool {
+        let Some(interactive) = self.session.interactive.as_ref() else {
+            return false;
+        };
+
+        // tmux capture-pane cannot represent a final empty row, so recover it
+        // when interactive cursor geometry shows the pane is exactly one row taller.
+        self.preview.lines.len().saturating_add(1) == usize::from(interactive.pane_height)
+    }
+
+    pub(super) fn preview_line_count(&self) -> usize {
+        self.preview.lines.len() + usize::from(self.preview_has_missing_trailing_blank_row())
+    }
+
     pub(super) fn clear_preview_selection(&mut self) {
         self.preview_selection.clear();
     }
@@ -10,7 +24,7 @@ impl GroveApp {
             return (0, 0);
         }
 
-        let total_lines = self.preview.lines.len();
+        let total_lines = self.preview_line_count();
         let mut preview_scroll = self.preview_scroll.borrow_mut();
         preview_scroll.set_external_len(total_lines);
         let viewport_height = u16::try_from(preview_height).unwrap_or(u16::MAX);
@@ -81,7 +95,10 @@ impl GroveApp {
     }
 
     pub(super) fn preview_plain_line(&self, line_idx: usize) -> Option<String> {
-        self.preview.lines.get(line_idx).cloned()
+        self.preview.lines.get(line_idx).cloned().or_else(|| {
+            (self.preview_has_missing_trailing_blank_row() && line_idx == self.preview.lines.len())
+                .then(String::new)
+        })
     }
 
     pub(super) fn preview_plain_lines_range(&self, start: usize, end: usize) -> Vec<String> {

@@ -358,4 +358,36 @@ mod tests {
         assert_eq!(state.lines, vec!["A中B".to_string()]);
         assert_eq!(state.parsed_lines[0].spans[0].text, "A中B");
     }
+
+    #[test]
+    fn apply_capture_builds_parsed_lines_for_plain_multiline_text() {
+        let mut state = PreviewState::new();
+
+        state.apply_capture("first\nsecond\nthird\n");
+
+        assert_eq!(
+            state.lines,
+            vec![
+                "first".to_string(),
+                "second".to_string(),
+                "third".to_string(),
+            ]
+        );
+        assert_eq!(
+            state
+                .parsed_lines
+                .iter()
+                .map(|line| line
+                    .spans
+                    .iter()
+                    .map(|span| span.text.as_str())
+                    .collect::<String>())
+                .collect::<Vec<_>>(),
+            vec![
+                "first".to_string(),
+                "second".to_string(),
+                "third".to_string(),
+            ]
+        );
+    }
 }

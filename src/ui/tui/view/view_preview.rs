@@ -27,12 +27,6 @@ impl GroveApp {
         }
 
         let selected_workspace = self.state.selected_workspace();
-        let selected_agent = selected_workspace.map(|workspace| workspace.agent);
-        let allow_cursor_overlay = self.preview_tab != PreviewTab::Agent
-            || match selected_agent {
-                Some(agent) => agent.allows_cursor_overlay(),
-                None => true,
-            };
 
         let metadata_rows = usize::from(PREVIEW_METADATA_ROWS);
         let preview_height = usize::from(inner.height)
@@ -49,7 +43,7 @@ impl GroveApp {
 
         text_lines.extend(self.preview_tab_content_lines(
             selected_workspace,
-            allow_cursor_overlay,
+            true,
             &visible_plain_lines,
             visible_start,
             visible_end,

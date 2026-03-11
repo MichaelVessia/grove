@@ -176,7 +176,7 @@ impl GroveApp {
             return None;
         }
 
-        let preview_len = self.preview.lines.len();
+        let preview_len = self.preview_line_count();
         let pane_start = preview_len.saturating_sub(pane_height);
         let cursor_line = pane_start.saturating_add(cursor_row);
         if cursor_line >= preview_len {
@@ -245,16 +245,21 @@ fn apply_cursor_overlay_to_parsed_line(
 
     let plain_text: String = line.spans.iter().map(|span| span.text.as_str()).collect();
     let plain_len = plain_text.chars().count();
+    let trailing_style = line
+        .spans
+        .last()
+        .map(|span| span.style.clone())
+        .unwrap_or_else(plain_preview_style);
     if cursor_col >= plain_len {
         if cursor_col > plain_len {
             line.spans.push(PreviewParsedSpan {
                 text: " ".repeat(cursor_col.saturating_sub(plain_len)),
-                style: plain_preview_style(),
+                style: trailing_style.clone(),
             });
         }
         line.spans.push(PreviewParsedSpan {
             text: "|".to_string(),
-            style: plain_preview_style(),
+            style: trailing_style,
         });
         return;
     }
@@ -275,7 +280,7 @@ fn apply_cursor_overlay_to_parsed_line(
                 }
                 rendered_spans.push(PreviewParsedSpan {
                     text: "|".to_string(),
-                    style: plain_preview_style(),
+                    style: span.style.clone(),
                 });
                 inserted = true;
             }
@@ -293,7 +298,7 @@ fn apply_cursor_overlay_to_parsed_line(
     if !inserted {
         rendered_spans.push(PreviewParsedSpan {
             text: "|".to_string(),
-            style: plain_preview_style(),
+            style: trailing_style,
         });
     }
 
@@ -311,5 +316,111 @@ fn plain_preview_style() -> PreviewParsedStyle {
         blink: false,
         reverse: false,
         strikethrough: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{apply_cursor_overlay_to_parsed_line, plain_preview_style};
+    use crate::application::preview::{PreviewParsedLine, PreviewParsedSpan, PreviewParsedStyle};
+
+    #[test]
+    fn parsed_cursor_overlay_inherits_active_span_style() {
+        let accent_style = PreviewParsedStyle {
+            foreground_rgb: Some((120, 10, 10)),
+            background_rgb: Some((5, 6, 7)),
+            bold: true,
+            dim: false,
+            italic: false,
+            underline: false,
+            blink: false,
+            reverse: false,
+            strikethrough: false,
+        };
+        let mut line = PreviewParsedLine {
+            spans: vec![PreviewParsedSpan {
+                text: "ABC".to_string(),
+                style: accent_style.clone(),
+            }],
+        };
+
+        apply_cursor_overlay_to_parsed_line(&mut line, 1, true);
+
+        assert_eq!(
+            line.spans,
+            vec![
+                PreviewParsedSpan {
+                    text: "A".to_string(),
+                    style: accent_style.clone(),
+                },
+                PreviewParsedSpan {
+                    text: "|".to_string(),
+                    style: accent_style.clone(),
+                },
+                PreviewParsedSpan {
+                    text: "BC".to_string(),
+                    style: accent_style,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn parsed_cursor_overlay_after_line_end_uses_last_span_style() {
+        let accent_style = PreviewParsedStyle {
+            foreground_rgb: Some((120, 10, 10)),
+            background_rgb: Some((5, 6, 7)),
+            bold: true,
+            dim: false,
+            italic: false,
+            underline: false,
+            blink: false,
+            reverse: false,
+            strikethrough: false,
+        };
+        let mut line = PreviewParsedLine {
+            spans: vec![PreviewParsedSpan {
+                text: "AB".to_string(),
+                style: accent_style.clone(),
+            }],
+        };
+
+        apply_cursor_overlay_to_parsed_line(&mut line, 4, true);
+
+        assert_eq!(
+            line.spans,
+            vec![
+                PreviewParsedSpan {
+                    text: "AB".to_string(),
+                    style: accent_style.clone(),
+                },
+                PreviewParsedSpan {
+                    text: "  ".to_string(),
+                    style: accent_style.clone(),
+                },
+                PreviewParsedSpan {
+                    text: "|".to_string(),
+                    style: accent_style,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn plain_preview_style_has_no_terminal_attributes() {
+        assert_eq!(
+            plain_preview_style(),
+            PreviewParsedStyle {
+                foreground_rgb: None,
+                background_rgb: None,
+                bold: false,
+                dim: false,
+                italic: false,
+                underline: false,
+                blink: false,
+                reverse: false,
+                strikethrough: false,
+            }
+        );
     }
 }

@@ -5443,6 +5443,35 @@ mod tests {
     }
 
     #[test]
+    fn preview_pane_adjusts_low_contrast_ansi_foreground_against_theme_background() {
+        let mut app = fixture_app();
+        app.preview
+            .apply_capture("\u{1b}[34mconst\u{1b}[0m value = 1");
+
+        let raw_blue = PackedRgba::rgb(0, 0, 170);
+        assert!(ftui::style::contrast_ratio_packed(raw_blue, ui_theme().base) < 4.5);
+
+        let layout = app.panes.test_rects(80, 24);
+        let x_start = layout.preview.x.saturating_add(1);
+        let x_end = layout.preview.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(row) = find_row_containing(frame, "const", x_start, x_end) else {
+                panic!("const row should be present in preview pane");
+            };
+            let Some(c_col) = find_cell_with_char(frame, row, x_start, x_end, 'c') else {
+                panic!("const row should include first character column");
+            };
+            let Some(cell) = frame.buffer.get(c_col, row) else {
+                panic!("rendered const cell should exist");
+            };
+
+            assert_ne!(cell.fg, raw_blue);
+            assert!(ftui::style::contrast_ratio_packed(cell.fg, ui_theme().base) >= 4.5);
+        });
+    }
+
+    #[test]
     fn preview_pane_border_is_blue_when_preview_focused_without_interactive_input() {
         let mut app = fixture_app();
         app.state.mode = UiMode::Preview;
@@ -8024,8 +8053,13 @@ mod tests {
                         vec![
                             Ok("first\nsecond\nthird\n".to_string()),
                             Ok("first\nsecond\nthird\n".to_string()),
+                            Ok("first\nsecond\nthird\n".to_string()),
                         ],
-                        vec![Ok("1 1 1 78 34".to_string()), Ok("1 1 1 78 34".to_string())],
+                        vec![
+                            Ok("1 1 1 78 34".to_string()),
+                            Ok("1 1 1 78 34".to_string()),
+                            Ok("1 1 1 78 34".to_string()),
+                        ],
                         config_path,
                     );
                 app.state.workspaces[1].agent = AgentType::Claude;
@@ -8048,6 +8082,251 @@ mod tests {
                     Some((1, 1, 34))
                 );
                 assert!(rendered.contains("s|econd"), "{rendered}");
+            }
+
+            #[test]
+            fn interactive_agent_preview_renders_cursor_overlay_for_codex_in_frame() {
+                let config_path = unique_config_path("cursor-overlay-frame-codex");
+                let (mut app, _commands, _captures, cursor_captures) =
+                    fixture_app_with_tmux_and_config_path(
+                        WorkspaceStatus::Active,
+                        vec![
+                            Ok("first\nsecond\nthird\n".to_string()),
+                            Ok("first\nsecond\nthird\n".to_string()),
+                        ],
+                        Vec::new(),
+                        config_path,
+                    );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                let (pane_width, pane_height) = app
+                    .preview_output_dimensions()
+                    .expect("preview output dimensions should be available after resize");
+                *cursor_captures.borrow_mut() = vec![
+                    Ok(format!("1 1 1 {pane_width} {pane_height}")),
+                    Ok(format!("1 1 1 {pane_width} {pane_height}")),
+                ];
+                select_workspace(&mut app, 1);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+                force_tick_due(&mut app);
+                ftui::Model::update(&mut app, Msg::Tick);
+                assert_eq!(
+                    app.preview.lines,
+                    vec![
+                        "first".to_string(),
+                        "second".to_string(),
+                        "third".to_string(),
+                    ]
+                );
+
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let x_start = layout.preview.x.saturating_add(1);
+                let x_end = layout.preview.right().saturating_sub(1);
+                let preview_height = usize::from(preview_inner.height)
+                    .saturating_sub(usize::from(PREVIEW_METADATA_ROWS))
+                    .max(1);
+                let (visible_start, visible_end) =
+                    app.preview_visible_range_for_height(preview_height);
+                let visible_plain_lines = app.preview_plain_lines_range(visible_start, visible_end);
+                let preview_lines = app.preview_tab_content_lines(
+                    app.state.selected_workspace(),
+                    true,
+                    &visible_plain_lines,
+                    visible_start,
+                    visible_end,
+                    preview_height,
+                );
+                assert_eq!(
+                    preview_lines
+                        .iter()
+                        .map(ftui::text::Line::to_plain_text)
+                        .collect::<Vec<_>>(),
+                    vec![
+                        "first".to_string(),
+                        "s|econd".to_string(),
+                        "third".to_string(),
+                    ]
+                );
+
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let rows = (output_y..preview_inner.bottom())
+                        .map(|row| row_text(frame, row, x_start, x_end))
+                        .collect::<Vec<_>>();
+                    assert!(
+                        rows.iter().any(|row| row.contains("s|econd")),
+                        "{}",
+                        rows.join("\n")
+                    );
+                });
+            }
+
+            #[test]
+            fn interactive_agent_preview_renders_cursor_overlay_for_claude_in_frame() {
+                let config_path = unique_config_path("cursor-overlay-frame-claude");
+                let (mut app, _commands, _captures, cursor_captures) =
+                    fixture_app_with_tmux_and_config_path(
+                        WorkspaceStatus::Active,
+                        vec![
+                            Ok("first\nsecond\nthird\n".to_string()),
+                            Ok("first\nsecond\nthird\n".to_string()),
+                        ],
+                        Vec::new(),
+                        config_path,
+                    );
+                app.state.workspaces[1].agent = AgentType::Claude;
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                let (pane_width, pane_height) = app
+                    .preview_output_dimensions()
+                    .expect("preview output dimensions should be available after resize");
+                *cursor_captures.borrow_mut() = vec![
+                    Ok(format!("1 1 1 {pane_width} {pane_height}")),
+                    Ok(format!("1 1 1 {pane_width} {pane_height}")),
+                ];
+                select_workspace(&mut app, 1);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+                force_tick_due(&mut app);
+                ftui::Model::update(&mut app, Msg::Tick);
+                assert_eq!(
+                    app.preview.lines,
+                    vec![
+                        "first".to_string(),
+                        "second".to_string(),
+                        "third".to_string(),
+                    ]
+                );
+
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let x_start = layout.preview.x.saturating_add(1);
+                let x_end = layout.preview.right().saturating_sub(1);
+                let preview_height = usize::from(preview_inner.height)
+                    .saturating_sub(usize::from(PREVIEW_METADATA_ROWS))
+                    .max(1);
+                let (visible_start, visible_end) =
+                    app.preview_visible_range_for_height(preview_height);
+                let visible_plain_lines = app.preview_plain_lines_range(visible_start, visible_end);
+                let preview_lines = app.preview_tab_content_lines(
+                    app.state.selected_workspace(),
+                    true,
+                    &visible_plain_lines,
+                    visible_start,
+                    visible_end,
+                    preview_height,
+                );
+                assert_eq!(
+                    preview_lines
+                        .iter()
+                        .map(ftui::text::Line::to_plain_text)
+                        .collect::<Vec<_>>(),
+                    vec![
+                        "first".to_string(),
+                        "s|econd".to_string(),
+                        "third".to_string(),
+                    ]
+                );
+
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let rows = (output_y..preview_inner.bottom())
+                        .map(|row| row_text(frame, row, x_start, x_end))
+                        .collect::<Vec<_>>();
+                    assert!(
+                        rows.iter().any(|row| row.contains("s|econd")),
+                        "{}",
+                        rows.join("\n")
+                    );
+                });
+            }
+
+            #[test]
+            fn interactive_preview_renders_cursor_on_missing_trailing_blank_row() {
+                let config_path = unique_config_path("cursor-overlay-trailing-blank-row");
+                let (mut app, _commands, _captures, cursor_captures) =
+                    fixture_app_with_tmux_and_config_path(
+                        WorkspaceStatus::Active,
+                        vec![
+                            Ok((0..33)
+                                .map(|row| {
+                                    if row == 32 {
+                                        "textbox>".to_string()
+                                    } else {
+                                        String::new()
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n")),
+                            Ok((0..33)
+                                .map(|row| {
+                                    if row == 32 {
+                                        "textbox>".to_string()
+                                    } else {
+                                        String::new()
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n")),
+                        ],
+                        Vec::new(),
+                        config_path,
+                    );
+                app.state.workspaces[1].agent = AgentType::Claude;
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                let (pane_width, pane_height) = app
+                    .preview_output_dimensions()
+                    .expect("preview output dimensions should be available after resize");
+                assert_eq!(pane_height, 34);
+                *cursor_captures.borrow_mut() = vec![
+                    Ok(format!("1 0 33 {pane_width} {pane_height}")),
+                    Ok(format!("1 0 33 {pane_width} {pane_height}")),
+                ];
+                select_workspace(&mut app, 1);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+                force_tick_due(&mut app);
+                ftui::Model::update(&mut app, Msg::Tick);
+
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let x_start = layout.preview.x.saturating_add(1);
+                let x_end = layout.preview.right().saturating_sub(1);
+
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let rows = (output_y..preview_inner.bottom())
+                        .map(|row| row_text(frame, row, x_start, x_end))
+                        .collect::<Vec<_>>();
+                    assert_eq!(rows.last(), Some(&"|".to_string()), "{}", rows.join("\n"));
+                });
             }
 
             #[test]

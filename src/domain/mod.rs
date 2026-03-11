@@ -62,10 +62,6 @@ impl AgentType {
             Self::OpenCode => Self::Codex,
         }
     }
-
-    pub const fn allows_cursor_overlay(self) -> bool {
-        !matches!(self, Self::Codex)
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
