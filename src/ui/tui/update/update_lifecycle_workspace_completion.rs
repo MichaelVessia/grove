@@ -81,36 +81,59 @@ impl GroveApp {
         }
         match completion.result {
             Ok(()) => {
-                self.telemetry.event_log.log(
+                self.telemetry.event_log.log(if completion.deleted_task {
                     LogEvent::new("task_lifecycle", "task_deleted")
                         .with_data("task", Value::from(completion.workspace_name.clone()))
                         .with_data(
                             "warning_count",
                             Value::from(usize_to_u64(completion.warnings.len())),
-                        ),
-                );
+                        )
+                } else {
+                    LogEvent::new("workspace_lifecycle", "workspace_deleted")
+                        .with_data("workspace", Value::from(completion.workspace_name.clone()))
+                        .with_data(
+                            "warning_count",
+                            Value::from(usize_to_u64(completion.warnings.len())),
+                        )
+                });
                 self.session.last_tmux_error = None;
                 self.refresh_workspaces(None);
                 if completion.warnings.is_empty() {
-                    self.show_success_toast(format!(
-                        "task '{}' deleted",
-                        completion.workspace_name
-                    ));
+                    self.show_success_toast(if completion.deleted_task {
+                        format!("task '{}' deleted", completion.workspace_name)
+                    } else {
+                        format!("worktree '{}' deleted", completion.workspace_name)
+                    });
                 } else if let Some(first_warning) = completion.warnings.first() {
-                    self.show_info_toast(format!(
-                        "task '{}' deleted, warning: {}",
-                        completion.workspace_name, first_warning
-                    ));
+                    self.show_info_toast(if completion.deleted_task {
+                        format!(
+                            "task '{}' deleted, warning: {}",
+                            completion.workspace_name, first_warning
+                        )
+                    } else {
+                        format!(
+                            "worktree '{}' deleted, warning: {}",
+                            completion.workspace_name, first_warning
+                        )
+                    });
                 }
             }
             Err(error) => {
-                self.telemetry.event_log.log(
+                self.telemetry.event_log.log(if completion.deleted_task {
                     LogEvent::new("task_lifecycle", "task_delete_failed")
-                        .with_data("task", Value::from(completion.workspace_name))
-                        .with_data("error", Value::from(error.clone())),
-                );
+                        .with_data("task", Value::from(completion.workspace_name.clone()))
+                        .with_data("error", Value::from(error.clone()))
+                } else {
+                    LogEvent::new("workspace_lifecycle", "workspace_delete_failed")
+                        .with_data("workspace", Value::from(completion.workspace_name.clone()))
+                        .with_data("error", Value::from(error.clone()))
+                });
                 self.session.last_tmux_error = Some(error.clone());
-                self.show_error_toast(format!("task delete failed: {error}"));
+                self.show_error_toast(if completion.deleted_task {
+                    format!("task delete failed: {error}")
+                } else {
+                    format!("worktree delete failed: {error}")
+                });
             }
         }
         self.start_next_queued_delete_workspace();

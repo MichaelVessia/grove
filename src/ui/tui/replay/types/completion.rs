@@ -74,6 +74,7 @@ struct ReplayDeleteWorkspaceCompletion {
     workspace_name: String,
     workspace_path: PathBuf,
     requested_workspace_paths: Vec<PathBuf>,
+    deleted_task: bool,
     result: ReplayUnitResult,
     warnings: Vec<String>,
 }
@@ -108,9 +109,16 @@ struct ReplayPullUpstreamCompletion {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReplayCreateWorkspaceCompletion {
-    request: ReplayCreateWorkspaceRequest,
-    result: ReplayCreateWorkspaceResult,
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum ReplayCreateWorkspaceCompletion {
+    CreateTask {
+        request: ReplayCreateWorkspaceRequest,
+        result: ReplayCreateWorkspaceResult,
+    },
+    AddWorktree {
+        request: Box<ReplayAddWorktreeRequest>,
+        result: ReplayAddWorktreeResult,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -119,6 +127,13 @@ struct ReplayCreateWorkspaceRequest {
     repositories: Vec<ProjectConfig>,
     agent: ReplayAgentType,
     branch_source: ReplayTaskBranchSource,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct ReplayAddWorktreeRequest {
+    task: ReplayTask,
+    repository: ProjectConfig,
+    agent: ReplayAgentType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -142,6 +157,20 @@ enum ReplayCreateWorkspaceResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum ReplayAddWorktreeResult {
+    Ok {
+        task_root: PathBuf,
+        task: ReplayTask,
+        added_worktree_path: PathBuf,
+        warnings: Vec<String>,
+    },
+    Err {
+        error: ReplayTaskLifecycleError,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", content = "message", rename_all = "snake_case")]
 enum ReplayTaskLifecycleError {
     EmptyTaskName,
@@ -152,6 +181,8 @@ enum ReplayTaskLifecycleError {
     BaseBranchDetectionFailed(String),
     TaskInvalid(String),
     TaskManifest(String),
+    BaseTaskCannotAddWorktrees,
+    TaskAlreadyHasRepository(String),
     GitCommandFailed(String),
     Io(String),
 }
@@ -424,6 +455,7 @@ impl ReplayDeleteWorkspaceCompletion {
             workspace_name: completion.workspace_name.clone(),
             workspace_path: completion.workspace_path.clone(),
             requested_workspace_paths: completion.requested_workspace_paths.clone(),
+            deleted_task: completion.deleted_task,
             result: ReplayUnitResult::from_result(&completion.result),
             warnings: completion.warnings.clone(),
         }
@@ -434,6 +466,7 @@ impl ReplayDeleteWorkspaceCompletion {
             workspace_name: self.workspace_name.clone(),
             workspace_path: self.workspace_path.clone(),
             requested_workspace_paths: self.requested_workspace_paths.clone(),
+            deleted_task: self.deleted_task,
             result: self.result.to_result(),
             warnings: self.warnings.clone(),
         }
@@ -512,16 +545,46 @@ impl ReplayPullUpstreamCompletion {
 
 impl ReplayCreateWorkspaceCompletion {
     fn from_completion(completion: &CreateWorkspaceCompletion) -> Self {
-        Self {
-            request: ReplayCreateWorkspaceRequest::from_request(&completion.request),
-            result: ReplayCreateWorkspaceResult::from_result(&completion.result),
+        match (&completion.request, &completion.result) {
+            (CreateWorkspaceRequest::CreateTask(request), CreateWorkspaceResult::CreateTask(result)) => {
+                Self::CreateTask {
+                    request: ReplayCreateWorkspaceRequest::from_request(request),
+                    result: ReplayCreateWorkspaceResult::from_result(result),
+                }
+            }
+            (
+                CreateWorkspaceRequest::AddWorktree(request),
+                CreateWorkspaceResult::AddWorktree(result),
+            ) => Self::AddWorktree {
+                request: Box::new(ReplayAddWorktreeRequest::from_request(request)),
+                result: ReplayAddWorktreeResult::from_result(result),
+            },
+            _ => Self::CreateTask {
+                request: ReplayCreateWorkspaceRequest {
+                    task_name: String::new(),
+                    repositories: Vec::new(),
+                    agent: ReplayAgentType::Codex,
+                    branch_source: ReplayTaskBranchSource::BaseBranch,
+                },
+                result: ReplayCreateWorkspaceResult::Err {
+                    error: ReplayTaskLifecycleError::TaskInvalid(
+                        "mismatched create replay payload".to_string(),
+                    ),
+                },
+            },
         }
     }
 
     fn to_completion(&self) -> CreateWorkspaceCompletion {
-        CreateWorkspaceCompletion {
-            request: self.request.to_request(),
-            result: self.result.to_result(),
+        match self {
+            Self::CreateTask { request, result } => CreateWorkspaceCompletion {
+                request: CreateWorkspaceRequest::CreateTask(request.to_request()),
+                result: CreateWorkspaceResult::CreateTask(result.to_result()),
+            },
+            Self::AddWorktree { request, result } => CreateWorkspaceCompletion {
+                request: CreateWorkspaceRequest::AddWorktree(Box::new(request.to_request())),
+                result: CreateWorkspaceResult::AddWorktree(result.to_result()),
+            },
         }
     }
 }
@@ -542,6 +605,24 @@ impl ReplayCreateWorkspaceRequest {
             repositories: self.repositories.clone(),
             agent: self.agent.to_agent_type(),
             branch_source: self.branch_source.to_branch_source(),
+        }
+    }
+}
+
+impl ReplayAddWorktreeRequest {
+    fn from_request(request: &AddWorktreeToTaskRequest) -> Self {
+        Self {
+            task: ReplayTask::from_task(&request.task),
+            repository: request.repository.clone(),
+            agent: ReplayAgentType::from_agent_type(request.agent),
+        }
+    }
+
+    fn to_request(&self) -> AddWorktreeToTaskRequest {
+        AddWorktreeToTaskRequest {
+            task: self.task.to_task(),
+            repository: self.repository.clone(),
+            agent: self.agent.to_agent_type(),
         }
     }
 }
@@ -600,6 +681,39 @@ impl ReplayCreateWorkspaceResult {
     }
 }
 
+impl ReplayAddWorktreeResult {
+    fn from_result(result: &Result<AddWorktreeToTaskResult, TaskLifecycleError>) -> Self {
+        match result {
+            Ok(value) => Self::Ok {
+                task_root: value.task_root.clone(),
+                task: ReplayTask::from_task(&value.task),
+                added_worktree_path: value.added_worktree_path.clone(),
+                warnings: value.warnings.clone(),
+            },
+            Err(error) => Self::Err {
+                error: ReplayTaskLifecycleError::from_error(error),
+            },
+        }
+    }
+
+    fn to_result(&self) -> Result<AddWorktreeToTaskResult, TaskLifecycleError> {
+        match self {
+            Self::Ok {
+                task_root,
+                task,
+                added_worktree_path,
+                warnings,
+            } => Ok(AddWorktreeToTaskResult {
+                task_root: task_root.clone(),
+                task: task.to_task(),
+                added_worktree_path: added_worktree_path.clone(),
+                warnings: warnings.clone(),
+            }),
+            Self::Err { error } => Err(error.to_error()),
+        }
+    }
+}
+
 impl ReplayTaskLifecycleError {
     fn from_error(error: &TaskLifecycleError) -> Self {
         match error {
@@ -613,6 +727,10 @@ impl ReplayTaskLifecycleError {
             }
             TaskLifecycleError::TaskInvalid(message) => Self::TaskInvalid(message.clone()),
             TaskLifecycleError::TaskManifest(message) => Self::TaskManifest(message.clone()),
+            TaskLifecycleError::BaseTaskCannotAddWorktrees => Self::BaseTaskCannotAddWorktrees,
+            TaskLifecycleError::TaskAlreadyHasRepository(message) => {
+                Self::TaskAlreadyHasRepository(message.clone())
+            }
             TaskLifecycleError::GitCommandFailed(message) => {
                 Self::GitCommandFailed(message.clone())
             }
@@ -632,6 +750,10 @@ impl ReplayTaskLifecycleError {
             }
             Self::TaskInvalid(message) => TaskLifecycleError::TaskInvalid(message.clone()),
             Self::TaskManifest(message) => TaskLifecycleError::TaskManifest(message.clone()),
+            Self::BaseTaskCannotAddWorktrees => TaskLifecycleError::BaseTaskCannotAddWorktrees,
+            Self::TaskAlreadyHasRepository(message) => {
+                TaskLifecycleError::TaskAlreadyHasRepository(message.clone())
+            }
             Self::GitCommandFailed(message) => {
                 TaskLifecycleError::GitCommandFailed(message.clone())
             }

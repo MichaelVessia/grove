@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::Worktree;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StartAgentConfigState {
@@ -125,6 +126,7 @@ pub(super) struct SessionCleanupDialogState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DeleteDialogState {
     pub(super) task: Task,
+    pub(super) target: DeleteDialogTarget,
     pub(super) is_base_task: bool,
     pub(super) is_missing: bool,
     pub(super) delete_local_branch: bool,
@@ -134,8 +136,30 @@ pub(super) struct DeleteDialogState {
 
 impl DeleteDialogState {
     pub(super) fn delete_local_branch_enabled(&self) -> bool {
-        !self.is_base_task
+        match &self.target {
+            DeleteDialogTarget::Task => !self.is_base_task,
+            DeleteDialogTarget::Worktree {
+                is_main_worktree, ..
+            } => !is_main_worktree,
+        }
     }
+
+    pub(super) fn deletes_task(&self) -> bool {
+        match &self.target {
+            DeleteDialogTarget::Task => true,
+            DeleteDialogTarget::Worktree { deletes_task, .. } => *deletes_task,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum DeleteDialogTarget {
+    Task,
+    Worktree {
+        worktree: Worktree,
+        deletes_task: bool,
+        is_main_worktree: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -329,6 +353,7 @@ impl LaunchDialogField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CreateDialogState {
+    pub(super) mode: CreateDialogMode,
     pub(super) tab: CreateDialogTab,
     pub(super) task_name: String,
     pub(super) pr_url: String,
@@ -337,6 +362,32 @@ pub(super) struct CreateDialogState {
     pub(super) selected_repository_indices: Vec<usize>,
     pub(super) project_picker: Option<CreateProjectPickerState>,
     pub(super) focused_field: CreateDialogField,
+}
+
+impl CreateDialogState {
+    pub(super) fn is_add_worktree_mode(&self) -> bool {
+        matches!(self.mode, CreateDialogMode::AddWorktree { .. })
+    }
+
+    pub(super) fn target_task(&self) -> Option<&Task> {
+        match &self.mode {
+            CreateDialogMode::NewTask => None,
+            CreateDialogMode::AddWorktree { task } => Some(task),
+        }
+    }
+
+    pub(super) fn first_field(&self) -> CreateDialogField {
+        if self.is_add_worktree_mode() {
+            return CreateDialogField::Project;
+        }
+        CreateDialogField::first_for_tab(self.tab)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum CreateDialogMode {
+    NewTask,
+    AddWorktree { task: Task },
 }
 
 #[derive(Debug, Clone)]
@@ -456,8 +507,17 @@ impl CreateDialogField {
         }
     }
 
-    pub(super) fn next(self, tab: CreateDialogTab) -> Self {
-        match tab {
+    pub(super) fn next(self, dialog: &CreateDialogState) -> Self {
+        if dialog.is_add_worktree_mode() {
+            return match self {
+                Self::Project => Self::CreateButton,
+                Self::CreateButton => Self::CancelButton,
+                Self::CancelButton => Self::Project,
+                Self::WorkspaceName | Self::RegisterAsBase | Self::PullRequestUrl => Self::Project,
+            };
+        }
+
+        match dialog.tab {
             CreateDialogTab::Manual => match self {
                 Self::WorkspaceName => Self::RegisterAsBase,
                 Self::RegisterAsBase => Self::Project,
@@ -476,8 +536,17 @@ impl CreateDialogField {
         }
     }
 
-    pub(super) fn previous(self, tab: CreateDialogTab) -> Self {
-        match tab {
+    pub(super) fn previous(self, dialog: &CreateDialogState) -> Self {
+        if dialog.is_add_worktree_mode() {
+            return match self {
+                Self::Project => Self::CancelButton,
+                Self::CreateButton => Self::Project,
+                Self::CancelButton => Self::CreateButton,
+                Self::WorkspaceName | Self::RegisterAsBase | Self::PullRequestUrl => Self::Project,
+            };
+        }
+
+        match dialog.tab {
             CreateDialogTab::Manual => match self {
                 Self::WorkspaceName => Self::CancelButton,
                 Self::RegisterAsBase => Self::WorkspaceName,

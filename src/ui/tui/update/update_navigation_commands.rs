@@ -136,6 +136,9 @@ impl GroveApp {
             UiCommand::NewWorkspace => {
                 self.open_create_dialog();
             }
+            UiCommand::AddWorktree => {
+                self.open_add_worktree_dialog();
+            }
             UiCommand::EditWorkspace => {
                 self.open_edit_dialog();
             }
@@ -161,7 +164,10 @@ impl GroveApp {
                 self.close_active_tab_or_confirm();
             }
             UiCommand::DeleteWorkspace => {
-                self.open_delete_dialog();
+                self.open_delete_task_dialog();
+            }
+            UiCommand::DeleteWorktree => {
+                self.open_delete_worktree_dialog();
             }
             UiCommand::MergeWorkspace => {
                 self.open_merge_dialog();

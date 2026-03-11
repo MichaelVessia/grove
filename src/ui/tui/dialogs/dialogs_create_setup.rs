@@ -2,9 +2,10 @@ use super::*;
 
 impl GroveApp {
     fn filtered_create_dialog_project_indices(&self, query: &str) -> Vec<usize> {
-        let is_base_mode = self
+        let (is_base_mode, add_task) = self
             .create_dialog()
-            .is_some_and(|dialog| dialog.register_as_base);
+            .map(|dialog| (dialog.register_as_base, dialog.target_task().cloned()))
+            .unwrap_or((false, None));
 
         let mut indices: Vec<usize> = if query.trim().is_empty() {
             (0..self.projects.len()).collect()
@@ -36,6 +37,20 @@ impl GroveApp {
                             .project_path
                             .as_ref()
                             .is_some_and(|path| refer_to_same_location(path, &project.path))
+                })
+            });
+        }
+
+        if let Some(task) = add_task {
+            indices.retain(|index| {
+                let Some(project) = self.projects.get(*index) else {
+                    return false;
+                };
+                !task.worktrees.iter().any(|worktree| {
+                    refer_to_same_location(
+                        worktree.repository_path.as_path(),
+                        project.path.as_path(),
+                    )
                 })
             });
         }
@@ -207,6 +222,7 @@ impl GroveApp {
 
         let project_index = self.selected_project_index();
         self.set_create_dialog(CreateDialogState {
+            mode: CreateDialogMode::NewTask,
             tab: CreateDialogTab::Manual,
             task_name: String::new(),
             pr_url: String::new(),
@@ -215,6 +231,49 @@ impl GroveApp {
             selected_repository_indices: vec![project_index],
             project_picker: None,
             focused_field: CreateDialogField::first_for_tab(CreateDialogTab::Manual),
+        });
+        self.log_dialog_event("create", "dialog_opened");
+        self.state.mode = UiMode::List;
+        self.state.focus = PaneFocus::WorkspaceList;
+        self.session.last_tmux_error = None;
+    }
+
+    pub(super) fn open_add_worktree_dialog(&mut self) {
+        if self.modal_open() {
+            return;
+        }
+
+        let Some(task) = self.state.selected_task().cloned() else {
+            self.show_info_toast("no task selected");
+            return;
+        };
+        if task.has_base_worktree() {
+            self.show_info_toast("cannot add worktrees to a base task");
+            return;
+        }
+
+        let project_index = self
+            .projects
+            .iter()
+            .position(|project| {
+                !task.worktrees.iter().any(|worktree| {
+                    refer_to_same_location(
+                        worktree.repository_path.as_path(),
+                        project.path.as_path(),
+                    )
+                })
+            })
+            .unwrap_or(0);
+        self.set_create_dialog(CreateDialogState {
+            mode: CreateDialogMode::AddWorktree { task },
+            tab: CreateDialogTab::Manual,
+            task_name: String::new(),
+            pr_url: String::new(),
+            register_as_base: false,
+            project_index,
+            selected_repository_indices: vec![project_index],
+            project_picker: None,
+            focused_field: CreateDialogField::Project,
         });
         self.log_dialog_event("create", "dialog_opened");
         self.state.mode = UiMode::List;

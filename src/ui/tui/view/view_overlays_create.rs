@@ -94,18 +94,27 @@ impl GroveApp {
             Self::create_dialog_mode_tabs_row(content_width, theme, dialog.tab);
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
-                fit("Task setup (create)"),
+                fit(if dialog.is_add_worktree_mode() {
+                    "Task setup (add worktree)"
+                } else {
+                    "Task setup (create)"
+                }),
                 Style::new().fg(theme.overlay0),
             )]),
             FtLine::raw(""),
-            mode_tabs_row,
-            FtLine::from_spans(vec![FtSpan::styled(
+        ];
+        if !dialog.is_add_worktree_mode() {
+            lines.push(mode_tabs_row);
+            lines.push(FtLine::from_spans(vec![FtSpan::styled(
                 fit("  [Mode] click tab or Alt+[/Alt+]"),
                 Style::new().fg(theme.overlay0),
-            )]),
-        ];
+            )]));
+        }
         if let Some(picker) = dialog.project_picker.as_ref() {
-            let picker_hint = if dialog.tab == CreateDialogTab::Manual && !dialog.register_as_base {
+            let picker_hint = if dialog.tab == CreateDialogTab::Manual
+                && !dialog.register_as_base
+                && !dialog.is_add_worktree_mode()
+            {
                 "Type filter, Up/Down or Tab/S-Tab/C-n/C-p move, Space toggle included repos, Enter select, Esc back, need a project first? close and press p, then Ctrl+A"
             } else {
                 "Type filter, Up/Down or Tab/S-Tab/C-n/C-p move, Enter select, Esc back, need a project first? close and press p, then Ctrl+A"
@@ -148,7 +157,7 @@ impl GroveApp {
                 ])
                 .split(inner);
 
-            for (row_area, line) in rows[..4].iter().zip(lines.iter()) {
+            for (row_area, line) in rows[..lines.len()].iter().zip(lines.iter()) {
                 Paragraph::new(FtText::from_line(line.clone()))
                     .style(content_style)
                     .render(*row_area, frame);
@@ -204,15 +213,17 @@ impl GroveApp {
                             .map(|project| (project_index, project))
                     })
                     .map(|(project_index, project)| {
-                        let label =
-                            if dialog.tab == CreateDialogTab::Manual && !dialog.register_as_base {
-                                let included =
-                                    dialog.selected_repository_indices.contains(project_index);
-                                let toggle = if included { "[x]" } else { "[ ]" };
-                                format!("{toggle} {}  {}", project.name, project.path.display())
-                            } else {
-                                format!("{}  {}", project.name, project.path.display())
-                            };
+                        let label = if dialog.tab == CreateDialogTab::Manual
+                            && !dialog.register_as_base
+                            && !dialog.is_add_worktree_mode()
+                        {
+                            let included =
+                                dialog.selected_repository_indices.contains(project_index);
+                            let toggle = if included { "[x]" } else { "[ ]" };
+                            format!("{toggle} {}  {}", project.name, project.path.display())
+                        } else {
+                            format!("{}  {}", project.name, project.path.display())
+                        };
                         ListItem::new(label).style(Style::new().fg(theme.subtext1))
                     })
                     .collect::<Vec<_>>();
@@ -233,51 +244,106 @@ impl GroveApp {
             .render(rows[8], frame);
             return;
         }
-        match dialog.tab {
-            CreateDialogTab::Manual => {
-                if dialog.register_as_base {
-                    lines.push(modal_static_badged_row(
+        if let Some(task) = dialog.target_task() {
+            lines.push(modal_static_badged_row(
+                content_width,
+                theme,
+                "Task",
+                task.name.as_str(),
+                theme.blue,
+                theme.text,
+            ));
+            lines.push(modal_static_badged_row(
+                content_width,
+                theme,
+                "Branch",
+                task.branch.as_str(),
+                theme.blue,
+                theme.text,
+            ));
+            lines.push(modal_labeled_input_row(
+                content_width,
+                theme,
+                "Project",
+                format!("{selected_project_label}  Enter browse").as_str(),
+                "Enter browse projects",
+                focused(CreateDialogField::Project),
+            ));
+            lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                fit("  [Task] Adds one repository worktree to the selected task"),
+                Style::new().fg(theme.overlay0),
+            )]));
+        } else {
+            match dialog.tab {
+                CreateDialogTab::Manual => {
+                    if dialog.register_as_base {
+                        lines.push(modal_static_badged_row(
+                            content_width,
+                            theme,
+                            "Task",
+                            &format!(
+                                "auto: {}",
+                                self.projects
+                                    .get(dialog.project_index)
+                                    .and_then(|project| project
+                                        .path
+                                        .file_name()
+                                        .and_then(|name| name.to_str()))
+                                    .unwrap_or("(project)")
+                            ),
+                            theme.overlay0,
+                            theme.subtext0,
+                        ));
+                    } else {
+                        lines.push(modal_labeled_input_row(
+                            content_width,
+                            theme,
+                            "Task",
+                            dialog.task_name.as_str(),
+                            "feature-name",
+                            focused(CreateDialogField::WorkspaceName),
+                        ));
+                    }
+                    let base_toggle_label = if dialog.register_as_base {
+                        "[x] register repo root as base task"
+                    } else {
+                        "[ ] register repo root as base task"
+                    };
+                    lines.push(modal_focus_badged_row(
                         content_width,
                         theme,
-                        "Task",
-                        &format!(
-                            "auto: {}",
-                            self.projects
-                                .get(dialog.project_index)
-                                .and_then(|project| project
-                                    .path
-                                    .file_name()
-                                    .and_then(|name| name.to_str()))
-                                .unwrap_or("(project)")
-                        ),
+                        "Base",
+                        base_toggle_label,
+                        focused(CreateDialogField::RegisterAsBase),
                         theme.overlay0,
                         theme.subtext0,
                     ));
-                } else {
-                    lines.push(modal_labeled_input_row(
-                        content_width,
-                        theme,
-                        "Task",
-                        dialog.task_name.as_str(),
-                        "feature-name",
-                        focused(CreateDialogField::WorkspaceName),
-                    ));
+                    if dialog.register_as_base {
+                        lines.push(modal_labeled_input_row(
+                            content_width,
+                            theme,
+                            "Project",
+                            format!("{selected_project_label}  Enter browse").as_str(),
+                            "Enter browse projects",
+                            focused(CreateDialogField::Project),
+                        ));
+                    } else {
+                        lines.push(modal_focus_badged_row(
+                            content_width,
+                            theme,
+                            "Included",
+                            format!("{selected_projects_label}  Enter browse").as_str(),
+                            focused(CreateDialogField::Project),
+                            theme.blue,
+                            theme.subtext0,
+                        ));
+                        lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                        fit("  [Defaults] base branch is implicit per project, configure in Project Defaults"),
+                        Style::new().fg(theme.overlay0),
+                    )]));
+                    }
                 }
-                let base_toggle_label = if dialog.register_as_base {
-                    "[x] register repo root as base task"
-                } else {
-                    "[ ] register repo root as base task"
-                };
-                lines.push(modal_focus_badged_row(
-                    content_width,
-                    theme,
-                    "Base",
-                    base_toggle_label,
-                    focused(CreateDialogField::RegisterAsBase),
-                    theme.overlay0,
-                    theme.subtext0,
-                ));
-                if dialog.register_as_base {
+                CreateDialogTab::PullRequest => {
                     lines.push(modal_labeled_input_row(
                         content_width,
                         theme,
@@ -286,51 +352,29 @@ impl GroveApp {
                         "Enter browse projects",
                         focused(CreateDialogField::Project),
                     ));
-                } else {
-                    lines.push(modal_focus_badged_row(
+                    lines.push(modal_labeled_input_row(
                         content_width,
                         theme,
-                        "Included",
-                        format!("{selected_projects_label}  Enter browse").as_str(),
-                        focused(CreateDialogField::Project),
-                        theme.blue,
+                        "PR URL",
+                        dialog.pr_url.as_str(),
+                        "https://github.com/owner/repo/pull/123",
+                        focused(CreateDialogField::PullRequestUrl),
+                    ));
+                    lines.push(modal_static_badged_row(
+                        content_width,
+                        theme,
+                        "Name",
+                        "auto: pr-<number>",
+                        theme.overlay0,
                         theme.subtext0,
                     ));
-                    lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                        fit("  [Defaults] base branch is implicit per project, configure in Project Defaults"),
-                        Style::new().fg(theme.overlay0),
-                    )]));
                 }
-            }
-            CreateDialogTab::PullRequest => {
-                lines.push(modal_labeled_input_row(
-                    content_width,
-                    theme,
-                    "Project",
-                    format!("{selected_project_label}  Enter browse").as_str(),
-                    "Enter browse projects",
-                    focused(CreateDialogField::Project),
-                ));
-                lines.push(modal_labeled_input_row(
-                    content_width,
-                    theme,
-                    "PR URL",
-                    dialog.pr_url.as_str(),
-                    "https://github.com/owner/repo/pull/123",
-                    focused(CreateDialogField::PullRequestUrl),
-                ));
-                lines.push(modal_static_badged_row(
-                    content_width,
-                    theme,
-                    "Name",
-                    "auto: pr-<number>",
-                    theme.overlay0,
-                    theme.subtext0,
-                ));
             }
         }
         if focused(CreateDialogField::Project)
-            && (dialog.tab != CreateDialogTab::Manual || dialog.register_as_base)
+            && (dialog.is_add_worktree_mode()
+                || dialog.tab != CreateDialogTab::Manual
+                || dialog.register_as_base)
             && let Some(project) = self.projects.get(dialog.project_index)
         {
             lines.push(FtLine::from_spans(vec![FtSpan::styled(
@@ -344,12 +388,18 @@ impl GroveApp {
         lines.push(modal_actions_row(
             content_width,
             theme,
-            "Create",
+            if dialog.is_add_worktree_mode() {
+                "Add"
+            } else {
+                "Create"
+            },
             "Cancel",
             create_focused,
             cancel_focused,
         ));
-        let hint_text = if dialog.tab == CreateDialogTab::Manual {
+        let hint_text = if dialog.is_add_worktree_mode() {
+            "Tab/C-n next, S-Tab/C-p prev, Enter browse projects, Enter add worktree, Esc cancel"
+        } else if dialog.tab == CreateDialogTab::Manual {
             "Tab/C-n next, S-Tab/C-p prev, click mode tab or Alt+[/Alt+], Space toggle base, Enter browse projects, base branch comes from Project Defaults or git, Enter create, Esc cancel"
         } else {
             "Tab/C-n next, S-Tab/C-p prev, click mode tab or Alt+[/Alt+], Enter browse projects, Enter create, Esc cancel"
@@ -363,7 +413,11 @@ impl GroveApp {
             ModalDialogSpec {
                 dialog_width,
                 dialog_height,
-                title: "New Task",
+                title: if dialog.is_add_worktree_mode() {
+                    "Add Worktree"
+                } else {
+                    "New Task"
+                },
                 theme,
                 border_color: theme.mauve,
                 hit_id: HIT_ID_CREATE_DIALOG,
@@ -373,6 +427,10 @@ impl GroveApp {
         let modal_area = Self::centered_modal_rect(area, dialog_width, dialog_height);
         let inner = Block::new().borders(Borders::ALL).inner(modal_area);
         if inner.is_empty() {
+            return;
+        }
+
+        if dialog.is_add_worktree_mode() {
             return;
         }
 

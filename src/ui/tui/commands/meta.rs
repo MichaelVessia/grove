@@ -1,6 +1,6 @@
 use super::*;
 
-static COMMAND_META: [UiCommandMeta; 41] = [
+static COMMAND_META: [UiCommandMeta; 43] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_focus",
@@ -569,6 +569,26 @@ static COMMAND_META: [UiCommandMeta; 41] = [
     },
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
+            id: "palette:add_worktree",
+            title: "Add Worktree",
+            description: "Add a repository worktree to the selected task (a)",
+            tags: &["add", "worktree", "task", "repository", "a"],
+            category: "Worktree",
+        }),
+        help_hints: &[HelpHintSpec {
+            context: HelpHintContext::Workspace,
+            label: "a add worktree",
+            key: "a",
+            action: "add worktree",
+        }],
+        keybindings: &[KeybindingSpec {
+            scope: KeybindingScope::NonInteractive,
+            code: KeyCodeMatch::Char('a'),
+            modifiers: KeyModifiersMatch::Any,
+        }],
+    },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
             id: "palette:edit_workspace",
             title: "Edit Workspace",
             description: "Open workspace edit dialog (base branch, or branch switch on main) (e)",
@@ -603,12 +623,6 @@ static COMMAND_META: [UiCommandMeta; 41] = [
             category: "Workspace",
         }),
         help_hints: &[
-            HelpHintSpec {
-                context: HelpHintContext::Workspace,
-                label: "a new agent tab",
-                key: "a",
-                action: "new agent tab",
-            },
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
                 label: "a new agent tab",
@@ -817,19 +831,39 @@ static COMMAND_META: [UiCommandMeta; 41] = [
         palette: Some(PaletteCommandSpec {
             id: "palette:delete_workspace",
             title: "Delete Task",
-            description: "Open delete or remove dialog for selected task (D)",
-            tags: &["delete", "task", "workspace", "worktree", "D"],
+            description: "Delete the selected task and all of its worktrees (D)",
+            tags: &["delete", "task", "worktree", "D"],
             category: "Task",
         }),
         help_hints: &[HelpHintSpec {
             context: HelpHintContext::Workspace,
-            label: "D delete/remove task",
+            label: "D delete task",
             key: "D",
-            action: "delete/remove task",
+            action: "delete task",
         }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
             code: KeyCodeMatch::Char('D'),
+            modifiers: KeyModifiersMatch::Any,
+        }],
+    },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
+            id: "palette:delete_worktree",
+            title: "Delete Worktree",
+            description: "Delete the selected worktree, or the task if it is the last one (d)",
+            tags: &["delete", "worktree", "task", "d"],
+            category: "Worktree",
+        }),
+        help_hints: &[HelpHintSpec {
+            context: HelpHintContext::Workspace,
+            label: "d delete worktree",
+            key: "d",
+            action: "delete worktree",
+        }],
+        keybindings: &[KeybindingSpec {
+            scope: KeybindingScope::NonInteractive,
+            code: KeyCodeMatch::Char('d'),
             modifiers: KeyModifiersMatch::Any,
         }],
     },
@@ -1131,29 +1165,31 @@ impl UiCommand {
             UiCommand::ResizeSidebarNarrower => &COMMAND_META[15],
             UiCommand::ResizeSidebarWider => &COMMAND_META[16],
             UiCommand::NewWorkspace => &COMMAND_META[17],
-            UiCommand::EditWorkspace => &COMMAND_META[18],
-            UiCommand::StartAgent => &COMMAND_META[19],
-            UiCommand::StartParentAgent => &COMMAND_META[20],
-            UiCommand::OpenShellTab => &COMMAND_META[21],
-            UiCommand::OpenGitTab => &COMMAND_META[22],
-            UiCommand::RenameActiveTab => &COMMAND_META[23],
-            UiCommand::StopAgent => &COMMAND_META[24],
-            UiCommand::RestartAgent => &COMMAND_META[25],
-            UiCommand::DeleteWorkspace => &COMMAND_META[26],
-            UiCommand::MergeWorkspace => &COMMAND_META[27],
-            UiCommand::UpdateFromBase => &COMMAND_META[28],
-            UiCommand::PullUpstream => &COMMAND_META[29],
-            UiCommand::RefreshWorkspaces => &COMMAND_META[30],
-            UiCommand::OpenProjects => &COMMAND_META[31],
-            UiCommand::ReorderTasks => &COMMAND_META[32],
-            UiCommand::DeleteProject => &COMMAND_META[33],
-            UiCommand::OpenSettings => &COMMAND_META[34],
-            UiCommand::ToggleMouseCapture => &COMMAND_META[35],
-            UiCommand::ToggleUnsafe => &COMMAND_META[36],
-            UiCommand::CleanupSessions => &COMMAND_META[37],
-            UiCommand::OpenHelp => &COMMAND_META[38],
-            UiCommand::OpenCommandPalette => &COMMAND_META[39],
-            UiCommand::Quit => &COMMAND_META[40],
+            UiCommand::AddWorktree => &COMMAND_META[18],
+            UiCommand::EditWorkspace => &COMMAND_META[19],
+            UiCommand::StartAgent => &COMMAND_META[20],
+            UiCommand::StartParentAgent => &COMMAND_META[21],
+            UiCommand::OpenShellTab => &COMMAND_META[22],
+            UiCommand::OpenGitTab => &COMMAND_META[23],
+            UiCommand::RenameActiveTab => &COMMAND_META[24],
+            UiCommand::StopAgent => &COMMAND_META[25],
+            UiCommand::RestartAgent => &COMMAND_META[26],
+            UiCommand::DeleteWorkspace => &COMMAND_META[27],
+            UiCommand::DeleteWorktree => &COMMAND_META[28],
+            UiCommand::MergeWorkspace => &COMMAND_META[29],
+            UiCommand::UpdateFromBase => &COMMAND_META[30],
+            UiCommand::PullUpstream => &COMMAND_META[31],
+            UiCommand::RefreshWorkspaces => &COMMAND_META[32],
+            UiCommand::OpenProjects => &COMMAND_META[33],
+            UiCommand::ReorderTasks => &COMMAND_META[34],
+            UiCommand::DeleteProject => &COMMAND_META[35],
+            UiCommand::OpenSettings => &COMMAND_META[36],
+            UiCommand::ToggleMouseCapture => &COMMAND_META[37],
+            UiCommand::ToggleUnsafe => &COMMAND_META[38],
+            UiCommand::CleanupSessions => &COMMAND_META[39],
+            UiCommand::OpenHelp => &COMMAND_META[40],
+            UiCommand::OpenCommandPalette => &COMMAND_META[41],
+            UiCommand::Quit => &COMMAND_META[42],
         }
     }
 }

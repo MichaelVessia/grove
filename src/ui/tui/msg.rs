@@ -1,6 +1,9 @@
 use super::*;
 use crate::application::agent_runtime::SessionExecutionResult;
-use crate::application::task_lifecycle::{CreateTaskRequest, CreateTaskResult, TaskLifecycleError};
+use crate::application::task_lifecycle::{
+    AddWorktreeToTaskRequest, AddWorktreeToTaskResult, CreateTaskRequest, CreateTaskResult,
+    TaskLifecycleError,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Msg {
@@ -18,7 +21,7 @@ pub(super) enum Msg {
     MergeWorkspaceCompleted(MergeWorkspaceCompletion),
     UpdateWorkspaceFromBaseCompleted(UpdateWorkspaceFromBaseCompletion),
     PullUpstreamCompleted(PullUpstreamCompletion),
-    CreateWorkspaceCompleted(CreateWorkspaceCompletion),
+    CreateWorkspaceCompleted(Box<CreateWorkspaceCompletion>),
     StartAgentCompleted(StartAgentCompletion),
     StopAgentCompleted(StopAgentCompletion),
     RestartAgentCompleted(RestartAgentCompletion),
@@ -88,6 +91,7 @@ pub(super) struct DeleteWorkspaceCompletion {
     pub(super) workspace_name: String,
     pub(super) workspace_path: PathBuf,
     pub(super) requested_workspace_paths: Vec<PathBuf>,
+    pub(super) deleted_task: bool,
     pub(super) result: Result<(), String>,
     pub(super) warnings: Vec<String>,
 }
@@ -131,8 +135,20 @@ pub(super) struct PullUpstreamCompletion {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CreateWorkspaceCompletion {
-    pub(super) request: CreateTaskRequest,
-    pub(super) result: Result<CreateTaskResult, TaskLifecycleError>,
+    pub(super) request: CreateWorkspaceRequest,
+    pub(super) result: CreateWorkspaceResult,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum CreateWorkspaceRequest {
+    CreateTask(CreateTaskRequest),
+    AddWorktree(Box<AddWorktreeToTaskRequest>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum CreateWorkspaceResult {
+    CreateTask(Result<CreateTaskResult, TaskLifecycleError>),
+    AddWorktree(Result<AddWorktreeToTaskResult, TaskLifecycleError>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

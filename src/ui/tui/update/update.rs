@@ -87,7 +87,7 @@ impl GroveApp {
                 Cmd::None
             }
             Msg::CreateWorkspaceCompleted(completion) => {
-                self.apply_create_workspace_completion(completion);
+                self.apply_create_workspace_completion(*completion);
                 Cmd::None
             }
             Msg::StartAgentCompleted(completion) => {

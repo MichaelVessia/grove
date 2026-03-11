@@ -549,10 +549,11 @@ impl GroveApp {
                     .create_dialog_tab_from_hit_grid(mouse_event.x, mouse_event.y)
                     .or_else(|| self.create_dialog_tab_at_pointer(mouse_event.x, mouse_event.y))
                 && let Some(dialog) = self.create_dialog_mut()
+                && !dialog.is_add_worktree_mode()
                 && dialog.tab != next_tab
             {
                 dialog.tab = next_tab;
-                dialog.focused_field = CreateDialogField::first_for_tab(next_tab);
+                dialog.focused_field = dialog.first_field();
             }
             return;
         }

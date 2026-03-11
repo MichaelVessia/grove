@@ -14,30 +14,44 @@ impl GroveApp {
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let focused = |field| dialog.focused_field == field;
-        let warning_lines = if dialog.is_base_task {
-            (
-                "  • Remove the task manifest from Grove's task list",
-                "  • Keep the primary checkout and local branch untouched",
-            )
-        } else if dialog.is_missing {
-            (
-                "  • Task root already removed",
-                "  • Clean up git worktree metadata in each repository",
-            )
-        } else {
-            (
-                "  • Remove the task root and all child worktrees",
-                "  • Uncommitted changes in any worktree will be lost",
-            )
-        };
+        let warning_lines =
+            if matches!(dialog.target, DeleteDialogTarget::Task) && dialog.is_base_task {
+                (
+                    "  • Remove the task manifest from Grove's task list",
+                    "  • Keep the primary checkout and local branch untouched",
+                )
+            } else if dialog.is_missing {
+                (
+                    "  • Selected path already removed",
+                    "  • Clean up git worktree metadata",
+                )
+            } else if dialog.deletes_task()
+                && matches!(dialog.target, DeleteDialogTarget::Worktree { .. })
+            {
+                (
+                    "  • Delete the final worktree in this task",
+                    "  • The task will also be removed because no worktrees remain",
+                )
+            } else if matches!(dialog.target, DeleteDialogTarget::Worktree { .. }) {
+                (
+                    "  • Remove only the selected worktree from this task",
+                    "  • Uncommitted changes in this worktree will be lost",
+                )
+            } else {
+                (
+                    "  • Remove the task root and all child worktrees",
+                    "  • Uncommitted changes in any worktree will be lost",
+                )
+            };
         let cleanup_focused = focused(DeleteDialogField::DeleteLocalBranch);
-        let cleanup_state = if dialog.is_base_task {
-            "disabled, base task keeps its local branch".to_string()
+        let cleanup_state = if !dialog.delete_local_branch_enabled() {
+            "disabled, keep local branch".to_string()
         } else if dialog.delete_local_branch {
-            format!(
-                "enabled, remove '{}' branch in each repository",
-                dialog.task.branch
-            )
+            let branch = match &dialog.target {
+                DeleteDialogTarget::Task => dialog.task.branch.as_str(),
+                DeleteDialogTarget::Worktree { worktree, .. } => worktree.branch.as_str(),
+            };
+            format!("enabled, remove '{branch}' local branch")
         } else {
             "disabled, keep local branch".to_string()
         };
@@ -49,7 +63,18 @@ impl GroveApp {
         };
         let delete_focused = focused(DeleteDialogField::DeleteButton);
         let cancel_focused = focused(DeleteDialogField::CancelButton);
-        let path = dialog.task.root_path.display().to_string();
+        let (name, branch, path) = match &dialog.target {
+            DeleteDialogTarget::Task => (
+                dialog.task.name.as_str(),
+                dialog.task.branch.as_str(),
+                dialog.task.root_path.display().to_string(),
+            ),
+            DeleteDialogTarget::Worktree { worktree, .. } => (
+                worktree.repository_name.as_str(),
+                worktree.branch.as_str(),
+                worktree.path.display().to_string(),
+            ),
+        };
         let worktree_count = dialog.task.worktrees.len().to_string();
         let fit = |text: &str| {
             let text = ftui::text::truncate_with_ellipsis(text, content_width, "…");
@@ -64,19 +89,12 @@ impl GroveApp {
                 Style::new().fg(theme.overlay0),
             )]),
             FtLine::raw(""),
-            modal_static_badged_row(
-                content_width,
-                theme,
-                "Name",
-                dialog.task.name.as_str(),
-                theme.blue,
-                theme.text,
-            ),
+            modal_static_badged_row(content_width, theme, "Name", name, theme.blue, theme.text),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Branch",
-                dialog.task.branch.as_str(),
+                branch,
                 theme.blue,
                 theme.text,
             ),
@@ -97,17 +115,26 @@ impl GroveApp {
                 theme.overlay0,
             ),
             FtLine::from_spans(vec![FtSpan::styled(
-                fit(if dialog.is_base_task {
-                    "  [Info] Remove from Grove only"
-                } else {
-                    "  [Risk] Changes are destructive"
-                }),
-                Style::new()
-                    .fg(if dialog.is_base_task {
-                        theme.blue
+                fit(
+                    if matches!(dialog.target, DeleteDialogTarget::Task) && dialog.is_base_task {
+                        "  [Info] Remove from Grove only"
+                    } else if matches!(dialog.target, DeleteDialogTarget::Worktree { .. }) {
+                        "  [Scope] Selected worktree only"
                     } else {
-                        theme.peach
-                    })
+                        "  [Risk] Changes are destructive"
+                    },
+                ),
+                Style::new()
+                    .fg(
+                        if matches!(dialog.target, DeleteDialogTarget::Task) && dialog.is_base_task
+                        {
+                            theme.blue
+                        } else if matches!(dialog.target, DeleteDialogTarget::Worktree { .. }) {
+                            theme.yellow
+                        } else {
+                            theme.peach
+                        },
+                    )
                     .bold(),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
@@ -151,7 +178,7 @@ impl GroveApp {
             modal_actions_row(
                 content_width,
                 theme,
-                if dialog.is_base_task {
+                if matches!(dialog.target, DeleteDialogTarget::Task) && dialog.is_base_task {
                     "Remove"
                 } else {
                     "Delete"
@@ -164,8 +191,10 @@ impl GroveApp {
         lines.extend(modal_wrapped_hint_rows(
             content_width,
             theme,
-            if dialog.is_base_task {
+            if matches!(dialog.target, DeleteDialogTarget::Task) && dialog.is_base_task {
                 "Tab/C-n next, S-Tab/C-p prev, Space toggle option, Enter or D remove task, Esc cancel"
+            } else if matches!(dialog.target, DeleteDialogTarget::Worktree { .. }) {
+                "Tab/C-n next, S-Tab/C-p prev, Space toggle option, Enter or d delete worktree, Esc cancel"
             } else {
                 "Tab/C-n next, S-Tab/C-p prev, Space toggle option, Enter or D delete task, Esc cancel"
             },
@@ -178,14 +207,24 @@ impl GroveApp {
             ModalDialogSpec {
                 dialog_width,
                 dialog_height,
-                title: if dialog.is_base_task {
+                title: if matches!(dialog.target, DeleteDialogTarget::Task) && dialog.is_base_task {
                     "Remove Task From List?"
+                } else if dialog.deletes_task()
+                    && matches!(dialog.target, DeleteDialogTarget::Worktree { .. })
+                {
+                    "Delete Final Worktree?"
+                } else if matches!(dialog.target, DeleteDialogTarget::Worktree { .. }) {
+                    "Delete Worktree?"
                 } else {
                     "Delete Task?"
                 },
                 theme,
-                border_color: if dialog.is_base_task {
+                border_color: if matches!(dialog.target, DeleteDialogTarget::Task)
+                    && dialog.is_base_task
+                {
                     theme.blue
+                } else if matches!(dialog.target, DeleteDialogTarget::Worktree { .. }) {
+                    theme.yellow
                 } else {
                     theme.red
                 },

@@ -48,14 +48,19 @@ impl GroveApp {
         let workspace_name = queued_delete.workspace_name;
         let workspace_path = queued_delete.workspace_path;
         let requested_workspace_paths = queued_delete.requested_workspace_paths;
+        let deleted_task = queued_delete.deleted_task;
         self.dialogs.delete_in_flight = true;
         self.dialogs.delete_in_flight_workspace = Some(workspace_path.clone());
         self.queue_cmd(Cmd::task(move || {
-            let (result, warnings) = delete_task(request);
+            let (result, warnings) = match request {
+                QueuedDeleteRequest::Task(request) => delete_task(request),
+                QueuedDeleteRequest::Worktree(request) => delete_workspace(request),
+            };
             Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
                 workspace_name,
                 workspace_path,
                 requested_workspace_paths,
+                deleted_task,
                 result,
                 warnings,
             })
@@ -171,7 +176,12 @@ impl GroveApp {
             self.confirm_delete_dialog();
         }
     }
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn open_delete_dialog(&mut self) {
+        self.open_delete_task_dialog();
+    }
+
+    pub(super) fn open_delete_task_dialog(&mut self) {
         if self.modal_open() {
             return;
         }
@@ -189,6 +199,7 @@ impl GroveApp {
         let is_missing = !task.root_path.exists();
         self.set_delete_dialog(DeleteDialogState {
             task: task.clone(),
+            target: DeleteDialogTarget::Task,
             is_base_task,
             is_missing,
             delete_local_branch: is_missing && !is_base_task,
@@ -221,6 +232,75 @@ impl GroveApp {
         self.state.focus = PaneFocus::WorkspaceList;
         self.session.last_tmux_error = None;
     }
+
+    pub(super) fn open_delete_worktree_dialog(&mut self) {
+        if self.modal_open() {
+            return;
+        }
+
+        let Some(task) = self.state.selected_task().cloned() else {
+            self.show_info_toast("no workspace selected");
+            return;
+        };
+        let Some(worktree) = self.state.selected_worktree().cloned() else {
+            self.show_info_toast("no workspace selected");
+            return;
+        };
+        if self.workspace_delete_requested(worktree.path.as_path()) {
+            self.show_info_toast(format!(
+                "workspace '{}' delete already requested",
+                worktree.repository_name
+            ));
+            return;
+        }
+
+        let deletes_task = task.worktrees.len() == 1;
+        let is_main_worktree = worktree.is_main_checkout();
+        let is_missing = !worktree.path.exists();
+        self.set_delete_dialog(DeleteDialogState {
+            task: task.clone(),
+            target: DeleteDialogTarget::Worktree {
+                worktree: worktree.clone(),
+                deletes_task,
+                is_main_worktree,
+            },
+            is_base_task: task.has_base_worktree(),
+            is_missing,
+            delete_local_branch: is_missing && !is_main_worktree,
+            kill_tmux_sessions: true,
+            focused_field: if is_main_worktree {
+                DeleteDialogField::KillTmuxSessions
+            } else {
+                DeleteDialogField::DeleteLocalBranch
+            },
+        });
+        self.log_dialog_event_with_fields(
+            "delete",
+            "dialog_opened",
+            [
+                ("task".to_string(), Value::from(task.name.clone())),
+                ("branch".to_string(), Value::from(worktree.branch.clone())),
+                (
+                    "path".to_string(),
+                    Value::from(worktree.path.display().to_string()),
+                ),
+                (
+                    "worktree_count".to_string(),
+                    Value::from(usize_to_u64(task.worktrees.len())),
+                ),
+                (
+                    "is_base_task".to_string(),
+                    Value::from(task.has_base_worktree()),
+                ),
+                ("is_missing".to_string(), Value::from(is_missing)),
+                ("deletes_task".to_string(), Value::from(deletes_task)),
+            ],
+        );
+        self.state.mode = UiMode::List;
+        self.state.focus = PaneFocus::WorkspaceList;
+        self.session.last_tmux_error = None;
+    }
+
     fn confirm_delete_dialog(&mut self) {
         let Some(dialog) = self.take_delete_dialog() else {
             return;
@@ -240,7 +320,7 @@ impl GroveApp {
                 ),
                 (
                     "delete_local_branch".to_string(),
-                    Value::from(dialog.delete_local_branch && !dialog.is_base_task),
+                    Value::from(dialog.delete_local_branch && dialog.delete_local_branch_enabled()),
                 ),
                 (
                     "kill_tmux_sessions".to_string(),
@@ -252,28 +332,83 @@ impl GroveApp {
                 ),
                 ("is_base_task".to_string(), Value::from(dialog.is_base_task)),
                 ("is_missing".to_string(), Value::from(dialog.is_missing)),
+                (
+                    "deletes_task".to_string(),
+                    Value::from(dialog.deletes_task()),
+                ),
             ],
         );
+        let delete_local_branch =
+            dialog.delete_local_branch && dialog.delete_local_branch_enabled();
+        let kill_tmux_sessions = dialog.kill_tmux_sessions;
+        let is_missing = dialog.is_missing;
 
-        let workspace_name = dialog.task.name.clone();
-        let workspace_path = dialog.task.root_path.clone();
-        let requested_workspace_paths = dialog
-            .task
-            .worktrees
-            .iter()
-            .map(|worktree| worktree.path.clone())
-            .collect::<Vec<PathBuf>>();
-        let request = DeleteTaskRequest {
-            task: dialog.task,
-            delete_local_branch: dialog.delete_local_branch && !dialog.is_base_task,
-            kill_tmux_sessions: dialog.kill_tmux_sessions,
-        };
+        let (workspace_name, workspace_path, requested_workspace_paths, request, deleted_task) =
+            match dialog.target {
+                DeleteDialogTarget::Task => (
+                    dialog.task.name.clone(),
+                    dialog.task.root_path.clone(),
+                    dialog
+                        .task
+                        .worktrees
+                        .iter()
+                        .map(|worktree| worktree.path.clone())
+                        .collect::<Vec<PathBuf>>(),
+                    QueuedDeleteRequest::Task(DeleteTaskRequest {
+                        task: dialog.task,
+                        delete_local_branch,
+                        kill_tmux_sessions,
+                    }),
+                    true,
+                ),
+                DeleteDialogTarget::Worktree {
+                    worktree,
+                    deletes_task,
+                    ..
+                } => {
+                    if deletes_task {
+                        (
+                            dialog.task.name.clone(),
+                            dialog.task.root_path.clone(),
+                            vec![worktree.path.clone()],
+                            QueuedDeleteRequest::Task(DeleteTaskRequest {
+                                task: dialog.task,
+                                delete_local_branch,
+                                kill_tmux_sessions,
+                            }),
+                            true,
+                        )
+                    } else {
+                        (
+                            worktree.repository_name.clone(),
+                            worktree.path.clone(),
+                            vec![worktree.path.clone()],
+                            QueuedDeleteRequest::Worktree(DeleteWorkspaceRequest {
+                                task_slug: Some(dialog.task.slug.clone()),
+                                project_name: Some(worktree.repository_name.clone()),
+                                project_path: Some(worktree.repository_path.clone()),
+                                workspace_name: worktree.repository_name.clone(),
+                                branch: worktree.branch.clone(),
+                                workspace_path: worktree.path.clone(),
+                                is_missing,
+                                delete_local_branch,
+                                kill_tmux_sessions,
+                            }),
+                            false,
+                        )
+                    }
+                }
+            };
         if !self.tmux_input.supports_background_launch() {
-            let (result, warnings) = delete_task(request);
+            let (result, warnings) = match request.clone() {
+                QueuedDeleteRequest::Task(request) => delete_task(request),
+                QueuedDeleteRequest::Worktree(request) => delete_workspace(request),
+            };
             self.apply_delete_workspace_completion(DeleteWorkspaceCompletion {
                 workspace_name,
                 workspace_path,
                 requested_workspace_paths,
+                deleted_task,
                 result,
                 warnings,
             });
@@ -285,6 +420,7 @@ impl GroveApp {
             workspace_name,
             workspace_path,
             requested_workspace_paths,
+            deleted_task,
         });
     }
 }

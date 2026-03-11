@@ -43,7 +43,7 @@ enum ReplayMsg {
         completion: ReplayPullUpstreamCompletion,
     },
     CreateWorkspaceCompleted {
-        completion: ReplayCreateWorkspaceCompletion,
+        completion: Box<ReplayCreateWorkspaceCompletion>,
     },
     StartAgentCompleted {
         completion: ReplaySessionCompletion,
@@ -211,7 +211,7 @@ impl ReplayMsg {
                 completion: ReplayPullUpstreamCompletion::from_completion(completion),
             },
             Msg::CreateWorkspaceCompleted(completion) => Self::CreateWorkspaceCompleted {
-                completion: ReplayCreateWorkspaceCompletion::from_completion(completion),
+                completion: Box::new(ReplayCreateWorkspaceCompletion::from_completion(completion)),
             },
             Msg::StartAgentCompleted(completion) => Self::StartAgentCompleted {
                 completion: ReplaySessionCompletion::from_start_completion(completion),
@@ -267,7 +267,7 @@ impl ReplayMsg {
                 Msg::PullUpstreamCompleted(completion.to_completion())
             }
             Self::CreateWorkspaceCompleted { completion } => {
-                Msg::CreateWorkspaceCompleted(completion.to_completion())
+                Msg::CreateWorkspaceCompleted(Box::new(completion.to_completion()))
             }
             Self::StartAgentCompleted { completion } => {
                 Msg::StartAgentCompleted(completion.to_start_completion())

@@ -5,7 +5,7 @@ use std::process::Command;
 use crate::application::agent_runtime::kill_task_session_commands;
 use crate::domain::{AgentType, Task, Worktree};
 use crate::infrastructure::config::RepositoryConfig;
-use crate::infrastructure::paths::tasks_root;
+use crate::infrastructure::paths::{refer_to_same_location, tasks_root};
 use crate::infrastructure::process::{execute_command, stderr_trimmed};
 use crate::infrastructure::task_manifest::encode_task_manifest;
 
@@ -31,6 +31,8 @@ pub enum TaskLifecycleError {
     BaseBranchDetectionFailed(String),
     TaskInvalid(String),
     TaskManifest(String),
+    BaseTaskCannotAddWorktrees,
+    TaskAlreadyHasRepository(String),
     GitCommandFailed(String),
     Io(String),
 }
@@ -53,6 +55,12 @@ pub fn task_lifecycle_error_message(error: &TaskLifecycleError) -> String {
         }
         TaskLifecycleError::TaskInvalid(message) => format!("task invalid: {message}"),
         TaskLifecycleError::TaskManifest(message) => format!("task manifest error: {message}"),
+        TaskLifecycleError::BaseTaskCannotAddWorktrees => {
+            "cannot add worktrees to a base task".to_string()
+        }
+        TaskLifecycleError::TaskAlreadyHasRepository(repository_name) => {
+            format!("task already includes repository '{repository_name}'")
+        }
         TaskLifecycleError::GitCommandFailed(message) => {
             format!("git command failed: {message}")
         }
@@ -80,6 +88,21 @@ pub struct CreateBaseTaskRequest {
     pub repository: RepositoryConfig,
     pub agent: AgentType,
     pub base_branch: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddWorktreeToTaskRequest {
+    pub task: Task,
+    pub repository: RepositoryConfig,
+    pub agent: AgentType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddWorktreeToTaskResult {
+    pub task_root: PathBuf,
+    pub task: Task,
+    pub added_worktree_path: PathBuf,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,6 +175,38 @@ pub fn create_base_task_in_root(
     create::create_base_task_in_root(tasks_root, request)
 }
 
+pub fn add_worktree_to_task(
+    request: &AddWorktreeToTaskRequest,
+    git_runner: &impl GitCommandRunner,
+    setup_script_runner: &impl SetupScriptRunner,
+    setup_command_runner: &impl SetupCommandRunner,
+) -> Result<AddWorktreeToTaskResult, TaskLifecycleError> {
+    let manifest_tasks_root = tasks_root();
+    add_worktree_to_task_in_manifest_root(
+        request,
+        git_runner,
+        setup_script_runner,
+        setup_command_runner,
+        manifest_tasks_root.as_deref(),
+    )
+}
+
+pub fn add_worktree_to_task_in_root(
+    tasks_root: &Path,
+    request: &AddWorktreeToTaskRequest,
+    git_runner: &impl GitCommandRunner,
+    setup_script_runner: &impl SetupScriptRunner,
+    setup_command_runner: &impl SetupCommandRunner,
+) -> Result<AddWorktreeToTaskResult, TaskLifecycleError> {
+    add_worktree_to_task_in_manifest_root(
+        request,
+        git_runner,
+        setup_script_runner,
+        setup_command_runner,
+        Some(tasks_root),
+    )
+}
+
 pub fn delete_task(request: DeleteTaskRequest) -> (Result<(), String>, Vec<String>) {
     let git_runner = CommandGitRunner;
     delete_task_with_runner(request, &git_runner)
@@ -180,6 +235,18 @@ fn task_name_is_valid(name: &str) -> bool {
 
 fn task_manifest_path(task_root: &Path) -> PathBuf {
     task_root.join(TASK_MANIFEST_FILE)
+}
+
+fn manifest_write_root(manifest_tasks_root: Option<&Path>, task: &Task) -> PathBuf {
+    let Some(manifest_tasks_root) = manifest_tasks_root else {
+        return task.root_path.clone();
+    };
+    let manifest_task_root = manifest_tasks_root.join(task.slug.as_str());
+    if refer_to_same_location(manifest_task_root.as_path(), task.root_path.as_path()) {
+        return task.root_path.clone();
+    }
+
+    manifest_task_root
 }
 
 fn write_task_manifest(task_root: &Path, task: &Task) -> Result<(), TaskLifecycleError> {
@@ -318,6 +385,56 @@ fn create_task_domain(
     .map_err(|error| TaskLifecycleError::TaskInvalid(format!("{error:?}")))
 }
 
+fn add_worktree_to_task_in_manifest_root(
+    request: &AddWorktreeToTaskRequest,
+    git_runner: &impl GitCommandRunner,
+    setup_script_runner: &impl SetupScriptRunner,
+    setup_command_runner: &impl SetupCommandRunner,
+    manifest_tasks_root: Option<&Path>,
+) -> Result<AddWorktreeToTaskResult, TaskLifecycleError> {
+    if request.task.has_base_worktree() {
+        return Err(TaskLifecycleError::BaseTaskCannotAddWorktrees);
+    }
+    if request.task.worktrees.iter().any(|worktree| {
+        refer_to_same_location(
+            worktree.repository_path.as_path(),
+            request.repository.path.as_path(),
+        )
+    }) {
+        return Err(TaskLifecycleError::TaskAlreadyHasRepository(
+            request.repository.name.clone(),
+        ));
+    }
+
+    let (worktree, warnings) = create::create_task_worktree(
+        request.task.root_path.as_path(),
+        request.task.branch.as_str(),
+        &request.repository,
+        request.agent,
+        git_runner,
+        setup_script_runner,
+        setup_command_runner,
+    )?;
+    let added_worktree_path = worktree.path.clone();
+    let mut worktrees = request.task.worktrees.clone();
+    worktrees.push(worktree);
+    let task = create_task_domain(
+        request.task.name.as_str(),
+        request.task.branch.as_str(),
+        request.task.root_path.as_path(),
+        worktrees,
+    )?;
+    let manifest_root = manifest_write_root(manifest_tasks_root, &task);
+    write_task_manifest(manifest_root.as_path(), &task)?;
+
+    Ok(AddWorktreeToTaskResult {
+        task_root: task.root_path.clone(),
+        task,
+        added_worktree_path,
+        warnings,
+    })
+}
+
 fn stop_task_sessions(task: &Task) {
     for command in kill_task_session_commands(task) {
         let _ = execute_command(command.as_slice());
@@ -327,8 +444,9 @@ fn stop_task_sessions(task: &Task) {
 #[cfg(test)]
 mod tests {
     use super::{
-        CreateBaseTaskRequest, CreateTaskRequest, DeleteTaskRequest, TaskBranchSource,
-        create_base_task_in_root, create_task_in_root, delete_task_with_runner_in_manifest_root,
+        AddWorktreeToTaskRequest, CreateBaseTaskRequest, CreateTaskRequest, DeleteTaskRequest,
+        TaskBranchSource, add_worktree_to_task_in_root, create_base_task_in_root,
+        create_task_in_root, delete_task_with_runner_in_manifest_root,
         detect_repository_base_branch, repo_directory_name, task_manifest_path,
     };
     use crate::application::workspace_lifecycle::{
@@ -338,6 +456,7 @@ mod tests {
     use crate::domain::AgentType;
     use crate::infrastructure::config::{ProjectDefaults, RepositoryConfig};
     use crate::infrastructure::process::stderr_trimmed;
+    use crate::infrastructure::task_manifest::decode_task_manifest;
     use std::cell::RefCell;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -793,6 +912,89 @@ mod tests {
         assert!(
             message.contains("used by worktree") || message.contains("checked out"),
             "unexpected error message: {message}"
+        );
+    }
+
+    #[test]
+    fn add_worktree_to_task_in_root_appends_repository_and_rewrites_manifest() {
+        let temp = TestDir::new("add-worktree");
+        let tasks_root = temp.path.join("tasks");
+        let task_root = tasks_root.join("feature-a");
+        let grove_repo = temp.path.join("repos").join("grove");
+        let site_repo = temp.path.join("repos").join("site");
+        fs::create_dir_all(&grove_repo).expect("grove repo should exist");
+        fs::create_dir_all(&site_repo).expect("site repo should exist");
+
+        let existing_task = crate::domain::Task::try_new(
+            "feature-a".to_string(),
+            "feature-a".to_string(),
+            task_root.clone(),
+            "feature-a".to_string(),
+            vec![
+                crate::domain::Worktree::try_new(
+                    "grove".to_string(),
+                    grove_repo.clone(),
+                    task_root.join("grove"),
+                    "feature-a".to_string(),
+                    AgentType::Codex,
+                    crate::domain::WorkspaceStatus::Idle,
+                )
+                .expect("grove worktree should be valid")
+                .with_base_branch(Some("main".to_string())),
+            ],
+        )
+        .expect("task should be valid");
+        fs::create_dir_all(task_root.join(".grove")).expect("manifest dir should exist");
+        fs::write(
+            task_manifest_path(&task_root),
+            crate::infrastructure::task_manifest::encode_task_manifest(&existing_task)
+                .expect("manifest should encode"),
+        )
+        .expect("task manifest should exist");
+
+        let git = StubGitRunner::default();
+        let setup = StubSetupRunner;
+        let setup_command = StubSetupCommandRunner;
+
+        let result = add_worktree_to_task_in_root(
+            tasks_root.as_path(),
+            &AddWorktreeToTaskRequest {
+                task: existing_task,
+                repository: repository(site_repo.clone()),
+                agent: AgentType::Codex,
+            },
+            &git,
+            &setup,
+            &setup_command,
+        )
+        .expect("worktree should be added");
+
+        assert_eq!(result.task.worktrees.len(), 2);
+        assert_eq!(result.added_worktree_path, task_root.join("site"));
+        assert_eq!(
+            git.calls(),
+            vec![(
+                site_repo,
+                vec![
+                    "worktree".to_string(),
+                    "add".to_string(),
+                    "-b".to_string(),
+                    "feature-a".to_string(),
+                    task_root.join("site").to_string_lossy().to_string(),
+                    "main".to_string(),
+                ],
+            )]
+        );
+
+        let manifest = fs::read_to_string(task_manifest_path(&task_root))
+            .expect("task manifest should be readable");
+        let decoded = decode_task_manifest(manifest.as_str()).expect("manifest should decode");
+        assert_eq!(decoded.worktrees.len(), 2);
+        assert!(
+            decoded
+                .worktrees
+                .iter()
+                .any(|worktree| worktree.repository_name == "site")
         );
     }
 

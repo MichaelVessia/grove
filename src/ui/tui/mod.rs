@@ -222,19 +222,20 @@ mod tests {
     use self::support::logging::{RecordedEvents, RecordingEventLogger};
     use super::{
         AppDependencies, ClipboardAccess, CommandTmuxInput, CreateDialogField, CreateDialogTab,
-        CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
-        DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_CREATE_DIALOG_TAB,
-        HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_PROJECT_ADD_RESULTS_LIST, HIT_ID_PROJECT_DIALOG_LIST,
-        HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW,
-        HelpHintContext, LaunchDialogField, LaunchDialogState, LaunchDialogTarget,
-        LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion,
-        Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
-        ProjectAddDialogField, ProjectDefaultsDialogField, PullUpstreamDialogField,
-        RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion,
-        StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
-        TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
-        WorkspaceAttention, WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab,
-        WorkspaceTabKind, WorkspaceTabRuntimeState, ansi_16_color, ansi_lines_to_styled_lines,
+        CreateWorkspaceCompletion, CreateWorkspaceRequest, CreateWorkspaceResult, CursorCapture,
+        DeleteDialogField, DeleteProjectCompletion, DeleteWorkspaceCompletion, EditDialogField,
+        GroveApp, HIT_ID_CREATE_DIALOG_TAB, HIT_ID_HEADER, HIT_ID_PREVIEW,
+        HIT_ID_PROJECT_ADD_RESULTS_LIST, HIT_ID_PROJECT_DIALOG_LIST, HIT_ID_STATUS,
+        HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW, HelpHintContext,
+        LaunchDialogField, LaunchDialogState, LaunchDialogTarget, LazygitLaunchCompletion,
+        LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
+        PendingResizeVerification, PreviewPollCompletion, PreviewTab, ProjectAddDialogField,
+        ProjectDefaultsDialogField, PullUpstreamDialogField, RefreshWorkspacesCompletion,
+        SettingsDialogField, StartAgentCompletion, StartAgentConfigField, StartAgentConfigState,
+        StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput, UiCommand,
+        UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
+        WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind,
+        WorkspaceTabRuntimeState, ansi_16_color, ansi_lines_to_styled_lines,
         ansi_lines_to_styled_lines_for_theme, decode_create_dialog_tab_hit_data,
         decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
@@ -4313,6 +4314,37 @@ mod tests {
     }
 
     #[test]
+    fn command_palette_switches_a_between_add_worktree_and_new_agent_by_pane() {
+        let mut app = fixture_app();
+        select_workspace(&mut app, 1);
+
+        let list_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        let add_worktree_id = UiCommand::AddWorktree
+            .palette_spec()
+            .map(|spec| spec.id)
+            .expect("add worktree should be palette discoverable");
+        let start_agent_id = UiCommand::StartAgent
+            .palette_spec()
+            .map(|spec| spec.id)
+            .expect("start agent should be palette discoverable");
+        assert!(list_ids.iter().any(|id| id == add_worktree_id));
+        assert!(!list_ids.iter().any(|id| id == start_agent_id));
+
+        focus_agent_preview_tab(&mut app);
+        let preview_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        assert!(!preview_ids.iter().any(|id| id == add_worktree_id));
+        assert!(preview_ids.iter().any(|id| id == start_agent_id));
+    }
+
+    #[test]
     fn command_palette_exposes_rename_active_tab_action_when_preview_tab_selected() {
         let mut app = fixture_app();
         focus_agent_preview_tab(&mut app);
@@ -4937,6 +4969,23 @@ mod tests {
             assert!(
                 text.contains("worktree"),
                 "help overlay should mention worktree: {text}"
+            );
+        });
+    }
+
+    #[test]
+    fn keybind_help_lists_add_worktree_in_workspace_list() {
+        let mut app = fixture_app();
+        app.dialogs.keybind_help_open = true;
+
+        with_rendered_frame(&app, 160, 28, |frame| {
+            let text = (0..frame.height())
+                .map(|row| row_text(frame, row, 0, frame.width()))
+                .collect::<Vec<String>>()
+                .join("\n");
+            assert!(
+                text.contains("a add worktree"),
+                "help overlay missing add worktree entry: {text}"
             );
         });
     }
@@ -6308,9 +6357,10 @@ mod tests {
             }
 
             #[test]
-            fn start_key_opens_dialog_for_main_workspace() {
+            fn start_key_in_preview_on_main_workspace_opens_launch_dialog() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+                focus_home_preview_tab(&mut app);
 
                 ftui::Model::update(
                     &mut app,
@@ -6328,7 +6378,7 @@ mod tests {
             }
 
             #[test]
-            fn start_key_on_running_workspace_shows_toast_and_no_dialog() {
+            fn start_key_in_preview_on_running_workspace_opens_launch_dialog() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
@@ -6343,7 +6393,7 @@ mod tests {
             }
 
             #[test]
-            fn start_key_opens_dialog_when_agent_tab_not_focused() {
+            fn start_key_in_workspace_list_opens_add_worktree_dialog() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
                 select_workspace(&mut app, 1);
@@ -6353,7 +6403,12 @@ mod tests {
                     Msg::Key(KeyEvent::new(KeyCode::Char('a')).with_kind(KeyEventKind::Press)),
                 );
 
-                assert!(app.launch_dialog().is_some());
+                assert!(app.create_dialog().is_some());
+                assert!(app.launch_dialog().is_none());
+                assert_eq!(
+                    app.create_dialog().map(|dialog| dialog.focused_field),
+                    Some(CreateDialogField::Project)
+                );
                 assert!(commands.borrow().is_empty());
             }
 
@@ -10440,6 +10495,39 @@ mod tests {
             }
 
             #[test]
+            fn delete_task_key_does_not_open_delete_dialog_outside_workspace_list() {
+                let mut app = fixture_app();
+                select_workspace(&mut app, 1);
+                focus_agent_preview_tab(&mut app);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(app.delete_dialog().is_none());
+            }
+
+            #[test]
+            fn delete_worktree_key_opens_delete_dialog_for_selected_workspace() {
+                let mut app = fixture_app();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('d')).with_kind(KeyEventKind::Press)),
+                );
+
+                let Some(dialog) = app.delete_dialog() else {
+                    panic!("delete dialog should be open");
+                };
+                assert_eq!(dialog.task.name, "feature-a");
+            }
+
+            #[test]
             fn delete_key_on_main_workspace_opens_non_destructive_remove_dialog() {
                 let mut app = fixture_app();
 
@@ -11976,6 +12064,81 @@ mod tests {
             }
 
             #[test]
+            fn add_worktree_dialog_attaches_repository_to_selected_task() {
+                let mut app = fixture_app();
+                let tasks_root = unique_temp_workspace_dir("add-worktree-task-root");
+                let grove_repo = init_git_repo("add-worktree-grove", "main");
+                let site_repo = init_git_repo("add-worktree-site", "main");
+
+                let create_request = CreateTaskRequest {
+                    task_name: "feature-a".to_string(),
+                    repositories: vec![ProjectConfig {
+                        name: "grove".to_string(),
+                        path: grove_repo.clone(),
+                        defaults: Default::default(),
+                    }],
+                    agent: AgentType::Codex,
+                    branch_source: TaskBranchSource::BaseBranch,
+                };
+                let created = crate::application::task_lifecycle::create_task_in_root(
+                    tasks_root.as_path(),
+                    &create_request,
+                    &crate::application::workspace_lifecycle::CommandGitRunner,
+                    &crate::application::workspace_lifecycle::CommandSetupScriptRunner,
+                    &crate::application::workspace_lifecycle::CommandSetupCommandRunner,
+                )
+                .expect("task should create");
+
+                app.projects = vec![
+                    ProjectConfig {
+                        name: "grove".to_string(),
+                        path: grove_repo,
+                        defaults: Default::default(),
+                    },
+                    ProjectConfig {
+                        name: "site".to_string(),
+                        path: site_repo,
+                        defaults: Default::default(),
+                    },
+                ];
+                app.task_root_override = Some(tasks_root);
+                app.state = crate::ui::state::AppState::new(vec![created.task]);
+                app.sync_workspace_tab_maps();
+                app.refresh_preview_summary();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('a')).with_kind(KeyEventKind::Press)),
+                );
+
+                let dialog = app.create_dialog_mut().expect("create dialog should open");
+                dialog.project_index = 1;
+                dialog.focused_field = CreateDialogField::CreateButton;
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                let task = app
+                    .state
+                    .selected_task()
+                    .expect("task should remain selected");
+                assert_eq!(task.worktrees.len(), 2);
+                assert!(
+                    task.worktrees
+                        .iter()
+                        .any(|worktree| worktree.repository_name == "site")
+                );
+                assert_eq!(
+                    app.state
+                        .selected_workspace()
+                        .and_then(|workspace| workspace.project_name.as_deref()),
+                    Some("site")
+                );
+            }
+
+            #[test]
             fn project_add_dialog_accepts_shift_modified_uppercase_path_characters() {
                 let mut app = fixture_app();
 
@@ -13406,10 +13569,10 @@ mod tests {
 
                 let cmd = ftui::Model::update(
                     &mut app,
-                    Msg::CreateWorkspaceCompleted(CreateWorkspaceCompletion {
-                        request,
-                        result: Ok(result),
-                    }),
+                    Msg::CreateWorkspaceCompleted(Box::new(CreateWorkspaceCompletion {
+                        request: CreateWorkspaceRequest::CreateTask(request),
+                        result: CreateWorkspaceResult::CreateTask(Ok(result)),
+                    })),
                 );
 
                 assert!(cmd_contains_task(&cmd));
@@ -13551,6 +13714,55 @@ mod tests {
             }
 
             #[test]
+            fn delete_worktree_dialog_confirm_targets_only_selected_worktree() {
+                let mut app = fixture_background_task_app();
+                let selected_path = app.state.tasks[0].worktrees[0].path.clone();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('d')).with_kind(KeyEventKind::Press)),
+                );
+                let cmd = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(cmd_contains_task(&cmd));
+                assert_eq!(
+                    app.dialogs.delete_in_flight_workspace,
+                    Some(selected_path.clone())
+                );
+                assert_eq!(app.dialogs.delete_requested_workspaces.len(), 1);
+                assert!(
+                    app.dialogs
+                        .delete_requested_workspaces
+                        .contains(&selected_path)
+                );
+            }
+
+            #[test]
+            fn delete_worktree_dialog_for_last_worktree_warns_that_task_will_be_deleted() {
+                let mut app = fixture_app();
+                select_workspace(&mut app, 1);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('d')).with_kind(KeyEventKind::Press)),
+                );
+
+                with_rendered_frame(&app, 100, 30, |frame| {
+                    let text = (0..frame.height())
+                        .map(|row| row_text(frame, row, 0, frame.width()))
+                        .collect::<Vec<String>>()
+                        .join("\n");
+                    assert!(
+                        text.contains("task will also be removed"),
+                        "delete dialog should warn about task removal: {text}"
+                    );
+                });
+            }
+
+            #[test]
             fn delete_dialog_confirm_queues_additional_delete_request_when_one_is_in_flight() {
                 let mut app = fixture_background_app_with_two_feature_workspaces();
                 let first_task_root = app.state.tasks[1].root_path.clone();
@@ -13630,6 +13842,7 @@ mod tests {
                         workspace_name: "feature-a".to_string(),
                         workspace_path: first_task_root,
                         requested_workspace_paths: vec![first_workspace_path.clone()],
+                        deleted_task: true,
                         result: Ok(()),
                         warnings: Vec::new(),
                     }),
@@ -13671,6 +13884,7 @@ mod tests {
                         workspace_name: "feature-a".to_string(),
                         workspace_path: deleting_path.clone(),
                         requested_workspace_paths: vec![requested_workspace_path.clone()],
+                        deleted_task: true,
                         result: Ok(()),
                         warnings: Vec::new(),
                     }),

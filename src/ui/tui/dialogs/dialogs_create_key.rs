@@ -154,11 +154,19 @@ impl GroveApp {
             key_event.code == KeyCode::Char('[') && key_event.modifiers == Modifiers::ALT;
         let alt_next_tab =
             key_event.code == KeyCode::Char(']') && key_event.modifiers == Modifiers::ALT;
-        if alt_previous_tab {
+        if alt_previous_tab
+            && self
+                .create_dialog()
+                .is_some_and(|dialog| !dialog.is_add_worktree_mode())
+        {
             self.switch_create_dialog_tab(false);
             return;
         }
-        if alt_next_tab {
+        if alt_next_tab
+            && self
+                .create_dialog()
+                .is_some_and(|dialog| !dialog.is_add_worktree_mode())
+        {
             self.switch_create_dialog_tab(true);
             return;
         }
@@ -287,25 +295,28 @@ impl GroveApp {
 
     fn create_dialog_focus_next(&mut self) {
         if let Some(dialog) = self.create_dialog_mut() {
-            dialog.focused_field = dialog.focused_field.next(dialog.tab);
+            dialog.focused_field = dialog.focused_field.next(dialog);
         }
     }
 
     fn create_dialog_focus_previous(&mut self) {
         if let Some(dialog) = self.create_dialog_mut() {
-            dialog.focused_field = dialog.focused_field.previous(dialog.tab);
+            dialog.focused_field = dialog.focused_field.previous(dialog);
         }
     }
 
     fn switch_create_dialog_tab(&mut self, forward: bool) {
         if let Some(dialog) = self.create_dialog_mut() {
+            if dialog.is_add_worktree_mode() {
+                return;
+            }
             dialog.tab = if forward {
                 dialog.tab.next()
             } else {
                 dialog.tab.previous()
             };
             dialog.project_picker = None;
-            dialog.focused_field = CreateDialogField::first_for_tab(dialog.tab);
+            dialog.focused_field = dialog.first_field();
         }
     }
 }

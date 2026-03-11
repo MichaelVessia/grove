@@ -63,8 +63,9 @@ use crate::application::session_cleanup::{
     plan_session_cleanup_for_tasks,
 };
 use crate::application::task_lifecycle::{
-    CreateTaskRequest, CreateTaskResult, DeleteTaskRequest, TaskLifecycleError, create_task,
-    create_task_in_root, delete_task, task_lifecycle_error_message,
+    AddWorktreeToTaskRequest, AddWorktreeToTaskResult, CreateTaskRequest, CreateTaskResult,
+    DeleteTaskRequest, TaskLifecycleError, create_task, create_task_in_root, delete_task,
+    task_lifecycle_error_message,
 };
 use crate::application::agent_runtime::{
     detect_status_with_session_override, execute_launch_request_with_result_for_mode,
@@ -74,10 +75,11 @@ use crate::application::agent_runtime::{
     launch_request_for_workspace, shell_launch_request_for_workspace,
 };
 use crate::application::workspace_lifecycle::{
-    CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner, MergeWorkspaceRequest,
-    RuntimeSessionTerminator, UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
-    merge_workspace_with_terminator, update_workspace_from_base_with_terminator,
-    workspace_lifecycle_error_message, write_workspace_base_marker,
+    CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner, DeleteWorkspaceRequest,
+    MergeWorkspaceRequest, RuntimeSessionTerminator, UpdateWorkspaceFromBaseRequest,
+    WorkspaceLifecycleError, delete_workspace, merge_workspace_with_terminator,
+    update_workspace_from_base_with_terminator, workspace_lifecycle_error_message,
+    write_workspace_base_marker,
 };
 use crate::domain::{AgentType, Task, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::DiscoveryState;
@@ -113,10 +115,17 @@ use commands::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct QueuedDeleteWorkspace {
-    request: DeleteTaskRequest,
+    request: QueuedDeleteRequest,
     workspace_name: String,
     workspace_path: PathBuf,
     requested_workspace_paths: Vec<PathBuf>,
+    deleted_task: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum QueuedDeleteRequest {
+    Task(DeleteTaskRequest),
+    Worktree(DeleteWorkspaceRequest),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

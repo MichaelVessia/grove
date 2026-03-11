@@ -124,10 +124,18 @@ impl GroveApp {
             UiCommand::PreviousTab | UiCommand::NextTab => {
                 self.state.selected_workspace().is_some()
             }
+            UiCommand::AddWorktree => {
+                self.state.focus == PaneFocus::WorkspaceList
+                    && self
+                        .state
+                        .selected_task()
+                        .is_some_and(|task| !task.has_base_worktree())
+            }
             UiCommand::StartAgent => {
                 !self.dialogs.start_in_flight
                     && !self.dialogs.restart_in_flight
                     && self.state.selected_workspace().is_some()
+                    && self.state.focus == PaneFocus::Preview
             }
             UiCommand::StartParentAgent => {
                 !self.dialogs.start_in_flight
@@ -146,10 +154,13 @@ impl GroveApp {
                         .selected_active_tab()
                         .is_some_and(|tab| tab.kind != WorkspaceTabKind::Home)
             }
-            UiCommand::DeleteWorkspace => self
-                .state
-                .selected_task()
-                .is_some_and(|task| !self.task_delete_requested(task)),
+            UiCommand::DeleteWorkspace => self.state.selected_task().is_some_and(|task| {
+                self.state.focus == PaneFocus::WorkspaceList && !self.task_delete_requested(task)
+            }),
+            UiCommand::DeleteWorktree => self.state.selected_worktree().is_some_and(|worktree| {
+                self.state.focus == PaneFocus::WorkspaceList
+                    && !self.workspace_delete_requested(worktree.path.as_path())
+            }),
             UiCommand::DeleteProject => {
                 !self.dialogs.project_delete_in_flight
                     && self.state.selected_workspace().is_some_and(|workspace| {

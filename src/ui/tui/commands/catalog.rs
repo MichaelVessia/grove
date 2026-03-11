@@ -20,6 +20,7 @@ pub(super) enum UiCommand {
     ResizeSidebarNarrower,
     ResizeSidebarWider,
     NewWorkspace,
+    AddWorktree,
     EditWorkspace,
     StartAgent,
     StartParentAgent,
@@ -29,6 +30,7 @@ pub(super) enum UiCommand {
     StopAgent,
     RestartAgent,
     DeleteWorkspace,
+    DeleteWorktree,
     MergeWorkspace,
     UpdateFromBase,
     PullUpstream,
@@ -182,7 +184,7 @@ fn control_character_for(character: char) -> Option<char> {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 41] = [
+    pub(super) const ALL: [UiCommand; 43] = [
         UiCommand::ToggleFocus,
         UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
@@ -201,6 +203,7 @@ impl UiCommand {
         UiCommand::ResizeSidebarNarrower,
         UiCommand::ResizeSidebarWider,
         UiCommand::NewWorkspace,
+        UiCommand::AddWorktree,
         UiCommand::EditWorkspace,
         UiCommand::StartAgent,
         UiCommand::StartParentAgent,
@@ -210,6 +213,7 @@ impl UiCommand {
         UiCommand::StopAgent,
         UiCommand::RestartAgent,
         UiCommand::DeleteWorkspace,
+        UiCommand::DeleteWorktree,
         UiCommand::MergeWorkspace,
         UiCommand::UpdateFromBase,
         UiCommand::PullUpstream,
