@@ -179,7 +179,7 @@ impl GroveApp {
                 preview_poll_requested: false,
                 next_visual_due_at: None,
                 interactive_poll_due_at: None,
-                fast_animation_frame: 0,
+                activity_animation: AnimationClock::new(),
                 poll_generation: 0,
             },
             workspace_attention: HashMap::new(),

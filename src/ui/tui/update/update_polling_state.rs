@@ -222,7 +222,13 @@ impl GroveApp {
     }
 
     pub(super) fn advance_visual_animation(&mut self) {
-        self.polling.fast_animation_frame = self.polling.fast_animation_frame.wrapping_add(1);
+        self.polling
+            .activity_animation
+            .tick_delta(Duration::from_millis(FAST_ANIMATION_INTERVAL_MS).as_secs_f64());
+    }
+
+    pub(super) fn activity_animation_time(&self) -> f64 {
+        self.polling.activity_animation.time()
     }
 
     pub(super) fn status_is_visually_working(

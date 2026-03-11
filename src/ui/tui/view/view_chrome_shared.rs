@@ -37,10 +37,6 @@ impl GroveApp {
         }
     }
 
-    fn activity_effect_time(&self) -> f64 {
-        self.polling.fast_animation_frame as f64 * (FAST_ANIMATION_INTERVAL_MS as f64 / 1000.0)
-    }
-
     fn preview_activity_effect_gradient(&self) -> ColorGradient {
         let theme = self.active_ui_theme();
         ColorGradient::new(vec![
@@ -72,7 +68,7 @@ impl GroveApp {
                 gradient: self.preview_activity_effect_gradient(),
                 speed: 1.8,
             })
-            .time(self.activity_effect_time())
+            .time(self.activity_animation_time())
             .render(area, frame);
     }
 

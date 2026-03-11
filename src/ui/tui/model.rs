@@ -36,7 +36,7 @@ use ftui::widgets::{StatefulWidget, StatusItem, StatusLine, Widget};
 use ftui::widgets::toast::{Toast, ToastIcon, ToastPosition, ToastStyle};
 use ftui::widgets::virtualized::{Virtualized, VirtualizedListState};
 use ftui::{Cmd, Model, PackedRgba, Style};
-use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
+use ftui_extras::text_effects::{AnimationClock, ColorGradient, StyledText, TextEffect};
 use serde_json::Value;
 
 use crate::application::agent_runtime::capture::{
@@ -230,7 +230,7 @@ struct PollingState {
     preview_poll_requested: bool,
     next_visual_due_at: Option<Instant>,
     interactive_poll_due_at: Option<Instant>,
-    fast_animation_frame: usize,
+    activity_animation: AnimationClock,
     poll_generation: u64,
 }
 

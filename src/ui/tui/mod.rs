@@ -252,6 +252,7 @@ mod tests {
         Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
         PasteEvent,
     };
+    use ftui::core::geometry::Rect;
     use ftui::render::frame::HitId;
     use ftui::widgets::block::Block;
     use ftui::widgets::borders::Borders;
@@ -2662,6 +2663,75 @@ mod tests {
             let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(!sidebar_row_text.contains("run."));
         });
+    }
+
+    #[test]
+    fn activity_animation_time_starts_at_zero() {
+        let app = fixture_background_app(WorkspaceStatus::Active);
+
+        assert_eq!(app.activity_animation_time(), 0.0);
+    }
+
+    #[test]
+    fn activity_animation_time_advances_with_visual_ticks() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+
+        app.advance_visual_animation();
+
+        assert!(app.activity_animation_time() > 0.0);
+    }
+
+    #[test]
+    fn activity_animation_time_advances_monotonically() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+
+        let initial_time = app.activity_animation_time();
+        app.advance_visual_animation();
+        let first_tick_time = app.activity_animation_time();
+        app.advance_visual_animation();
+        let second_tick_time = app.activity_animation_time();
+
+        assert!(first_tick_time > initial_time);
+        assert!(second_tick_time > first_tick_time);
+    }
+
+    #[test]
+    fn activity_label_render_uses_native_animation_clock() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+
+        let mut initial_pool = GraphemePool::new();
+        let mut initial_frame = Frame::new(8, 1, &mut initial_pool);
+        app.render_activity_effect_label(
+            "abc",
+            AgentType::Codex,
+            Rect::new(0, 0, 3, 1),
+            &mut initial_frame,
+        );
+        let initial_color = initial_frame
+            .buffer
+            .get(0, 0)
+            .expect("first label cell should exist")
+            .fg;
+
+        app.polling
+            .activity_animation
+            .tick_delta(Duration::from_millis(super::FAST_ANIMATION_INTERVAL_MS).as_secs_f64());
+
+        let mut advanced_pool = GraphemePool::new();
+        let mut advanced_frame = Frame::new(8, 1, &mut advanced_pool);
+        app.render_activity_effect_label(
+            "abc",
+            AgentType::Codex,
+            Rect::new(0, 0, 3, 1),
+            &mut advanced_frame,
+        );
+        let advanced_color = advanced_frame
+            .buffer
+            .get(0, 0)
+            .expect("first label cell should exist")
+            .fg;
+
+        assert_ne!(advanced_color, initial_color);
     }
 
     #[test]
