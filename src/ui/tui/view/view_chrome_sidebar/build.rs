@@ -84,6 +84,12 @@ impl GroveApp {
             primary_style
         };
         let workspace_name = Self::workspace_display_name(workspace);
+        let workspace_label = workspace
+            .project_name
+            .as_ref()
+            .filter(|_| !workspace.is_main)
+            .map(|project_name| format!("{workspace_name} ({project_name})"))
+            .unwrap_or_else(|| workspace_name.clone());
         let branch_text = if workspace.branch != workspace_name {
             format!(" · {}", workspace.branch)
         } else {
@@ -109,7 +115,7 @@ impl GroveApp {
                 style: primary_style,
             },
             SidebarSegment {
-                text: workspace_name.clone(),
+                text: workspace_label.clone(),
                 style: workspace_label_style,
             },
         ];
@@ -203,7 +209,7 @@ impl GroveApp {
 
         let top_activity = if is_working {
             Some(SidebarActivityLabel {
-                label: workspace_name,
+                label: workspace_label,
                 agent: workspace.agent,
                 start_col: line1_prefix_width,
             })

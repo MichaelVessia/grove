@@ -2189,6 +2189,72 @@ mod tests {
     }
 
     #[test]
+    fn sidebar_shows_repo_name_for_single_repo_task() {
+        let app = fixture_app();
+        let layout = app.panes.test_rects(160, 24);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 160, 24, |frame| {
+            let Some(sidebar_row) = find_row_containing(frame, "feature-a (grove)", x_start, x_end)
+            else {
+                panic!("sidebar should show repo name next to single-repo task");
+            };
+            let sidebar_text = row_text(frame, sidebar_row, x_start, x_end);
+            assert!(
+                !sidebar_text.contains("feature-a (grove) · feature-a"),
+                "sidebar should not re-add the hidden branch suffix, got: {sidebar_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn sidebar_hides_repo_name_for_base_task_even_when_repo_differs() {
+        let mut app = fixture_app();
+        let monorepo_path = PathBuf::from("/repos/web-monorepo");
+        let derived_path = PathBuf::from("/tmp/.grove/tasks/gsops-4/web-monorepo");
+        app.state = crate::ui::state::AppState::new(vec![
+            task_with_worktrees(
+                "web-monorepo",
+                &[("monorepo", &monorepo_path, &monorepo_path, "main")],
+            ),
+            task_with_worktrees(
+                "gsops-4",
+                &[("monorepo", &monorepo_path, &derived_path, "gsops-4")],
+            ),
+        ]);
+        app.sync_workspace_tab_maps();
+        app.refresh_preview_summary();
+
+        let layout = app.panes.test_rects(160, 24);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 160, 24, |frame| {
+            let Some(base_row) = find_row_containing(frame, "web-monorepo · main", x_start, x_end)
+            else {
+                panic!("base task row should be rendered");
+            };
+            let base_text = row_text(frame, base_row, x_start, x_end);
+            assert!(
+                !base_text.contains("(monorepo)"),
+                "base task should hide repo suffix, got: {base_text}"
+            );
+
+            let Some(derived_row) =
+                find_row_containing(frame, "gsops-4 (monorepo)", x_start, x_end)
+            else {
+                panic!("non-base task should show repo suffix");
+            };
+            let derived_text = row_text(frame, derived_row, x_start, x_end);
+            assert!(
+                !derived_text.contains("gsops-4 (monorepo) · gsops-4"),
+                "non-base task should still suppress redundant branch suffix, got: {derived_text}"
+            );
+        });
+    }
+
+    #[test]
     fn sidebar_keeps_first_project_header_visible_after_tiny_initial_render() {
         let mut app = fixture_app();
         for index in 0..24usize {
