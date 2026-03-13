@@ -125,6 +125,9 @@ impl GroveApp {
         let mut skipped_invalid_metadata: u32 = 0;
         let mut skipped_workspace_not_found: u32 = 0;
         let mut skipped_insert_rejected: u32 = 0;
+        let mut workspace_not_found_details = Vec::new();
+        let mut invalid_metadata_details = Vec::new();
+        let mut insert_rejected_details = Vec::new();
 
         for row in metadata_rows.lines() {
             if trimmed_nonempty(row).is_none() {
@@ -144,6 +147,8 @@ impl GroveApp {
                                 ("row".to_string(), Value::from(row.to_string())),
                             ],
                         );
+                        invalid_metadata_details
+                            .push(Self::format_invalid_restore_detail(row, "invalid metadata"));
                         skipped_invalid_metadata += 1;
                         continue;
                     }
@@ -165,9 +170,17 @@ impl GroveApp {
                             "reason".to_string(),
                             Value::from("workspace_not_found".to_string()),
                         ),
-                        ("session".to_string(), Value::from(metadata.session_name)),
+                        (
+                            "session".to_string(),
+                            Value::from(metadata.session_name.clone()),
+                        ),
                     ],
                 );
+                workspace_not_found_details.push(format!(
+                    "workspace not found: {} -> {}",
+                    metadata.session_name,
+                    metadata.workspace_path.display()
+                ));
                 skipped_workspace_not_found += 1;
                 continue;
             };
@@ -193,9 +206,17 @@ impl GroveApp {
                             "reason".to_string(),
                             Value::from("tab_insert_rejected".to_string()),
                         ),
-                        ("session".to_string(), Value::from(metadata.session_name)),
+                        (
+                            "session".to_string(),
+                            Value::from(metadata.session_name.clone()),
+                        ),
                     ],
                 );
+                insert_rejected_details.push(format!(
+                    "insert rejected: {} -> {}",
+                    metadata.session_name,
+                    metadata.workspace_path.display()
+                ));
                 skipped_insert_rejected += 1;
                 continue;
             }
@@ -241,6 +262,13 @@ impl GroveApp {
                 skipped_insert_rejected,
             );
             self.show_warning_toast(message);
+            for detail in workspace_not_found_details
+                .into_iter()
+                .chain(invalid_metadata_details)
+                .chain(insert_rejected_details)
+            {
+                self.show_warning_toast(detail);
+            }
         }
 
         self.sync_home_tab_titles();
@@ -268,6 +296,26 @@ impl GroveApp {
             if total == 1 { "" } else { "s" },
             parts.join(", "),
         )
+    }
+
+    fn format_invalid_restore_detail(row: &str, reason: &str) -> String {
+        let mut fields = row.split('\t');
+        let session_name = fields
+            .next()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let workspace_path = fields
+            .next()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+
+        match (session_name, workspace_path) {
+            (Some(session_name), Some(workspace_path)) => {
+                format!("{reason}: {session_name} -> {workspace_path}")
+            }
+            (Some(session_name), None) => format!("{reason}: {session_name}"),
+            _ => format!("{reason}: {row}"),
+        }
     }
 
     pub(super) fn selected_workspace_tabs_state(&self) -> Option<&WorkspaceTabsState> {

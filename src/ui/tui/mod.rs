@@ -1961,29 +1961,47 @@ mod tests {
             },
         );
 
-        let toast = app
-            .notifications
-            .visible()
-            .last()
+        let visible_toasts = app.notifications.visible();
+        let toast = visible_toasts
+            .first()
             .expect("warning toast should be shown when sessions are skipped");
+        let messages = visible_toasts
+            .iter()
+            .map(|notification| notification.content.message.as_str())
+            .collect::<Vec<&str>>();
         assert!(
             matches!(toast.config.style_variant, ToastStyle::Warning),
             "toast should use warning style"
         );
         assert!(
-            toast.content.message.contains("skipped during restore"),
-            "toast message should mention skipped sessions, got: {}",
-            toast.content.message
+            messages
+                .iter()
+                .any(|message| message.contains("skipped during restore")),
+            "one toast should mention skipped sessions, got: {:?}",
+            messages
         );
         assert!(
-            toast.content.message.contains("workspace not found"),
-            "toast message should mention workspace not found reason, got: {}",
-            toast.content.message
+            messages
+                .iter()
+                .any(|message| message.contains("workspace not found")),
+            "one toast should mention workspace not found reason, got: {:?}",
+            messages
         );
         assert!(
-            toast.content.message.contains("invalid metadata"),
-            "toast message should mention invalid metadata reason, got: {}",
-            toast.content.message
+            messages
+                .iter()
+                .any(|message| message.contains("invalid metadata")),
+            "one toast should mention invalid metadata reason, got: {:?}",
+            messages
+        );
+        assert!(
+            messages.iter().any(|message| {
+                message.contains(
+                    format!("{}-agent-1 -> /repos/unknown", feature_workspace_session(),).as_str(),
+                )
+            }),
+            "one toast should include skipped session/path detail, got: {:?}",
+            messages
         );
     }
 
@@ -11813,6 +11831,79 @@ mod tests {
                     .and_then(|tabs| tabs.tab_by_id(tab_id))
                     .map(|tab| tab.state);
                 assert_eq!(tab_state, Some(WorkspaceTabRuntimeState::Stopped));
+            }
+
+            #[test]
+            fn mismatched_missing_agent_tab_capture_still_clears_stale_tab() {
+                let mut app = fixture_app();
+                select_workspace(&mut app, 1);
+                app.sync_workspace_tab_maps();
+                let workspace_path = feature_workspace_path();
+                let stale_session = feature_agent_tab_session(2);
+                let active_session = feature_agent_tab_session(3);
+                let (stale_tab_id, active_tab_id) = app
+                    .workspace_tabs
+                    .get_mut(workspace_path.as_path())
+                    .map(|tabs| {
+                        let stale_tab_id = tabs.insert_tab_adjacent(WorkspaceTab {
+                            id: 0,
+                            kind: WorkspaceTabKind::Agent,
+                            title: "Codex 2".to_string(),
+                            session_name: Some(stale_session.clone()),
+                            agent_type: Some(AgentType::Codex),
+                            state: WorkspaceTabRuntimeState::Running,
+                        });
+                        let active_tab_id = tabs.insert_tab_adjacent(WorkspaceTab {
+                            id: 0,
+                            kind: WorkspaceTabKind::Agent,
+                            title: "Codex 3".to_string(),
+                            session_name: Some(active_session.clone()),
+                            agent_type: Some(AgentType::Codex),
+                            state: WorkspaceTabRuntimeState::Running,
+                        });
+                        (stale_tab_id, active_tab_id)
+                    })
+                    .expect("workspace tabs should exist");
+                if let Some(tabs) = app.workspace_tabs.get_mut(workspace_path.as_path()) {
+                    tabs.active_tab_id = active_tab_id;
+                }
+                app.preview_tab = PreviewTab::Agent;
+                app.session.agent_sessions.mark_ready(stale_session.clone());
+                app.session
+                    .agent_sessions
+                    .mark_ready(active_session.clone());
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 1,
+                        live_capture: Some(LivePreviewCapture {
+                            session: stale_session.clone(),
+                            scrollback_lines: 600,
+                            include_escape_sequences: false,
+                            capture_ms: 2,
+                            total_ms: 2,
+                            result: Err("can't find session".to_string()),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                assert!(!app.session.agent_sessions.is_ready(&stale_session));
+                assert!(app.session.agent_sessions.is_ready(&active_session));
+                let stale_state = app
+                    .workspace_tabs
+                    .get(workspace_path.as_path())
+                    .and_then(|tabs| tabs.tab_by_id(stale_tab_id))
+                    .map(|tab| tab.state);
+                assert_eq!(stale_state, Some(WorkspaceTabRuntimeState::Stopped));
+                let active_state = app
+                    .workspace_tabs
+                    .get(workspace_path.as_path())
+                    .and_then(|tabs| tabs.tab_by_id(active_tab_id))
+                    .map(|tab| tab.state);
+                assert_eq!(active_state, Some(WorkspaceTabRuntimeState::Running));
             }
 
             #[test]
