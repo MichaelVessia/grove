@@ -133,16 +133,20 @@ impl GroveApp {
             let metadata = match Self::parse_tmux_tab_metadata_row(row) {
                 Ok(parsed) => parsed,
                 Err(reason) => {
-                    self.log_event_with_fields(
-                        "tab_restore",
-                        "metadata_ignored",
-                        [
-                            ("reason".to_string(), Value::from(reason)),
-                            ("row".to_string(), Value::from(row.to_string())),
-                        ],
-                    );
-                    skipped_invalid_metadata += 1;
-                    continue;
+                    if let Some(recovered) = self.recover_legacy_git_tmux_tab_metadata_row(row) {
+                        recovered
+                    } else {
+                        self.log_event_with_fields(
+                            "tab_restore",
+                            "metadata_ignored",
+                            [
+                                ("reason".to_string(), Value::from(reason)),
+                                ("row".to_string(), Value::from(row.to_string())),
+                            ],
+                        );
+                        skipped_invalid_metadata += 1;
+                        continue;
+                    }
                 }
             };
 
@@ -519,6 +523,51 @@ impl GroveApp {
             kind,
             title,
             agent_type,
+            tab_id,
+        })
+    }
+
+    fn recover_legacy_git_tmux_tab_metadata_row(
+        &self,
+        row: &str,
+    ) -> Option<RestoredTmuxTabMetadata> {
+        let segments = row.split('\t').collect::<Vec<&str>>();
+        if segments.len() != 6 {
+            return None;
+        }
+
+        let session_name = trimmed_nonempty(segments[0])?;
+        if !segments[1..]
+            .iter()
+            .all(|segment| segment.trim().is_empty())
+        {
+            return None;
+        }
+
+        let workspace = self
+            .state
+            .workspaces
+            .iter()
+            .find(|workspace| git_session_name_for_workspace(workspace) == session_name)?;
+        let tab_id = self
+            .workspace_tabs
+            .get(workspace.path.as_path())
+            .map(|tabs| {
+                tabs.tabs
+                    .iter()
+                    .map(|tab| tab.id)
+                    .max()
+                    .unwrap_or(0)
+                    .saturating_add(1)
+            })
+            .unwrap_or(1);
+
+        Some(RestoredTmuxTabMetadata {
+            session_name,
+            workspace_path: workspace.path.clone(),
+            kind: WorkspaceTabKind::Git,
+            title: "Git".to_string(),
+            agent_type: None,
             tab_id,
         })
     }

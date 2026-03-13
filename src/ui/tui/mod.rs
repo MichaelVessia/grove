@@ -604,6 +604,10 @@ mod tests {
         format!("{}-git", main_workspace_session())
     }
 
+    fn feature_git_session() -> String {
+        format!("{}-git", feature_workspace_session())
+    }
+
     fn feature_shell_session() -> String {
         format!("{}-shell", feature_workspace_session())
     }
@@ -2007,6 +2011,47 @@ mod tests {
         assert!(
             app.notifications.visible().is_empty(),
             "no toast should be shown when all sessions restore successfully"
+        );
+    }
+
+    #[test]
+    fn restore_recovers_legacy_git_session_without_metadata() {
+        let rows = format!("{}\t\t\t\t\t\n", feature_git_session());
+        let app = GroveApp::from_task_state(
+            "grove".to_string(),
+            crate::ui::state::AppState::new(fixture_tasks(WorkspaceStatus::Idle)),
+            DiscoveryState::Ready,
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(RestoreMetadataTmuxInput { rows }),
+                clipboard: test_clipboard(),
+                config_path: unique_config_path("restore-legacy-git-session"),
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+
+        assert!(
+            app.notifications.visible().is_empty(),
+            "legacy git sessions should restore without warnings"
+        );
+
+        let git_tab = app
+            .workspace_tabs
+            .get(feature_workspace_path().as_path())
+            .and_then(|tabs| tabs.find_kind(WorkspaceTabKind::Git))
+            .expect("git tab should be restored");
+        assert_eq!(git_tab.title, "Git");
+        assert_eq!(
+            git_tab.session_name.as_deref(),
+            Some(feature_git_session().as_str())
+        );
+        assert_eq!(git_tab.state, WorkspaceTabRuntimeState::Running);
+        assert!(
+            app.session
+                .lazygit_sessions
+                .is_ready(feature_git_session().as_str()),
+            "restored git session should be marked ready"
         );
     }
 
