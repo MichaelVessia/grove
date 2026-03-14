@@ -217,7 +217,8 @@ struct SessionState {
 struct PollingState {
     output_changing: bool,
     agent_output_changing: bool,
-    agent_activity_frames: VecDeque<bool>,
+    agent_working_until: Option<Instant>,
+    agent_idle_polls_since_output: u8,
     workspace_status_digests: HashMap<PathBuf, OutputDigest>,
     workspace_output_changing: HashMap<PathBuf, bool>,
     next_tick_due_at: Option<Instant>,

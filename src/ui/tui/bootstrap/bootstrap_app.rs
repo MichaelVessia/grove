@@ -168,7 +168,8 @@ impl GroveApp {
             polling: PollingState {
                 output_changing: false,
                 agent_output_changing: false,
-                agent_activity_frames: VecDeque::with_capacity(AGENT_ACTIVITY_WINDOW_FRAMES),
+                agent_working_until: None,
+                agent_idle_polls_since_output: 0,
                 workspace_status_digests: HashMap::new(),
                 workspace_output_changing: HashMap::new(),
                 next_tick_due_at: None,

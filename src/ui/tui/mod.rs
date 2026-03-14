@@ -3001,10 +3001,8 @@ mod tests {
         select_workspace(&mut app, 1);
         app.polling.output_changing = false;
         app.polling.agent_output_changing = false;
-        app.push_agent_activity_frame(true);
-        for _ in 0..super::AGENT_ACTIVITY_WINDOW_FRAMES {
-            app.push_agent_activity_frame(false);
-        }
+        app.polling.agent_working_until = Some(Instant::now() - Duration::from_millis(1));
+        app.polling.agent_idle_polls_since_output = super::WORKING_IDLE_POLLS_TO_CLEAR;
         assert!(
             !app.status_is_visually_working(Some(app.state.workspaces[1].path.as_path()), true)
         );
@@ -3398,6 +3396,25 @@ mod tests {
                 "status row should show compact context + key hints, got: {status_text}"
             );
         });
+    }
+
+    #[test]
+    fn selected_workspace_working_hold_requires_two_idle_polls_after_expiry() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 1);
+        app.polling.output_changing = false;
+        app.polling.agent_output_changing = false;
+        app.polling.agent_working_until = Some(Instant::now() - Duration::from_millis(1));
+        app.polling.agent_idle_polls_since_output = super::WORKING_IDLE_POLLS_TO_CLEAR - 1;
+
+        assert!(app.status_is_visually_working(Some(app.state.workspaces[1].path.as_path()), true));
+
+        app.push_agent_activity_frame(false);
+
+        assert!(
+            !app.status_is_visually_working(Some(app.state.workspaces[1].path.as_path()), true)
+        );
     }
 
     #[test]

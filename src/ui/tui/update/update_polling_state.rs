@@ -167,7 +167,8 @@ impl GroveApp {
     pub(super) fn clear_agent_activity_tracking(&mut self) {
         self.polling.output_changing = false;
         self.polling.agent_output_changing = false;
-        self.polling.agent_activity_frames.clear();
+        self.polling.agent_working_until = None;
+        self.polling.agent_idle_polls_since_output = 0;
     }
 
     pub(super) fn clear_status_tracking_for_workspace_path(&mut self, workspace_path: &Path) {
@@ -207,14 +208,29 @@ impl GroveApp {
     }
 
     pub(super) fn push_agent_activity_frame(&mut self, changed: bool) {
-        if self.polling.agent_activity_frames.len() >= AGENT_ACTIVITY_WINDOW_FRAMES {
-            self.polling.agent_activity_frames.pop_front();
+        if changed {
+            self.polling.agent_working_until =
+                Some(Instant::now() + Duration::from_millis(WORKING_STATUS_HOLD_MS));
+            self.polling.agent_idle_polls_since_output = 0;
+            return;
         }
-        self.polling.agent_activity_frames.push_back(changed);
+
+        if self.polling.agent_working_until.is_some() {
+            self.polling.agent_idle_polls_since_output =
+                self.polling.agent_idle_polls_since_output.saturating_add(1);
+        }
     }
 
     pub(super) fn has_recent_agent_activity(&self) -> bool {
-        self.polling.agent_activity_frames.contains(&true)
+        let Some(working_until) = self.polling.agent_working_until else {
+            return false;
+        };
+
+        if Instant::now() < working_until {
+            return true;
+        }
+
+        self.polling.agent_idle_polls_since_output < WORKING_IDLE_POLLS_TO_CLEAR
     }
 
     fn visual_tick_interval(&self) -> Option<Duration> {
