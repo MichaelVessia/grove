@@ -72,6 +72,7 @@ use crate::application::agent_runtime::{
     execute_task_launch_request_with_result_for_mode, latest_assistant_attention_marker,
     launch_request_for_workspace, shell_launch_request_for_workspace,
 };
+use crate::application::agent_runtime::status::detect_waiting_prompt;
 use crate::application::workspace_lifecycle::{
     CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner, DeleteWorkspaceRequest,
     MergeWorkspaceRequest, RuntimeSessionTerminator, UpdateWorkspaceFromBaseRequest,
@@ -220,6 +221,7 @@ struct PollingState {
     agent_activity_frames: VecDeque<bool>,
     workspace_status_digests: HashMap<PathBuf, OutputDigest>,
     workspace_output_changing: HashMap<PathBuf, bool>,
+    workspace_waiting_snippets: HashMap<PathBuf, String>,
     next_tick_due_at: Option<Instant>,
     next_tick_interval_ms: Option<u64>,
     next_poll_due_at: Option<Instant>,

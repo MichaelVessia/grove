@@ -203,6 +203,11 @@ impl GroveApp {
                     status_detect_ms = Self::duration_millis(
                         Instant::now().saturating_duration_since(status_detect_started_at),
                     );
+                    self.sync_sidebar_waiting_snippet(
+                        workspace_path.as_path(),
+                        resolved_status,
+                        cleaned_output.as_str(),
+                    );
                     let workspace = &mut self.state.workspaces[index];
                     workspace.status = resolved_status;
                     workspace.is_orphaned = false;

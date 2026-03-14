@@ -72,16 +72,6 @@ impl GroveApp {
             .render(area, frame);
     }
 
-    pub(super) fn render_activity_effect_label(
-        &self,
-        label: &str,
-        _agent: AgentType,
-        area: Rect,
-        frame: &mut Frame,
-    ) {
-        self.render_accent_activity_effect_label(label, area, frame);
-    }
-
     pub(super) fn relative_age_label(&self, unix_secs: Option<i64>) -> String {
         let Some(unix_secs) = unix_secs else {
             return String::new();

@@ -2527,8 +2527,8 @@ mod tests {
                 "row should not duplicate workspace and branch when they match, got: {rendered_row_text}"
             );
             assert!(
-                metadata_row_text.contains("running"),
-                "metadata row should include running count, got: {metadata_row_text}"
+                !metadata_row_text.contains("running"),
+                "metadata row should not include running count, got: {metadata_row_text}"
             );
         });
     }
@@ -2918,17 +2918,12 @@ mod tests {
     }
 
     #[test]
-    fn activity_label_render_uses_native_animation_clock() {
+    fn preview_activity_label_render_uses_native_animation_clock() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
 
         let mut initial_pool = GraphemePool::new();
         let mut initial_frame = Frame::new(8, 1, &mut initial_pool);
-        app.render_activity_effect_label(
-            "abc",
-            AgentType::Codex,
-            Rect::new(0, 0, 3, 1),
-            &mut initial_frame,
-        );
+        app.render_preview_activity_effect_label("abc", Rect::new(0, 0, 3, 1), &mut initial_frame);
         let initial_color = initial_frame
             .buffer
             .get(0, 0)
@@ -2941,12 +2936,7 @@ mod tests {
 
         let mut advanced_pool = GraphemePool::new();
         let mut advanced_frame = Frame::new(8, 1, &mut advanced_pool);
-        app.render_activity_effect_label(
-            "abc",
-            AgentType::Codex,
-            Rect::new(0, 0, 3, 1),
-            &mut advanced_frame,
-        );
+        app.render_preview_activity_effect_label("abc", Rect::new(0, 0, 3, 1), &mut advanced_frame);
         let advanced_color = advanced_frame
             .buffer
             .get(0, 0)
@@ -2954,6 +2944,64 @@ mod tests {
             .fg;
 
         assert_ne!(advanced_color, initial_color);
+    }
+
+    #[test]
+    fn sidebar_working_row_colors_do_not_change_across_visual_ticks() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 1);
+        app.polling.output_changing = true;
+        app.polling.agent_output_changing = true;
+
+        let layout = app.panes.test_rects(120, 24);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        let mut initial_color = None;
+        with_rendered_frame(&app, 120, 24, |frame| {
+            let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let metadata_row = selected_row.saturating_add(1);
+            let Some(color_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, 'W')
+            else {
+                panic!("working workspace should render WORKING label");
+            };
+            initial_color = Some(
+                frame
+                    .buffer
+                    .get(color_col, metadata_row)
+                    .expect("working label cell should exist")
+                    .fg,
+            );
+        });
+
+        app.advance_visual_animation();
+
+        let mut advanced_color = None;
+        with_rendered_frame(&app, 120, 24, |frame| {
+            let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let metadata_row = selected_row.saturating_add(1);
+            let Some(color_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, 'W')
+            else {
+                panic!("working workspace should render WORKING label");
+            };
+            advanced_color = Some(
+                frame
+                    .buffer
+                    .get(color_col, metadata_row)
+                    .expect("working label cell should exist")
+                    .fg,
+            );
+        });
+
+        assert_eq!(
+            advanced_color, initial_color,
+            "sidebar working row colors should stay static across visual ticks"
+        );
     }
 
     #[test]
@@ -3016,6 +3064,92 @@ mod tests {
     }
 
     #[test]
+    fn waiting_workspace_row_shows_waiting_snippet_and_suppresses_prs() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
+        select_workspace(&mut app, 1);
+        app.sidebar_width_pct = 80;
+        app.set_sidebar_waiting_snippet(
+            feature_workspace_path().as_path(),
+            "approve plan changes".to_string(),
+        );
+        app.state.workspaces[1].pull_requests = vec![PullRequest {
+            number: 101,
+            url: "https://github.com/acme/grove/pull/101".to_string(),
+            status: PullRequestStatus::Open,
+        }];
+
+        let layout = app.panes.test_rects(160, 24);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 160, 24, |frame| {
+            let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let metadata_row_text = row_text(frame, selected_row.saturating_add(1), x_start, x_end);
+            assert!(
+                metadata_row_text.contains("WAITING"),
+                "waiting workspace should render WAITING label, got: {metadata_row_text}"
+            );
+            assert!(
+                metadata_row_text.contains("approve plan changes"),
+                "waiting workspace should render waiting snippet, got: {metadata_row_text}"
+            );
+            assert!(
+                !metadata_row_text.contains("PRs:"),
+                "waiting workspace should suppress PR metadata, got: {metadata_row_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn waiting_workspace_row_shows_working_while_local_input_is_pending() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
+        select_workspace(&mut app, 1);
+        app.sidebar_width_pct = 80;
+        app.set_sidebar_waiting_snippet(
+            feature_workspace_path().as_path(),
+            "approve plan changes".to_string(),
+        );
+        app.session.interactive = Some(InteractiveState::new(
+            "%1".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            20,
+            80,
+        ));
+        app.track_pending_interactive_input(
+            super::InputTraceContext {
+                seq: 1,
+                received_at: Instant::now(),
+            },
+            feature_workspace_session().as_str(),
+            Instant::now(),
+        );
+
+        let layout = app.panes.test_rects(160, 24);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 160, 24, |frame| {
+            let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let metadata_row_text = row_text(frame, selected_row.saturating_add(1), x_start, x_end);
+            assert!(
+                !metadata_row_text.contains("WAITING"),
+                "pending local input should suppress WAITING, got: {metadata_row_text}"
+            );
+            assert!(
+                metadata_row_text.contains("WORKING"),
+                "pending local input should show WORKING, got: {metadata_row_text}"
+            );
+        });
+    }
+
+    #[test]
     fn working_workspace_row_shows_attention_indicator_when_present() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -3037,6 +3171,30 @@ mod tests {
             assert!(
                 sidebar_row_text.contains(" ! "),
                 "working workspace should show attention indicator, got: {sidebar_row_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn working_workspace_row_shows_static_working_label() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 1);
+        app.polling.output_changing = true;
+        app.polling.agent_output_changing = true;
+
+        let layout = app.panes.test_rects(120, 24);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 120, 24, |frame| {
+            let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let metadata_row_text = row_text(frame, selected_row.saturating_add(1), x_start, x_end);
+            assert!(
+                metadata_row_text.contains("WORKING"),
+                "working workspace should render WORKING label, got: {metadata_row_text}"
             );
         });
     }
@@ -12111,10 +12269,60 @@ mod tests {
                         .map(|workspace| workspace.status),
                     Some(WorkspaceStatus::Waiting)
                 );
+                assert_eq!(
+                    app.sidebar_waiting_snippet(feature_workspace_path().as_path()),
+                    Some("Approve command? [y/n]")
+                );
                 assert!(
                     !app.workspace_attention
                         .contains_key(&feature_workspace_path())
                 );
+            }
+
+            #[test]
+            fn waiting_snippet_round_trips_by_workspace_path() {
+                let mut app = fixture_background_app(WorkspaceStatus::Idle);
+                let workspace_path = feature_workspace_path();
+
+                app.set_sidebar_waiting_snippet(
+                    workspace_path.as_path(),
+                    "approve command".to_string(),
+                );
+
+                assert_eq!(
+                    app.sidebar_waiting_snippet(workspace_path.as_path()),
+                    Some("approve command")
+                );
+            }
+
+            #[test]
+            fn clear_status_tracking_for_workspace_path_clears_waiting_snippet() {
+                let mut app = fixture_background_app(WorkspaceStatus::Idle);
+                let workspace_path = feature_workspace_path();
+
+                app.set_sidebar_waiting_snippet(
+                    workspace_path.as_path(),
+                    "approve command".to_string(),
+                );
+
+                app.clear_status_tracking_for_workspace_path(workspace_path.as_path());
+
+                assert_eq!(app.sidebar_waiting_snippet(workspace_path.as_path()), None);
+            }
+
+            #[test]
+            fn clear_status_tracking_clears_waiting_snippets() {
+                let mut app = fixture_background_app(WorkspaceStatus::Idle);
+                let base_path = main_workspace_path();
+                let feature_path = feature_workspace_path();
+
+                app.set_sidebar_waiting_snippet(base_path.as_path(), "base".to_string());
+                app.set_sidebar_waiting_snippet(feature_path.as_path(), "feature".to_string());
+
+                app.clear_status_tracking();
+
+                assert_eq!(app.sidebar_waiting_snippet(base_path.as_path()), None);
+                assert_eq!(app.sidebar_waiting_snippet(feature_path.as_path()), None);
             }
 
             #[test]
@@ -12210,6 +12418,10 @@ mod tests {
                 );
 
                 assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Active);
+                assert_eq!(
+                    app.sidebar_waiting_snippet(feature_workspace_path().as_path()),
+                    None
+                );
                 assert!(
                     !app.workspace_attention
                         .contains_key(&feature_workspace_path())
@@ -12314,6 +12526,10 @@ mod tests {
 
                 assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Waiting);
                 assert!(!app.state.workspaces[1].is_orphaned);
+                assert_eq!(
+                    app.sidebar_waiting_snippet(feature_workspace_path().as_path()),
+                    Some("? for shortcuts")
+                );
             }
 
             #[test]
@@ -12335,6 +12551,10 @@ mod tests {
                 select_workspace(&mut app, 0);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.state.workspaces[1].is_orphaned = false;
+                app.set_sidebar_waiting_snippet(
+                    feature_workspace_path().as_path(),
+                    "approve command".to_string(),
+                );
 
                 ftui::Model::update(
                     &mut app,
@@ -12358,6 +12578,10 @@ mod tests {
 
                 assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Idle);
                 assert!(app.state.workspaces[1].is_orphaned);
+                assert_eq!(
+                    app.sidebar_waiting_snippet(feature_workspace_path().as_path()),
+                    None
+                );
             }
 
             #[test]
@@ -12446,6 +12670,10 @@ mod tests {
                     workspace.status = WorkspaceStatus::Active;
                     workspace.is_orphaned = false;
                 }
+                app.set_sidebar_waiting_snippet(
+                    feature_workspace_path().as_path(),
+                    "approve command".to_string(),
+                );
 
                 ftui::Model::update(
                     &mut app,
@@ -12478,6 +12706,10 @@ mod tests {
                         .selected_workspace()
                         .map(|workspace| workspace.is_orphaned),
                     Some(true)
+                );
+                assert_eq!(
+                    app.sidebar_waiting_snippet(feature_workspace_path().as_path()),
+                    None
                 );
                 assert!(app.session.interactive.is_none());
             }

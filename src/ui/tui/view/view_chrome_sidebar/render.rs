@@ -71,58 +71,5 @@ impl GroveApp {
             .highlight_style(Style::new());
         ftui::widgets::StatefulWidget::render(&list, inner, frame, &mut *list_state);
 
-        let scroll_offset = list_state.scroll_offset();
-        let visible_count = list_state.visible_count();
-        drop(list_state);
-
-        let row_width = if lines.len() > visible_count {
-            inner.width.saturating_sub(1)
-        } else {
-            inner.width
-        };
-        let content_x = inner.x.saturating_add(2);
-        let content_width = row_width.saturating_sub(4);
-        if content_width == 0 {
-            return;
-        }
-        let max_x = content_x.saturating_add(content_width);
-        let visible_end = scroll_offset
-            .saturating_add(usize::from(inner.height))
-            .min(lines.len());
-
-        for (row_index, line) in lines
-            .iter()
-            .enumerate()
-            .take(visible_end)
-            .skip(scroll_offset)
-        {
-            let Some(activity) = line.activity() else {
-                continue;
-            };
-            let Some(y_offset) = u16::try_from(row_index.saturating_sub(scroll_offset)).ok() else {
-                continue;
-            };
-            let y = inner.y.saturating_add(y_offset);
-            if y >= inner.bottom() {
-                continue;
-            }
-            let Some(start_col) = u16::try_from(activity.start_col).ok() else {
-                continue;
-            };
-            let x = content_x.saturating_add(start_col);
-            if x >= max_x {
-                continue;
-            }
-            let width = max_x.saturating_sub(x);
-            if width == 0 {
-                continue;
-            }
-            self.render_activity_effect_label(
-                activity.label.as_str(),
-                activity.agent,
-                Rect::new(x, y, width, 1),
-                frame,
-            );
-        }
     }
 }

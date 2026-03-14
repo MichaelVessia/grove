@@ -171,6 +171,7 @@ impl GroveApp {
                 agent_activity_frames: VecDeque::with_capacity(AGENT_ACTIVITY_WINDOW_FRAMES),
                 workspace_status_digests: HashMap::new(),
                 workspace_output_changing: HashMap::new(),
+                workspace_waiting_snippets: HashMap::new(),
                 next_tick_due_at: None,
                 next_tick_interval_ms: None,
                 next_poll_due_at: None,

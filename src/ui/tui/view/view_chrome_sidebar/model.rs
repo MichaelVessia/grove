@@ -12,13 +12,6 @@ struct SidebarPrHit {
 }
 
 #[derive(Debug, Clone)]
-struct SidebarActivityLabel {
-    label: String,
-    agent: AgentType,
-    start_col: usize,
-}
-
-#[derive(Debug, Clone)]
 enum SidebarLineKind {
     Project,
     Workspace {
@@ -26,7 +19,6 @@ enum SidebarLineKind {
         border_style: Style,
         row_style: Style,
         pr_hits: Vec<SidebarPrHit>,
-        activity: Option<SidebarActivityLabel>,
     },
 }
 
@@ -50,7 +42,6 @@ impl SidebarListLine {
         border_style: Style,
         row_style: Style,
         pr_hits: Vec<SidebarPrHit>,
-        activity: Option<SidebarActivityLabel>,
     ) -> Self {
         Self {
             segments,
@@ -59,7 +50,6 @@ impl SidebarListLine {
                 border_style,
                 row_style,
                 pr_hits,
-                activity,
             },
         }
     }
@@ -73,12 +63,6 @@ impl SidebarListLine {
         }
     }
 
-    fn activity(&self) -> Option<&SidebarActivityLabel> {
-        match &self.kind {
-            SidebarLineKind::Project => None,
-            SidebarLineKind::Workspace { activity, .. } => activity.as_ref(),
-        }
-    }
 }
 
 impl RenderItem for SidebarListLine {

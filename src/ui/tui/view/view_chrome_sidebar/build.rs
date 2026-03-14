@@ -98,9 +98,6 @@ impl GroveApp {
 
         let line1_prefix = "   ";
         let line1_attention_gap = " ";
-        let line1_prefix_width = text_display_width(line1_prefix)
-            .saturating_add(text_display_width(attention_symbol))
-            .saturating_add(text_display_width(line1_attention_gap));
         let mut line1_segments = vec![
             SidebarSegment {
                 text: line1_prefix.to_string(),
@@ -128,39 +125,47 @@ impl GroveApp {
 
         let line2_prefix = "     ";
         let line2_prefix_width = text_display_width(line2_prefix);
-        let running_agent_tabs = self
-            .workspace_tabs
-            .get(workspace.path.as_path())
-            .map(|tabs| {
-                tabs.tabs
-                    .iter()
-                    .filter(|tab| {
-                        tab.kind == WorkspaceTabKind::Agent
-                            && tab.state == WorkspaceTabRuntimeState::Running
-                    })
-                    .count()
-            })
-            .unwrap_or(0);
-        let running_label = format!("{running_agent_tabs} running");
-        let mut line2_segments = vec![
-            SidebarSegment {
-                text: line2_prefix.to_string(),
-                style: secondary_style,
-            },
-            SidebarSegment {
-                text: running_label.clone(),
-                style: secondary_style.bold(),
-            },
-        ];
-        let mut line2_width =
-            line2_prefix_width.saturating_add(text_display_width(&running_label));
+        let mut line2_segments = vec![SidebarSegment {
+            text: line2_prefix.to_string(),
+            style: secondary_style,
+        }];
+        let mut line2_width = line2_prefix_width;
         let mut pr_hits = Vec::new();
-        if !workspace.is_main && !workspace.pull_requests.is_empty() {
+        let waiting_snippet = self.sidebar_waiting_snippet(workspace.path.as_path());
+        let local_input_pending =
+            self.workspace_has_pending_local_input(workspace.path.as_path(), is_selected);
+        if workspace.status == WorkspaceStatus::Waiting && !local_input_pending {
             line2_segments.push(SidebarSegment {
-                text: " · PRs:".to_string(),
+                text: "WAITING".to_string(),
+                style: secondary_style.fg(theme.yellow).bold(),
+            });
+            if let Some(snippet) = waiting_snippet {
+                line2_segments.push(SidebarSegment {
+                    text: format!(" · {snippet}"),
+                    style: secondary_style,
+                });
+            }
+        } else if is_working || local_input_pending {
+            line2_segments.push(SidebarSegment {
+                text: "WORKING".to_string(),
+                style: secondary_style.fg(self.workspace_agent_color(workspace.agent)).bold(),
+            });
+        } else if self.dialogs.delete_requested_workspaces.contains(&workspace.path) {
+            line2_segments.push(SidebarSegment {
+                text: "Deleting...".to_string(),
+                style: secondary_style.fg(theme.peach).bold(),
+            });
+        } else if workspace.is_orphaned {
+            line2_segments.push(SidebarSegment {
+                text: "session ended".to_string(),
+                style: secondary_style.fg(theme.peach),
+            });
+        } else if !workspace.is_main && !workspace.pull_requests.is_empty() {
+            line2_segments.push(SidebarSegment {
+                text: "PRs:".to_string(),
                 style: secondary_style,
             });
-            line2_width = line2_width.saturating_add(text_display_width(" · PRs:"));
+            line2_width = line2_width.saturating_add(text_display_width("PRs:"));
             for (pull_request_index, pull_request) in workspace.pull_requests.iter().enumerate() {
                 line2_segments.push(SidebarSegment {
                     text: " ".to_string(),
@@ -194,37 +199,6 @@ impl GroveApp {
                 line2_width = line2_width.saturating_add(token_width);
             }
         }
-        if self.dialogs.delete_requested_workspaces.contains(&workspace.path) {
-            line2_segments.push(SidebarSegment {
-                text: " · Deleting...".to_string(),
-                style: secondary_style.fg(theme.peach).bold(),
-            });
-        }
-        if workspace.is_orphaned {
-            line2_segments.push(SidebarSegment {
-                text: " · session ended".to_string(),
-                style: secondary_style.fg(theme.peach),
-            });
-        }
-
-        let top_activity = if is_working {
-            Some(SidebarActivityLabel {
-                label: workspace_label,
-                agent: workspace.agent,
-                start_col: line1_prefix_width,
-            })
-        } else {
-            None
-        };
-        let meta_activity = if is_working {
-            Some(SidebarActivityLabel {
-                label: running_label,
-                agent: workspace.agent,
-                start_col: line2_prefix_width,
-            })
-        } else {
-            None
-        };
 
         lines.push(SidebarListLine::workspace(
             line1_segments,
@@ -232,7 +206,6 @@ impl GroveApp {
             border_style,
             row_style,
             Vec::new(),
-            top_activity,
         ));
         lines.push(SidebarListLine::workspace(
             line2_segments,
@@ -240,7 +213,6 @@ impl GroveApp {
             border_style,
             row_style,
             pr_hits,
-            meta_activity,
         ));
         lines.push(SidebarListLine::workspace(
             Vec::new(),
@@ -248,7 +220,6 @@ impl GroveApp {
             border_style,
             row_style,
             Vec::new(),
-            None,
         ));
     }
 

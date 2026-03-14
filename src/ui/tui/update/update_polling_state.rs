@@ -175,11 +175,50 @@ impl GroveApp {
         self.polling
             .workspace_output_changing
             .remove(workspace_path);
+        self.polling
+            .workspace_waiting_snippets
+            .remove(workspace_path);
     }
 
     pub(super) fn clear_status_tracking(&mut self) {
         self.polling.workspace_status_digests.clear();
         self.polling.workspace_output_changing.clear();
+        self.polling.workspace_waiting_snippets.clear();
+    }
+
+    pub(super) fn set_sidebar_waiting_snippet(&mut self, workspace_path: &Path, snippet: String) {
+        self.polling
+            .workspace_waiting_snippets
+            .insert(workspace_path.to_path_buf(), snippet);
+    }
+
+    pub(super) fn sidebar_waiting_snippet(&self, workspace_path: &Path) -> Option<&str> {
+        self.polling
+            .workspace_waiting_snippets
+            .get(workspace_path)
+            .map(String::as_str)
+    }
+
+    pub(super) fn sync_sidebar_waiting_snippet(
+        &mut self,
+        workspace_path: &Path,
+        status: WorkspaceStatus,
+        cleaned_output: &str,
+    ) {
+        if status == WorkspaceStatus::Waiting {
+            if let Some(snippet) = detect_waiting_prompt(cleaned_output) {
+                self.set_sidebar_waiting_snippet(workspace_path, snippet);
+            } else {
+                self.polling
+                    .workspace_waiting_snippets
+                    .remove(workspace_path);
+            }
+            return;
+        }
+
+        self.polling
+            .workspace_waiting_snippets
+            .remove(workspace_path);
     }
 
     pub(super) fn capture_changed_cleaned_for_workspace(
@@ -215,6 +254,50 @@ impl GroveApp {
 
     pub(super) fn has_recent_agent_activity(&self) -> bool {
         self.polling.agent_activity_frames.contains(&true)
+    }
+
+    pub(super) fn workspace_has_pending_local_input(
+        &self,
+        workspace_path: &Path,
+        is_selected: bool,
+    ) -> bool {
+        if !is_selected {
+            return false;
+        }
+
+        let Some(interactive) = self.session.interactive.as_ref() else {
+            return false;
+        };
+        let Some(interactive_workspace_path) =
+            self.attention_workspace_path_for_session(interactive.target_session.as_str())
+        else {
+            return false;
+        };
+        if interactive_workspace_path != workspace_path {
+            return false;
+        }
+
+        if Instant::now().saturating_duration_since(interactive.last_key_time)
+            < Duration::from_millis(LOCAL_TYPING_SUPPRESS_MS)
+        {
+            return true;
+        }
+        if self.session.interactive_send_in_flight {
+            return true;
+        }
+        if self
+            .session
+            .pending_interactive_sends
+            .iter()
+            .any(|send| send.target_session == interactive.target_session)
+        {
+            return true;
+        }
+
+        self.session
+            .pending_interactive_inputs
+            .iter()
+            .any(|input| input.session == interactive.target_session)
     }
 
     fn visual_tick_interval(&self) -> Option<Duration> {
