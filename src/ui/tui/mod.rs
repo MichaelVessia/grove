@@ -2092,6 +2092,36 @@ mod tests {
     }
 
     #[test]
+    fn restore_silently_skips_sessions_with_no_grove_metadata() {
+        // Sessions with no @grove_* metadata — both non-grove sessions (e.g.
+        // "nix-config") and stale grove sessions that lost metadata (e.g.
+        // "grove-ws-foo-shell") — should be silently ignored, no warning toast.
+        let rows = format!(
+            "nix-config\t\t\t\t\t\ngrove-ws-stale-project-shell\t\t\t\t\t\n{}-agent-1\t{}\tagent\tCodex 1\tcodex\t9\n",
+            feature_workspace_session(),
+            feature_workspace_path().display(),
+        );
+        let app = GroveApp::from_task_state(
+            "grove".to_string(),
+            crate::ui::state::AppState::new(fixture_tasks(WorkspaceStatus::Idle)),
+            DiscoveryState::Ready,
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(RestoreMetadataTmuxInput { rows }),
+                clipboard: test_clipboard(),
+                config_path: unique_config_path("restore-skip-no-metadata"),
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+
+        assert!(
+            app.notifications.visible().is_empty(),
+            "no toast should be shown when sessions without grove metadata are present alongside valid grove sessions"
+        );
+    }
+
+    #[test]
     fn attention_workspace_lookup_supports_numbered_tab_sessions() {
         let mut app = fixture_app();
         select_workspace(&mut app, 1);

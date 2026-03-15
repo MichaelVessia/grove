@@ -138,6 +138,11 @@ impl GroveApp {
                 Err(reason) => {
                     if let Some(recovered) = self.recover_legacy_git_tmux_tab_metadata_row(row) {
                         recovered
+                    } else if Self::has_no_grove_metadata(row) {
+                        // Session has no @grove_* variables set at all — either a
+                        // non-grove tmux session or a stale grove session that lost
+                        // its metadata. Silently skip rather than warning the user.
+                        continue;
                     } else {
                         self.log_event_with_fields(
                             "tab_restore",
@@ -573,6 +578,17 @@ impl GroveApp {
             agent_type,
             tab_id,
         })
+    }
+
+    /// Returns true when a tmux list-sessions row has a session name but all
+    /// grove metadata columns (workspace path, kind, title, agent, id) are
+    /// empty. This covers both non-grove tmux sessions and stale grove
+    /// sessions that lost their metadata variables.
+    fn has_no_grove_metadata(row: &str) -> bool {
+        let segments: Vec<&str> = row.split('\t').collect();
+        segments.len() == 6
+            && trimmed_nonempty(segments[0]).is_some()
+            && segments[1..].iter().all(|s| s.trim().is_empty())
     }
 
     fn recover_legacy_git_tmux_tab_metadata_row(
