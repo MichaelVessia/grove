@@ -42,7 +42,7 @@ impl GroveApp {
         };
 
         let bootstrap = tasks_root()
-            .map(|tasks_root| bootstrap_task_data_for_root(tasks_root.as_path(), &config.projects))
+            .map(|tasks_root| bootstrap_task_data_for_root(tasks_root.as_path()))
             .unwrap_or(TaskBootstrapData {
                 tasks: Vec::new(),
                 discovery_state: TaskDiscoveryState::Empty,

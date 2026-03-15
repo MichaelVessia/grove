@@ -10,12 +10,9 @@ struct RefreshedAppState {
     state: AppState,
 }
 
-fn refreshed_app_state(
-    tasks_root_path: Option<&Path>,
-    projects: &[ProjectConfig],
-) -> RefreshedAppState {
+fn refreshed_app_state(tasks_root_path: Option<&Path>) -> RefreshedAppState {
     let bootstrap = tasks_root_path
-        .map(|tasks_root| bootstrap_task_data_for_root(tasks_root, projects))
+        .map(bootstrap_task_data_for_root)
         .unwrap_or_else(|| crate::application::task_discovery::TaskBootstrapData {
             tasks: Vec::new(),
             discovery_state: TaskDiscoveryState::Empty,
@@ -102,10 +99,9 @@ impl GroveApp {
 
         let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
         let tasks_root_path = self.resolved_tasks_root();
-        let projects = self.projects.clone();
         self.dialogs.refresh_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let refreshed = refreshed_app_state(tasks_root_path.as_deref(), &projects);
+            let refreshed = refreshed_app_state(tasks_root_path.as_deref());
             Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
                 preferred_workspace_path: target_path,
                 repo_name: refreshed.repo_name,
@@ -123,7 +119,7 @@ impl GroveApp {
         let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
         let previous_mode = self.state.mode;
         let previous_focus = self.state.focus;
-        let refreshed = refreshed_app_state(tasks_root_path.as_deref(), &self.projects);
+        let refreshed = refreshed_app_state(tasks_root_path.as_deref());
 
         self.repo_name = refreshed.repo_name;
         self.discovery_state = refreshed.discovery_state;
@@ -175,7 +171,6 @@ mod tests {
     use super::refreshed_app_state;
     use crate::domain::{AgentType, Task, WorkspaceStatus, Worktree};
     use crate::infrastructure::adapters::DiscoveryState;
-    use crate::infrastructure::config::{AgentEnvDefaults, ProjectConfig, ProjectDefaults};
     use crate::infrastructure::task_manifest::encode_task_manifest;
     use std::fs;
     use std::path::PathBuf;
@@ -245,7 +240,7 @@ mod tests {
         let raw = encode_task_manifest(&task).expect("task manifest should encode");
         fs::write(task_dir.join("task.toml"), raw).expect("task manifest should write");
 
-        let refreshed = refreshed_app_state(Some(temp.path.as_path()), &[]);
+        let refreshed = refreshed_app_state(Some(temp.path.as_path()));
 
         assert_eq!(refreshed.repo_name, "1 tasks");
         assert_eq!(refreshed.discovery_state, DiscoveryState::Ready);
@@ -255,29 +250,15 @@ mod tests {
     }
 
     #[test]
-    fn refreshed_app_state_synthesizes_configured_repo_without_manifest() {
+    fn refreshed_app_state_does_not_recreate_base_task_from_project_config() {
         let temp = TestDir::new("configured-repo");
         let repo_path = temp.path.join("repos").join("mcp");
         fs::create_dir_all(&repo_path).expect("repo path should exist");
 
-        let refreshed = refreshed_app_state(
-            Some(temp.path.as_path()),
-            &[ProjectConfig {
-                name: "mcp".to_string(),
-                path: repo_path.clone(),
-                defaults: ProjectDefaults {
-                    base_branch: "main".to_string(),
-                    workspace_init_command: String::new(),
-                    agent_env: AgentEnvDefaults::default(),
-                },
-            }],
-        );
+        let refreshed = refreshed_app_state(Some(temp.path.as_path()));
 
-        assert_eq!(refreshed.discovery_state, DiscoveryState::Ready);
-        assert_eq!(refreshed.state.tasks.len(), 1);
-        assert_eq!(refreshed.state.tasks[0].slug, "mcp");
-        assert_eq!(refreshed.state.tasks[0].root_path, repo_path);
-        assert_eq!(refreshed.state.workspaces.len(), 1);
-        assert_eq!(refreshed.state.workspaces[0].status, WorkspaceStatus::Main);
+        assert_eq!(refreshed.discovery_state, DiscoveryState::Empty);
+        assert!(refreshed.state.tasks.is_empty());
+        assert!(refreshed.state.workspaces.is_empty());
     }
 }
