@@ -203,7 +203,7 @@ fn plan_session_cleanup_from_task_inputs(
     }
 }
 
-fn cleanup_reason_for_tasks(
+pub(crate) fn cleanup_reason_for_tasks(
     session: &SessionRecord,
     tasks: &[Task],
     include_stale: bool,
@@ -224,13 +224,13 @@ fn cleanup_reason_for_tasks(
     None
 }
 
-fn is_grove_managed_session(session_name: &str) -> bool {
+pub(crate) fn is_grove_managed_session(session_name: &str) -> bool {
     session_name.starts_with("grove-task-")
         || session_name.starts_with("grove-wt-")
         || session_name.starts_with("grove-ws-")
 }
 
-fn stale_auxiliary_session(session: &SessionRecord, now_unix_secs: u64) -> bool {
+pub(crate) fn stale_auxiliary_session(session: &SessionRecord, now_unix_secs: u64) -> bool {
     if !is_auxiliary_session(session.name.as_str()) {
         return false;
     }
@@ -243,7 +243,7 @@ fn stale_auxiliary_session(session: &SessionRecord, now_unix_secs: u64) -> bool 
     age >= STALE_AUXILIARY_MIN_AGE_SECS
 }
 
-fn is_auxiliary_session(session_name: &str) -> bool {
+pub(crate) fn is_auxiliary_session(session_name: &str) -> bool {
     if session_name.ends_with("-git") || session_name.ends_with("-shell") {
         return true;
     }
@@ -258,7 +258,7 @@ fn session_missing_error(message: &str) -> bool {
     message.contains("can't find session")
 }
 
-fn now_unix_secs() -> u64 {
+pub(crate) fn now_unix_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or(Duration::from_secs(0))

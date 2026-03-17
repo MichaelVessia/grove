@@ -217,6 +217,14 @@ Cleanup is also task-based.
 - Kill orphaned or stale Grove-managed sessions.
 - Skip attached sessions unless explicitly told otherwise.
 
+Diagnosis is task-based as well.
+
+- `grove doctor` audits task manifests, configured repositories, filesystem
+  paths, and Grove-managed tmux sessions.
+- Doctor prints findings and a repair plan, but does not mutate state in v1.
+- Doctor is the primary product surface for understanding runtime drift before a
+  human or coding agent performs repairs.
+
 ## Config
 
 Grove uses two config files:

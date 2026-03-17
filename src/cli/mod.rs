@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::application::doctor::DoctorReport;
 use crate::application::session_cleanup::{
     SessionCleanupEntry, SessionCleanupOptions, SessionCleanupReason, apply_session_cleanup,
     plan_session_cleanup,
@@ -23,6 +24,8 @@ pub(crate) struct CliArgs {
     pub(crate) benchmark_baseline_path: Option<PathBuf>,
     pub(crate) benchmark_write_baseline_path: Option<PathBuf>,
     pub(crate) benchmark_warn_regression_pct: Option<u64>,
+    pub(crate) doctor: bool,
+    pub(crate) doctor_json_output: bool,
     pub(crate) cleanup_sessions: bool,
     pub(crate) cleanup_sessions_apply: bool,
     pub(crate) cleanup_sessions_include_stale: bool,
@@ -32,6 +35,7 @@ pub(crate) struct CliArgs {
 pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io::Result<CliArgs> {
     let mut cli = CliArgs::default();
     let mut args = args.into_iter();
+    let mut saw_json_output = false;
 
     while let Some(argument) = args.next() {
         match argument.as_str() {
@@ -74,6 +78,9 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io:
                 }
                 cli.benchmark_scale = true;
             }
+            "doctor" => {
+                cli.doctor = true;
+            }
             "cleanup" => {
                 let Some(target) = args.next() else {
                     return Err(std::io::Error::new(
@@ -111,7 +118,7 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io:
                 cli.replay_invariant_only = true;
             }
             "--json" => {
-                cli.benchmark_json_output = true;
+                saw_json_output = true;
             }
             "--baseline" => {
                 let Some(path) = args.next() else {
@@ -165,6 +172,19 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io:
         }
     }
 
+    if saw_json_output {
+        if cli.benchmark_scale {
+            cli.benchmark_json_output = true;
+        } else if cli.doctor {
+            cli.doctor_json_output = true;
+        } else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "json output requires `benchmark-scale` or `doctor`",
+            ));
+        }
+    }
+
     if cli.replay_trace_path.is_none()
         && (cli.replay_snapshot_path.is_some()
             || cli.replay_emit_test_name.is_some()
@@ -202,6 +222,7 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io:
     if cli.cleanup_sessions
         && (cli.replay_trace_path.is_some()
             || cli.benchmark_scale
+            || cli.doctor
             || cli.debug_record
             || cli.event_log_path.is_some()
             || cli.print_hello)
@@ -209,6 +230,20 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io:
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "cleanup sessions cannot be combined with other command modes",
+        ));
+    }
+
+    if cli.doctor
+        && (cli.replay_trace_path.is_some()
+            || cli.benchmark_scale
+            || cli.cleanup_sessions
+            || cli.debug_record
+            || cli.event_log_path.is_some()
+            || cli.print_hello)
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "doctor cannot be combined with other command modes",
         ));
     }
 
@@ -344,8 +379,112 @@ fn run_cleanup_sessions(cli: &CliArgs) -> std::io::Result<()> {
     )))
 }
 
+fn format_doctor_summary(report: &DoctorReport) -> String {
+    if report.summary.total == 0 {
+        return "doctor: clean".to_string();
+    }
+
+    format!(
+        "doctor: {} findings ({} error, {} warn, {} info)",
+        report.summary.total, report.summary.error, report.summary.warn, report.summary.info
+    )
+}
+
+fn print_doctor_findings(
+    findings: &[crate::application::doctor::DoctorFinding],
+    severity: crate::application::doctor::DoctorSeverity,
+    label: &str,
+) {
+    let matching = findings
+        .iter()
+        .filter(|finding| finding.severity == severity)
+        .collect::<Vec<_>>();
+    if matching.is_empty() {
+        return;
+    }
+
+    println!();
+    println!("{label}");
+    for finding in matching {
+        println!("- {}", finding.kind.label());
+        for target in finding.subject.targets() {
+            println!("  target: {target}");
+        }
+        println!("  evidence: {}", finding.evidence);
+        println!("  action: {}", finding.recommended_action);
+    }
+}
+
+fn print_doctor_report(report: &DoctorReport) -> std::io::Result<()> {
+    println!("{}", format_doctor_summary(report));
+
+    print_doctor_findings(
+        report.findings.as_slice(),
+        crate::application::doctor::DoctorSeverity::Error,
+        "errors",
+    );
+    print_doctor_findings(
+        report.findings.as_slice(),
+        crate::application::doctor::DoctorSeverity::Warn,
+        "warnings",
+    );
+    print_doctor_findings(
+        report.findings.as_slice(),
+        crate::application::doctor::DoctorSeverity::Info,
+        "info",
+    );
+
+    if !report.repair_plan.is_empty() {
+        println!();
+        println!("repair plan");
+        for (index, step) in report.repair_plan.iter().enumerate() {
+            let targets = step.targets.join(", ");
+            println!(
+                "{}. {}: {} [{}]",
+                index + 1,
+                step.action.label(),
+                step.reason,
+                targets
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn run_doctor(cli: &CliArgs) -> std::io::Result<()> {
+    let report = crate::application::doctor::diagnose().map_err(std::io::Error::other)?;
+    if cli.doctor_json_output {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).map_err(std::io::Error::other)?
+        );
+    } else {
+        print_doctor_report(&report)?;
+    }
+
+    let exit_code = doctor_exit_code(&report);
+    if exit_code == 0 {
+        return Ok(());
+    }
+
+    Err(std::io::Error::other("doctor found actionable issues"))
+}
+
+fn doctor_exit_code(report: &DoctorReport) -> i32 {
+    if report.summary.warn > 0 || report.summary.error > 0 {
+        1
+    } else {
+        0
+    }
+}
+
 pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
     let cli = parse_cli_args(args)?;
+
+    if cli.doctor {
+        return run_doctor(&cli);
+    }
 
     if cli.cleanup_sessions {
         return run_cleanup_sessions(&cli);
@@ -416,8 +555,11 @@ pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CliArgs, debug_record_path, ensure_event_log_parent_directory, parse_cli_args,
-        resolve_event_log_path,
+        CliArgs, debug_record_path, doctor_exit_code, ensure_event_log_parent_directory,
+        parse_cli_args, resolve_event_log_path,
+    };
+    use crate::application::doctor::{
+        DoctorFinding, DoctorFindingKind, DoctorReport, DoctorSeverity, DoctorSubject,
     };
     use std::path::PathBuf;
 
@@ -445,6 +587,8 @@ mod tests {
                 benchmark_baseline_path: None,
                 benchmark_write_baseline_path: None,
                 benchmark_warn_regression_pct: None,
+                doctor: false,
+                doctor_json_output: false,
                 cleanup_sessions: false,
                 cleanup_sessions_apply: false,
                 cleanup_sessions_include_stale: false,
@@ -479,6 +623,8 @@ mod tests {
                 benchmark_baseline_path: None,
                 benchmark_write_baseline_path: None,
                 benchmark_warn_regression_pct: None,
+                doctor: false,
+                doctor_json_output: false,
                 cleanup_sessions: false,
                 cleanup_sessions_apply: false,
                 cleanup_sessions_include_stale: false,
@@ -515,6 +661,8 @@ mod tests {
                 benchmark_baseline_path: None,
                 benchmark_write_baseline_path: None,
                 benchmark_warn_regression_pct: None,
+                doctor: false,
+                doctor_json_output: false,
                 cleanup_sessions: false,
                 cleanup_sessions_apply: false,
                 cleanup_sessions_include_stale: false,
@@ -559,6 +707,8 @@ mod tests {
                 benchmark_baseline_path: Some(PathBuf::from("/tmp/baseline.json")),
                 benchmark_write_baseline_path: Some(PathBuf::from("/tmp/new-baseline.json")),
                 benchmark_warn_regression_pct: Some(25),
+                doctor: false,
+                doctor_json_output: false,
                 cleanup_sessions: false,
                 cleanup_sessions_apply: false,
                 cleanup_sessions_include_stale: false,
@@ -611,6 +761,8 @@ mod tests {
                 benchmark_baseline_path: None,
                 benchmark_write_baseline_path: None,
                 benchmark_warn_regression_pct: None,
+                doctor: false,
+                doctor_json_output: false,
                 cleanup_sessions: true,
                 cleanup_sessions_apply: true,
                 cleanup_sessions_include_stale: true,
@@ -624,6 +776,71 @@ mod tests {
         let error = parse_cli_args(vec!["--apply".to_string()])
             .expect_err("cleanup flags without cleanup command should fail");
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn cli_parser_reads_doctor_options() {
+        let parsed = parse_cli_args(vec!["doctor".to_string(), "--json".to_string()])
+            .expect("doctor arguments should parse");
+
+        assert_eq!(
+            parsed,
+            CliArgs {
+                print_hello: false,
+                event_log_path: None,
+                debug_record: false,
+                replay_trace_path: None,
+                replay_snapshot_path: None,
+                replay_emit_test_name: None,
+                replay_invariant_only: false,
+                benchmark_scale: false,
+                benchmark_json_output: false,
+                benchmark_baseline_path: None,
+                benchmark_write_baseline_path: None,
+                benchmark_warn_regression_pct: None,
+                doctor: true,
+                doctor_json_output: true,
+                cleanup_sessions: false,
+                cleanup_sessions_apply: false,
+                cleanup_sessions_include_stale: false,
+                cleanup_sessions_include_attached: false,
+            }
+        );
+    }
+
+    #[test]
+    fn cli_parser_rejects_doctor_combined_with_other_modes() {
+        let error = parse_cli_args(vec![
+            "doctor".to_string(),
+            "replay".to_string(),
+            "/tmp/trace.jsonl".to_string(),
+        ])
+        .expect_err("doctor should not combine with replay");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn doctor_exit_code_is_zero_for_clean_report() {
+        let report = DoctorReport::from_findings(Vec::new());
+        assert_eq!(doctor_exit_code(&report), 0);
+    }
+
+    #[test]
+    fn doctor_exit_code_is_nonzero_for_actionable_findings() {
+        let report = DoctorReport::from_findings(vec![DoctorFinding {
+            severity: DoctorSeverity::Warn,
+            kind: DoctorFindingKind::MissingBaseMarker,
+            subject: DoctorSubject {
+                task_slug: Some("task-a".to_string()),
+                manifest_path: None,
+                repository_path: None,
+                worktree_path: Some("/tmp/task-a".to_string()),
+                session_name: None,
+            },
+            evidence: "missing base marker".to_string(),
+            recommended_action: "write the base marker".to_string(),
+        }]);
+        assert_eq!(doctor_exit_code(&report), 1);
     }
 
     #[test]

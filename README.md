@@ -209,6 +209,8 @@ Inside Grove:
 - `benchmark-scale --write-baseline <path>`, write benchmark JSON baseline
 - `benchmark-scale --baseline <path>`, compare current results against a baseline and warn on severe p95 regressions
 - `benchmark-scale --warn-regression-pct <N>`, adjust severe regression threshold percent (default 35)
+- `doctor`, diagnose Grove task/config/tmux drift and print a repair plan
+- `doctor --json`, emit machine-readable diagnosis output for agent workflows
 
 Example:
 
@@ -230,6 +232,12 @@ cargo run -- benchmark-scale --write-baseline .grove/workspace-scale-baseline.js
 
 # compare against previous baseline
 cargo run -- benchmark-scale --baseline .grove/workspace-scale-baseline.json
+
+# diagnose Grove state drift without mutating anything
+cargo run -- doctor
+
+# emit machine-readable diagnosis for an agent to execute
+cargo run -- doctor --json
 ```
 
 Detailed replay workflow:
