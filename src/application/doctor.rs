@@ -77,7 +77,11 @@ pub enum DoctorRepairAction {
 pub struct DoctorRepairStep {
     pub priority: u8,
     pub action: DoctorRepairAction,
+    pub goal: String,
     pub reason: String,
+    pub preconditions: Vec<String>,
+    pub steps: Vec<String>,
+    pub verification: Vec<String>,
     pub targets: Vec<String>,
 }
 
@@ -117,6 +121,7 @@ pub fn diagnose() -> Result<DoctorReport, String> {
     Ok(diagnose_from_inputs(
         Some(tasks_root.as_path()),
         loaded_config.config.projects.as_slice(),
+        loaded_config.config.hidden_base_project_paths.as_slice(),
         tmux_state,
     ))
 }
@@ -124,14 +129,22 @@ pub fn diagnose() -> Result<DoctorReport, String> {
 pub(crate) fn diagnose_from_inputs(
     tasks_root: Option<&Path>,
     projects: &[ProjectConfig],
+    hidden_base_project_paths: &[PathBuf],
     tmux_state: DoctorTmuxState,
 ) -> DoctorReport {
-    diagnose_from_inputs_at(tasks_root, projects, tmux_state, now_unix_secs())
+    diagnose_from_inputs_at(
+        tasks_root,
+        projects,
+        hidden_base_project_paths,
+        tmux_state,
+        now_unix_secs(),
+    )
 }
 
 pub(crate) fn diagnose_from_inputs_at(
     tasks_root: Option<&Path>,
     projects: &[ProjectConfig],
+    hidden_base_project_paths: &[PathBuf],
     tmux_state: DoctorTmuxState,
     now_unix_secs: u64,
 ) -> DoctorReport {
@@ -140,7 +153,12 @@ pub(crate) fn diagnose_from_inputs_at(
 
     collect_duplicate_slug_findings(tasks.as_slice(), &mut findings);
     collect_worktree_findings(tasks.as_slice(), &mut findings);
-    collect_missing_base_task_findings(tasks.as_slice(), projects, &mut findings);
+    collect_missing_base_task_findings(
+        tasks.as_slice(),
+        projects,
+        hidden_base_project_paths,
+        &mut findings,
+    );
     collect_tmux_findings(tasks.as_slice(), tmux_state, now_unix_secs, &mut findings);
 
     DoctorReport::from_findings(findings)
@@ -184,53 +202,176 @@ fn repair_plan_from_findings(findings: &[DoctorFinding]) -> Vec<DoctorRepairStep
 }
 
 fn repair_step_for_finding(finding: &DoctorFinding) -> Option<DoctorRepairStep> {
-    let (priority, action, reason) = match finding.kind {
+    let targets = finding.subject.targets();
+    let (priority, action, goal, reason, preconditions, steps, verification) = match finding.kind {
         DoctorFindingKind::InvalidTaskManifest => (
             10,
             DoctorRepairAction::InspectOrRewriteManifest,
+            "Restore a valid task manifest".to_string(),
             "manifest is invalid".to_string(),
+            vec![
+                "Confirm the manifest file still belongs to a real Grove task.".to_string(),
+            ],
+            vec![
+                format!(
+                    "Open the manifest at {} and inspect the parse error in the finding evidence.",
+                    finding
+                        .subject
+                        .manifest_path
+                        .as_deref()
+                        .unwrap_or("<unknown manifest>")
+                ),
+                "If the task should exist, rewrite the manifest into valid task/worktree TOML.".to_string(),
+                "If the task was intentionally removed, delete the broken manifest entry entirely.".to_string(),
+            ],
+            vec![
+                "Re-run `cargo run -- doctor`.".to_string(),
+                "Verify the invalid_task_manifest finding is gone.".to_string(),
+            ],
         ),
         DoctorFindingKind::DuplicateTaskSlug => (
             20,
             DoctorRepairAction::RemoveDuplicateManifestOwner,
+            "Make each task slug owned by exactly one manifest".to_string(),
             "multiple manifests claim the same task slug".to_string(),
+            vec![
+                "Identify which manifest is the intended owner of the task slug.".to_string(),
+            ],
+            vec![
+                "Compare the duplicate manifest paths listed in the finding targets.".to_string(),
+                "Keep the canonical manifest, then delete or rename the duplicate manifest owner.".to_string(),
+                "If both tasks are real, assign one of them a unique slug and update its manifest.".to_string(),
+            ],
+            vec![
+                "Re-run `cargo run -- doctor`.".to_string(),
+                "Verify the duplicate_task_slug finding is gone.".to_string(),
+            ],
         ),
         DoctorFindingKind::MissingWorktreePath => (
             30,
             DoctorRepairAction::RestoreOrRemoveMissingWorktree,
+            "Resolve a manifest entry that points at a missing worktree".to_string(),
             "manifest references a missing worktree path".to_string(),
+            vec![
+                "Decide whether the missing worktree should be restored or removed.".to_string(),
+            ],
+            vec![
+                format!(
+                    "Check whether the missing path {} should still exist.",
+                    finding
+                        .subject
+                        .worktree_path
+                        .as_deref()
+                        .unwrap_or("<unknown worktree>")
+                ),
+                "If the worktree should exist, recreate or restore it on disk.".to_string(),
+                "If the worktree was intentionally deleted, remove that worktree entry from the task manifest.".to_string(),
+            ],
+            vec![
+                "Re-run `cargo run -- doctor`.".to_string(),
+                "Verify the missing_worktree_path finding is gone.".to_string(),
+            ],
         ),
         DoctorFindingKind::MissingBaseMarker => (
             40,
             DoctorRepairAction::WriteBaseMarker,
+            "Restore the Grove base-branch marker for a worktree".to_string(),
             "worktree is missing a Grove base marker".to_string(),
+            vec![
+                "Confirm the worktree is still managed by Grove.".to_string(),
+            ],
+            vec![
+                format!(
+                    "Inspect the worktree at {} and determine its correct base branch.",
+                    finding
+                        .subject
+                        .worktree_path
+                        .as_deref()
+                        .unwrap_or("<unknown worktree>")
+                ),
+                "Write that branch name into `.grove/base` inside the worktree.".to_string(),
+                "Ensure the file contains a single non-empty branch name.".to_string(),
+            ],
+            vec![
+                "Re-run `cargo run -- doctor`.".to_string(),
+                "Verify the missing_base_marker finding is gone.".to_string(),
+            ],
         ),
         DoctorFindingKind::ConfiguredRepoMissingBaseTaskManifest => (
             50,
             DoctorRepairAction::MaterializeBaseTaskManifest,
+            "Restore visibility for a configured repository that lacks a base task manifest"
+                .to_string(),
             "configured repository is missing a base task manifest".to_string(),
+            vec![
+                "Confirm the repository is intended to be visible in Grove.".to_string(),
+            ],
+            vec![
+                format!(
+                    "Inspect the repository at {} and confirm it should have a visible base task.",
+                    finding
+                        .subject
+                        .repository_path
+                        .as_deref()
+                        .unwrap_or("<unknown repository>")
+                ),
+                "If it should be visible, create or materialize the base task manifest for that repository.".to_string(),
+                "If it was intentionally hidden from the sidebar, add the repository path to Grove's hidden base project paths instead of recreating the manifest.".to_string(),
+            ],
+            vec![
+                "Re-run `cargo run -- doctor`.".to_string(),
+                "Verify the configured_repo_missing_base_task_manifest finding is gone.".to_string(),
+            ],
         ),
         DoctorFindingKind::OrphanedGroveSession
         | DoctorFindingKind::StaleAuxiliarySession
         | DoctorFindingKind::LegacyGroveSessionMissingMetadata => (
             60,
             DoctorRepairAction::KillOrAdoptSession,
+            "Resolve tmux session drift so Grove session state matches task state".to_string(),
             "tmux session state no longer matches Grove task state".to_string(),
+            vec![
+                "Confirm no important interactive work remains in the listed tmux session."
+                    .to_string(),
+            ],
+            vec![
+                "Inspect the session name in the finding targets.".to_string(),
+                "If the session is still needed, adopt or recreate it using the current Grove task model.".to_string(),
+                "If it is leftover state, kill the session manually in tmux.".to_string(),
+            ],
+            vec![
+                "Re-run `cargo run -- doctor`.".to_string(),
+                "Verify the tmux-session finding is gone.".to_string(),
+            ],
         ),
         DoctorFindingKind::ManifestRepositoryMismatch => (
             70,
             DoctorRepairAction::InspectRepositoryMapping,
+            "Repair a manifest whose repository mapping no longer matches config".to_string(),
             "manifest repository mapping does not match configured repository state".to_string(),
+            vec![
+                "Identify the canonical configured repository path for this task.".to_string(),
+            ],
+            vec![
+                "Compare the manifest repository path against Grove's configured project path.".to_string(),
+                "Update the manifest or project config so both point at the same repository.".to_string(),
+            ],
+            vec![
+                "Re-run `cargo run -- doctor`.".to_string(),
+                "Verify the manifest_repository_mismatch finding is gone.".to_string(),
+            ],
         ),
         DoctorFindingKind::SessionCheckSkipped => return None,
     };
 
-    let targets = finding.subject.targets();
-
     Some(DoctorRepairStep {
         priority,
         action,
+        goal,
         reason,
+        preconditions,
+        steps,
+        verification,
         targets: if targets.is_empty() {
             vec![finding.kind.label().to_string()]
         } else {
@@ -462,9 +603,16 @@ fn collect_worktree_findings(tasks: &[LoadedDoctorTask], findings: &mut Vec<Doct
 fn collect_missing_base_task_findings(
     tasks: &[LoadedDoctorTask],
     projects: &[ProjectConfig],
+    hidden_base_project_paths: &[PathBuf],
     findings: &mut Vec<DoctorFinding>,
 ) {
     for project in projects {
+        if hidden_base_project_paths
+            .iter()
+            .any(|path| refer_to_same_location(path.as_path(), project.path.as_path()))
+        {
+            continue;
+        }
         let has_base_task = tasks.iter().any(|loaded| {
             loaded.task.worktrees.iter().any(|worktree| {
                 worktree.is_main_checkout()
@@ -735,6 +883,8 @@ mod tests {
             report.repair_plan[0].action,
             DoctorRepairAction::InspectOrRewriteManifest
         );
+        assert!(!report.repair_plan[0].steps.is_empty());
+        assert!(!report.repair_plan[0].verification.is_empty());
     }
 
     #[test]
@@ -773,6 +923,12 @@ mod tests {
             report.repair_plan[2].action,
             DoctorRepairAction::MaterializeBaseTaskManifest
         );
+        assert!(
+            report.repair_plan[0]
+                .steps
+                .iter()
+                .any(|step| step.contains("manifest"))
+        );
     }
 
     #[test]
@@ -785,6 +941,7 @@ mod tests {
 
         let report = diagnose_from_inputs(
             Some(tasks_root.as_path()),
+            &[],
             &[],
             DoctorTmuxState::Available(vec![]),
         );
@@ -832,6 +989,7 @@ mod tests {
         let report = diagnose_from_inputs(
             Some(tasks_root.as_path()),
             &[],
+            &[],
             DoctorTmuxState::Available(vec![]),
         );
 
@@ -861,6 +1019,7 @@ mod tests {
 
         let report = diagnose_from_inputs(
             Some(tasks_root.as_path()),
+            &[],
             &[],
             DoctorTmuxState::Available(vec![]),
         );
@@ -893,6 +1052,7 @@ mod tests {
         let report = diagnose_from_inputs(
             Some(tasks_root.as_path()),
             &[],
+            &[],
             DoctorTmuxState::Available(vec![]),
         );
 
@@ -918,6 +1078,7 @@ mod tests {
                 path: repo_root.clone(),
                 defaults: ProjectDefaults::default(),
             }],
+            &[],
             DoctorTmuxState::Available(vec![]),
         );
 
@@ -925,6 +1086,29 @@ mod tests {
             finding.kind == DoctorFindingKind::ConfiguredRepoMissingBaseTaskManifest
                 && finding.subject.repository_path.as_deref()
                     == Some(repo_root.to_string_lossy().as_ref())
+        }));
+    }
+
+    #[test]
+    fn diagnose_skips_hidden_base_project_paths() {
+        let temp = TestDir::new("hidden-base-manifest");
+        let tasks_root = temp.path.join("tasks");
+        let repo_root = temp.path.join("repos").join("api");
+        fs::create_dir_all(&repo_root).expect("repo should exist");
+
+        let report = diagnose_from_inputs(
+            Some(tasks_root.as_path()),
+            &[ProjectConfig {
+                name: "api".to_string(),
+                path: repo_root.clone(),
+                defaults: ProjectDefaults::default(),
+            }],
+            std::slice::from_ref(&repo_root),
+            DoctorTmuxState::Available(vec![]),
+        );
+
+        assert!(!report.findings.iter().any(|finding| {
+            finding.kind == DoctorFindingKind::ConfiguredRepoMissingBaseTaskManifest
         }));
     }
 
@@ -948,6 +1132,7 @@ mod tests {
 
         let report = diagnose_from_inputs_at(
             Some(tasks_root.as_path()),
+            &[],
             &[],
             DoctorTmuxState::Available(vec![SessionRecord {
                 name: "grove-wt-flohome-launch-lost".to_string(),
@@ -986,6 +1171,7 @@ mod tests {
         let report = diagnose_from_inputs_at(
             Some(tasks_root.as_path()),
             &[],
+            &[],
             DoctorTmuxState::Available(vec![SessionRecord {
                 name: "grove-wt-flohome-launch-flohome-git".to_string(),
                 created_unix_secs: Some(1_700_000_000),
@@ -1007,6 +1193,7 @@ mod tests {
         let report = diagnose_from_inputs_at(
             None,
             &[],
+            &[],
             DoctorTmuxState::Available(vec![SessionRecord {
                 name: "grove-ws-legacy-feature".to_string(),
                 created_unix_secs: Some(1_700_000_100),
@@ -1025,6 +1212,7 @@ mod tests {
     fn diagnose_warns_when_tmux_checks_are_unavailable() {
         let report = diagnose_from_inputs(
             None,
+            &[],
             &[],
             DoctorTmuxState::Unavailable("tmux missing".to_string()),
         );

@@ -443,9 +443,28 @@ fn print_doctor_report(report: &DoctorReport) -> std::io::Result<()> {
                 "{}. {}: {} [{}]",
                 index + 1,
                 step.action.label(),
-                step.reason,
+                step.goal,
                 targets
             );
+            println!("   why: {}", step.reason);
+            if !step.preconditions.is_empty() {
+                println!("   before you start:");
+                for precondition in &step.preconditions {
+                    println!("   - {precondition}");
+                }
+            }
+            if !step.steps.is_empty() {
+                println!("   do this:");
+                for (step_index, instruction) in step.steps.iter().enumerate() {
+                    println!("   {}. {}", step_index + 1, instruction);
+                }
+            }
+            if !step.verification.is_empty() {
+                println!("   verify:");
+                for verification in &step.verification {
+                    println!("   - {verification}");
+                }
+            }
         }
     }
 
