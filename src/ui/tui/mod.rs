@@ -6121,6 +6121,27 @@ mod tests {
     }
 
     #[test]
+    fn keybind_help_lists_attention_shortcuts_in_workspace_list() {
+        let mut app = fixture_app();
+        app.dialogs.keybind_help_open = true;
+
+        with_rendered_frame(&app, 160, 28, |frame| {
+            let text = (0..frame.height())
+                .map(|row| row_text(frame, row, 0, frame.width()))
+                .collect::<Vec<String>>()
+                .join("\n");
+            assert!(
+                text.contains("i focus needs you inbox"),
+                "help overlay missing inbox focus entry: {text}"
+            );
+            assert!(
+                text.contains("a acknowledge attention item"),
+                "help overlay missing attention acknowledge entry: {text}"
+            );
+        });
+    }
+
+    #[test]
     fn keybind_help_lists_mouse_capture_toggle() {
         let mut app = fixture_app();
         app.dialogs.keybind_help_open = true;

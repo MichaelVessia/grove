@@ -107,7 +107,14 @@ impl GroveApp {
                 "Up/Down or C-n/C-p move selection",
             ),
             HelpCatalogEntry::new(HelpSection::Palette, "Run/Close", "Enter run, Esc close"),
-            HelpCatalogEntry::new(HelpSection::List, "Move", list.join(", ")),
+            HelpCatalogEntry::new(
+                HelpSection::List,
+                "Move",
+                format!(
+                    "{}, i focus needs you inbox, a acknowledge attention item",
+                    list.join(", ")
+                ),
+            ),
             HelpCatalogEntry::new(HelpSection::Preview, "Agent tab", preview_agent.join(", ")),
             HelpCatalogEntry::new(HelpSection::Preview, "Shell tab", preview_shell.join(", ")),
             HelpCatalogEntry::new(HelpSection::Preview, "Git tab", preview_git.join(", ")),
@@ -118,11 +125,6 @@ impl GroveApp {
 
     fn synthetic_help_catalog_entries(&self) -> Vec<HelpCatalogEntry> {
         vec![
-            HelpCatalogEntry::new(
-                HelpSection::List,
-                "Attention row",
-                "i focus needs you inbox, a acknowledge attention item",
-            ),
             HelpCatalogEntry::new(
                 HelpSection::Interactive,
                 "Input",
