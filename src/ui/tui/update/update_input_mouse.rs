@@ -211,27 +211,7 @@ impl GroveApp {
 
     pub(super) fn select_sidebar_target(&mut self, target: SidebarSelectable) {
         match target {
-            SidebarSelectable::Attention(item_index) => {
-                let Some(workspace_path) = self
-                    .attention_items
-                    .get(item_index)
-                    .map(|item| item.workspace_path.clone())
-                else {
-                    return;
-                };
-                self.selected_attention_item = Some(item_index);
-                if let Some(workspace_index) = self
-                    .state
-                    .workspaces
-                    .iter()
-                    .position(|workspace| workspace.path == workspace_path)
-                {
-                    let changed = self.state.select_index(workspace_index);
-                    if changed {
-                        self.handle_workspace_selection_changed();
-                    }
-                }
-            }
+            SidebarSelectable::Attention(item_index) => self.select_attention_item(item_index),
             SidebarSelectable::Workspace(index) => {
                 self.selected_attention_item = None;
                 self.select_workspace_by_index(index);
@@ -257,6 +237,30 @@ impl GroveApp {
 
         self.state.select_index(index);
         self.handle_workspace_selection_changed();
+    }
+
+    pub(super) fn select_attention_item(&mut self, item_index: usize) {
+        let Some(workspace_path) = self
+            .attention_items
+            .get(item_index)
+            .map(|item| item.workspace_path.clone())
+        else {
+            return;
+        };
+        self.selected_attention_item = Some(item_index);
+        if let Some(workspace_index) = self
+            .state
+            .workspaces
+            .iter()
+            .position(|workspace| workspace.path == workspace_path)
+        {
+            let changed = self.state.select_index(workspace_index);
+            if changed {
+                self.handle_workspace_selection_changed();
+            }
+        }
+        self.focus_selected_workspace_attention_tab();
+        self.poll_preview();
     }
 
     fn open_url_in_browser(&self, url: &str) -> Result<(), String> {

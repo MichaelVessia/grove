@@ -3315,6 +3315,141 @@ mod tests {
     }
 
     #[test]
+    fn acknowledge_key_advances_to_next_attention_item_when_present() {
+        let feature_path = feature_workspace_path();
+        let feature_b_path = PathBuf::from("/tmp/.grove/tasks/feature-b/grove");
+        let mut tasks = fixture_tasks(WorkspaceStatus::Idle);
+        tasks.push(
+            Task::try_new(
+                "feature-b".to_string(),
+                "feature-b".to_string(),
+                PathBuf::from("/tmp/.grove/tasks/feature-b"),
+                "feature-b".to_string(),
+                vec![
+                    Worktree::try_new(
+                        "grove".to_string(),
+                        PathBuf::from("/repos/grove"),
+                        feature_b_path.clone(),
+                        "feature-b".to_string(),
+                        AgentType::Codex,
+                        WorkspaceStatus::Idle,
+                    )
+                    .expect("feature-b worktree should be valid")
+                    .with_base_branch(Some("main".to_string())),
+                ],
+            )
+            .expect("feature-b task should be valid"),
+        );
+        let mut app = GroveApp::from_task_state(
+            "grove".to_string(),
+            crate::ui::state::AppState::new(tasks),
+            DiscoveryState::Ready,
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(BackgroundOnlyTmuxInput),
+                clipboard: test_clipboard(),
+                config_path: unique_config_path("ack-next-attention"),
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+        insert_running_agent_tab(
+            &mut app,
+            1,
+            feature_agent_tab_session(1).as_str(),
+            "Codex 1",
+        );
+        insert_running_agent_tab(&mut app, 2, "grove-ws-feature-b-agent-1", "Codex 1");
+        app.state.workspaces[1].status = WorkspaceStatus::Done;
+        app.state.workspaces[2].status = WorkspaceStatus::Done;
+
+        for _ in 0..2 {
+            app.track_workspace_status_transition(
+                feature_path.as_path(),
+                WorkspaceStatus::Active,
+                WorkspaceStatus::Done,
+                false,
+                false,
+            );
+            app.track_workspace_status_transition(
+                feature_b_path.as_path(),
+                WorkspaceStatus::Active,
+                WorkspaceStatus::Done,
+                false,
+                false,
+            );
+        }
+
+        assert_eq!(app.attention_items.len(), 2);
+        assert_eq!(
+            app.attention_items
+                .first()
+                .map(|item| item.workspace_path.as_path()),
+            Some(feature_path.as_path())
+        );
+        app.selected_attention_item = Some(0);
+        select_workspace(&mut app, 1);
+
+        let cmd = ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('a'))));
+
+        assert_eq!(app.selected_attention_item, Some(0));
+        assert_eq!(app.attention_items.len(), 1);
+        assert_eq!(
+            app.attention_items
+                .first()
+                .map(|item| item.workspace_path.as_path()),
+            Some(feature_b_path.as_path())
+        );
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.path.as_path()),
+            Some(feature_b_path.as_path())
+        );
+        assert!(!matches!(cmd, Cmd::Quit));
+    }
+
+    #[test]
+    fn acknowledge_key_falls_back_to_workspace_when_no_next_attention_item_exists() {
+        let mut app = fixture_app();
+        let feature_path = feature_workspace_path();
+        insert_running_agent_tab(
+            &mut app,
+            1,
+            feature_agent_tab_session(1).as_str(),
+            "Codex 1",
+        );
+        app.state.workspaces[1].status = WorkspaceStatus::Done;
+
+        for _ in 0..2 {
+            app.track_workspace_status_transition(
+                feature_path.as_path(),
+                WorkspaceStatus::Active,
+                WorkspaceStatus::Done,
+                false,
+                false,
+            );
+        }
+
+        assert_eq!(app.attention_items.len(), 1);
+        app.selected_attention_item = Some(0);
+        select_workspace(&mut app, 1);
+
+        let cmd = ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('a'))));
+
+        assert!(app.selected_attention_item.is_none());
+        assert!(app.attention_items.is_empty());
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.path.as_path()),
+            Some(feature_path.as_path())
+        );
+        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+        assert!(!matches!(cmd, Cmd::Quit));
+    }
+
+    #[test]
     fn acknowledge_key_clears_selected_attention_item_while_interactive() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -3364,6 +3499,39 @@ mod tests {
         assert_eq!(app.selected_attention_item, Some(0));
         assert_eq!(app.state.selected_index, 1);
         assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+    }
+
+    #[test]
+    fn focus_attention_inbox_command_switches_preview_to_attention_tab() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        reduce(&mut app.state, Action::EnterPreviewMode);
+        app.state.focus = PaneFocus::Preview;
+        insert_running_agent_tab(
+            &mut app,
+            1,
+            feature_agent_tab_session(1).as_str(),
+            "Codex 1",
+        );
+        select_workspace(&mut app, 1);
+        focus_home_preview_tab(&mut app);
+        select_workspace(&mut app, 0);
+        app.attention_items = vec![fixture_attention_item(
+            feature_workspace_path(),
+            "feature-a",
+            AttentionReason::BlockedOnQuestion,
+        )];
+
+        app.execute_ui_command(UiCommand::FocusAttentionInbox);
+
+        assert_eq!(app.selected_attention_item, Some(0));
+        assert_eq!(app.state.selected_index, 1);
+        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+        assert_eq!(app.preview_tab, PreviewTab::Agent);
+        assert_eq!(
+            app.selected_active_tab().map(|tab| tab.kind),
+            Some(WorkspaceTabKind::Agent)
+        );
     }
 
     #[test]

@@ -12,19 +12,19 @@ impl GroveApp {
     }
 
     fn focus_attention_inbox(&mut self) {
-        let Some(workspace_path) = self
-            .attention_items
-            .first()
-            .map(|item| item.workspace_path.clone())
-        else {
+        if self.attention_items.is_empty() {
             return;
-        };
+        }
 
         if self.session.interactive.is_some() {
             self.exit_interactive_to_list();
         } else {
             reduce(&mut self.state, Action::EnterListMode);
         }
+        self.select_attention_item(0);
+    }
+
+    fn select_workspace_by_path(&mut self, workspace_path: &Path) {
         if let Some(workspace_index) = self
             .state
             .workspaces
@@ -36,16 +36,23 @@ impl GroveApp {
                 self.handle_workspace_selection_changed();
             }
         }
-        self.selected_attention_item = Some(0);
     }
 
     pub(super) fn acknowledge_selected_attention_item(&mut self) {
-        let Some(item) = self.selected_attention_item() else {
+        let Some((selected_index, workspace_path)) =
+            self.selected_attention_item.and_then(|index| {
+                self.selected_attention_item()
+                    .map(|item| (index, item.workspace_path.clone()))
+            })
+        else {
             return;
         };
-        let workspace_path = item.workspace_path.clone();
         self.clear_attention_for_workspace_path(workspace_path.as_path());
-        self.selected_attention_item = None;
+        if self.attention_items.get(selected_index).is_some() {
+            self.select_attention_item(selected_index);
+        } else {
+            self.select_workspace_by_path(workspace_path.as_path());
+        }
     }
 
     pub(super) fn clear_startup_attention_focus_pending(&mut self) {
