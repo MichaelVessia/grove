@@ -6763,7 +6763,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_preview_stream_updates_without_poll_delay() {
+    fn selected_preview_stream_replaces_stale_placeholder_with_snapshot() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         app.state.focus = PaneFocus::Preview;
@@ -6772,7 +6772,8 @@ mod tests {
         app.session
             .agent_sessions
             .mark_ready(feature_workspace_session());
-        app.preview.apply_capture("initial line\n");
+        app.preview
+            .apply_capture("Connecting to main workspace session...\n");
         app.sync_preview_stream_target();
         let generation = app.polling.preview_stream.generation;
 
@@ -6781,18 +6782,35 @@ mod tests {
             Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
                 session: feature_workspace_session(),
                 generation,
-                chunk: "next line\n".to_string(),
+                chunk: "next line\nsecond line\n".to_string(),
             })),
         );
 
         assert_eq!(
             app.preview.lines,
-            vec!["initial line".to_string(), "next line".to_string()]
+            vec!["next line".to_string(), "second line".to_string()]
         );
         assert_eq!(
             app.polling.preview_stream.connected_session,
             Some(feature_workspace_session())
         );
+    }
+
+    #[test]
+    fn refresh_preview_summary_does_not_clobber_ready_agent_preview() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 0);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(main_workspace_session());
+        app.preview.apply_capture("real output\n");
+
+        app.refresh_preview_summary();
+
+        assert_eq!(app.preview.lines, vec!["real output".to_string()]);
     }
 
     #[test]
@@ -6945,6 +6963,26 @@ mod tests {
 
             assert!(text.contains("PreviewSource  stream"));
         });
+    }
+
+    #[test]
+    fn stream_blocking_poll_preserves_preview_content() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.preview.apply_capture("agent output line\n");
+        app.sync_preview_stream_target();
+
+        app.polling.preview_stream.bootstrap_completed = true;
+
+        app.poll_preview();
+
+        assert_eq!(app.preview.lines, vec!["agent output line".to_string()]);
     }
 
     #[test]

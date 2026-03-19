@@ -1,6 +1,8 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io::BufRead;
+use std::io::Write;
+use std::process::ChildStdin;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
@@ -11,7 +13,7 @@ use serde_json::Value;
 use crate::infrastructure::event_log::Event as LogEvent;
 use crate::ui::state::{PaneFocus, UiMode};
 use crate::ui::tui::{
-    GroveApp, LIVE_PREVIEW_FULL_SCROLLBACK_LINES, Msg, PreviewStreamConnected,
+    CommandTmuxInput, GroveApp, LIVE_PREVIEW_FULL_SCROLLBACK_LINES, Msg, PreviewStreamConnected,
     PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput,
 };
 
@@ -167,21 +169,14 @@ impl GroveApp {
 
         self.polling.preview_stream.bootstrap_completed = true;
         self.polling.preview_stream.last_chunk_bytes = output.chunk.len();
-        if output.chunk.is_empty() {
-            return;
-        }
-
-        self.polling
-            .preview_stream
-            .buffer
-            .push_str(output.chunk.as_str());
+        self.polling.preview_stream.buffer = output.chunk.clone();
         self.apply_live_preview_capture(
             output.session.as_str(),
             LIVE_PREVIEW_FULL_SCROLLBACK_LINES,
             true,
             0,
             0,
-            Ok(self.polling.preview_stream.buffer.clone()),
+            Ok(output.chunk),
         );
     }
 
@@ -275,10 +270,18 @@ impl SelectedPreviewStreamSubscription {
         event: StreamProcessEvent,
     ) -> Option<Msg> {
         match event {
-            StreamProcessEvent::Stdout(line) => {
-                parse_control_mode_line(session_name, generation, line.as_str())
-                    .map(Msg::PreviewStreamEvent)
-            }
+            StreamProcessEvent::Stdout(line) => map_control_mode_line_to_msg(
+                session_name,
+                generation,
+                line.as_str(),
+                |session_name| {
+                    CommandTmuxInput::capture_session_output(
+                        session_name,
+                        LIVE_PREVIEW_FULL_SCROLLBACK_LINES,
+                        true,
+                    )
+                },
+            ),
             StreamProcessEvent::Exited { error } => Some(Msg::PreviewStreamEvent(
                 PreviewStreamEvent::Disconnected(PreviewStreamDisconnected {
                     session: session_name.to_string(),
@@ -296,6 +299,19 @@ impl Subscription<Msg> for SelectedPreviewStreamSubscription {
     }
 
     fn run(&self, sender: mpsc::Sender<Msg>, stop: StopSignal) {
+        let pane_id = match active_pane_id_for_session(self.session.as_str()) {
+            Ok(pane_id) => pane_id,
+            Err(error) => {
+                let _ = sender.send(Msg::PreviewStreamEvent(PreviewStreamEvent::Disconnected(
+                    PreviewStreamDisconnected {
+                        session: self.session.clone(),
+                        generation: self.generation,
+                        error: Some(format!("tmux active pane lookup failed: {error}")),
+                    },
+                )));
+                return;
+            }
+        };
         let mut command = Command::new("tmux");
         command
             .args([
@@ -308,7 +324,7 @@ impl Subscription<Msg> for SelectedPreviewStreamSubscription {
                     "read-only,ignore-size,pause-after={TMUX_CONTROL_MODE_PAUSE_AFTER_SECONDS}"
                 ),
             ])
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
@@ -326,12 +342,45 @@ impl Subscription<Msg> for SelectedPreviewStreamSubscription {
             }
         };
 
+        let mut control_stdin = match child.stdin.take() {
+            Some(stdin) => match write_control_mode_startup_commands(stdin, pane_id.as_str()) {
+                Ok(stdin) => Some(stdin),
+                Err(error) => {
+                    let _ = sender.send(Msg::PreviewStreamEvent(PreviewStreamEvent::Disconnected(
+                        PreviewStreamDisconnected {
+                            session: self.session.clone(),
+                            generation: self.generation,
+                            error: Some(format!("tmux control stream init failed: {error}")),
+                        },
+                    )));
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return;
+                }
+            },
+            None => None,
+        };
+
+        if control_stdin.is_none() {
+            let _ = sender.send(Msg::PreviewStreamEvent(PreviewStreamEvent::Disconnected(
+                PreviewStreamDisconnected {
+                    session: self.session.clone(),
+                    generation: self.generation,
+                    error: Some("tmux control stream stdin unavailable".to_string()),
+                },
+            )));
+            let _ = child.kill();
+            let _ = child.wait();
+            return;
+        }
+
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let stderr_lines = Arc::new(Mutex::new(Vec::<String>::new()));
         let session = self.session.clone();
         let generation = self.generation;
         std::thread::scope(|scope| {
+            let _control_stdin = control_stdin.take();
             let stdout_handle = stdout.map(|stdout| {
                 let sender = sender.clone();
                 let session = session.clone();
@@ -419,6 +468,12 @@ enum StreamProcessEvent {
     Exited { error: Option<String> },
 }
 
+enum ParsedControlModeLine {
+    Connected,
+    Output,
+    Disconnected(Option<String>),
+}
+
 fn exit_error_message(code: Option<i32>, stderr_lines: &Arc<Mutex<Vec<String>>>) -> String {
     let status = match code {
         Some(code) => format!("tmux control stream exited with status {code}"),
@@ -434,58 +489,76 @@ fn exit_error_message(code: Option<i32>, stderr_lines: &Arc<Mutex<Vec<String>>>)
     format!("{status}: {stderr}")
 }
 
-fn parse_control_mode_line(
+fn map_control_mode_line_to_msg(
     session_name: &str,
     generation: u64,
     line: &str,
-) -> Option<PreviewStreamEvent> {
-    if let Some(value) = line.strip_prefix("%output ") {
-        let (_, payload) = value.split_once(' ')?;
-        return Some(PreviewStreamEvent::Output(PreviewStreamOutput {
+    capture_snapshot: impl Fn(&str) -> std::io::Result<String>,
+) -> Option<Msg> {
+    let parsed = parse_control_mode_line(session_name, line)?;
+    let event = match parsed {
+        ParsedControlModeLine::Connected => PreviewStreamEvent::Connected(PreviewStreamConnected {
             session: session_name.to_string(),
             generation,
-            chunk: decode_control_mode_text(payload),
-        }));
+        }),
+        ParsedControlModeLine::Output => match capture_snapshot(session_name) {
+            Ok(snapshot) => PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: session_name.to_string(),
+                generation,
+                chunk: snapshot,
+            }),
+            Err(error) => PreviewStreamEvent::Disconnected(PreviewStreamDisconnected {
+                session: session_name.to_string(),
+                generation,
+                error: Some(format!("tmux stream snapshot failed: {error}")),
+            }),
+        },
+        ParsedControlModeLine::Disconnected(error) => {
+            PreviewStreamEvent::Disconnected(PreviewStreamDisconnected {
+                session: session_name.to_string(),
+                generation,
+                error,
+            })
+        }
+    };
+    Some(Msg::PreviewStreamEvent(event))
+}
+
+fn parse_control_mode_line(session_name: &str, line: &str) -> Option<ParsedControlModeLine> {
+    if let Some(value) = line.strip_prefix("%output ") {
+        let (_, payload) = value.split_once(' ')?;
+        if decode_control_mode_text(payload).is_empty() {
+            return None;
+        }
+        return Some(ParsedControlModeLine::Output);
     }
 
     if let Some(value) = line.strip_prefix("%extended-output ") {
         let (_, payload) = value.split_once(" : ")?;
-        return Some(PreviewStreamEvent::Output(PreviewStreamOutput {
-            session: session_name.to_string(),
-            generation,
-            chunk: decode_control_mode_text(payload),
-        }));
+        if decode_control_mode_text(payload).is_empty() {
+            return None;
+        }
+        return Some(ParsedControlModeLine::Output);
     }
 
     if let Some(value) = line.strip_prefix("%client-session-changed ") {
         let (_, name) = value.rsplit_once(' ')?;
         if name == session_name {
-            return Some(PreviewStreamEvent::Connected(PreviewStreamConnected {
-                session: session_name.to_string(),
-                generation,
-            }));
+            return Some(ParsedControlModeLine::Connected);
         }
     }
 
     if let Some(value) = line.strip_prefix("%session-changed ") {
         let (_, name) = value.rsplit_once(' ')?;
         if name == session_name {
-            return Some(PreviewStreamEvent::Connected(PreviewStreamConnected {
-                session: session_name.to_string(),
-                generation,
-            }));
+            return Some(ParsedControlModeLine::Connected);
         }
     }
 
     if let Some(reason) = line.strip_prefix("%exit") {
-        let error = trimmed_control_reason(reason);
-        return Some(PreviewStreamEvent::Disconnected(
-            PreviewStreamDisconnected {
-                session: session_name.to_string(),
-                generation,
-                error,
-            },
-        ));
+        return Some(ParsedControlModeLine::Disconnected(trimmed_control_reason(
+            reason,
+        )));
     }
 
     None
@@ -497,6 +570,45 @@ fn trimmed_control_reason(reason: &str) -> Option<String> {
         return None;
     }
     Some(trimmed.to_string())
+}
+
+fn active_pane_id_for_session(session_name: &str) -> std::io::Result<String> {
+    let output = Command::new("tmux")
+        .args(["display-message", "-p", "-t", session_name, "#{pane_id}"])
+        .output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(std::io::Error::other(format!(
+            "tmux display-message failed for '{session_name}': {stderr}"
+        )));
+    }
+
+    let pane_id = String::from_utf8(output.stdout)
+        .map_err(|error| {
+            std::io::Error::other(format!("tmux pane id utf8 decode failed: {error}"))
+        })?
+        .trim()
+        .to_string();
+    if pane_id.is_empty() {
+        return Err(std::io::Error::other(format!(
+            "tmux display-message returned empty pane id for '{session_name}'"
+        )));
+    }
+    Ok(pane_id)
+}
+
+fn build_control_mode_startup_commands(pane_id: &str) -> String {
+    format!("refresh-client -A {pane_id}:on\n")
+}
+
+fn write_control_mode_startup_commands(
+    mut stdin: ChildStdin,
+    pane_id: &str,
+) -> std::io::Result<ChildStdin> {
+    let startup_commands = build_control_mode_startup_commands(pane_id);
+    stdin.write_all(startup_commands.as_bytes())?;
+    stdin.flush()?;
+    Ok(stdin)
 }
 
 fn decode_control_mode_text(value: &str) -> String {
@@ -547,4 +659,61 @@ fn decode_control_mode_text(value: &str) -> String {
         decoded.push(decoded_escape);
     }
     decoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::{Command, Stdio};
+    use std::thread;
+    use std::time::Duration as StdDuration;
+
+    #[test]
+    fn control_mode_startup_commands_enable_pane_output() {
+        assert_eq!(
+            build_control_mode_startup_commands("%180"),
+            "refresh-client -A %180:on\n"
+        );
+    }
+
+    #[test]
+    fn control_mode_output_line_captures_full_snapshot() {
+        let msg = map_control_mode_line_to_msg(
+            "grove-wt-grove-grove-agent-1",
+            7,
+            "%extended-output %180 0 : \\033[51;1H\\033[1mhi",
+            |_| Ok("full snapshot\n".to_string()),
+        )
+        .expect("output line should map to a message");
+
+        assert_eq!(
+            msg,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: "grove-wt-grove-grove-agent-1".to_string(),
+                generation: 7,
+                chunk: "full snapshot\n".to_string(),
+            }))
+        );
+    }
+
+    #[test]
+    fn startup_writer_keeps_stdin_open_for_long_lived_client() {
+        let mut child = Command::new("sh")
+            .args(["-c", "read line; while read next; do :; done"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("child should spawn");
+
+        let stdin = child.stdin.take().expect("stdin should exist");
+        let stdin = write_control_mode_startup_commands(stdin, "%180")
+            .expect("startup commands should write");
+
+        thread::sleep(StdDuration::from_millis(50));
+        assert!(child.try_wait().expect("wait should succeed").is_none());
+
+        drop(stdin);
+        let _ = child.wait();
+    }
 }

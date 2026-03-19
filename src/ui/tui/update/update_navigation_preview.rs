@@ -599,6 +599,9 @@ impl GroveApp {
     }
 
     pub(super) fn refresh_preview_summary(&mut self) {
+        if self.selected_live_preview_session_if_ready().is_some() {
+            return;
+        }
         self.preview
             .apply_capture(&self.selected_workspace_summary());
     }

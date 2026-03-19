@@ -84,9 +84,11 @@ impl GroveApp {
             return;
         }
 
-        let live_preview = self.prepare_live_preview_session().filter(|target| {
-            !self.preview_stream_blocks_selected_poll(target.session_name.as_str())
+        let prepared_session = self.prepare_live_preview_session();
+        let stream_blocking = prepared_session.as_ref().is_some_and(|target| {
+            self.preview_stream_blocks_selected_poll(target.session_name.as_str())
         });
+        let live_preview = prepared_session.filter(|_| !stream_blocking);
         let live_scrollback_lines = self.live_preview_scrollback_lines();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = self.status_poll_targets_for_async_preview(live_preview.as_ref());
@@ -96,8 +98,10 @@ impl GroveApp {
 
         if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
             self.polling.preview_poll_requested = false;
-            self.clear_agent_activity_tracking();
-            self.refresh_preview_summary();
+            if !stream_blocking {
+                self.clear_agent_activity_tracking();
+                self.refresh_preview_summary();
+            }
             return;
         }
 
@@ -120,32 +124,33 @@ impl GroveApp {
             return;
         }
 
-        let live_preview = self
-            .prepare_live_preview_session()
-            .filter(|target| {
-                !self.preview_stream_blocks_selected_poll(target.session_name.as_str())
-            })
-            .or_else(|| {
-                if self.preview_tab == PreviewTab::Git {
-                    return None;
-                }
-                self.selected_live_preview_session_if_ready()
-                    .filter(|session_name| {
-                        !self.preview_stream_blocks_selected_poll(session_name.as_str())
-                    })
-                    .map(|session_name| LivePreviewTarget {
-                        session_name,
-                        include_escape_sequences: true,
-                    })
-            });
+        let prepared_session = self.prepare_live_preview_session();
+        let stream_blocking = prepared_session.as_ref().is_some_and(|target| {
+            self.preview_stream_blocks_selected_poll(target.session_name.as_str())
+        });
+        let live_preview = prepared_session.filter(|_| !stream_blocking).or_else(|| {
+            if stream_blocking || self.preview_tab == PreviewTab::Git {
+                return None;
+            }
+            self.selected_live_preview_session_if_ready()
+                .filter(|session_name| {
+                    !self.preview_stream_blocks_selected_poll(session_name.as_str())
+                })
+                .map(|session_name| LivePreviewTarget {
+                    session_name,
+                    include_escape_sequences: true,
+                })
+        });
         let live_scrollback_lines = self.live_preview_scrollback_lines();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = Vec::new();
 
         if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
             self.polling.preview_poll_requested = false;
-            self.clear_agent_activity_tracking();
-            self.refresh_preview_summary();
+            if !stream_blocking {
+                self.clear_agent_activity_tracking();
+                self.refresh_preview_summary();
+            }
             return;
         }
 
