@@ -6645,6 +6645,28 @@ mod tests {
     }
 
     #[test]
+    fn session_performance_rows_preserve_background_cadence_when_selected_preview_is_fast() {
+        let mut app = fixture_app();
+        select_workspace(&mut app, 1);
+        app.state.focus = PaneFocus::Preview;
+        app.state.workspaces[1].status = WorkspaceStatus::Waiting;
+        app.state.workspaces[0].status = WorkspaceStatus::Active;
+
+        let rows = app.session_performance_rows();
+        let selected = rows
+            .iter()
+            .find(|row| row.label == "feature-a")
+            .expect("selected workspace row should exist");
+        let background = rows
+            .iter()
+            .find(|row| row.label == "grove")
+            .expect("background workspace row should exist");
+
+        assert_eq!(selected.cadence, "100 ms");
+        assert_eq!(background.cadence, "10000 ms");
+    }
+
+    #[test]
     fn performance_dialog_renders_summary_sections() {
         let mut app = fixture_app();
         app.execute_command_palette_action("palette:open_performance");
@@ -9331,6 +9353,25 @@ mod tests {
                 assert!(
                     matches!(second_cmd, Cmd::None),
                     "when a sooner tick is already pending, no new timer should be scheduled"
+                );
+            }
+
+            #[test]
+            fn focused_preview_schedules_fast_poll_deadline() {
+                let mut app = fixture_background_app(WorkspaceStatus::Active);
+                select_workspace(&mut app, 1);
+                app.state.focus = PaneFocus::Preview;
+
+                let cmd = app.schedule_next_tick();
+
+                assert!(matches!(cmd, Cmd::Tick(_)));
+                assert_eq!(app.polling.next_tick_trigger.as_deref(), Some("poll"));
+                assert!(
+                    app.polling
+                        .next_tick_interval_ms
+                        .is_some_and(|interval| interval <= 100),
+                    "expected focused preview poll interval at or below 100 ms, got {:?}",
+                    app.polling.next_tick_interval_ms
                 );
             }
 

@@ -5,6 +5,9 @@ use crate::domain::{Workspace, WorkspaceStatus};
 use super::sessions::session_name_for_workspace_ref;
 use super::{LivePreviewTarget, WorkspaceStatusTarget};
 
+const FOCUSED_PREVIEW_POLL_INTERVAL_MS: u64 = 100;
+const SELECTED_TERMINAL_POLL_INTERVAL_MS: u64 = 500;
+
 pub fn workspace_should_poll_status(workspace: &Workspace) -> bool {
     if !workspace.supported_agent {
         return false;
@@ -79,12 +82,17 @@ pub fn poll_interval(
         return Duration::from_secs(10);
     }
 
-    if output_changing {
-        return Duration::from_millis(200);
+    if is_preview_focused {
+        return match status {
+            WorkspaceStatus::Done | WorkspaceStatus::Error => {
+                Duration::from_millis(SELECTED_TERMINAL_POLL_INTERVAL_MS)
+            }
+            _ => Duration::from_millis(FOCUSED_PREVIEW_POLL_INTERVAL_MS),
+        };
     }
 
-    if is_preview_focused {
-        return Duration::from_millis(500);
+    if output_changing {
+        return Duration::from_millis(200);
     }
 
     match status {
@@ -221,6 +229,28 @@ mod tests {
                 false
             ),
             Duration::from_millis(500)
+        );
+        assert_eq!(
+            poll_interval(
+                WorkspaceStatus::Waiting,
+                true,
+                true,
+                false,
+                Duration::from_secs(30),
+                false
+            ),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            poll_interval(
+                WorkspaceStatus::Active,
+                true,
+                true,
+                false,
+                Duration::from_secs(30),
+                true
+            ),
+            Duration::from_millis(100)
         );
         assert_eq!(
             poll_interval(
