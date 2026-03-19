@@ -3553,7 +3553,22 @@ mod tests {
     }
 
     #[test]
-    fn focus_attention_inbox_key_selects_first_attention_item() {
+    fn focus_attention_inbox_key_selects_first_attention_item_from_list() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        app.state.focus = PaneFocus::WorkspaceList;
+        app.clear_startup_attention_focus_pending();
+        seed_feature_finished_attention(&mut app);
+
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('i'))));
+
+        assert_eq!(app.selected_attention_item, Some(0));
+        assert_eq!(app.state.selected_index, 1);
+        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+    }
+
+    #[test]
+    fn focus_attention_inbox_key_ignored_in_preview_focus() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         reduce(&mut app.state, Action::EnterPreviewMode);
@@ -3563,9 +3578,10 @@ mod tests {
 
         ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('i'))));
 
-        assert_eq!(app.selected_attention_item, Some(0));
-        assert_eq!(app.state.selected_index, 1);
-        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+        assert_eq!(
+            app.selected_attention_item, None,
+            "i key should not trigger inbox focus from preview pane"
+        );
     }
 
     #[test]
@@ -6600,7 +6616,32 @@ mod tests {
         with_rendered_frame(&app, 100, 30, |_frame| {});
         with_rendered_frame(&app, 100, 30, |_frame| {});
 
-        assert!(app.frame_timing_summary().is_some());
+        assert!(app.redraw_timing_summary().is_some());
+        assert!(app.view_timing_summary().is_some());
+    }
+
+    #[test]
+    fn session_performance_rows_include_known_non_polled_workspaces() {
+        let mut app = fixture_app();
+        app.state = crate::ui::state::AppState::new(vec![
+            fixture_task("feature-a", &["grove"]),
+            fixture_task("feature-b", &["web-monorepo"]),
+            fixture_task("feature-c", &["api"]),
+            fixture_task("feature-d", &["docs"]),
+        ]);
+        app.sync_workspace_tab_maps();
+        app.refresh_preview_summary();
+        select_workspace(&mut app, 0);
+        app.state.workspaces[1].status = WorkspaceStatus::Active;
+
+        let rows = app.session_performance_rows();
+        let reasons = rows
+            .iter()
+            .map(|row| row.reason.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(rows.len(), app.state.workspaces.len());
+        assert!(reasons.contains(&"not polled"));
     }
 
     #[test]
@@ -6617,8 +6658,43 @@ mod tests {
             assert!(text.contains("Performance"));
             assert!(text.contains("CPU"));
             assert!(text.contains("Memory"));
+            assert!(text.contains("Redraw"));
+            assert!(text.contains("View"));
             assert!(text.contains("Scheduler"));
             assert!(text.contains("Sessions"));
+            assert!(!text.contains("FPS"));
+        });
+    }
+
+    #[test]
+    fn performance_dialog_uses_available_height_for_workspace_rows() {
+        let mut app = fixture_app();
+        app.state = crate::ui::state::AppState::new(vec![
+            fixture_task("feature-a", &["grove"]),
+            fixture_task("feature-b", &["web-monorepo"]),
+            fixture_task("feature-c", &["api"]),
+            fixture_task("feature-d", &["docs"]),
+        ]);
+        app.sync_workspace_tab_maps();
+        app.refresh_preview_summary();
+        app.state.workspaces[1].status = WorkspaceStatus::Active;
+        app.execute_command_palette_action("palette:open_performance");
+        let expected_labels = app
+            .session_performance_rows()
+            .into_iter()
+            .skip(1)
+            .map(|row| row.label)
+            .collect::<Vec<String>>();
+
+        with_rendered_frame(&app, 120, 40, |frame| {
+            let text = (0..frame.height())
+                .map(|row| row_text(frame, row, 0, frame.width()))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            for label in &expected_labels {
+                assert!(text.contains(label), "missing row for {label}: {text}");
+            }
         });
     }
 

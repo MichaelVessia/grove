@@ -275,6 +275,7 @@ impl GroveApp {
             | UiCommand::ResizeSidebarWider
             | UiCommand::FocusPreview
             | UiCommand::DeleteProject => false,
+            UiCommand::FocusAttentionInbox => !in_preview_focus,
             UiCommand::ReorderTasks => self.state.focus == PaneFocus::WorkspaceList,
             _ => true,
         }
