@@ -15,7 +15,7 @@ use super::{DIVIDER_WIDTH, GroveApp};
 impl GroveApp {
     pub(super) fn render_model(&self, frame: &mut Frame) {
         let view_started_at = Instant::now();
-        self.record_frame_timing(view_started_at);
+        self.record_redraw_cadence(view_started_at);
         frame.set_cursor(None);
         frame.set_cursor_visible(false);
         frame.enable_hit_testing();
@@ -103,6 +103,10 @@ impl GroveApp {
         let frame_log_started_at = Instant::now();
         self.log_frame_render(frame);
         let view_completed_at = Instant::now();
+        self.record_render_cost(
+            draw_completed_at.saturating_duration_since(view_started_at),
+            view_completed_at.saturating_duration_since(view_started_at),
+        );
         self.telemetry.event_log.log(
             LogEvent::new("frame", "timing")
                 .with_data(

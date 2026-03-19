@@ -241,8 +241,10 @@ impl GroveApp {
                 deferred_cmds: Vec::new(),
             },
             performance: PerformanceState {
-                frame_timing: RefCell::new(FrameTimingWindow::new(64)),
-                last_frame_started_at: RefCell::new(None),
+                redraw_timing: RefCell::new(DurationWindow::new(64)),
+                draw_timing: RefCell::new(DurationWindow::new(64)),
+                view_timing: RefCell::new(DurationWindow::new(64)),
+                last_redraw_started_at: RefCell::new(None),
                 process_sampler: RefCell::new(ProcessMetricsSampler::new_current()),
                 process_metrics: RefCell::new(ProcessMetricsSnapshot::unavailable()),
                 last_process_refresh_at: RefCell::new(None),

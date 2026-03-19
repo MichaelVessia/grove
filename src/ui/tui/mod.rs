@@ -6667,6 +6667,25 @@ mod tests {
     }
 
     #[test]
+    fn performance_dialog_renders_session_table_headers() {
+        let mut app = fixture_app();
+        app.execute_command_palette_action("palette:open_performance");
+
+        with_rendered_frame(&app, 140, 40, |frame| {
+            let text = (0..frame.height())
+                .map(|row| row_text(frame, row, 0, frame.width()))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            assert!(text.contains("Workspace"));
+            assert!(text.contains("Status"));
+            assert!(text.contains("Cadence"));
+            assert!(text.contains("Role"));
+            assert!(text.contains("Reason"));
+        });
+    }
+
+    #[test]
     fn performance_dialog_uses_available_height_for_workspace_rows() {
         let mut app = fixture_app();
         app.state = crate::ui::state::AppState::new(vec![

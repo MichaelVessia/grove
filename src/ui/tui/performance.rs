@@ -8,12 +8,12 @@ use crate::domain::WorkspaceStatus;
 use crate::infrastructure::process_metrics::ProcessMetricsSnapshot;
 
 #[derive(Debug, Clone)]
-pub(super) struct FrameTimingWindow {
+pub(super) struct DurationWindow {
     limit: usize,
     intervals: VecDeque<Duration>,
 }
 
-impl FrameTimingWindow {
+impl DurationWindow {
     pub(super) fn new(limit: usize) -> Self {
         Self {
             limit: limit.max(1),
@@ -28,7 +28,7 @@ impl FrameTimingWindow {
         self.intervals.push_back(interval);
     }
 
-    pub(super) fn summary(&self) -> Option<FrameTimingSummary> {
+    pub(super) fn summary(&self) -> Option<DurationSummary> {
         if self.intervals.is_empty() {
             return None;
         }
@@ -50,23 +50,24 @@ impl FrameTimingWindow {
             .min(millis.len().saturating_sub(1));
         let p95_ms = millis[p95_index];
 
-        Some(FrameTimingSummary {
-            average_ms,
-            p95_ms,
-            fps_estimate: if average_ms > 0.0 {
-                1000.0 / average_ms
-            } else {
-                0.0
-            },
-        })
+        Some(DurationSummary { average_ms, p95_ms })
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct FrameTimingSummary {
+pub(super) struct DurationSummary {
     pub(super) average_ms: f64,
     pub(super) p95_ms: f64,
-    pub(super) fps_estimate: f64,
+}
+
+impl DurationSummary {
+    pub(super) fn per_second(self) -> f64 {
+        if self.average_ms > 0.0 {
+            1000.0 / self.average_ms
+        } else {
+            0.0
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,19 +141,30 @@ pub(super) struct SessionPerformanceRow {
 }
 
 impl GroveApp {
-    pub(super) fn record_frame_timing(&self, started_at: Instant) {
+    pub(super) fn record_redraw_cadence(&self, started_at: Instant) {
         let previous = self
             .performance
-            .last_frame_started_at
+            .last_redraw_started_at
             .replace(Some(started_at));
         let Some(previous_started_at) = previous else {
             return;
         };
 
         self.performance
-            .frame_timing
+            .redraw_timing
             .borrow_mut()
             .push(started_at.saturating_duration_since(previous_started_at));
+    }
+
+    pub(super) fn record_render_cost(&self, draw_duration: Duration, view_duration: Duration) {
+        self.performance
+            .draw_timing
+            .borrow_mut()
+            .push(draw_duration);
+        self.performance
+            .view_timing
+            .borrow_mut()
+            .push(view_duration);
     }
 
     pub(super) fn refresh_process_metrics(&self, now: Instant) {
@@ -171,8 +183,16 @@ impl GroveApp {
         self.performance.last_process_refresh_at.replace(Some(now));
     }
 
-    pub(super) fn frame_timing_summary(&self) -> Option<FrameTimingSummary> {
-        self.performance.frame_timing.borrow().summary()
+    pub(super) fn redraw_timing_summary(&self) -> Option<DurationSummary> {
+        self.performance.redraw_timing.borrow().summary()
+    }
+
+    pub(super) fn draw_timing_summary(&self) -> Option<DurationSummary> {
+        self.performance.draw_timing.borrow().summary()
+    }
+
+    pub(super) fn view_timing_summary(&self) -> Option<DurationSummary> {
+        self.performance.view_timing.borrow().summary()
     }
 
     pub(super) fn process_metrics_snapshot(&self) -> ProcessMetricsSnapshot {
@@ -226,11 +246,6 @@ impl GroveApp {
             let session_name = session_name_for_workspace_ref(workspace);
             let live_preview_selected = selected_live_preview == Some(session_name.as_str());
             let polled_in_background = workspace.supported_agent && workspace.status.has_session();
-
-            if !is_selected && !polled_in_background {
-                continue;
-            }
-
             let waiting_prompt = self
                 .polling
                 .workspace_waiting_prompts
@@ -254,8 +269,10 @@ impl GroveApp {
             });
             let cadence = if live_preview_selected {
                 "excluded".to_string()
-            } else {
+            } else if is_selected || polled_in_background {
                 format_duration(Some(self.session_poll_interval(workspace, is_selected)))
+            } else {
+                "n/a".to_string()
             };
             let role = if is_selected {
                 "selected"
@@ -281,8 +298,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn frame_timing_window_computes_recent_average_and_p95() {
-        let mut window = FrameTimingWindow::new(8);
+    fn duration_window_computes_recent_average_and_p95() {
+        let mut window = DurationWindow::new(8);
         for ms in [16_u64, 17, 16, 18, 16] {
             window.push(Duration::from_millis(ms));
         }

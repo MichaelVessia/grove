@@ -1,22 +1,149 @@
+use ftui::layout::{Constraint, Flex};
+use ftui::widgets::StatefulWidget;
+use ftui::widgets::table::{Row, Table, TableState};
+
 use super::view_prelude::*;
-use crate::ui::tui::performance::format_duration;
+use crate::ui::tui::performance::{SessionPerformanceRow, format_duration};
 use std::time::Instant;
+
+#[derive(Debug, Clone)]
+struct PerformanceModalContent {
+    summary: FtText<'static>,
+    scheduler: FtText<'static>,
+    sessions: Vec<SessionPerformanceRow>,
+    theme: UiTheme,
+}
+
+impl Widget for PerformanceModalContent {
+    fn render(&self, area: Rect, frame: &mut Frame) {
+        if area.is_empty() {
+            return;
+        }
+
+        let content_style = Style::new().bg(self.theme.base).fg(self.theme.text);
+        Paragraph::new("").style(content_style).render(area, frame);
+
+        let block = Block::new()
+            .title("Performance")
+            .title_alignment(BlockAlignment::Center)
+            .borders(Borders::ALL)
+            .style(content_style)
+            .border_style(Style::new().fg(self.theme.peach).bold());
+        let inner = block.inner(area);
+        block.render(area, frame);
+
+        if inner.is_empty() {
+            return;
+        }
+
+        let sections = Flex::vertical()
+            .constraints([
+                Constraint::Fixed(8),
+                Constraint::Min(8),
+                Constraint::Fixed(1),
+            ])
+            .split(inner);
+        let top = Flex::horizontal()
+            .constraints([Constraint::Percentage(52.0), Constraint::Percentage(48.0)])
+            .split(sections[0]);
+
+        self.render_text_panel(frame, top[0], "Summary", self.summary.clone());
+        self.render_text_panel(frame, top[1], "Scheduler", self.scheduler.clone());
+        self.render_sessions_table(frame, sections[1]);
+        Paragraph::new("Close: Esc")
+            .style(Style::new().fg(self.theme.overlay0).bg(self.theme.base))
+            .render(sections[2], frame);
+    }
+}
+
+impl PerformanceModalContent {
+    fn render_text_panel(&self, frame: &mut Frame, area: Rect, title: &str, body: FtText<'static>) {
+        if area.is_empty() {
+            return;
+        }
+
+        let block = Block::new()
+            .title(title)
+            .borders(Borders::ALL)
+            .style(Style::new().bg(self.theme.base).fg(self.theme.text))
+            .border_style(Style::new().fg(self.theme.overlay0));
+        let inner = block.inner(area);
+        block.render(area, frame);
+        if inner.is_empty() {
+            return;
+        }
+
+        Paragraph::new(body)
+            .style(Style::new().bg(self.theme.base).fg(self.theme.text))
+            .render(inner, frame);
+    }
+
+    fn render_sessions_table(&self, frame: &mut Frame, area: Rect) {
+        if area.is_empty() {
+            return;
+        }
+
+        let block = Block::new()
+            .title("Sessions")
+            .borders(Borders::ALL)
+            .style(Style::new().bg(self.theme.base).fg(self.theme.text))
+            .border_style(Style::new().fg(self.theme.overlay0));
+        let inner = block.inner(area);
+        block.render(area, frame);
+        if inner.is_empty() {
+            return;
+        }
+
+        if self.sessions.is_empty() {
+            Paragraph::new("No known workspaces")
+                .style(Style::new().bg(self.theme.base).fg(self.theme.overlay0))
+                .render(inner, frame);
+            return;
+        }
+
+        let header = Row::new(["Workspace", "Status", "Cadence", "Role", "Reason"])
+            .style(Style::new().fg(self.theme.blue).bold());
+        let rows = self.sessions.iter().map(|row| {
+            Row::new([
+                row.label.clone(),
+                row.status.to_string(),
+                row.cadence.clone(),
+                row.role.to_string(),
+                row.reason.clone(),
+            ])
+        });
+        let widths = [
+            Constraint::Percentage(20.0),
+            Constraint::Fixed(10),
+            Constraint::Fixed(10),
+            Constraint::Fixed(10),
+            Constraint::Min(20),
+        ];
+        let table = Table::new(rows, widths)
+            .header(header)
+            .column_spacing(2)
+            .style(Style::new().bg(self.theme.base).fg(self.theme.text));
+        let mut state = TableState::default();
+        StatefulWidget::render(&table, inner, frame, &mut state);
+    }
+}
 
 impl GroveApp {
     pub(super) fn render_performance_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
         if self.performance_dialog().is_none() {
             return;
         }
-        if area.width < 56 || area.height < 18 {
+        if area.width < 72 || area.height < 22 {
             return;
         }
 
-        let dialog_width = area.width.saturating_sub(12).min(88);
-        let dialog_height = 18u16;
+        let dialog_width = area.width.saturating_sub(6).min(160);
+        let dialog_height = area.height.saturating_sub(4).clamp(22, 44);
         let theme = self.active_ui_theme();
-        let content_width = usize::from(dialog_width.saturating_sub(2));
         let now = Instant::now();
-        let frame_summary = self.frame_timing_summary();
+        let redraw_summary = self.redraw_timing_summary();
+        let draw_summary = self.draw_timing_summary();
+        let view_summary = self.view_timing_summary();
         let process_metrics = self.process_metrics_snapshot();
         let next_tick = self
             .polling
@@ -30,147 +157,54 @@ impl GroveApp {
             .polling
             .next_visual_due_at
             .map(|due_at| due_at.saturating_duration_since(now));
-        let mut lines = vec![
-            FtLine::from_spans(vec![FtSpan::styled(
-                "Runtime inspection for Grove",
-                Style::new().fg(theme.overlay0),
-            )]),
-            FtLine::raw(""),
-            modal_static_badged_row(
-                content_width,
-                theme,
-                "Summary",
-                "Frame + Grove process",
-                theme.blue,
-                theme.text,
-            ),
-            modal_static_badged_row(
-                content_width,
-                theme,
-                "CPU",
-                process_metrics.cpu_display().as_str(),
-                theme.peach,
-                theme.text,
-            ),
-            modal_static_badged_row(
-                content_width,
-                theme,
-                "Memory",
-                process_metrics.memory_display().as_str(),
-                theme.peach,
-                theme.text,
-            ),
-            modal_static_badged_row(
-                content_width,
-                theme,
-                "FPS",
-                frame_summary
-                    .map(|summary| format!("{:.1} fps", summary.fps_estimate))
-                    .unwrap_or_else(|| "warming up".to_string())
-                    .as_str(),
-                theme.green,
-                theme.text,
-            ),
-            modal_static_badged_row(
-                content_width,
-                theme,
-                "Frame",
-                frame_summary
+
+        let summary = FtText::from_lines(vec![
+            FtLine::raw("Runtime inspection for Grove"),
+            FtLine::raw(format!("CPU      {}", process_metrics.cpu_display())),
+            FtLine::raw(format!("Memory   {}", process_metrics.memory_display())),
+            FtLine::raw(format!(
+                "Redraw   {}",
+                redraw_summary
                     .map(|summary| {
                         format!(
-                            "avg {:.1} ms, p95 {:.1} ms",
-                            summary.average_ms, summary.p95_ms
+                            "{:.1}/sec, avg {:.1} ms, p95 {:.1} ms",
+                            summary.per_second(),
+                            summary.average_ms,
+                            summary.p95_ms
                         )
                     })
                     .unwrap_or_else(|| "warming up".to_string())
-                    .as_str(),
-                theme.green,
-                theme.text,
-            ),
-            FtLine::raw(""),
-            modal_static_badged_row(
-                content_width,
-                theme,
-                "Scheduler",
-                self.scheduler_reason_summary().as_str(),
-                theme.yellow,
-                theme.text,
-            ),
-            modal_static_badged_row(
-                content_width,
-                theme,
-                "NextTick",
-                format_duration(next_tick).as_str(),
-                theme.yellow,
-                theme.text,
-            ),
-            modal_static_badged_row(
-                content_width,
-                theme,
-                "NextPoll",
-                format_duration(next_poll).as_str(),
-                theme.yellow,
-                theme.text,
-            ),
-            modal_static_badged_row(
-                content_width,
-                theme,
-                "NextVisual",
-                format_duration(next_visual).as_str(),
-                theme.yellow,
-                theme.text,
-            ),
-            FtLine::raw(""),
-            modal_static_badged_row(
-                content_width,
-                theme,
-                "Sessions",
-                "Polling view",
-                theme.blue,
-                theme.text,
-            ),
-        ];
-
-        let session_rows = self.session_performance_rows();
-        if session_rows.is_empty() {
-            lines.push(modal_static_badged_row(
-                content_width,
-                theme,
-                "Row",
-                "No active workspace sessions",
-                theme.overlay0,
-                theme.overlay0,
-            ));
-        } else {
-            for row in session_rows.into_iter().take(3) {
-                let value = format!(
-                    "{} | {} | {} | {}",
-                    row.status, row.cadence, row.role, row.reason
-                );
-                lines.push(modal_static_badged_row(
-                    content_width,
-                    theme,
-                    row.label.as_str(),
-                    value.as_str(),
-                    theme.green,
-                    theme.text,
-                ));
-            }
-        }
-        lines.extend([
-            FtLine::raw(""),
-            FtLine::from_spans(vec![FtSpan::styled(
-                "Close: Esc",
-                Style::new().fg(theme.overlay0),
-            )]),
+            )),
+            FtLine::raw(format!(
+                "Draw     {}",
+                draw_summary
+                    .map(|summary| format!(
+                        "avg {:.1} ms, p95 {:.1} ms",
+                        summary.average_ms, summary.p95_ms
+                    ))
+                    .unwrap_or_else(|| "warming up".to_string())
+            )),
+            FtLine::raw(format!(
+                "View     {}",
+                view_summary
+                    .map(|summary| format!(
+                        "avg {:.1} ms, p95 {:.1} ms",
+                        summary.average_ms, summary.p95_ms
+                    ))
+                    .unwrap_or_else(|| "warming up".to_string())
+            )),
         ]);
-        let body = FtText::from_lines(lines);
-
-        let content = OverlayModalContent {
-            title: "Performance",
-            body,
+        let scheduler = FtText::from_lines(vec![
+            FtLine::raw(self.scheduler_reason_summary()),
+            FtLine::raw(format!("NextTick    {}", format_duration(next_tick))),
+            FtLine::raw(format!("NextPoll    {}", format_duration(next_poll))),
+            FtLine::raw(format!("NextVisual  {}", format_duration(next_visual))),
+        ]);
+        let content = PerformanceModalContent {
+            summary,
+            scheduler,
+            sessions: self.session_performance_rows(),
             theme,
-            border_color: theme.peach,
         };
 
         Modal::new(content)

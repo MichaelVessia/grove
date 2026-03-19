@@ -90,7 +90,7 @@ use crate::infrastructure::paths::refer_to_same_location;
 use crate::infrastructure::process_metrics::{ProcessMetricsSampler, ProcessMetricsSnapshot};
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
-use performance::FrameTimingWindow;
+use performance::DurationWindow;
 
 #[cfg(test)]
 use bootstrap_config::AppDependencies;
@@ -301,8 +301,10 @@ struct PollingState {
 }
 
 struct PerformanceState {
-    frame_timing: RefCell<FrameTimingWindow>,
-    last_frame_started_at: RefCell<Option<Instant>>,
+    redraw_timing: RefCell<DurationWindow>,
+    draw_timing: RefCell<DurationWindow>,
+    view_timing: RefCell<DurationWindow>,
+    last_redraw_started_at: RefCell<Option<Instant>>,
     process_sampler: RefCell<ProcessMetricsSampler>,
     process_metrics: RefCell<ProcessMetricsSnapshot>,
     last_process_refresh_at: RefCell<Option<Instant>>,
