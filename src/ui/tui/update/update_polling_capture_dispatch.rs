@@ -74,6 +74,7 @@ impl GroveApp {
     }
 
     pub(super) fn poll_preview(&mut self) {
+        self.sync_preview_stream_target();
         if !self.tmux_input.supports_background_poll() {
             self.poll_preview_sync();
             return;
@@ -83,7 +84,9 @@ impl GroveApp {
             return;
         }
 
-        let live_preview = self.prepare_live_preview_session();
+        let live_preview = self.prepare_live_preview_session().filter(|target| {
+            !self.preview_stream_blocks_selected_poll(target.session_name.as_str())
+        });
         let live_scrollback_lines = self.live_preview_scrollback_lines();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = self.status_poll_targets_for_async_preview(live_preview.as_ref());
@@ -111,21 +114,30 @@ impl GroveApp {
     }
 
     pub(super) fn poll_preview_prioritized(&mut self) {
+        self.sync_preview_stream_target();
         if !self.tmux_input.supports_background_poll() || !self.polling.preview_poll_in_flight {
             self.poll_preview();
             return;
         }
 
-        let live_preview = self.prepare_live_preview_session().or_else(|| {
-            if self.preview_tab == PreviewTab::Git {
-                return None;
-            }
-            self.selected_live_preview_session_if_ready()
-                .map(|session_name| LivePreviewTarget {
-                    session_name,
-                    include_escape_sequences: true,
-                })
-        });
+        let live_preview = self
+            .prepare_live_preview_session()
+            .filter(|target| {
+                !self.preview_stream_blocks_selected_poll(target.session_name.as_str())
+            })
+            .or_else(|| {
+                if self.preview_tab == PreviewTab::Git {
+                    return None;
+                }
+                self.selected_live_preview_session_if_ready()
+                    .filter(|session_name| {
+                        !self.preview_stream_blocks_selected_poll(session_name.as_str())
+                    })
+                    .map(|session_name| LivePreviewTarget {
+                        session_name,
+                        include_escape_sequences: true,
+                    })
+            });
         let live_scrollback_lines = self.live_preview_scrollback_lines();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = Vec::new();
@@ -170,6 +182,7 @@ impl GroveApp {
         if let Some(live_capture) = completion.live_capture {
             let selected_live_session = self.selected_live_preview_session_for_completion();
             let captured_session = live_capture.session.clone();
+            let capture_succeeded = live_capture.result.is_ok();
             let mismatched_missing_session = live_capture
                 .result
                 .as_ref()
@@ -185,6 +198,9 @@ impl GroveApp {
                     live_capture.total_ms,
                     live_capture.result,
                 );
+                if capture_succeeded {
+                    self.mark_preview_stream_bootstrap_completed(captured_session.as_str());
+                }
             } else {
                 let mut event = LogEvent::new("preview_poll", "session_mismatch_dropped")
                     .with_data("captured_session", Value::from(captured_session.clone()));

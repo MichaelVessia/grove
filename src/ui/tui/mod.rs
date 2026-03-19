@@ -232,8 +232,9 @@ mod tests {
         HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW,
         HelpHintContext, LaunchDialogField, LaunchDialogState, LaunchDialogTarget,
         LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion,
-        Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
-        ProjectAddDialogField, ProjectDefaultsDialogField, PullUpstreamDialogField,
+        Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
+        PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput, PreviewStreamSource,
+        PreviewTab, ProjectAddDialogField, ProjectDefaultsDialogField, PullUpstreamDialogField,
         RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion,
         StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
         TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WorkspaceAttention,
@@ -6664,6 +6665,286 @@ mod tests {
 
         assert_eq!(selected.cadence, "100 ms");
         assert_eq!(background.cadence, "10000 ms");
+    }
+
+    #[test]
+    fn preview_stream_state_defaults_to_disconnected() {
+        let app = fixture_app();
+
+        assert!(app.polling.preview_stream.target_session.is_none());
+        assert!(app.polling.preview_stream.connected_session.is_none());
+        assert_eq!(app.polling.preview_stream.generation, 0);
+        assert!(!app.polling.preview_stream.bootstrap_completed);
+        assert_eq!(
+            app.polling.preview_stream.source,
+            PreviewStreamSource::Disconnected
+        );
+        assert!(app.polling.preview_stream.buffer.is_empty());
+    }
+
+    #[test]
+    fn preview_stream_retargets_on_workspace_change() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(feature_workspace_session())
+        );
+        let first_generation = app.polling.preview_stream.generation;
+
+        select_workspace(&mut app, 0);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(main_workspace_session());
+        app.state.workspaces[0].status = WorkspaceStatus::Active;
+        app.sync_preview_stream_target();
+
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(main_workspace_session())
+        );
+        assert!(app.polling.preview_stream.generation > first_generation);
+    }
+
+    #[test]
+    fn preview_stream_disconnects_when_agent_preview_is_not_visible() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+
+        app.sync_preview_stream_target();
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(feature_workspace_session())
+        );
+
+        app.preview_tab = PreviewTab::Git;
+        app.sync_preview_stream_target();
+
+        assert!(app.polling.preview_stream.target_session.is_none());
+        assert!(app.polling.preview_stream.connected_session.is_none());
+    }
+
+    #[test]
+    fn selected_preview_stream_reports_connecting_before_first_stream_event() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+
+        let rows = app.session_performance_rows();
+        let selected = rows
+            .iter()
+            .find(|row| row.label == "feature-a")
+            .expect("selected workspace row should exist");
+
+        assert_eq!(selected.cadence, "connecting");
+        assert_eq!(app.selected_preview_source_summary(), "connecting");
+    }
+
+    #[test]
+    fn selected_preview_stream_updates_without_poll_delay() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.preview.apply_capture("initial line\n");
+        app.sync_preview_stream_target();
+        let generation = app.polling.preview_stream.generation;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: feature_workspace_session(),
+                generation,
+                chunk: "next line\n".to_string(),
+            })),
+        );
+
+        assert_eq!(
+            app.preview.lines,
+            vec!["initial line".to_string(), "next line".to_string()]
+        );
+        assert_eq!(
+            app.polling.preview_stream.connected_session,
+            Some(feature_workspace_session())
+        );
+    }
+
+    #[test]
+    fn selected_preview_stream_drops_stale_output_for_old_generation() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.preview.apply_capture("current output\n");
+        app.sync_preview_stream_target();
+        let stale_generation = app.polling.preview_stream.generation.saturating_sub(1);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: feature_workspace_session(),
+                generation: stale_generation,
+                chunk: "stale output\n".to_string(),
+            })),
+        );
+
+        assert_eq!(app.preview.lines, vec!["current output".to_string()]);
+    }
+
+    #[test]
+    fn preview_stream_marks_disconnected_after_disconnect() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+        let generation = app.polling.preview_stream.generation;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Disconnected(
+                PreviewStreamDisconnected {
+                    session: feature_workspace_session(),
+                    generation,
+                    error: Some("stream exited".to_string()),
+                },
+            )),
+        );
+
+        assert!(app.polling.preview_stream.connected_session.is_none());
+        assert!(app.polling.preview_stream.bootstrap_completed);
+        assert_eq!(
+            app.polling.preview_stream.source,
+            PreviewStreamSource::Disconnected
+        );
+    }
+
+    #[test]
+    fn selected_preview_stream_stays_stream_only_after_disconnect() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.preview.apply_capture("initial line\n");
+        app.sync_preview_stream_target();
+        let generation = app.polling.preview_stream.generation;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: feature_workspace_session(),
+                generation,
+                chunk: "next line\n".to_string(),
+            })),
+        );
+
+        let stream_rows = app.session_performance_rows();
+        let selected_stream_row = stream_rows
+            .iter()
+            .find(|row| row.label == "feature-a")
+            .expect("selected workspace row should exist");
+        let background_stream_row = stream_rows
+            .iter()
+            .find(|row| row.label == "grove")
+            .expect("background workspace row should exist");
+        assert_eq!(selected_stream_row.cadence, "stream");
+        assert_eq!(app.selected_preview_source_summary(), "stream");
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Disconnected(
+                PreviewStreamDisconnected {
+                    session: feature_workspace_session(),
+                    generation,
+                    error: Some("stream exited".to_string()),
+                },
+            )),
+        );
+
+        let poll_rows = app.session_performance_rows();
+        let selected_poll_row = poll_rows
+            .iter()
+            .find(|row| row.label == "feature-a")
+            .expect("selected workspace row should exist after fallback");
+        let background_poll_row = poll_rows
+            .iter()
+            .find(|row| row.label == "grove")
+            .expect("background workspace row should exist after fallback");
+        assert_eq!(selected_poll_row.cadence, "disconnected");
+        assert_eq!(background_poll_row.cadence, background_stream_row.cadence);
+        assert_eq!(app.selected_preview_source_summary(), "disconnected");
+    }
+
+    #[test]
+    fn performance_dialog_reports_selected_preview_stream_source() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.preview.apply_capture("initial line\n");
+        app.sync_preview_stream_target();
+        let generation = app.polling.preview_stream.generation;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: feature_workspace_session(),
+                generation,
+                chunk: "next line\n".to_string(),
+            })),
+        );
+        app.execute_command_palette_action("palette:open_performance");
+
+        with_rendered_frame(&app, 120, 40, |frame| {
+            let text = (0..frame.height())
+                .map(|row| row_text(frame, row, 0, frame.width()))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            assert!(text.contains("PreviewSource  stream"));
+        });
     }
 
     #[test]

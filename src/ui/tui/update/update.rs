@@ -57,6 +57,10 @@ impl GroveApp {
                 self.handle_preview_poll_completed(completion);
                 Cmd::None
             }
+            Msg::PreviewStreamEvent(event) => {
+                self.handle_preview_stream_event(event);
+                Cmd::None
+            }
             Msg::LazygitLaunchCompleted(completion) => {
                 self.handle_lazygit_launch_completed(completion);
                 Cmd::None
@@ -110,6 +114,7 @@ impl GroveApp {
             }
             Msg::Noop => Cmd::None,
         };
+        self.sync_preview_stream_target();
         self.emit_transition_events(&before);
         self.record_replay_state_after_update(replay_seq);
         self.telemetry.event_log.log(

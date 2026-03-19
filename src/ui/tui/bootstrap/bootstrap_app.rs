@@ -208,6 +208,7 @@ impl GroveApp {
                 interactive_poll_due_at: None,
                 activity_animation: AnimationClock::new(),
                 poll_generation: 0,
+                preview_stream: PreviewStreamState::default(),
             },
             workspace_attention: HashMap::new(),
             workspace_attention_ack_markers,

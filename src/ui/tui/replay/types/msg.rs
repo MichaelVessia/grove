@@ -18,6 +18,9 @@ enum ReplayMsg {
     PreviewPollCompleted {
         completion: ReplayPreviewPollCompletion,
     },
+    PreviewStreamEvent {
+        event: ReplayPreviewStreamEvent,
+    },
     LazygitLaunchCompleted {
         completion: ReplayLazygitLaunchCompletion,
     },
@@ -137,6 +140,40 @@ struct ReplayPasteEvent {
     bracketed: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ReplayPreviewStreamEvent {
+    Connected {
+        event: ReplayPreviewStreamConnected,
+    },
+    Output {
+        event: ReplayPreviewStreamOutput,
+    },
+    Disconnected {
+        event: ReplayPreviewStreamDisconnected,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct ReplayPreviewStreamConnected {
+    session: String,
+    generation: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct ReplayPreviewStreamOutput {
+    session: String,
+    generation: u64,
+    chunk: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct ReplayPreviewStreamDisconnected {
+    session: String,
+    generation: u64,
+    error: Option<String>,
+}
+
 impl ReplayMsg {
     fn kind_name(&self) -> &'static str {
         match self {
@@ -146,6 +183,7 @@ impl ReplayMsg {
             Self::Tick => "tick",
             Self::Resize { .. } => "resize",
             Self::PreviewPollCompleted { .. } => "preview_poll_completed",
+            Self::PreviewStreamEvent { .. } => "preview_stream_event",
             Self::LazygitLaunchCompleted { .. } => "lazygit_launch_completed",
             Self::WorkspaceShellLaunchCompleted { .. } => "workspace_shell_launch_completed",
             Self::RefreshWorkspacesCompleted { .. } => "refresh_workspaces_completed",
@@ -181,6 +219,9 @@ impl ReplayMsg {
             },
             Msg::PreviewPollCompleted(completion) => Self::PreviewPollCompleted {
                 completion: ReplayPreviewPollCompletion::from_completion(completion),
+            },
+            Msg::PreviewStreamEvent(event) => Self::PreviewStreamEvent {
+                event: ReplayPreviewStreamEvent::from_event(event),
             },
             Msg::LazygitLaunchCompleted(completion) => Self::LazygitLaunchCompleted {
                 completion: ReplayLazygitLaunchCompletion::from_completion(completion),
@@ -242,6 +283,7 @@ impl ReplayMsg {
             Self::PreviewPollCompleted { completion } => {
                 Msg::PreviewPollCompleted(completion.to_completion())
             }
+            Self::PreviewStreamEvent { event } => Msg::PreviewStreamEvent(event.to_event()),
             Self::LazygitLaunchCompleted { completion } => {
                 Msg::LazygitLaunchCompleted(completion.to_completion())
             }
@@ -454,5 +496,81 @@ impl ReplayPasteEvent {
 
     fn to_paste_event(&self) -> PasteEvent {
         PasteEvent::new(self.text.clone(), self.bracketed)
+    }
+}
+
+impl ReplayPreviewStreamEvent {
+    fn from_event(event: &PreviewStreamEvent) -> Self {
+        match event {
+            PreviewStreamEvent::Connected(event) => Self::Connected {
+                event: ReplayPreviewStreamConnected::from_event(event),
+            },
+            PreviewStreamEvent::Output(event) => Self::Output {
+                event: ReplayPreviewStreamOutput::from_event(event),
+            },
+            PreviewStreamEvent::Disconnected(event) => Self::Disconnected {
+                event: ReplayPreviewStreamDisconnected::from_event(event),
+            },
+        }
+    }
+
+    fn to_event(&self) -> PreviewStreamEvent {
+        match self {
+            Self::Connected { event } => PreviewStreamEvent::Connected(event.to_event()),
+            Self::Output { event } => PreviewStreamEvent::Output(event.to_event()),
+            Self::Disconnected { event } => PreviewStreamEvent::Disconnected(event.to_event()),
+        }
+    }
+}
+
+impl ReplayPreviewStreamConnected {
+    fn from_event(event: &PreviewStreamConnected) -> Self {
+        Self {
+            session: event.session.clone(),
+            generation: event.generation,
+        }
+    }
+
+    fn to_event(&self) -> PreviewStreamConnected {
+        PreviewStreamConnected {
+            session: self.session.clone(),
+            generation: self.generation,
+        }
+    }
+}
+
+impl ReplayPreviewStreamOutput {
+    fn from_event(event: &PreviewStreamOutput) -> Self {
+        Self {
+            session: event.session.clone(),
+            generation: event.generation,
+            chunk: event.chunk.clone(),
+        }
+    }
+
+    fn to_event(&self) -> PreviewStreamOutput {
+        PreviewStreamOutput {
+            session: self.session.clone(),
+            generation: self.generation,
+            chunk: self.chunk.clone(),
+        }
+    }
+}
+
+impl ReplayPreviewStreamDisconnected {
+    fn from_event(event: &PreviewStreamDisconnected) -> Self {
+        Self {
+            session: event.session.clone(),
+            generation: event.generation,
+            error: event.error.clone(),
+        }
+    }
+
+    fn to_event(&self) -> PreviewStreamDisconnected {
+        PreviewStreamDisconnected {
+            session: self.session.clone(),
+            generation: self.generation,
+            error: self.error.clone(),
+        }
     }
 }

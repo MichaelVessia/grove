@@ -73,6 +73,7 @@ impl DurationSummary {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct SessionPollContext<'a> {
     pub(super) selected: bool,
+    pub(super) preview_stream_selected: bool,
     pub(super) live_preview_selected: bool,
     pub(super) polled_in_background: bool,
     pub(super) output_changing: bool,
@@ -80,6 +81,9 @@ pub(super) struct SessionPollContext<'a> {
 }
 
 pub(super) fn session_poll_reason(context: SessionPollContext<'_>) -> String {
+    if context.selected && context.preview_stream_selected {
+        return "selected preview stream".to_string();
+    }
     if context.selected && context.live_preview_selected {
         return "selected live preview, excluded from background polling".to_string();
     }
@@ -206,6 +210,20 @@ impl GroveApp {
         )
     }
 
+    pub(super) fn selected_preview_source_summary(&self) -> &'static str {
+        let Some(session_name) = self.polling.preview_stream.target_session.as_deref() else {
+            return "inactive";
+        };
+        if self.preview_stream_is_healthy_for_session(session_name) {
+            return "stream";
+        }
+        match self.polling.preview_stream.source {
+            PreviewStreamSource::Connecting => "connecting",
+            PreviewStreamSource::Stream => "stream",
+            PreviewStreamSource::Disconnected => "disconnected",
+        }
+    }
+
     fn session_poll_interval(&self, workspace: &Workspace, is_selected: bool) -> Duration {
         let since_last_key = self
             .session
@@ -244,7 +262,14 @@ impl GroveApp {
         for workspace in &self.state.workspaces {
             let is_selected = selected_path == Some(&workspace.path);
             let session_name = session_name_for_workspace_ref(workspace);
-            let live_preview_selected = selected_live_preview == Some(session_name.as_str());
+            let preview_stream_selected = is_selected
+                && self.polling.preview_stream.target_session.as_deref()
+                    == Some(session_name.as_str());
+            let preview_stream_healthy = preview_stream_selected
+                && self.preview_stream_is_healthy_for_session(session_name.as_str());
+            let live_preview_selected = !is_selected
+                && !preview_stream_healthy
+                && selected_live_preview == Some(session_name.as_str());
             let polled_in_background = workspace.supported_agent && workspace.status.has_session();
             let waiting_prompt = self
                 .polling
@@ -262,12 +287,15 @@ impl GroveApp {
             };
             let reason = session_poll_reason(SessionPollContext {
                 selected: is_selected,
+                preview_stream_selected,
                 live_preview_selected,
                 polled_in_background,
                 output_changing,
                 waiting_prompt,
             });
-            let cadence = if live_preview_selected {
+            let cadence = if preview_stream_selected {
+                self.selected_preview_source_summary().to_string()
+            } else if live_preview_selected {
                 "excluded".to_string()
             } else if is_selected || polled_in_background {
                 format_duration(Some(self.session_poll_interval(workspace, is_selected)))
@@ -312,6 +340,7 @@ mod tests {
     fn session_poll_reason_describes_selected_live_preview_exclusion() {
         let reason = session_poll_reason(SessionPollContext {
             selected: true,
+            preview_stream_selected: false,
             live_preview_selected: true,
             polled_in_background: false,
             output_changing: false,

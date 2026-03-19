@@ -196,6 +196,10 @@ impl GroveApp {
         ]);
         let scheduler = FtText::from_lines(vec![
             FtLine::raw(self.scheduler_reason_summary()),
+            FtLine::raw(format!(
+                "PreviewSource  {}",
+                self.selected_preview_source_summary()
+            )),
             FtLine::raw(format!("NextTick    {}", format_duration(next_tick))),
             FtLine::raw(format!("NextPoll    {}", format_duration(next_poll))),
             FtLine::raw(format!("NextVisual  {}", format_duration(next_visual))),

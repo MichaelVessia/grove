@@ -1,0 +1,550 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::io::BufRead;
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex, mpsc};
+use std::time::Duration;
+
+use ftui::runtime::{StopSignal, SubId, Subscription};
+use serde_json::Value;
+
+use crate::infrastructure::event_log::Event as LogEvent;
+use crate::ui::state::{PaneFocus, UiMode};
+use crate::ui::tui::{
+    GroveApp, LIVE_PREVIEW_FULL_SCROLLBACK_LINES, Msg, PreviewStreamConnected,
+    PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput,
+};
+
+const TMUX_CONTROL_MODE_POLL_MS: u64 = 50;
+const TMUX_CONTROL_MODE_PAUSE_AFTER_SECONDS: &str = "0.1";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ui::tui) enum PreviewStreamSource {
+    Connecting,
+    Stream,
+    Disconnected,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::ui::tui) struct PreviewStreamState {
+    pub(in crate::ui::tui) target_session: Option<String>,
+    pub(in crate::ui::tui) connected_session: Option<String>,
+    pub(in crate::ui::tui) generation: u64,
+    pub(in crate::ui::tui) bootstrap_completed: bool,
+    pub(in crate::ui::tui) last_chunk_bytes: usize,
+    pub(in crate::ui::tui) source: PreviewStreamSource,
+    pub(in crate::ui::tui) buffer: String,
+}
+
+impl Default for PreviewStreamState {
+    fn default() -> Self {
+        Self {
+            target_session: None,
+            connected_session: None,
+            generation: 0,
+            bootstrap_completed: false,
+            last_chunk_bytes: 0,
+            source: PreviewStreamSource::Disconnected,
+            buffer: String::new(),
+        }
+    }
+}
+
+impl GroveApp {
+    fn desired_preview_stream_session(&self) -> Option<String> {
+        if self.session.interactive.is_some() {
+            return None;
+        }
+        if self.state.mode != UiMode::Preview || self.state.focus != PaneFocus::Preview {
+            return None;
+        }
+        self.selected_live_preview_session_if_ready()
+    }
+
+    fn latest_preview_raw_output(&self) -> Option<String> {
+        self.preview
+            .recent_captures
+            .back()
+            .map(|capture| capture.raw_output.clone())
+    }
+
+    pub(in crate::ui::tui) fn preview_stream_subscription(
+        &self,
+    ) -> Option<Box<dyn Subscription<Msg>>> {
+        let session = self.polling.preview_stream.target_session.clone()?;
+        Some(Box::new(SelectedPreviewStreamSubscription::new(
+            session,
+            self.polling.preview_stream.generation,
+        )))
+    }
+
+    pub(in crate::ui::tui) fn preview_stream_is_healthy_for_session(
+        &self,
+        session_name: &str,
+    ) -> bool {
+        self.polling.preview_stream.source == PreviewStreamSource::Stream
+            && self.polling.preview_stream.target_session.as_deref() == Some(session_name)
+            && self.polling.preview_stream.connected_session.as_deref() == Some(session_name)
+    }
+
+    pub(in crate::ui::tui) fn preview_stream_blocks_selected_poll(
+        &self,
+        session_name: &str,
+    ) -> bool {
+        self.polling.preview_stream.bootstrap_completed
+            && self.polling.preview_stream.target_session.as_deref() == Some(session_name)
+    }
+
+    pub(in crate::ui::tui) fn sync_preview_stream_target(&mut self) {
+        let desired = self.desired_preview_stream_session();
+        if desired == self.polling.preview_stream.target_session {
+            if desired.is_none() {
+                self.polling.preview_stream.connected_session = None;
+                self.polling.preview_stream.bootstrap_completed = false;
+                self.polling.preview_stream.source = PreviewStreamSource::Disconnected;
+                self.polling.preview_stream.buffer.clear();
+            }
+            return;
+        }
+
+        self.polling.preview_stream.generation =
+            self.polling.preview_stream.generation.saturating_add(1);
+        self.polling.preview_stream.target_session = desired.clone();
+        self.polling.preview_stream.connected_session = None;
+        self.polling.preview_stream.bootstrap_completed = false;
+        self.polling.preview_stream.last_chunk_bytes = 0;
+        self.polling.preview_stream.source = if desired.is_some() {
+            PreviewStreamSource::Connecting
+        } else {
+            PreviewStreamSource::Disconnected
+        };
+        self.polling.preview_stream.buffer = if desired.is_some() {
+            self.latest_preview_raw_output().unwrap_or_default()
+        } else {
+            String::new()
+        };
+    }
+
+    fn preview_stream_matches(&self, session_name: &str, generation: u64) -> bool {
+        self.polling.preview_stream.target_session.as_deref() == Some(session_name)
+            && self.polling.preview_stream.generation == generation
+    }
+
+    fn mark_preview_stream_connected(&mut self, session_name: &str, generation: u64) -> bool {
+        if !self.preview_stream_matches(session_name, generation) {
+            self.telemetry.event_log.log(
+                LogEvent::new("preview_stream", "stale_event_dropped")
+                    .with_data("event", Value::from("connected"))
+                    .with_data("session", Value::from(session_name.to_string()))
+                    .with_data("generation", Value::from(generation))
+                    .with_data(
+                        "latest_generation",
+                        Value::from(self.polling.preview_stream.generation),
+                    ),
+            );
+            return false;
+        }
+
+        let was_connected = self.polling.preview_stream.connected_session.as_deref()
+            == Some(session_name)
+            && self.polling.preview_stream.source == PreviewStreamSource::Stream;
+        self.polling.preview_stream.connected_session = Some(session_name.to_string());
+        self.polling.preview_stream.source = PreviewStreamSource::Stream;
+        if !was_connected {
+            self.telemetry.event_log.log(
+                LogEvent::new("preview_stream", "connected")
+                    .with_data("session", Value::from(session_name.to_string()))
+                    .with_data("generation", Value::from(generation)),
+            );
+        }
+        true
+    }
+
+    fn handle_preview_stream_output(&mut self, output: PreviewStreamOutput) {
+        if !self.mark_preview_stream_connected(output.session.as_str(), output.generation) {
+            return;
+        }
+
+        self.polling.preview_stream.bootstrap_completed = true;
+        self.polling.preview_stream.last_chunk_bytes = output.chunk.len();
+        if output.chunk.is_empty() {
+            return;
+        }
+
+        self.polling
+            .preview_stream
+            .buffer
+            .push_str(output.chunk.as_str());
+        self.apply_live_preview_capture(
+            output.session.as_str(),
+            LIVE_PREVIEW_FULL_SCROLLBACK_LINES,
+            true,
+            0,
+            0,
+            Ok(self.polling.preview_stream.buffer.clone()),
+        );
+    }
+
+    fn handle_preview_stream_disconnect(&mut self, disconnect: PreviewStreamDisconnected) {
+        if !self.preview_stream_matches(disconnect.session.as_str(), disconnect.generation) {
+            self.telemetry.event_log.log(
+                LogEvent::new("preview_stream", "stale_event_dropped")
+                    .with_data("event", Value::from("disconnected"))
+                    .with_data("session", Value::from(disconnect.session.clone()))
+                    .with_data("generation", Value::from(disconnect.generation))
+                    .with_data(
+                        "latest_generation",
+                        Value::from(self.polling.preview_stream.generation),
+                    ),
+            );
+            return;
+        }
+
+        self.polling.preview_stream.connected_session = None;
+        self.polling.preview_stream.bootstrap_completed = true;
+        self.polling.preview_stream.last_chunk_bytes = 0;
+        self.polling.preview_stream.source = PreviewStreamSource::Disconnected;
+        self.session.last_tmux_error = disconnect.error.clone();
+        let mut event = LogEvent::new("preview_stream", "disconnected")
+            .with_data("session", Value::from(disconnect.session.clone()))
+            .with_data("generation", Value::from(disconnect.generation));
+        if let Some(error) = disconnect.error.clone() {
+            event = event.with_data("error", Value::from(error));
+        }
+        self.telemetry.event_log.log(event);
+    }
+
+    pub(in crate::ui::tui) fn handle_preview_stream_event(&mut self, event: PreviewStreamEvent) {
+        match event {
+            PreviewStreamEvent::Connected(connected) => {
+                self.mark_preview_stream_connected(
+                    connected.session.as_str(),
+                    connected.generation,
+                );
+            }
+            PreviewStreamEvent::Output(output) => self.handle_preview_stream_output(output),
+            PreviewStreamEvent::Disconnected(disconnect) => {
+                self.handle_preview_stream_disconnect(disconnect);
+            }
+        }
+    }
+
+    pub(in crate::ui::tui) fn mark_preview_stream_bootstrap_completed(
+        &mut self,
+        session_name: &str,
+    ) {
+        if self.polling.preview_stream.target_session.as_deref() != Some(session_name) {
+            return;
+        }
+        self.polling.preview_stream.bootstrap_completed = true;
+        if self.polling.preview_stream.source == PreviewStreamSource::Connecting {
+            self.telemetry.event_log.log(
+                LogEvent::new("preview_stream", "bootstrap_completed")
+                    .with_data("session", Value::from(session_name.to_string()))
+                    .with_data(
+                        "generation",
+                        Value::from(self.polling.preview_stream.generation),
+                    ),
+            );
+        }
+    }
+}
+
+struct SelectedPreviewStreamSubscription {
+    session: String,
+    generation: u64,
+    id: SubId,
+}
+
+impl SelectedPreviewStreamSubscription {
+    fn new(session: String, generation: u64) -> Self {
+        let mut hasher = DefaultHasher::new();
+        "selected_preview_stream".hash(&mut hasher);
+        session.hash(&mut hasher);
+        generation.hash(&mut hasher);
+        Self {
+            session,
+            generation,
+            id: hasher.finish(),
+        }
+    }
+
+    fn process_event_to_msg(
+        session_name: &str,
+        generation: u64,
+        event: StreamProcessEvent,
+    ) -> Option<Msg> {
+        match event {
+            StreamProcessEvent::Stdout(line) => {
+                parse_control_mode_line(session_name, generation, line.as_str())
+                    .map(Msg::PreviewStreamEvent)
+            }
+            StreamProcessEvent::Exited { error } => Some(Msg::PreviewStreamEvent(
+                PreviewStreamEvent::Disconnected(PreviewStreamDisconnected {
+                    session: session_name.to_string(),
+                    generation,
+                    error,
+                }),
+            )),
+        }
+    }
+}
+
+impl Subscription<Msg> for SelectedPreviewStreamSubscription {
+    fn id(&self) -> SubId {
+        self.id
+    }
+
+    fn run(&self, sender: mpsc::Sender<Msg>, stop: StopSignal) {
+        let mut command = Command::new("tmux");
+        command
+            .args([
+                "-C",
+                "attach-session",
+                "-t",
+                self.session.as_str(),
+                "-f",
+                &format!(
+                    "read-only,ignore-size,pause-after={TMUX_CONTROL_MODE_PAUSE_AFTER_SECONDS}"
+                ),
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                let _ = sender.send(Msg::PreviewStreamEvent(PreviewStreamEvent::Disconnected(
+                    PreviewStreamDisconnected {
+                        session: self.session.clone(),
+                        generation: self.generation,
+                        error: Some(format!("tmux control stream spawn failed: {error}")),
+                    },
+                )));
+                return;
+            }
+        };
+
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        let stderr_lines = Arc::new(Mutex::new(Vec::<String>::new()));
+        let session = self.session.clone();
+        let generation = self.generation;
+        std::thread::scope(|scope| {
+            let stdout_handle = stdout.map(|stdout| {
+                let sender = sender.clone();
+                let session = session.clone();
+                scope.spawn(move || {
+                    let reader = std::io::BufReader::new(stdout);
+                    for line in reader.lines() {
+                        let Ok(line) = line else {
+                            break;
+                        };
+                        let Some(msg) = Self::process_event_to_msg(
+                            session.as_str(),
+                            generation,
+                            StreamProcessEvent::Stdout(line),
+                        ) else {
+                            continue;
+                        };
+                        if sender.send(msg).is_err() {
+                            break;
+                        }
+                    }
+                })
+            });
+            let stderr_handle = stderr.map(|stderr| {
+                let stderr_lines = Arc::clone(&stderr_lines);
+                scope.spawn(move || {
+                    let reader = std::io::BufReader::new(stderr);
+                    for line in reader.lines() {
+                        let Ok(line) = line else {
+                            break;
+                        };
+                        let trimmed = line.trim();
+                        if trimmed.is_empty() {
+                            continue;
+                        }
+                        let Ok(mut lines) = stderr_lines.lock() else {
+                            return;
+                        };
+                        lines.push(trimmed.to_string());
+                    }
+                })
+            });
+
+            let final_event = loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        let error = if status.success() {
+                            None
+                        } else {
+                            Some(exit_error_message(status.code(), &stderr_lines))
+                        };
+                        break StreamProcessEvent::Exited { error };
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        break StreamProcessEvent::Exited {
+                            error: Some(format!("tmux control stream wait failed: {error}")),
+                        };
+                    }
+                }
+
+                if stop.is_stopped() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break StreamProcessEvent::Exited { error: None };
+                }
+                std::thread::sleep(Duration::from_millis(TMUX_CONTROL_MODE_POLL_MS));
+            };
+
+            if let Some(handle) = stdout_handle {
+                let _ = handle.join();
+            }
+            if let Some(handle) = stderr_handle {
+                let _ = handle.join();
+            }
+            if let Some(msg) = Self::process_event_to_msg(session.as_str(), generation, final_event)
+            {
+                let _ = sender.send(msg);
+            }
+        });
+    }
+}
+
+enum StreamProcessEvent {
+    Stdout(String),
+    Exited { error: Option<String> },
+}
+
+fn exit_error_message(code: Option<i32>, stderr_lines: &Arc<Mutex<Vec<String>>>) -> String {
+    let status = match code {
+        Some(code) => format!("tmux control stream exited with status {code}"),
+        None => "tmux control stream exited".to_string(),
+    };
+    let Ok(lines) = stderr_lines.lock() else {
+        return status;
+    };
+    let stderr = lines.join(" ");
+    if stderr.is_empty() {
+        return status;
+    }
+    format!("{status}: {stderr}")
+}
+
+fn parse_control_mode_line(
+    session_name: &str,
+    generation: u64,
+    line: &str,
+) -> Option<PreviewStreamEvent> {
+    if let Some(value) = line.strip_prefix("%output ") {
+        let (_, payload) = value.split_once(' ')?;
+        return Some(PreviewStreamEvent::Output(PreviewStreamOutput {
+            session: session_name.to_string(),
+            generation,
+            chunk: decode_control_mode_text(payload),
+        }));
+    }
+
+    if let Some(value) = line.strip_prefix("%extended-output ") {
+        let (_, payload) = value.split_once(" : ")?;
+        return Some(PreviewStreamEvent::Output(PreviewStreamOutput {
+            session: session_name.to_string(),
+            generation,
+            chunk: decode_control_mode_text(payload),
+        }));
+    }
+
+    if let Some(value) = line.strip_prefix("%client-session-changed ") {
+        let (_, name) = value.rsplit_once(' ')?;
+        if name == session_name {
+            return Some(PreviewStreamEvent::Connected(PreviewStreamConnected {
+                session: session_name.to_string(),
+                generation,
+            }));
+        }
+    }
+
+    if let Some(value) = line.strip_prefix("%session-changed ") {
+        let (_, name) = value.rsplit_once(' ')?;
+        if name == session_name {
+            return Some(PreviewStreamEvent::Connected(PreviewStreamConnected {
+                session: session_name.to_string(),
+                generation,
+            }));
+        }
+    }
+
+    if let Some(reason) = line.strip_prefix("%exit") {
+        let error = trimmed_control_reason(reason);
+        return Some(PreviewStreamEvent::Disconnected(
+            PreviewStreamDisconnected {
+                session: session_name.to_string(),
+                generation,
+                error,
+            },
+        ));
+    }
+
+    None
+}
+
+fn trimmed_control_reason(reason: &str) -> Option<String> {
+    let trimmed = reason.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn decode_control_mode_text(value: &str) -> String {
+    let mut decoded = String::new();
+    let mut chars = value.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            decoded.push(ch);
+            continue;
+        }
+
+        let Some(next) = chars.peek().copied() else {
+            decoded.push('\\');
+            break;
+        };
+
+        if next.is_ascii_digit() {
+            let mut octal = String::new();
+            for _ in 0..3 {
+                let Some(digit) = chars.peek().copied() else {
+                    break;
+                };
+                if !digit.is_ascii_digit() {
+                    break;
+                }
+                octal.push(digit);
+                let _ = chars.next();
+            }
+            if octal.len() == 3
+                && let Ok(value) = u8::from_str_radix(octal.as_str(), 8)
+            {
+                decoded.push(char::from(value));
+                continue;
+            }
+            decoded.push('\\');
+            decoded.push_str(octal.as_str());
+            continue;
+        }
+
+        let escape = chars.next().unwrap_or(next);
+        let decoded_escape = match escape {
+            'e' => '\u{1b}',
+            'r' => '\r',
+            'n' => '\n',
+            't' => '\t',
+            other => other,
+        };
+        decoded.push(decoded_escape);
+    }
+    decoded
+}

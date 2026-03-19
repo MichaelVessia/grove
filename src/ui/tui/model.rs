@@ -99,7 +99,9 @@ use bootstrap_config::{
     read_workspace_skip_permissions, write_workspace_init_command, write_workspace_skip_permissions,
 };
 use terminal::{
-    ClipboardAccess, CommandTmuxInput, SystemClipboardAccess, TmuxInput, parse_cursor_metadata,
+    ClipboardAccess, CommandTmuxInput, PreviewStreamSource, PreviewStreamState,
+    SystemClipboardAccess, TmuxInput,
+    parse_cursor_metadata,
 };
 use selection::{TextSelectionPoint, TextSelectionState};
 use msg::*;
@@ -298,6 +300,7 @@ struct PollingState {
     interactive_poll_due_at: Option<Instant>,
     activity_animation: AnimationClock,
     poll_generation: u64,
+    preview_stream: PreviewStreamState,
 }
 
 struct PerformanceState {
@@ -408,5 +411,9 @@ impl Model for GroveApp {
 
     fn view(&self, frame: &mut Frame) {
         app::view(self, frame);
+    }
+
+    fn subscriptions(&self) -> Vec<Box<dyn ftui::runtime::Subscription<Self::Message>>> {
+        self.preview_stream_subscription().into_iter().collect()
     }
 }

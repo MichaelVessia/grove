@@ -13,6 +13,7 @@ pub(super) enum Msg {
     Tick,
     Resize { width: u16, height: u16 },
     PreviewPollCompleted(PreviewPollCompletion),
+    PreviewStreamEvent(PreviewStreamEvent),
     LazygitLaunchCompleted(LazygitLaunchCompletion),
     WorkspaceShellLaunchCompleted(WorkspaceShellLaunchCompletion),
     RefreshWorkspacesCompleted(RefreshWorkspacesCompletion),
@@ -35,6 +36,33 @@ pub(super) struct PreviewPollCompletion {
     pub(super) live_capture: Option<LivePreviewCapture>,
     pub(super) cursor_capture: Option<CursorCapture>,
     pub(super) workspace_status_captures: Vec<WorkspaceStatusCapture>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum PreviewStreamEvent {
+    Connected(PreviewStreamConnected),
+    Output(PreviewStreamOutput),
+    Disconnected(PreviewStreamDisconnected),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PreviewStreamConnected {
+    pub(super) session: String,
+    pub(super) generation: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PreviewStreamOutput {
+    pub(super) session: String,
+    pub(super) generation: u64,
+    pub(super) chunk: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PreviewStreamDisconnected {
+    pub(super) session: String,
+    pub(super) generation: u64,
+    pub(super) error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
