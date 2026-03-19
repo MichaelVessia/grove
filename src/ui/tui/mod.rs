@@ -628,6 +628,25 @@ mod tests {
         }
     }
 
+    fn seed_feature_finished_attention(app: &mut GroveApp) {
+        let workspace_path = feature_workspace_path();
+        app.state.workspaces[1].status = WorkspaceStatus::Done;
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Active,
+            WorkspaceStatus::Done,
+            false,
+            false,
+        );
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Done,
+            WorkspaceStatus::Done,
+            false,
+            false,
+        );
+    }
+
     fn feature_agent_tab_session(ordinal: usize) -> String {
         format!("{}-agent-{ordinal}", feature_workspace_session())
     }
@@ -3488,11 +3507,8 @@ mod tests {
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         reduce(&mut app.state, Action::EnterPreviewMode);
         app.state.focus = PaneFocus::Preview;
-        app.attention_items = vec![fixture_attention_item(
-            feature_workspace_path(),
-            "feature-a",
-            AttentionReason::BlockedOnQuestion,
-        )];
+        app.clear_startup_attention_focus_pending();
+        seed_feature_finished_attention(&mut app);
 
         app.execute_ui_command(UiCommand::FocusAttentionInbox);
 
@@ -3516,11 +3532,8 @@ mod tests {
         select_workspace(&mut app, 1);
         focus_home_preview_tab(&mut app);
         select_workspace(&mut app, 0);
-        app.attention_items = vec![fixture_attention_item(
-            feature_workspace_path(),
-            "feature-a",
-            AttentionReason::BlockedOnQuestion,
-        )];
+        app.clear_startup_attention_focus_pending();
+        seed_feature_finished_attention(&mut app);
 
         app.execute_ui_command(UiCommand::FocusAttentionInbox);
 
@@ -3540,11 +3553,8 @@ mod tests {
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         reduce(&mut app.state, Action::EnterPreviewMode);
         app.state.focus = PaneFocus::Preview;
-        app.attention_items = vec![fixture_attention_item(
-            feature_workspace_path(),
-            "feature-a",
-            AttentionReason::BlockedOnQuestion,
-        )];
+        app.clear_startup_attention_focus_pending();
+        seed_feature_finished_attention(&mut app);
 
         ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('i'))));
 
@@ -3559,11 +3569,8 @@ mod tests {
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         reduce(&mut app.state, Action::EnterPreviewMode);
         app.state.focus = PaneFocus::Preview;
-        app.attention_items = vec![fixture_attention_item(
-            feature_workspace_path(),
-            "feature-a",
-            AttentionReason::BlockedOnQuestion,
-        )];
+        app.clear_startup_attention_focus_pending();
+        seed_feature_finished_attention(&mut app);
         app.session.interactive = Some(InteractiveState::new(
             "%0".to_string(),
             "grove-ws-feature-a".to_string(),
@@ -3582,8 +3589,7 @@ mod tests {
 
     #[test]
     fn startup_helper_selects_first_attention_item_when_inbox_exists() {
-        let (mut app, _commands, _captures, _cursor_captures) =
-            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        let mut app = fixture_app();
         app.attention_items = vec![fixture_attention_item(
             feature_workspace_path(),
             "feature-a",
