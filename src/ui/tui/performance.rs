@@ -84,9 +84,6 @@ pub(super) fn session_poll_reason(context: SessionPollContext<'_>) -> String {
     if context.selected && context.preview_stream_selected {
         return "selected preview stream".to_string();
     }
-    if context.selected && context.live_preview_selected {
-        return "selected live preview, excluded from background polling".to_string();
-    }
     if context.selected && context.output_changing {
         return "selected workspace, output changing".to_string();
     }
@@ -334,20 +331,5 @@ mod tests {
 
         let summary = window.summary().expect("summary");
         assert_eq!(summary.p95_ms, 18.0);
-    }
-
-    #[test]
-    fn session_poll_reason_describes_selected_live_preview_exclusion() {
-        let reason = session_poll_reason(SessionPollContext {
-            selected: true,
-            preview_stream_selected: false,
-            live_preview_selected: true,
-            polled_in_background: false,
-            output_changing: false,
-            waiting_prompt: None,
-        });
-
-        assert!(reason.contains("selected"));
-        assert!(reason.contains("excluded"));
     }
 }

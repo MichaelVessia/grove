@@ -7082,15 +7082,13 @@ mod tests {
     }
 
     #[test]
-    fn performance_dialog_shows_selected_session_exclusion_reason() {
+    fn performance_dialog_shows_background_session_exclusion_reason() {
         let mut app = fixture_app();
-        select_workspace(&mut app, 1);
-        let session_name = crate::application::agent_runtime::session_name_for_workspace_ref(
-            app.state
-                .selected_workspace()
-                .expect("selected workspace should exist"),
+        select_workspace(&mut app, 0);
+        let background_session = crate::application::agent_runtime::session_name_for_workspace_ref(
+            &app.state.workspaces[1],
         );
-        app.polling.last_live_preview_session = Some(session_name);
+        app.polling.last_live_preview_session = Some(background_session);
         app.execute_command_palette_action("palette:open_performance");
 
         with_rendered_frame(&app, 140, 40, |frame| {
@@ -7102,9 +7100,12 @@ mod tests {
 
             assert!(
                 text.contains("excluded"),
-                "missing exclusion reason: {text}"
+                "missing exclusion cadence: {text}"
             );
-            assert!(text.contains("selected"), "missing selected reason: {text}");
+            assert!(
+                text.contains("selected"),
+                "missing selected role label: {text}"
+            );
         });
     }
 
