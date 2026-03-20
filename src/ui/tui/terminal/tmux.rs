@@ -13,6 +13,14 @@ pub(in crate::ui::tui) trait TmuxInput {
         scrollback_lines: usize,
         include_escape_sequences: bool,
     ) -> std::io::Result<String>;
+    fn capture_joined_output(
+        &self,
+        target_session: &str,
+        scrollback_lines: usize,
+        include_escape_sequences: bool,
+    ) -> std::io::Result<String> {
+        self.capture_output(target_session, scrollback_lines, include_escape_sequences)
+    }
     fn capture_cursor_metadata(&self, target_session: &str) -> std::io::Result<String>;
     fn resize_session(
         &self,
@@ -52,6 +60,19 @@ impl TmuxInput for CommandTmuxInput {
         include_escape_sequences: bool,
     ) -> std::io::Result<String> {
         Self::capture_session_output(target_session, scrollback_lines, include_escape_sequences)
+    }
+
+    fn capture_joined_output(
+        &self,
+        target_session: &str,
+        scrollback_lines: usize,
+        include_escape_sequences: bool,
+    ) -> std::io::Result<String> {
+        Self::capture_joined_session_output(
+            target_session,
+            scrollback_lines,
+            include_escape_sequences,
+        )
     }
 
     fn capture_cursor_metadata(&self, target_session: &str) -> std::io::Result<String> {
@@ -114,12 +135,14 @@ impl CommandTmuxInput {
         target_session: &str,
         scrollback_lines: usize,
         include_escape_sequences: bool,
+        join_wrapped_lines: bool,
     ) -> Vec<String> {
-        let mut args = vec![
-            "capture-pane".to_string(),
-            "-p".to_string(),
-            "-N".to_string(),
-        ];
+        let mut args = vec!["capture-pane".to_string(), "-p".to_string()];
+        args.push(if join_wrapped_lines {
+            "-J".to_string()
+        } else {
+            "-N".to_string()
+        });
         if include_escape_sequences {
             args.push("-e".to_string());
         }
@@ -147,8 +170,38 @@ impl CommandTmuxInput {
         scrollback_lines: usize,
         include_escape_sequences: bool,
     ) -> std::io::Result<String> {
-        let args =
-            Self::capture_pane_args(target_session, scrollback_lines, include_escape_sequences);
+        let args = Self::capture_pane_args(
+            target_session,
+            scrollback_lines,
+            include_escape_sequences,
+            false,
+        );
+
+        let output = std::process::Command::new("tmux").args(args).output()?;
+
+        if !output.status.success() {
+            let stderr = stderr_trimmed(&output);
+            return Err(std::io::Error::other(format!(
+                "tmux capture-pane failed for '{target_session}': {stderr}"
+            )));
+        }
+
+        String::from_utf8(output.stdout).map_err(|error| {
+            std::io::Error::other(format!("tmux output utf8 decode failed: {error}"))
+        })
+    }
+
+    pub(in crate::ui::tui) fn capture_joined_session_output(
+        target_session: &str,
+        scrollback_lines: usize,
+        include_escape_sequences: bool,
+    ) -> std::io::Result<String> {
+        let args = Self::capture_pane_args(
+            target_session,
+            scrollback_lines,
+            include_escape_sequences,
+            true,
+        );
 
         let output = std::process::Command::new("tmux").args(args).output()?;
 
@@ -288,7 +341,7 @@ mod tests {
 
     #[test]
     fn capture_pane_args_include_trailing_spaces_flag() {
-        let args = CommandTmuxInput::capture_pane_args("session-a", 120, false);
+        let args = CommandTmuxInput::capture_pane_args("session-a", 120, false, false);
         assert_eq!(
             args,
             vec![
@@ -305,7 +358,7 @@ mod tests {
 
     #[test]
     fn capture_pane_args_include_escape_flag_when_requested() {
-        let args = CommandTmuxInput::capture_pane_args("session-b", 64, true);
+        let args = CommandTmuxInput::capture_pane_args("session-b", 64, true, false);
         assert_eq!(
             args,
             vec![
@@ -323,7 +376,7 @@ mod tests {
 
     #[test]
     fn capture_pane_args_use_history_start_for_full_scrollback() {
-        let args = CommandTmuxInput::capture_pane_args("session-c", 0, true);
+        let args = CommandTmuxInput::capture_pane_args("session-c", 0, true, false);
         assert_eq!(
             args,
             vec![
@@ -335,6 +388,23 @@ mod tests {
                 "session-c".to_string(),
                 "-S".to_string(),
                 "-".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn capture_pane_args_join_wrapped_lines_when_requested() {
+        let args = CommandTmuxInput::capture_pane_args("session-d", 32, false, true);
+        assert_eq!(
+            args,
+            vec![
+                "capture-pane".to_string(),
+                "-p".to_string(),
+                "-J".to_string(),
+                "-t".to_string(),
+                "session-d".to_string(),
+                "-S".to_string(),
+                "-32".to_string(),
             ]
         );
     }

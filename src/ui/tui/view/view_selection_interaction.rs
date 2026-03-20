@@ -1,5 +1,11 @@
 use super::view_prelude::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PreviewCopyLineSegment {
+    logical_line: usize,
+    logical_col_start: usize,
+}
+
 impl GroveApp {
     #[inline]
     pub(super) fn preview_line_display_width(line: &str) -> usize {
@@ -159,6 +165,14 @@ impl GroveApp {
 
     pub(super) fn selected_preview_text_lines(&self) -> Option<Vec<String>> {
         let (start, end) = self.preview_selection.bounds()?;
+        self.preview_text_lines_from_bounds(start, end)
+    }
+
+    fn preview_text_lines_from_bounds(
+        &self,
+        start: TextSelectionPoint,
+        end: TextSelectionPoint,
+    ) -> Option<Vec<String>> {
         let source_len = self.preview.lines.len();
         if source_len == 0 {
             return None;
@@ -187,6 +201,175 @@ impl GroveApp {
         Some(lines)
     }
 
+    fn copy_target_session(&self) -> Option<String> {
+        self.interactive_target_session()
+            .or_else(|| self.selected_live_preview_session_if_ready())
+    }
+
+    fn capture_joined_preview_lines_for_copy(&self) -> Option<Vec<String>> {
+        let session_name = self.copy_target_session()?;
+        let joined_output = self
+            .tmux_input
+            .capture_joined_output(&session_name, LIVE_PREVIEW_FULL_SCROLLBACK_LINES, false)
+            .ok()?;
+        Some(crate::application::preview::split_output_lines(
+            &joined_output,
+        ))
+    }
+
+    fn visible_preview_output_bounds(&self) -> Option<(TextSelectionPoint, TextSelectionPoint)> {
+        let (_, output_height) = self.preview_output_dimensions()?;
+        let (visible_start, visible_end) =
+            self.preview_visible_range_for_height(usize::from(output_height));
+        if visible_start >= visible_end {
+            return None;
+        }
+
+        let end_line = visible_end.saturating_sub(1);
+        let end_col = self
+            .preview_plain_line(end_line)
+            .map(|line| Self::preview_line_display_width(&line).saturating_sub(1))
+            .unwrap_or(0);
+
+        Some((
+            TextSelectionPoint {
+                line: visible_start,
+                col: 0,
+            },
+            TextSelectionPoint {
+                line: end_line,
+                col: end_col,
+            },
+        ))
+    }
+
+    fn preview_copy_bounds(&self) -> Option<(TextSelectionPoint, TextSelectionPoint)> {
+        self.preview_selection
+            .bounds()
+            .or_else(|| self.visible_preview_output_bounds())
+    }
+
+    fn preview_copy_line_segments(
+        raw_lines: &[String],
+        joined_lines: &[String],
+    ) -> Option<Vec<PreviewCopyLineSegment>> {
+        let mut segments = Vec::with_capacity(raw_lines.len());
+        let mut raw_index = 0usize;
+
+        for (logical_line, joined_line) in joined_lines.iter().enumerate() {
+            if raw_index >= raw_lines.len() {
+                return None;
+            }
+
+            let mut remaining = joined_line.as_str();
+            let mut logical_col_start = 0usize;
+
+            loop {
+                let raw_line = raw_lines.get(raw_index)?;
+                if raw_line.is_empty() && !remaining.is_empty() {
+                    return None;
+                }
+                if !remaining.starts_with(raw_line.as_str()) {
+                    return None;
+                }
+
+                segments.push(PreviewCopyLineSegment {
+                    logical_line,
+                    logical_col_start,
+                });
+                logical_col_start =
+                    logical_col_start.saturating_add(Self::preview_line_display_width(raw_line));
+                remaining = &remaining[raw_line.len()..];
+                raw_index = raw_index.saturating_add(1);
+
+                if remaining.is_empty() {
+                    break;
+                }
+                if raw_index >= raw_lines.len() {
+                    return None;
+                }
+            }
+        }
+
+        (raw_index == raw_lines.len()).then_some(segments)
+    }
+
+    fn preview_copy_lines_from_joined_capture(&self) -> Option<Vec<String>> {
+        let (start, end) = self.preview_copy_bounds()?;
+        let joined_lines = self.capture_joined_preview_lines_for_copy()?;
+        let segments =
+            Self::preview_copy_line_segments(self.preview.lines.as_slice(), &joined_lines)?;
+        let start_segment = *segments.get(start.line)?;
+        let end_segment = *segments.get(end.line)?;
+        if end_segment.logical_line < start_segment.logical_line {
+            return None;
+        }
+
+        let start_col = start_segment.logical_col_start.saturating_add(start.col);
+        let end_col = end_segment.logical_col_start.saturating_add(end.col);
+        let start_line = start_segment
+            .logical_line
+            .min(joined_lines.len().saturating_sub(1));
+        let end_line = end_segment
+            .logical_line
+            .min(joined_lines.len().saturating_sub(1));
+        let mut lines = joined_lines[start_line..=end_line].to_vec();
+        if lines.is_empty() {
+            return None;
+        }
+
+        if lines.len() == 1 {
+            lines[0] = Self::preview_substring_by_cells(&lines[0], start_col, Some(end_col));
+            return Some(lines);
+        }
+
+        lines[0] = Self::preview_substring_by_cells(&lines[0], start_col, None);
+        let last_idx = lines.len().saturating_sub(1);
+        lines[last_idx] = Self::preview_substring_by_cells(&lines[last_idx], 0, Some(end_col));
+        Some(lines)
+    }
+
+    fn preview_copy_lines_from_wrapped_raw_rows(&self) -> Option<Vec<String>> {
+        let pane_width = self
+            .session
+            .interactive
+            .as_ref()
+            .map(|interactive| usize::from(interactive.pane_width.max(1)))
+            .or_else(|| {
+                self.preview_output_dimensions()
+                    .map(|(width, _)| usize::from(width.max(1)))
+            })?;
+        let (start, end) = self.preview_copy_bounds()?;
+        let start_line = start.line.min(self.preview.lines.len().saturating_sub(1));
+        let end_line = end.line.min(self.preview.lines.len().saturating_sub(1));
+        if end_line < start_line {
+            return None;
+        }
+
+        let lines = self.preview_text_lines_from_bounds(start, end)?;
+        if lines.len() <= 1 {
+            return Some(lines);
+        }
+
+        let mut merged_lines: Vec<String> = Vec::with_capacity(lines.len());
+        for (offset, line) in lines.into_iter().enumerate() {
+            if offset > 0 {
+                let previous_source_line = start_line.saturating_add(offset.saturating_sub(1));
+                let should_join = self
+                    .preview_plain_line(previous_source_line)
+                    .map(|source_line| Self::preview_line_display_width(&source_line) >= pane_width)
+                    .unwrap_or(false);
+                if should_join && let Some(previous_line) = merged_lines.last_mut() {
+                    previous_line.push_str(&line);
+                    continue;
+                }
+            }
+            merged_lines.push(line);
+        }
+
+        Some(merged_lines)
+    }
+
     fn visible_preview_output_lines(&self) -> Vec<String> {
         let Some((_, output_height)) = self.preview_output_dimensions() else {
             return Vec::new();
@@ -196,10 +379,83 @@ impl GroveApp {
         self.preview_plain_lines_range(visible_start, visible_end)
     }
 
+    fn reflow_preview_copy_lines(&self, lines: Vec<String>) -> Vec<String> {
+        if !matches!(self.preview_tab, PreviewTab::Home | PreviewTab::Agent) {
+            return lines;
+        }
+
+        let mut out = Vec::with_capacity(lines.len());
+        let mut paragraph = String::new();
+        let mut in_fence = false;
+
+        for line in lines {
+            let trimmed = line.trim();
+            let trimmed_start = line.trim_start();
+            let is_fence = trimmed_start.starts_with("```");
+            if is_fence {
+                if !paragraph.is_empty() {
+                    out.push(std::mem::take(&mut paragraph));
+                }
+                out.push(line);
+                in_fence = !in_fence;
+                continue;
+            }
+
+            if in_fence || trimmed.is_empty() || Self::is_structured_copy_line(line.as_str()) {
+                if !paragraph.is_empty() {
+                    out.push(std::mem::take(&mut paragraph));
+                }
+                out.push(line);
+                continue;
+            }
+
+            if !paragraph.is_empty() {
+                paragraph.push(' ');
+            }
+            paragraph.push_str(trimmed);
+        }
+
+        if !paragraph.is_empty() {
+            out.push(paragraph);
+        }
+
+        out
+    }
+
+    fn is_structured_copy_line(line: &str) -> bool {
+        let trimmed_start = line.trim_start();
+        trimmed_start.starts_with('#')
+            || trimmed_start.starts_with('>')
+            || trimmed_start.starts_with("- ")
+            || trimmed_start.starts_with("* ")
+            || trimmed_start.starts_with("+ ")
+            || trimmed_start.starts_with("|")
+            || line.starts_with("    ")
+            || line.starts_with('\t')
+            || trimmed_start
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_digit())
+                && trimmed_start.contains(". ")
+    }
+
     pub(super) fn copy_interactive_selection_or_visible(&mut self) {
-        let selected_lines = self.selected_preview_text_lines();
-        let copied_from_selection = selected_lines.is_some();
-        let mut lines = selected_lines.unwrap_or_else(|| self.visible_preview_output_lines());
+        let copied_from_selection = self.preview_selection.has_selection();
+        let joined_lines = self.preview_copy_lines_from_joined_capture();
+        let wrapped_raw_lines = self.preview_copy_lines_from_wrapped_raw_rows();
+        let mut lines = match (joined_lines, wrapped_raw_lines) {
+            (Some(joined_lines), Some(wrapped_raw_lines))
+                if wrapped_raw_lines.len() < joined_lines.len() =>
+            {
+                wrapped_raw_lines
+            }
+            (Some(joined_lines), _) => joined_lines,
+            (None, Some(wrapped_raw_lines)) => wrapped_raw_lines,
+            (None, None) => self
+                .selected_preview_text_lines()
+                .unwrap_or_else(|| self.visible_preview_output_lines()),
+        };
+        lines = self.reflow_preview_copy_lines(lines);
         if lines.is_empty() {
             self.session.last_tmux_error = Some("no output to copy".to_string());
             self.show_info_toast("No output to copy");

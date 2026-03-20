@@ -11097,6 +11097,82 @@ mod tests {
             }
 
             #[test]
+            fn copy_selection_joins_terminal_wrapped_rows() {
+                let (mut app, _commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, vec![Ok("abcdef".to_string())]);
+                app.session.interactive = Some(InteractiveState::new(
+                    "pane-1".to_string(),
+                    feature_workspace_session(),
+                    Instant::now(),
+                    40,
+                    4,
+                ));
+                app.preview.lines = vec!["abcd".to_string(), "ef".to_string()];
+                app.preview.render_lines = app.preview.lines.clone();
+                app.preview_selection
+                    .prepare_drag(TextSelectionPoint { line: 0, col: 0 });
+                app.preview_selection
+                    .handle_drag(TextSelectionPoint { line: 1, col: 1 });
+                app.preview_selection.finish_drag();
+
+                app.copy_interactive_selection_or_visible();
+
+                assert_eq!(app.copied_text.as_deref(), Some("abcdef"));
+            }
+
+            #[test]
+            fn copy_selection_joins_wrapped_rows_when_joined_capture_still_has_newlines() {
+                let (mut app, _commands, _captures, _cursor_captures) = fixture_app_with_tmux(
+                    WorkspaceStatus::Active,
+                    vec![Ok("abcd\nef".to_string())],
+                );
+                app.session.interactive = Some(InteractiveState::new(
+                    "pane-1".to_string(),
+                    feature_workspace_session(),
+                    Instant::now(),
+                    40,
+                    4,
+                ));
+                app.preview.lines = vec!["abcd".to_string(), "ef".to_string()];
+                app.preview.render_lines = app.preview.lines.clone();
+                app.preview_selection
+                    .prepare_drag(TextSelectionPoint { line: 0, col: 0 });
+                app.preview_selection
+                    .handle_drag(TextSelectionPoint { line: 1, col: 1 });
+                app.preview_selection.finish_drag();
+
+                app.copy_interactive_selection_or_visible();
+
+                assert_eq!(app.copied_text.as_deref(), Some("abcdef"));
+            }
+
+            #[test]
+            fn copy_selection_reflows_wrapped_rows_without_interactive_state() {
+                let (mut app, _commands, _captures, _cursor_captures) = fixture_app_with_tmux(
+                    WorkspaceStatus::Active,
+                    vec![Ok("abcd\nef".to_string())],
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                app.preview.lines = vec!["abcd".to_string(), "ef".to_string()];
+                app.preview.render_lines = app.preview.lines.clone();
+                app.preview_selection
+                    .prepare_drag(TextSelectionPoint { line: 0, col: 0 });
+                app.preview_selection
+                    .handle_drag(TextSelectionPoint { line: 1, col: 1 });
+                app.preview_selection.finish_drag();
+
+                app.copy_interactive_selection_or_visible();
+
+                assert_eq!(app.copied_text.as_deref(), Some("abcd ef"));
+            }
+
+            #[test]
             fn preview_plain_lines_render_when_parsed_lines_are_missing() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
