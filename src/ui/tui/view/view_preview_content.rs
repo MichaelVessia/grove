@@ -225,6 +225,7 @@ impl GroveApp {
                 PreviewTab::Agent => FtLine::raw("(no preview output)"),
                 PreviewTab::Shell => self.preview_shell_fallback_line(selected_workspace),
                 PreviewTab::Git => self.preview_git_fallback_line(selected_workspace),
+                PreviewTab::Diff => FtLine::raw("(no diff output)"),
             }];
         }
 

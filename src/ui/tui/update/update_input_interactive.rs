@@ -220,6 +220,7 @@ impl GroveApp {
                 };
                 session_name
             }
+            PreviewTab::Diff => return false,
         };
 
         self.session.interactive = Some(InteractiveState::new(

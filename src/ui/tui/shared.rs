@@ -514,6 +514,7 @@ pub(super) enum PreviewTab {
     Agent,
     Shell,
     Git,
+    Diff,
 }
 
 impl PreviewTab {
@@ -523,6 +524,7 @@ impl PreviewTab {
             Self::Agent => "Agent",
             Self::Shell => "Shell",
             Self::Git => "Git",
+            Self::Diff => "Diff",
         }
     }
 }
@@ -533,6 +535,7 @@ pub(super) enum WorkspaceTabKind {
     Agent,
     Shell,
     Git,
+    Diff,
 }
 
 impl WorkspaceTabKind {
@@ -542,6 +545,7 @@ impl WorkspaceTabKind {
             Self::Agent => "Agent",
             Self::Shell => "Shell",
             Self::Git => "Git",
+            Self::Diff => "Diff",
         }
     }
 }
@@ -553,6 +557,7 @@ impl From<WorkspaceTabKind> for PreviewTab {
             WorkspaceTabKind::Agent => PreviewTab::Agent,
             WorkspaceTabKind::Shell => PreviewTab::Shell,
             WorkspaceTabKind::Git => PreviewTab::Git,
+            WorkspaceTabKind::Diff => PreviewTab::Diff,
         }
     }
 }

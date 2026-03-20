@@ -249,7 +249,7 @@ impl GroveApp {
                         .lazygit_sessions
                         .mark_ready(metadata.session_name);
                 }
-                WorkspaceTabKind::Home => {}
+                WorkspaceTabKind::Home | WorkspaceTabKind::Diff => {}
             }
         }
 
@@ -526,7 +526,7 @@ impl GroveApp {
         ordinal: u64,
     ) -> Option<String> {
         match kind {
-            WorkspaceTabKind::Home => None,
+            WorkspaceTabKind::Home | WorkspaceTabKind::Diff => None,
             WorkspaceTabKind::Git => Some(git_session_name_for_workspace(workspace)),
             WorkspaceTabKind::Agent => Some(format!(
                 "{}-agent-{ordinal}",
@@ -565,6 +565,7 @@ impl GroveApp {
                     }
                     WorkspaceTabKind::Shell => format!("Shell {ordinal}"),
                     WorkspaceTabKind::Git => "Git".to_string(),
+                    WorkspaceTabKind::Diff => "Diff".to_string(),
                     WorkspaceTabKind::Home => "Home".to_string(),
                 };
                 tabs.insert_tab_adjacent(WorkspaceTab {
@@ -588,6 +589,7 @@ impl GroveApp {
             WorkspaceTabKind::Agent => "agent",
             WorkspaceTabKind::Shell => "shell",
             WorkspaceTabKind::Git => "git",
+            WorkspaceTabKind::Diff => "diff",
         }
     }
 
@@ -596,6 +598,7 @@ impl GroveApp {
             "agent" => Some(WorkspaceTabKind::Agent),
             "shell" => Some(WorkspaceTabKind::Shell),
             "git" => Some(WorkspaceTabKind::Git),
+            "diff" => Some(WorkspaceTabKind::Diff),
             "home" => Some(WorkspaceTabKind::Home),
             _ => None,
         }
@@ -1135,7 +1138,7 @@ impl GroveApp {
     pub(super) fn active_tab_is_scrollable(&self) -> bool {
         match self.selected_active_tab_kind() {
             PreviewTab::Home => self.selected_task_preview_session_if_ready().is_some(),
-            PreviewTab::Agent | PreviewTab::Shell => true,
+            PreviewTab::Agent | PreviewTab::Shell | PreviewTab::Diff => true,
             PreviewTab::Git => false,
         }
     }

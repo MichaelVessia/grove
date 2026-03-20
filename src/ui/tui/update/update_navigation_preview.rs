@@ -358,6 +358,7 @@ impl GroveApp {
             }
             PreviewTab::Shell => self.selected_shell_preview_session_if_ready().is_some(),
             PreviewTab::Agent => self.selected_agent_preview_session_if_ready().is_some(),
+            PreviewTab::Diff => false,
         }
     }
 
@@ -381,6 +382,7 @@ impl GroveApp {
             PreviewTab::Git => self.ensure_lazygit_session_for_selected_workspace()?,
             PreviewTab::Shell => self.selected_shell_preview_session_if_ready()?,
             PreviewTab::Agent => self.selected_agent_preview_session_if_ready()?,
+            PreviewTab::Diff => return None,
         };
         Some(LivePreviewTarget {
             session_name,
@@ -493,6 +495,9 @@ impl GroveApp {
                     }
                     return self.workspace_home_splash(workspace, has_running_tabs);
                 }
+                if self.preview_tab == PreviewTab::Diff {
+                    return "(loading diff...)".to_string();
+                }
                 if self.preview_tab == PreviewTab::Shell {
                     return self
                         .shell_session_status_summary(workspace)
@@ -528,7 +533,7 @@ impl GroveApp {
             format!("Workspace: {}", workspace.name).as_str(),
             "Launch tabs here, or create another workspace when needed.",
             "Press 'n' to create a workspace.",
-            "Then use 'a' for agent tabs, 's' for shell tabs, 'g' for git tab, '[' and ']' switch tabs.",
+            "Then use 'a' for agent tabs, 's' for shell tabs, 'g' for git tab, 'd' for diff tab, '[' and ']' switch tabs.",
         )
     }
 
@@ -538,7 +543,7 @@ impl GroveApp {
             format!("Task: {}", task.name).as_str(),
             "Launch a parent agent here for planning and cross-repository coordination.",
             "Press 'A' to start parent agent.",
-            "Then use 'a' for workspace agent tabs, 's' for shell tabs, 'g' for git tab, '[' and ']' switch tabs.",
+            "Then use 'a' for workspace agent tabs, 's' for shell tabs, 'g' for git tab, 'd' for diff tab, '[' and ']' switch tabs.",
         )
     }
 
@@ -548,7 +553,7 @@ impl GroveApp {
             "This is your repo root.",
             "Create focused workspaces here, or launch tabs directly in base.",
             "Press 'n' to create a workspace.",
-            "Then use 'a' for agent tabs, 's' for shell tabs, 'g' for git tab.",
+            "Then use 'a' for agent tabs, 's' for shell tabs, 'g' for git tab, 'd' for diff tab.",
         )
     }
 

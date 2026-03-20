@@ -66,6 +66,7 @@ impl GroveApp {
             }
             PreviewTab::Shell => self.selected_shell_preview_session_if_ready(),
             PreviewTab::Agent => self.selected_agent_preview_session_if_ready(),
+            PreviewTab::Diff => None,
         }
     }
 

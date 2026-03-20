@@ -48,6 +48,7 @@ enum ReplayPreviewTab {
     Agent,
     Shell,
     Git,
+    Diff,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -153,6 +154,7 @@ impl ReplayPreviewTab {
             PreviewTab::Agent => Self::Agent,
             PreviewTab::Shell => Self::Shell,
             PreviewTab::Git => Self::Git,
+            PreviewTab::Diff => Self::Diff,
         }
     }
 
@@ -162,6 +164,7 @@ impl ReplayPreviewTab {
             Self::Agent => PreviewTab::Agent,
             Self::Shell => PreviewTab::Shell,
             Self::Git => PreviewTab::Git,
+            Self::Diff => PreviewTab::Diff,
         }
     }
 }
