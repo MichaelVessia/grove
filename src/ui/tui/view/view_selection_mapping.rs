@@ -73,7 +73,7 @@ impl GroveApp {
 
         let line_idx = viewport.visible_start.saturating_add(visible_row);
         let line = self.preview_plain_line(line_idx)?;
-        let line_width = Self::preview_line_display_width(&line);
+        let line_width = Self::preview_visible_line_display_width(&line);
         if x < viewport.output_x {
             return Some(TextSelectionPoint {
                 line: line_idx,

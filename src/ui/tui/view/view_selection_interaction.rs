@@ -12,6 +12,16 @@ impl GroveApp {
         ftui::text::display_width(line)
     }
 
+    #[inline]
+    pub(super) fn preview_visible_line(line: &str) -> &str {
+        line.trim_end_matches(' ')
+    }
+
+    #[inline]
+    pub(super) fn preview_visible_line_display_width(line: &str) -> usize {
+        Self::preview_line_display_width(Self::preview_visible_line(line))
+    }
+
     // ftui exposes width and grapheme primitives, but preview selection needs
     // inclusive cell-range slicing and grapheme-at-cell metadata.
     pub(super) fn preview_substring_by_cells(
@@ -126,7 +136,7 @@ impl GroveApp {
                 continue;
             };
 
-            let line_width = Self::preview_line_display_width(line);
+            let line_width = Self::preview_visible_line_display_width(line);
             if line_width == 0 {
                 continue;
             }
@@ -188,6 +198,9 @@ impl GroveApp {
         if lines.is_empty() {
             return None;
         }
+        for line in &mut lines {
+            line.truncate(Self::preview_visible_line(line).len());
+        }
 
         if lines.len() == 1 {
             lines[0] = Self::preview_substring_by_cells(&lines[0], start.col, Some(end.col));
@@ -228,7 +241,7 @@ impl GroveApp {
         let end_line = visible_end.saturating_sub(1);
         let end_col = self
             .preview_plain_line(end_line)
-            .map(|line| Self::preview_line_display_width(&line).saturating_sub(1))
+            .map(|line| Self::preview_visible_line_display_width(&line).saturating_sub(1))
             .unwrap_or(0);
 
         Some((

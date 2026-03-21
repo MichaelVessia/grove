@@ -11178,6 +11178,53 @@ mod tests {
             }
 
             #[test]
+            fn preview_selection_highlight_ignores_trailing_pane_padding() {
+                let (mut app, _commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let text_end_x = preview_inner.x.saturating_add(4);
+                let far_right_x = preview_inner.right().saturating_sub(1);
+                let padding_width = usize::from(preview_inner.width).saturating_sub(5);
+                app.preview.lines = vec![format!("hello{}", " ".repeat(padding_width))];
+                app.preview.render_lines = app.preview.lines.clone();
+
+                app.prepare_preview_selection_drag(preview_inner.x, output_y);
+                app.update_preview_selection_drag(far_right_x, output_y);
+                app.finish_preview_selection_drag(far_right_x, output_y);
+
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let Some(text_end_cell) = frame.buffer.get(text_end_x, output_y) else {
+                        panic!("text end cell should be rendered");
+                    };
+                    assert_eq!(
+                        text_end_cell.bg,
+                        ui_theme().surface1,
+                        "visible text should stay highlighted"
+                    );
+
+                    let Some(far_right_cell) = frame.buffer.get(far_right_x, output_y) else {
+                        panic!("far right cell should be rendered");
+                    };
+                    assert_eq!(
+                        far_right_cell.bg,
+                        ui_theme().base,
+                        "pane padding should not be highlighted"
+                    );
+                });
+            }
+
+            #[test]
             fn preview_plain_lines_render_when_parsed_lines_are_missing() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
