@@ -499,25 +499,27 @@ impl GroveApp {
             Action::MoveSelectionDown => 1,
             _ => return,
         };
-        let Some(mut candidate_line) = isize::try_from(current_line).ok() else {
-            return;
-        };
+        let len = row_map.len();
+        let mut candidate = current_line;
         loop {
-            candidate_line = candidate_line.saturating_add(direction);
-            if candidate_line < 0 {
+            candidate = if direction > 0 {
+                if candidate + 1 >= len {
+                    0
+                } else {
+                    candidate + 1
+                }
+            } else if candidate == 0 {
+                len - 1
+            } else {
+                candidate - 1
+            };
+            if candidate == current_line {
                 return;
             }
-            let Some(candidate_index) = usize::try_from(candidate_line).ok() else {
+            if let Some(target) = row_map[candidate] {
+                self.select_sidebar_target(target);
                 return;
-            };
-            let Some(entry) = row_map.get(candidate_index) else {
-                return;
-            };
-            let Some(target) = entry else {
-                continue;
-            };
-            self.select_sidebar_target(*target);
-            return;
+            }
         }
     }
 
