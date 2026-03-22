@@ -210,6 +210,7 @@ impl GroveApp {
                 poll_generation: 0,
                 last_diff_poll_at: None,
                 last_diff_stat_poll_at: None,
+                diff_capture_in_flight: false,
                 diff_stat_in_flight: false,
                 preview_stream: PreviewStreamState::default(),
             },

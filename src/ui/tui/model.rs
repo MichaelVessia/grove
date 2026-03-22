@@ -302,6 +302,7 @@ struct PollingState {
     poll_generation: u64,
     last_diff_poll_at: Option<Instant>,
     last_diff_stat_poll_at: Option<Instant>,
+    diff_capture_in_flight: bool,
     diff_stat_in_flight: bool,
     preview_stream: PreviewStreamState,
 }

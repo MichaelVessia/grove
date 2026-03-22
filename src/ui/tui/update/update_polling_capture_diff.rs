@@ -41,20 +41,32 @@ fn parse_diff_stat_summary(stat_output: &str) -> (usize, usize, usize) {
 fn run_diff_capture(workspace_path: PathBuf) -> DiffCaptureCompletion {
     let started_at = std::time::Instant::now();
 
-    let stat_result = std::process::Command::new("git")
-        .args(["diff", "HEAD", "--stat"])
-        .current_dir(&workspace_path)
-        .output();
-
-    let diff_result = std::process::Command::new("git")
-        .args(["diff", "--color=always"])
-        .current_dir(&workspace_path)
-        .output();
-
-    let staged_result = std::process::Command::new("git")
-        .args(["diff", "--cached", "--color=always"])
-        .current_dir(&workspace_path)
-        .output();
+    let (stat_result, diff_result, staged_result) = std::thread::scope(|s| {
+        let wp = &workspace_path;
+        let stat = s.spawn(move || {
+            std::process::Command::new("git")
+                .args(["diff", "HEAD", "--stat"])
+                .current_dir(wp)
+                .output()
+        });
+        let diff = s.spawn(move || {
+            std::process::Command::new("git")
+                .args(["diff", "--color=always"])
+                .current_dir(wp)
+                .output()
+        });
+        let staged = s.spawn(move || {
+            std::process::Command::new("git")
+                .args(["diff", "--cached", "--color=always"])
+                .current_dir(wp)
+                .output()
+        });
+        (
+            stat.join().unwrap(),
+            diff.join().unwrap(),
+            staged.join().unwrap(),
+        )
+    });
 
     let elapsed = std::time::Instant::now().saturating_duration_since(started_at);
     let capture_ms = elapsed.as_millis() as u64;
@@ -103,9 +115,13 @@ impl GroveApp {
         if self.preview_tab != PreviewTab::Diff {
             return;
         }
+        if self.polling.diff_capture_in_flight {
+            return;
+        }
         let Some(workspace) = self.state.selected_workspace() else {
             return;
         };
+        self.polling.diff_capture_in_flight = true;
         let workspace_path = workspace.path.clone();
         self.queue_cmd(Cmd::task(move || {
             Msg::DiffCaptureCompleted(run_diff_capture(workspace_path))
@@ -113,6 +129,7 @@ impl GroveApp {
     }
 
     pub(super) fn handle_diff_capture_completed(&mut self, completion: DiffCaptureCompletion) {
+        self.polling.diff_capture_in_flight = false;
         if self.preview_tab != PreviewTab::Diff {
             return;
         }
@@ -197,7 +214,7 @@ impl GroveApp {
     }
 
     fn maybe_poll_diff_stat(&mut self) {
-        if self.polling.diff_stat_in_flight {
+        if self.polling.diff_stat_in_flight || self.polling.diff_capture_in_flight {
             return;
         }
         let Some(workspace) = self.state.selected_workspace() else {
