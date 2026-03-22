@@ -96,6 +96,7 @@ impl GroveApp {
     fn cycle_preview_tab(&mut self, direction: i8) {
         self.cycle_selected_workspace_tabs(direction);
         self.clear_preview_selection();
+        self.refresh_preview_summary();
         self.poll_preview();
     }
 

@@ -637,6 +637,19 @@ impl WorkspaceTabsState {
         }
     }
 
+    pub(super) fn activate_first_running_non_home_tab(&mut self) {
+        if let Some(tab_id) = self
+            .tabs
+            .iter()
+            .find(|tab| {
+                tab.kind != WorkspaceTabKind::Home && tab.state == WorkspaceTabRuntimeState::Running
+            })
+            .map(|tab| tab.id)
+        {
+            self.active_tab_id = tab_id;
+        }
+    }
+
     pub(super) fn active_tab(&self) -> Option<&WorkspaceTab> {
         self.tabs.iter().find(|tab| tab.id == self.active_tab_id)
     }
@@ -976,6 +989,41 @@ mod tests {
         let tabs = WorkspaceTabsState::new();
         assert_eq!(tabs.next_tab_ordinal(WorkspaceTabKind::Home), 1);
         assert_eq!(tabs.next_tab_ordinal(WorkspaceTabKind::Git), 1);
+    }
+
+    #[test]
+    fn activate_first_running_non_home_tab_selects_running_agent() {
+        let mut tabs = WorkspaceTabsState::new();
+        let agent_id = tabs.insert_tab_adjacent(agent_tab("ws-agent-1"));
+        tabs.active_tab_id = 1; // reset to Home
+
+        tabs.activate_first_running_non_home_tab();
+
+        assert_eq!(tabs.active_tab_id, agent_id);
+    }
+
+    #[test]
+    fn activate_first_running_non_home_tab_skips_stopped_tabs() {
+        let mut tabs = WorkspaceTabsState::new();
+        let agent_id = tabs.insert_tab_adjacent(agent_tab("ws-agent-1"));
+        if let Some(tab) = tabs.tab_by_id_mut(agent_id) {
+            tab.state = WorkspaceTabRuntimeState::Stopped;
+        }
+        let shell_id = tabs.insert_tab_adjacent(shell_tab("ws-shell-1"));
+        tabs.active_tab_id = 1;
+
+        tabs.activate_first_running_non_home_tab();
+
+        assert_eq!(tabs.active_tab_id, shell_id);
+    }
+
+    #[test]
+    fn activate_first_running_non_home_tab_keeps_home_when_no_running_tabs() {
+        let mut tabs = WorkspaceTabsState::new();
+
+        tabs.activate_first_running_non_home_tab();
+
+        assert_eq!(tabs.active_tab_id, 1);
     }
 
     #[test]

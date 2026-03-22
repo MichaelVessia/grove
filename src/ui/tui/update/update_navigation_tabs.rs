@@ -279,6 +279,10 @@ impl GroveApp {
             }
         }
 
+        for tabs in self.workspace_tabs.values_mut() {
+            tabs.activate_first_running_non_home_tab();
+        }
+
         self.sync_home_tab_titles();
         self.sync_preview_tab_from_active_workspace_tab();
     }
@@ -516,6 +520,7 @@ impl GroveApp {
             return false;
         }
         self.sync_preview_tab_from_active_workspace_tab();
+        self.refresh_preview_summary();
         self.poll_preview();
         true
     }

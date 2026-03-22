@@ -936,6 +936,10 @@ mod tests {
         app.polling.next_poll_due_at = Some(now);
     }
 
+    fn suppress_diff_stat_poll(app: &mut GroveApp) {
+        app.polling.last_diff_stat_poll_at = Some(Instant::now());
+    }
+
     fn seed_running_agent_tabs_for_running_workspaces(app: &mut GroveApp) {
         let workspaces = app.state.workspaces.clone();
         for workspace in workspaces {
@@ -1902,6 +1906,66 @@ mod tests {
                 format!("{}-git", feature_workspace_session()),
             ],
         );
+    }
+
+    #[test]
+    fn restored_agent_tab_auto_activates_after_rebuild() {
+        let agent_session = main_agent_tab_session(1);
+        let rows = format!(
+            "{}\t{}\tagent\tClaude 1\tclaude\t2\t1\n",
+            agent_session,
+            main_workspace_path().display(),
+        );
+        let app = GroveApp::from_task_state(
+            "grove".to_string(),
+            crate::ui::state::AppState::new(fixture_tasks(WorkspaceStatus::Idle)),
+            DiscoveryState::Ready,
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(RestoreMetadataTmuxInput { rows }),
+                clipboard: test_clipboard(),
+                config_path: unique_config_path("restore-agent-auto-activate"),
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+
+        let tabs = app
+            .workspace_tabs
+            .get(main_workspace_path().as_path())
+            .expect("main workspace tabs should exist");
+        let active = tabs.active_tab().expect("active tab should exist");
+        assert_eq!(active.kind, WorkspaceTabKind::Agent);
+        assert_eq!(active.session_name.as_deref(), Some(agent_session.as_str()));
+    }
+
+    #[test]
+    fn restored_agent_tab_has_ready_session_after_selection() {
+        let agent_session = main_agent_tab_session(1);
+        let rows = format!(
+            "{}\t{}\tagent\tClaude 1\tclaude\t2\t1\n",
+            agent_session,
+            main_workspace_path().display(),
+        );
+        let mut app = GroveApp::from_task_state(
+            "grove".to_string(),
+            crate::ui::state::AppState::new(fixture_tasks(WorkspaceStatus::Idle)),
+            DiscoveryState::Ready,
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(RestoreMetadataTmuxInput { rows }),
+                clipboard: test_clipboard(),
+                config_path: unique_config_path("restore-agent-ready-session"),
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+
+        select_workspace(&mut app, 0);
+        assert_eq!(app.preview_tab, PreviewTab::Agent);
+
+        let ready_session = app.selected_agent_preview_session_if_ready();
+        assert_eq!(ready_session, Some(agent_session));
     }
 
     #[test]
@@ -13491,6 +13555,7 @@ mod tests {
                     },
                 );
                 select_workspace(&mut app, 1);
+                suppress_diff_stat_poll(&mut app);
                 force_tick_due(&mut app);
 
                 let cmd = ftui::Model::update(&mut app, Msg::Tick);
@@ -13514,6 +13579,7 @@ mod tests {
                     },
                 );
                 select_workspace(&mut app, 0);
+                suppress_diff_stat_poll(&mut app);
                 force_tick_due(&mut app);
 
                 let cmd = ftui::Model::update(&mut app, Msg::Tick);
