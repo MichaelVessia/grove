@@ -277,7 +277,7 @@ impl GroveApp {
                 ToastStyle::Success,
                 Duration::from_secs(4),
                 NotificationPriority::Normal,
-                theme.teal,
+                packed(theme.info),
             ),
             ToastSeverity::Error => (
                 "Error",
@@ -285,7 +285,7 @@ impl GroveApp {
                 ToastStyle::Error,
                 Duration::from_secs(12),
                 NotificationPriority::High,
-                theme.red,
+                packed(theme.error),
             ),
             ToastSeverity::Warning => (
                 "Warning",
@@ -293,7 +293,7 @@ impl GroveApp {
                 ToastStyle::Warning,
                 Duration::from_secs(8),
                 NotificationPriority::Normal,
-                theme.yellow,
+                packed(theme.warning),
             ),
             ToastSeverity::Info => (
                 "Info",
@@ -301,12 +301,12 @@ impl GroveApp {
                 ToastStyle::Info,
                 Duration::from_secs(6),
                 NotificationPriority::Normal,
-                theme.blue,
+                packed(theme.primary),
             ),
         };
-        let base_style = Style::new().bg(theme.surface0).fg(color);
-        let title_style = Style::new().bg(theme.surface0).fg(color).bold();
-        let icon_style = Style::new().bg(theme.surface0).fg(color).bold();
+        let base_style = Style::new().bg(packed(theme.surface)).fg(color);
+        let title_style = Style::new().bg(packed(theme.surface)).fg(color).bold();
+        let icon_style = Style::new().bg(packed(theme.surface)).fg(color).bold();
         let toast = Toast::new(message)
             .title(title)
             .icon(icon)

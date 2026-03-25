@@ -2,13 +2,17 @@ use super::*;
 
 pub(super) fn modal_labeled_input_row(
     content_width: usize,
-    theme: UiTheme,
+    theme: ftui::ResolvedTheme,
     label: &str,
     value: &str,
     placeholder: &str,
     focused: bool,
 ) -> FtLine<'static> {
-    let row_bg = if focused { theme.surface1 } else { theme.base };
+    let row_bg = if focused {
+        packed(theme.selection_bg)
+    } else {
+        packed(theme.background)
+    };
     let marker = if focused { ">" } else { " " };
     let badge = format!("[{label}] ");
     let prefix = format!("{marker} {badge}");
@@ -27,22 +31,25 @@ pub(super) fn modal_labeled_input_row(
             marker,
             Style::new()
                 .fg(if focused {
-                    theme.yellow
+                    packed(theme.warning)
                 } else {
-                    theme.overlay0
+                    packed(theme.border)
                 })
                 .bg(row_bg)
                 .bold(),
         ),
         FtSpan::styled(" ", Style::new().bg(row_bg)),
-        FtSpan::styled(badge, Style::new().fg(theme.blue).bg(row_bg).bold()),
+        FtSpan::styled(
+            badge,
+            Style::new().fg(packed(theme.primary)).bg(row_bg).bold(),
+        ),
         FtSpan::styled(
             rendered,
             Style::new()
                 .fg(if value.is_empty() {
-                    theme.overlay0
+                    packed(theme.border)
                 } else {
-                    theme.text
+                    packed(theme.text)
                 })
                 .bg(row_bg)
                 .bold(),
@@ -53,7 +60,7 @@ pub(super) fn modal_labeled_input_row(
 
 pub(super) fn modal_static_badged_row(
     content_width: usize,
-    theme: UiTheme,
+    theme: ftui::ResolvedTheme,
     label: &str,
     value: &str,
     badge_fg: PackedRgba,
@@ -68,23 +75,36 @@ pub(super) fn modal_static_badged_row(
     let pad = " ".repeat(content_width.saturating_sub(used));
 
     FtLine::from_spans(vec![
-        FtSpan::styled("  ", Style::new().bg(theme.base)),
-        FtSpan::styled(badge, Style::new().fg(badge_fg).bg(theme.base).bold()),
-        FtSpan::styled(rendered, Style::new().fg(value_fg).bg(theme.base)),
-        FtSpan::styled(pad, Style::new().bg(theme.base)),
+        FtSpan::styled("  ", Style::new().bg(packed(theme.background))),
+        FtSpan::styled(
+            badge,
+            Style::new()
+                .fg(badge_fg)
+                .bg(packed(theme.background))
+                .bold(),
+        ),
+        FtSpan::styled(
+            rendered,
+            Style::new().fg(value_fg).bg(packed(theme.background)),
+        ),
+        FtSpan::styled(pad, Style::new().bg(packed(theme.background))),
     ])
 }
 
 pub(super) fn modal_focus_badged_row(
     content_width: usize,
-    theme: UiTheme,
+    theme: ftui::ResolvedTheme,
     label: &str,
     value: &str,
     focused: bool,
     badge_fg: PackedRgba,
     value_fg: PackedRgba,
 ) -> FtLine<'static> {
-    let row_bg = if focused { theme.surface1 } else { theme.base };
+    let row_bg = if focused {
+        packed(theme.selection_bg)
+    } else {
+        packed(theme.background)
+    };
     let marker = if focused { ">" } else { " " };
     let badge = format!("[{label}] ");
     let prefix = format!("{marker} {badge}");
@@ -99,9 +119,9 @@ pub(super) fn modal_focus_badged_row(
             marker,
             Style::new()
                 .fg(if focused {
-                    theme.yellow
+                    packed(theme.warning)
                 } else {
-                    theme.overlay0
+                    packed(theme.border)
                 })
                 .bg(row_bg)
                 .bold(),
@@ -115,16 +135,16 @@ pub(super) fn modal_focus_badged_row(
 
 pub(super) fn modal_actions_row(
     content_width: usize,
-    theme: UiTheme,
+    theme: ftui::ResolvedTheme,
     primary_label: &str,
     secondary_label: &str,
     primary_focused: bool,
     secondary_focused: bool,
 ) -> FtLine<'static> {
     let actions_bg = if primary_focused || secondary_focused {
-        theme.surface1
+        packed(theme.selection_bg)
     } else {
-        theme.base
+        packed(theme.background)
     };
     let actions_prefix = if primary_focused || secondary_focused {
         "> "
@@ -150,7 +170,7 @@ pub(super) fn modal_actions_row(
 
     FtLine::from_spans(vec![FtSpan::styled(
         padded,
-        Style::new().fg(theme.text).bg(actions_bg).bold(),
+        Style::new().fg(packed(theme.text)).bg(actions_bg).bold(),
     )])
 }
 
@@ -164,7 +184,7 @@ pub(super) fn unsafe_state_label(skip_permissions: bool) -> &'static str {
 
 pub(super) fn modal_start_agent_config_rows<F>(
     content_width: usize,
-    theme: UiTheme,
+    theme: ftui::ResolvedTheme,
     start_config: &StartAgentConfigState,
     is_focused: F,
 ) -> [FtLine<'static>; 4]
@@ -202,11 +222,11 @@ where
             "Unsafe",
             unsafe_state_label(start_config.skip_permissions),
             is_focused(StartAgentConfigField::Unsafe),
-            theme.peach,
+            packed(theme.accent),
             if start_config.skip_permissions {
-                theme.red
+                packed(theme.error)
             } else {
-                theme.text
+                packed(theme.text)
             },
         ),
     ]
@@ -225,13 +245,15 @@ pub(super) fn modal_wrapped_rows(
 
 pub(super) fn modal_wrapped_hint_rows(
     content_width: usize,
-    theme: UiTheme,
+    theme: ftui::ResolvedTheme,
     text: &str,
 ) -> Vec<FtLine<'static>> {
     modal_wrapped_rows(
         content_width,
         text,
-        Style::new().fg(theme.overlay0).bg(theme.base),
+        Style::new()
+            .fg(packed(theme.border))
+            .bg(packed(theme.background)),
     )
 }
 
@@ -240,7 +262,7 @@ pub(super) struct ModalDialogSpec<'a> {
     pub(super) dialog_width: u16,
     pub(super) dialog_height: u16,
     pub(super) title: &'a str,
-    pub(super) theme: UiTheme,
+    pub(super) theme: ftui::ResolvedTheme,
     pub(super) border_color: PackedRgba,
     pub(super) hit_id: u32,
 }
@@ -266,7 +288,7 @@ pub(super) fn render_modal_dialog(
                 .min_height(spec.dialog_height)
                 .max_height(spec.dialog_height),
         )
-        .backdrop(BackdropConfig::new(spec.theme.crust, 0.55))
+        .backdrop(BackdropConfig::new(packed(spec.theme.background), 0.55))
         .hit_id(HitId::new(spec.hit_id))
         .render(area, frame);
 }
@@ -298,7 +320,7 @@ mod tests {
 pub(super) struct OverlayModalContent<'a> {
     pub(super) title: &'a str,
     pub(super) body: FtText<'static>,
-    pub(super) theme: UiTheme,
+    pub(super) theme: ftui::ResolvedTheme,
     pub(super) border_color: PackedRgba,
 }
 
@@ -308,7 +330,9 @@ impl Widget for OverlayModalContent<'_> {
             return;
         }
 
-        let content_style = Style::new().bg(self.theme.base).fg(self.theme.text);
+        let content_style = Style::new()
+            .bg(packed(self.theme.background))
+            .fg(packed(self.theme.text));
 
         Paragraph::new("").style(content_style).render(area, frame);
 

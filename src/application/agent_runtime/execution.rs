@@ -498,6 +498,7 @@ mod tests {
             workspace_name: "auth-flow".to_string(),
             workspace_path: PathBuf::from("/repos/project.one/worktrees/auth-flow"),
             agent: AgentType::Claude,
+            theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: None,
             skip_permissions: false,

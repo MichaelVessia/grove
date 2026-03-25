@@ -42,7 +42,7 @@ impl GroveApp {
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 fit("Update plan"),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]),
             FtLine::raw(""),
             modal_static_badged_row(
@@ -50,38 +50,40 @@ impl GroveApp {
                 theme,
                 "Name",
                 dialog.workspace_name.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Branch",
                 dialog.workspace_branch.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 base_label,
                 base_value.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Path",
                 path.as_str(),
-                theme.blue,
-                theme.overlay0,
+                packed(theme.primary),
+                packed(theme.border),
             ),
         ];
         lines.extend(modal_wrapped_rows(
             content_width,
             strategy,
-            Style::new().fg(theme.subtext0).bg(theme.base),
+            Style::new()
+                .fg(packed(theme.text_subtle))
+                .bg(packed(theme.background)),
         ));
         lines.push(FtLine::raw(""));
         lines.push(modal_actions_row(
@@ -107,7 +109,7 @@ impl GroveApp {
                 dialog_height,
                 title,
                 theme,
-                border_color: theme.teal,
+                border_color: packed(theme.info),
                 hit_id: HIT_ID_UPDATE_FROM_BASE_DIALOG,
             },
         );

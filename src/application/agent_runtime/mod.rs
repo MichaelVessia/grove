@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::domain::{AgentType, Workspace};
+use crate::infrastructure::config::ThemeName;
 
 mod agents;
 pub mod capture;
@@ -12,6 +13,7 @@ pub mod reconciliation;
 pub mod restart;
 mod sessions;
 pub mod status;
+mod tmux_theme;
 
 pub(crate) use capture::evaluate_capture_change;
 pub use capture::tmux_capture_error_indicates_missing_session;
@@ -50,6 +52,7 @@ pub use sessions::{
     workspace_session_for_preview_tab,
 };
 pub(crate) use status::{detect_status_with_session_override, latest_assistant_attention_marker};
+pub use tmux_theme::{grove_managed_tmux_sessions, tmux_theme_commands};
 
 pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
 const GROVE_LAUNCHER_SCRIPT_PATH: &str = ".grove/start.sh";
@@ -96,6 +99,7 @@ pub struct LaunchRequest {
     pub workspace_name: String,
     pub workspace_path: PathBuf,
     pub agent: AgentType,
+    pub theme_name: ThemeName,
     pub prompt: Option<String>,
     pub workspace_init_command: Option<String>,
     pub skip_permissions: bool,
@@ -109,6 +113,7 @@ pub struct TaskLaunchRequest {
     pub task_slug: String,
     pub task_root: PathBuf,
     pub agent: AgentType,
+    pub theme_name: ThemeName,
     pub prompt: Option<String>,
     pub workspace_init_command: Option<String>,
     pub skip_permissions: bool,
@@ -145,6 +150,7 @@ pub struct ShellLaunchRequest {
     pub session_name: String,
     pub workspace_path: PathBuf,
     pub command: String,
+    pub theme_name: ThemeName,
     pub workspace_init_command: Option<String>,
     pub capture_cols: Option<u16>,
     pub capture_rows: Option<u16>,

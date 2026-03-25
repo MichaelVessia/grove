@@ -3,7 +3,7 @@ use ftui::widgets::help::KeybindingHints;
 #[derive(Debug, Clone)]
 struct KeybindHelpModalContent {
     hints: KeybindingHints,
-    theme: UiTheme,
+    theme: ftui::ResolvedTheme,
 }
 
 impl Widget for KeybindHelpModalContent {
@@ -12,7 +12,7 @@ impl Widget for KeybindHelpModalContent {
             return;
         }
 
-        let content_style = Style::new().bg(self.theme.base).fg(self.theme.text);
+        let content_style = Style::new().bg(packed(self.theme.background)).fg(packed(self.theme.text));
         Paragraph::new("").style(content_style).render(area, frame);
 
         let block = Block::new()
@@ -20,7 +20,7 @@ impl Widget for KeybindHelpModalContent {
             .title_alignment(BlockAlignment::Center)
             .borders(Borders::ALL)
             .style(content_style)
-            .border_style(Style::new().fg(self.theme.blue).bold());
+            .border_style(Style::new().fg(packed(self.theme.primary)).bold());
         let inner = block.inner(area);
         block.render(area, frame);
 
@@ -34,7 +34,7 @@ impl Widget for KeybindHelpModalContent {
 
         Widget::render(&self.hints, rows[0], frame);
         Paragraph::new("Close help: Esc, Enter, or ?")
-            .style(Style::new().fg(self.theme.lavender).bg(self.theme.base).bold())
+            .style(Style::new().fg(packed(self.theme.secondary)).bg(packed(self.theme.background)).bold())
             .render(rows[1], frame);
     }
 }
@@ -72,7 +72,7 @@ impl GroveApp {
                     .min_height(dialog_height)
                     .max_height(dialog_height),
             )
-            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .backdrop(BackdropConfig::new(packed(theme.background), 0.55))
             .hit_id(HitId::new(HIT_ID_KEYBIND_HELP_DIALOG))
             .render(area, frame);
     }

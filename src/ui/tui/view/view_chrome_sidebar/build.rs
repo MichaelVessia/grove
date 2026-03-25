@@ -10,12 +10,12 @@ impl GroveApp {
     fn pull_request_status_style(
         status: crate::domain::PullRequestStatus,
         secondary_style: Style,
-        theme: UiTheme,
+        theme: ftui::ResolvedTheme,
     ) -> Style {
         match status {
-            crate::domain::PullRequestStatus::Open => secondary_style.fg(theme.teal).bold(),
-            crate::domain::PullRequestStatus::Merged => secondary_style.fg(theme.mauve).bold(),
-            crate::domain::PullRequestStatus::Closed => secondary_style.fg(theme.red).bold(),
+            crate::domain::PullRequestStatus::Open => secondary_style.fg(packed(theme.info)).bold(),
+            crate::domain::PullRequestStatus::Merged => secondary_style.fg(packed(theme.secondary)).bold(),
+            crate::domain::PullRequestStatus::Closed => secondary_style.fg(packed(theme.error)).bold(),
         }
     }
 
@@ -43,19 +43,19 @@ impl GroveApp {
         &self,
         lines: &mut Vec<SidebarListLine>,
         selected_line: &mut Option<usize>,
-        theme: UiTheme,
+        theme: ftui::ResolvedTheme,
     ) {
         lines.push(SidebarListLine::attention_header(vec![SidebarSegment {
             text: format!("Needs You [{}]", self.attention_items.len()),
-            style: Style::new().fg(theme.yellow).bold(),
+            style: Style::new().fg(packed(theme.warning)).bold(),
         }]));
         if self.attention_items.is_empty() {
             lines.push(SidebarListLine::attention_placeholder(
                 vec![SidebarSegment {
                     text: "  nothing needs your attention".to_string(),
-                    style: Style::new().fg(theme.overlay0),
+                    style: Style::new().fg(packed(theme.border)),
                 }],
-                Style::new().fg(theme.surface1),
+                Style::new().fg(packed(theme.selection_bg)),
                 Style::new(),
             ));
             lines.push(SidebarListLine::project(Vec::new()));
@@ -68,23 +68,23 @@ impl GroveApp {
             }
             let row_background = if is_selected {
                 if self.state.focus == PaneFocus::WorkspaceList && !self.modal_open() {
-                    Some(theme.surface1)
+                    Some(packed(theme.selection_bg))
                 } else {
-                    Some(theme.surface0)
+                    Some(packed(theme.surface))
                 }
             } else {
                 None
             };
             let mut border_style = if is_selected {
-                Style::new().fg(theme.yellow).bold()
+                Style::new().fg(packed(theme.warning)).bold()
             } else {
-                Style::new().fg(theme.surface1)
+                Style::new().fg(packed(theme.selection_bg))
             };
             if let Some(background) = row_background {
                 border_style = border_style.bg(background);
             }
             let row_style = row_background.map_or_else(Style::new, |background| Style::new().bg(background));
-            let mut label_style = Style::new().fg(theme.text);
+            let mut label_style = Style::new().fg(packed(theme.text));
             if let Some(background) = row_background {
                 label_style = label_style.bg(background);
             }
@@ -108,7 +108,7 @@ impl GroveApp {
         &self,
         lines: &mut Vec<SidebarListLine>,
         selected_line: &mut Option<usize>,
-        theme: UiTheme,
+        theme: ftui::ResolvedTheme,
         workspace_index: usize,
     ) {
         let Some(workspace) = self.state.workspaces.get(workspace_index) else {
@@ -126,21 +126,21 @@ impl GroveApp {
         );
         let (attention_symbol, attention_color) = self
             .workspace_attention_indicator(workspace.path.as_path())
-            .unwrap_or((" ", theme.overlay0));
+            .unwrap_or((" ", packed(theme.border)));
         let row_background = if is_selected {
             if self.state.focus == PaneFocus::WorkspaceList && !self.modal_open() {
-                Some(theme.surface1)
+                Some(packed(theme.selection_bg))
             } else {
-                Some(theme.surface0)
+                Some(packed(theme.surface))
             }
         } else {
             None
         };
 
         let mut border_style = if is_selected {
-            Style::new().fg(theme.blue)
+            Style::new().fg(packed(theme.primary))
         } else {
-            Style::new().fg(theme.surface1)
+            Style::new().fg(packed(theme.selection_bg))
         };
         if let Some(bg) = row_background {
             border_style = border_style.bg(bg);
@@ -150,8 +150,8 @@ impl GroveApp {
         }
 
         let row_style = row_background.map_or_else(Style::new, |bg| Style::new().bg(bg));
-        let mut primary_style = Style::new().fg(theme.text);
-        let mut secondary_style = Style::new().fg(theme.subtext0);
+        let mut primary_style = Style::new().fg(packed(theme.text));
+        let mut secondary_style = Style::new().fg(packed(theme.text_subtle));
         if let Some(bg) = row_background {
             primary_style = primary_style.bg(bg);
             secondary_style = secondary_style.bg(bg);
@@ -214,7 +214,7 @@ impl GroveApp {
         if needs_attention {
             trailing_segments.push(SidebarSegment {
                 text: "WAITING".to_string(),
-                style: secondary_style.fg(theme.yellow).bold(),
+                style: secondary_style.fg(packed(theme.warning)).bold(),
             });
         } else if is_working {
             trailing_segments.push(SidebarSegment {
@@ -224,12 +224,12 @@ impl GroveApp {
         } else if self.dialogs.delete_requested_workspaces.contains(&workspace.path) {
             trailing_segments.push(SidebarSegment {
                 text: "Deleting...".to_string(),
-                style: secondary_style.fg(theme.peach).bold(),
+                style: secondary_style.fg(packed(theme.accent)).bold(),
             });
         } else if workspace.is_orphaned {
             trailing_segments.push(SidebarSegment {
                 text: "session ended".to_string(),
-                style: secondary_style.fg(theme.peach),
+                style: secondary_style.fg(packed(theme.accent)),
             });
         } else if !workspace.is_main && !workspace.pull_requests.is_empty() {
             for (pull_request_index, pull_request) in workspace.pull_requests.iter().enumerate() {
@@ -278,7 +278,7 @@ impl GroveApp {
         ));
     }
 
-    fn build_sidebar_lines(&self, theme: UiTheme) -> (Vec<SidebarListLine>, Option<usize>) {
+    fn build_sidebar_lines(&self, theme: ftui::ResolvedTheme) -> (Vec<SidebarListLine>, Option<usize>) {
         let mut lines = Vec::new();
         let mut selected_line = None;
         let mut workspace_index = 0usize;
@@ -296,13 +296,13 @@ impl GroveApp {
                     task.name,
                     task.worktrees.len()
                 ),
-                style: Style::new().fg(theme.overlay0).bold(),
+                style: Style::new().fg(packed(theme.border)).bold(),
             }]));
 
             if task.worktrees.is_empty() {
                 lines.push(SidebarListLine::project(vec![SidebarSegment {
                     text: "  (no worktrees)".to_string(),
-                    style: Style::new().fg(theme.subtext0),
+                    style: Style::new().fg(packed(theme.text_subtle)),
                 }]));
                 continue;
             }

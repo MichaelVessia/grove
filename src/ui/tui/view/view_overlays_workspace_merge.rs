@@ -39,7 +39,7 @@ impl GroveApp {
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 fit("Merge plan"),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]),
             FtLine::raw(""),
             modal_static_badged_row(
@@ -47,32 +47,32 @@ impl GroveApp {
                 theme,
                 "Name",
                 dialog.workspace_name.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Branch",
                 dialog.workspace_branch.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Base",
                 dialog.base_branch.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Path",
                 path.as_str(),
-                theme.blue,
-                theme.overlay0,
+                packed(theme.primary),
+                packed(theme.border),
             ),
             FtLine::raw(""),
             modal_focus_badged_row(
@@ -81,11 +81,11 @@ impl GroveApp {
                 "CleanupWorktree",
                 cleanup_workspace_state.as_str(),
                 cleanup_workspace_focused,
-                theme.peach,
+                packed(theme.accent),
                 if dialog.cleanup_workspace {
-                    theme.red
+                    packed(theme.error)
                 } else {
-                    theme.text
+                    packed(theme.text)
                 },
             ),
             modal_focus_badged_row(
@@ -94,11 +94,11 @@ impl GroveApp {
                 "CleanupBranch",
                 cleanup_branch_state.as_str(),
                 cleanup_branch_focused,
-                theme.peach,
+                packed(theme.accent),
                 if dialog.cleanup_local_branch {
-                    theme.red
+                    packed(theme.error)
                 } else {
-                    theme.text
+                    packed(theme.text)
                 },
             ),
             FtLine::raw(""),
@@ -126,7 +126,7 @@ impl GroveApp {
                 dialog_height,
                 title: "Merge Workspace?",
                 theme,
-                border_color: theme.peach,
+                border_color: packed(theme.accent),
                 hit_id: HIT_ID_MERGE_DIALOG,
             },
         );

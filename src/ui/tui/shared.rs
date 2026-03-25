@@ -24,7 +24,7 @@ use std::time::Instant;
 
 use crate::domain::AgentType;
 use crate::infrastructure::config::ThemeName;
-use ftui::PackedRgba;
+use ftui::{Color, PackedRgba, ResolvedTheme, Theme, ThemeBuilder};
 
 pub(super) const WORKSPACE_LAUNCH_PROMPT_FILENAME: &str = ".grove/prompt";
 pub(super) const WORKSPACE_INIT_COMMAND_FILENAME: &str = ".grove/init_command";
@@ -179,275 +179,227 @@ fn env_var_key_is_valid(key: &str) -> bool {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct UiTheme {
-    pub(super) base: PackedRgba,
-    pub(super) mantle: PackedRgba,
-    pub(super) crust: PackedRgba,
-    pub(super) surface0: PackedRgba,
-    pub(super) surface1: PackedRgba,
-    pub(super) surface2: PackedRgba,
-    pub(super) overlay0: PackedRgba,
-    pub(super) text: PackedRgba,
-    pub(super) subtext1: PackedRgba,
-    pub(super) subtext0: PackedRgba,
-    pub(super) blue: PackedRgba,
-    pub(super) lavender: PackedRgba,
-    pub(super) green: PackedRgba,
-    pub(super) yellow: PackedRgba,
-    pub(super) red: PackedRgba,
-    pub(super) peach: PackedRgba,
-    pub(super) mauve: PackedRgba,
-    pub(super) teal: PackedRgba,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ThemePalette {
-    background_color: PackedRgba,
-    header_color: PackedRgba,
-    backdrop_color: PackedRgba,
-    surface_color: PackedRgba,
-    surface_focused_color: PackedRgba,
-    surface_elevated_color: PackedRgba,
-    border_color: PackedRgba,
-    text_color: PackedRgba,
-    strong_muted_text_color: PackedRgba,
-    muted_text_color: PackedRgba,
-    accent_color: PackedRgba,
-    accent_soft_color: PackedRgba,
-    accent_teal_color: PackedRgba,
-    success_color: PackedRgba,
-    warning_color: PackedRgba,
-    error_color: PackedRgba,
-    accent_warm_color: PackedRgba,
-    accent_alt_color: PackedRgba,
-}
-
-impl ThemePalette {
-    const fn to_ui_theme(self) -> UiTheme {
-        UiTheme {
-            base: self.background_color,
-            mantle: self.header_color,
-            crust: self.backdrop_color,
-            surface0: self.surface_color,
-            surface1: self.surface_focused_color,
-            surface2: self.surface_elevated_color,
-            overlay0: self.border_color,
-            text: self.text_color,
-            subtext1: self.strong_muted_text_color,
-            subtext0: self.muted_text_color,
-            blue: self.accent_color,
-            lavender: self.accent_soft_color,
-            green: self.success_color,
-            yellow: self.warning_color,
-            red: self.error_color,
-            peach: self.accent_warm_color,
-            mauve: self.accent_alt_color,
-            teal: self.accent_teal_color,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
 struct ThemePreset {
     name: ThemeName,
     display_name: &'static str,
-    palette: ThemePalette,
 }
 
 const THEME_PRESETS: [ThemePreset; 8] = [
     ThemePreset {
         name: ThemeName::Monokai,
         display_name: "Monokai",
-        palette: ThemePalette {
-            background_color: PackedRgba::rgb(39, 40, 34),
-            header_color: PackedRgba::rgb(30, 31, 28),
-            backdrop_color: PackedRgba::rgb(22, 22, 19),
-            surface_color: PackedRgba::rgb(62, 61, 50),
-            surface_focused_color: PackedRgba::rgb(73, 72, 62),
-            surface_elevated_color: PackedRgba::rgb(92, 88, 76),
-            border_color: PackedRgba::rgb(117, 113, 94),
-            text_color: PackedRgba::rgb(248, 248, 242),
-            strong_muted_text_color: PackedRgba::rgb(212, 208, 191),
-            muted_text_color: PackedRgba::rgb(162, 160, 142),
-            accent_color: PackedRgba::rgb(102, 217, 239),
-            accent_soft_color: PackedRgba::rgb(174, 129, 255),
-            accent_teal_color: PackedRgba::rgb(17, 168, 205),
-            success_color: PackedRgba::rgb(166, 226, 46),
-            warning_color: PackedRgba::rgb(230, 219, 116),
-            error_color: PackedRgba::rgb(249, 38, 114),
-            accent_warm_color: PackedRgba::rgb(253, 151, 31),
-            accent_alt_color: PackedRgba::rgb(249, 38, 114),
-        },
     },
     ThemePreset {
         name: ThemeName::CatppuccinLatte,
         display_name: "Catppuccin Latte",
-        palette: ThemePalette {
-            background_color: PackedRgba::rgb(239, 241, 245),
-            header_color: PackedRgba::rgb(230, 233, 239),
-            backdrop_color: PackedRgba::rgb(220, 224, 232),
-            surface_color: PackedRgba::rgb(204, 208, 218),
-            surface_focused_color: PackedRgba::rgb(188, 192, 204),
-            surface_elevated_color: PackedRgba::rgb(172, 176, 190),
-            border_color: PackedRgba::rgb(156, 160, 176),
-            text_color: PackedRgba::rgb(76, 79, 105),
-            strong_muted_text_color: PackedRgba::rgb(92, 95, 119),
-            muted_text_color: PackedRgba::rgb(108, 111, 133),
-            accent_color: PackedRgba::rgb(30, 102, 245),
-            accent_soft_color: PackedRgba::rgb(114, 135, 253),
-            accent_teal_color: PackedRgba::rgb(23, 146, 153),
-            success_color: PackedRgba::rgb(64, 160, 43),
-            warning_color: PackedRgba::rgb(223, 142, 29),
-            error_color: PackedRgba::rgb(210, 15, 57),
-            accent_warm_color: PackedRgba::rgb(254, 100, 11),
-            accent_alt_color: PackedRgba::rgb(136, 57, 239),
-        },
     },
     ThemePreset {
         name: ThemeName::CatppuccinFrappe,
         display_name: "Catppuccin Frappe",
-        palette: ThemePalette {
-            background_color: PackedRgba::rgb(48, 52, 70),
-            header_color: PackedRgba::rgb(41, 44, 60),
-            backdrop_color: PackedRgba::rgb(35, 38, 52),
-            surface_color: PackedRgba::rgb(65, 69, 89),
-            surface_focused_color: PackedRgba::rgb(81, 87, 109),
-            surface_elevated_color: PackedRgba::rgb(98, 104, 128),
-            border_color: PackedRgba::rgb(115, 121, 148),
-            text_color: PackedRgba::rgb(198, 208, 245),
-            strong_muted_text_color: PackedRgba::rgb(181, 191, 226),
-            muted_text_color: PackedRgba::rgb(165, 173, 206),
-            accent_color: PackedRgba::rgb(140, 170, 238),
-            accent_soft_color: PackedRgba::rgb(186, 187, 241),
-            accent_teal_color: PackedRgba::rgb(129, 200, 190),
-            success_color: PackedRgba::rgb(166, 209, 137),
-            warning_color: PackedRgba::rgb(229, 200, 144),
-            error_color: PackedRgba::rgb(231, 130, 132),
-            accent_warm_color: PackedRgba::rgb(239, 159, 118),
-            accent_alt_color: PackedRgba::rgb(202, 158, 230),
-        },
     },
     ThemePreset {
         name: ThemeName::CatppuccinMacchiato,
         display_name: "Catppuccin Macchiato",
-        palette: ThemePalette {
-            background_color: PackedRgba::rgb(36, 39, 58),
-            header_color: PackedRgba::rgb(30, 32, 48),
-            backdrop_color: PackedRgba::rgb(24, 25, 38),
-            surface_color: PackedRgba::rgb(54, 58, 79),
-            surface_focused_color: PackedRgba::rgb(73, 77, 100),
-            surface_elevated_color: PackedRgba::rgb(91, 96, 120),
-            border_color: PackedRgba::rgb(110, 115, 141),
-            text_color: PackedRgba::rgb(202, 211, 245),
-            strong_muted_text_color: PackedRgba::rgb(184, 192, 224),
-            muted_text_color: PackedRgba::rgb(165, 173, 203),
-            accent_color: PackedRgba::rgb(138, 173, 244),
-            accent_soft_color: PackedRgba::rgb(183, 189, 248),
-            accent_teal_color: PackedRgba::rgb(139, 213, 202),
-            success_color: PackedRgba::rgb(166, 218, 149),
-            warning_color: PackedRgba::rgb(238, 212, 159),
-            error_color: PackedRgba::rgb(237, 135, 150),
-            accent_warm_color: PackedRgba::rgb(245, 169, 127),
-            accent_alt_color: PackedRgba::rgb(198, 160, 246),
-        },
     },
     ThemePreset {
         name: ThemeName::CatppuccinMocha,
         display_name: "Catppuccin Mocha",
-        palette: ThemePalette {
-            background_color: PackedRgba::rgb(30, 30, 46),
-            header_color: PackedRgba::rgb(24, 24, 37),
-            backdrop_color: PackedRgba::rgb(17, 17, 27),
-            surface_color: PackedRgba::rgb(49, 50, 68),
-            surface_focused_color: PackedRgba::rgb(69, 71, 90),
-            surface_elevated_color: PackedRgba::rgb(88, 91, 112),
-            border_color: PackedRgba::rgb(108, 112, 134),
-            text_color: PackedRgba::rgb(205, 214, 244),
-            strong_muted_text_color: PackedRgba::rgb(186, 194, 222),
-            muted_text_color: PackedRgba::rgb(166, 173, 200),
-            accent_color: PackedRgba::rgb(137, 180, 250),
-            accent_soft_color: PackedRgba::rgb(180, 190, 254),
-            accent_teal_color: PackedRgba::rgb(148, 226, 213),
-            success_color: PackedRgba::rgb(166, 227, 161),
-            warning_color: PackedRgba::rgb(249, 226, 175),
-            error_color: PackedRgba::rgb(243, 139, 168),
-            accent_warm_color: PackedRgba::rgb(250, 179, 135),
-            accent_alt_color: PackedRgba::rgb(203, 166, 247),
-        },
     },
     ThemePreset {
         name: ThemeName::RosePine,
         display_name: "Rosé Pine",
-        palette: ThemePalette {
-            background_color: PackedRgba::rgb(25, 23, 36),
-            header_color: PackedRgba::rgb(19, 17, 30),
-            backdrop_color: PackedRgba::rgb(13, 11, 24),
-            surface_color: PackedRgba::rgb(31, 29, 46),
-            surface_focused_color: PackedRgba::rgb(38, 35, 58),
-            surface_elevated_color: PackedRgba::rgb(64, 61, 82),
-            border_color: PackedRgba::rgb(110, 106, 134),
-            text_color: PackedRgba::rgb(224, 222, 244),
-            strong_muted_text_color: PackedRgba::rgb(184, 181, 207),
-            muted_text_color: PackedRgba::rgb(144, 140, 170),
-            accent_color: PackedRgba::rgb(156, 207, 216),
-            accent_soft_color: PackedRgba::rgb(235, 188, 186),
-            accent_teal_color: PackedRgba::rgb(49, 116, 143),
-            success_color: PackedRgba::rgb(156, 207, 216),
-            warning_color: PackedRgba::rgb(246, 193, 119),
-            error_color: PackedRgba::rgb(235, 111, 146),
-            accent_warm_color: PackedRgba::rgb(246, 193, 119),
-            accent_alt_color: PackedRgba::rgb(196, 167, 231),
-        },
     },
     ThemePreset {
         name: ThemeName::RosePineMoon,
         display_name: "Rosé Pine Moon",
-        palette: ThemePalette {
-            background_color: PackedRgba::rgb(35, 33, 54),
-            header_color: PackedRgba::rgb(28, 26, 45),
-            backdrop_color: PackedRgba::rgb(21, 19, 36),
-            surface_color: PackedRgba::rgb(42, 39, 63),
-            surface_focused_color: PackedRgba::rgb(57, 53, 82),
-            surface_elevated_color: PackedRgba::rgb(68, 65, 90),
-            border_color: PackedRgba::rgb(110, 106, 134),
-            text_color: PackedRgba::rgb(224, 222, 244),
-            strong_muted_text_color: PackedRgba::rgb(184, 181, 207),
-            muted_text_color: PackedRgba::rgb(144, 140, 170),
-            accent_color: PackedRgba::rgb(156, 207, 216),
-            accent_soft_color: PackedRgba::rgb(235, 188, 186),
-            accent_teal_color: PackedRgba::rgb(62, 143, 176),
-            success_color: PackedRgba::rgb(156, 207, 216),
-            warning_color: PackedRgba::rgb(246, 193, 119),
-            error_color: PackedRgba::rgb(235, 111, 146),
-            accent_warm_color: PackedRgba::rgb(246, 193, 119),
-            accent_alt_color: PackedRgba::rgb(196, 167, 231),
-        },
     },
     ThemePreset {
         name: ThemeName::RosePineDawn,
         display_name: "Rosé Pine Dawn",
-        palette: ThemePalette {
-            background_color: PackedRgba::rgb(250, 244, 237),
-            header_color: PackedRgba::rgb(242, 233, 225),
-            backdrop_color: PackedRgba::rgb(234, 225, 218),
-            surface_color: PackedRgba::rgb(223, 218, 217),
-            surface_focused_color: PackedRgba::rgb(206, 202, 205),
-            surface_elevated_color: PackedRgba::rgb(188, 186, 193),
-            border_color: PackedRgba::rgb(152, 147, 165),
-            text_color: PackedRgba::rgb(87, 82, 121),
-            strong_muted_text_color: PackedRgba::rgb(104, 100, 134),
-            muted_text_color: PackedRgba::rgb(121, 117, 147),
-            accent_color: PackedRgba::rgb(86, 148, 159),
-            accent_soft_color: PackedRgba::rgb(215, 130, 126),
-            accent_teal_color: PackedRgba::rgb(40, 105, 131),
-            success_color: PackedRgba::rgb(86, 148, 159),
-            warning_color: PackedRgba::rgb(234, 157, 52),
-            error_color: PackedRgba::rgb(180, 99, 122),
-            accent_warm_color: PackedRgba::rgb(234, 157, 52),
-            accent_alt_color: PackedRgba::rgb(144, 122, 169),
-        },
     },
 ];
+
+const fn rgb(r: u8, g: u8, b: u8) -> Color {
+    Color::rgb(r, g, b)
+}
+
+fn build_theme(theme_name: ThemeName) -> Theme {
+    match theme_name {
+        ThemeName::Monokai => ThemeBuilder::new()
+            .background(rgb(39, 40, 34))
+            .surface(rgb(62, 61, 50))
+            .overlay(rgb(92, 88, 76))
+            .text(rgb(248, 248, 242))
+            .text_muted(rgb(212, 208, 191))
+            .text_subtle(rgb(162, 160, 142))
+            .primary(rgb(102, 217, 239))
+            .secondary(rgb(174, 129, 255))
+            .accent(rgb(253, 151, 31))
+            .info(rgb(17, 168, 205))
+            .success(rgb(166, 226, 46))
+            .warning(rgb(230, 219, 116))
+            .error(rgb(249, 38, 114))
+            .border(rgb(117, 113, 94))
+            .border_focused(rgb(102, 217, 239))
+            .selection_bg(rgb(73, 72, 62))
+            .selection_fg(rgb(248, 248, 242))
+            .scrollbar_track(rgb(39, 40, 34))
+            .scrollbar_thumb(rgb(62, 61, 50))
+            .build(),
+        ThemeName::CatppuccinLatte => ThemeBuilder::new()
+            .background(rgb(239, 241, 245))
+            .surface(rgb(204, 208, 218))
+            .overlay(rgb(172, 176, 190))
+            .text(rgb(76, 79, 105))
+            .text_muted(rgb(92, 95, 119))
+            .text_subtle(rgb(108, 111, 133))
+            .primary(rgb(30, 102, 245))
+            .secondary(rgb(114, 135, 253))
+            .accent(rgb(254, 100, 11))
+            .info(rgb(23, 146, 153))
+            .success(rgb(64, 160, 43))
+            .warning(rgb(223, 142, 29))
+            .error(rgb(210, 15, 57))
+            .border(rgb(156, 160, 176))
+            .border_focused(rgb(30, 102, 245))
+            .selection_bg(rgb(188, 192, 204))
+            .selection_fg(rgb(76, 79, 105))
+            .scrollbar_track(rgb(239, 241, 245))
+            .scrollbar_thumb(rgb(204, 208, 218))
+            .build(),
+        ThemeName::CatppuccinFrappe => ThemeBuilder::new()
+            .background(rgb(48, 52, 70))
+            .surface(rgb(65, 69, 89))
+            .overlay(rgb(98, 104, 128))
+            .text(rgb(198, 208, 245))
+            .text_muted(rgb(181, 191, 226))
+            .text_subtle(rgb(165, 173, 206))
+            .primary(rgb(140, 170, 238))
+            .secondary(rgb(186, 187, 241))
+            .accent(rgb(239, 159, 118))
+            .info(rgb(129, 200, 190))
+            .success(rgb(166, 209, 137))
+            .warning(rgb(229, 200, 144))
+            .error(rgb(231, 130, 132))
+            .border(rgb(115, 121, 148))
+            .border_focused(rgb(140, 170, 238))
+            .selection_bg(rgb(81, 87, 109))
+            .selection_fg(rgb(198, 208, 245))
+            .scrollbar_track(rgb(48, 52, 70))
+            .scrollbar_thumb(rgb(65, 69, 89))
+            .build(),
+        ThemeName::CatppuccinMacchiato => ThemeBuilder::new()
+            .background(rgb(36, 39, 58))
+            .surface(rgb(54, 58, 79))
+            .overlay(rgb(91, 96, 120))
+            .text(rgb(202, 211, 245))
+            .text_muted(rgb(184, 192, 224))
+            .text_subtle(rgb(165, 173, 203))
+            .primary(rgb(138, 173, 244))
+            .secondary(rgb(183, 189, 248))
+            .accent(rgb(245, 169, 127))
+            .info(rgb(139, 213, 202))
+            .success(rgb(166, 218, 149))
+            .warning(rgb(238, 212, 159))
+            .error(rgb(237, 135, 150))
+            .border(rgb(110, 115, 141))
+            .border_focused(rgb(138, 173, 244))
+            .selection_bg(rgb(73, 77, 100))
+            .selection_fg(rgb(202, 211, 245))
+            .scrollbar_track(rgb(36, 39, 58))
+            .scrollbar_thumb(rgb(54, 58, 79))
+            .build(),
+        ThemeName::CatppuccinMocha => ThemeBuilder::new()
+            .background(rgb(30, 30, 46))
+            .surface(rgb(49, 50, 68))
+            .overlay(rgb(88, 91, 112))
+            .text(rgb(205, 214, 244))
+            .text_muted(rgb(186, 194, 222))
+            .text_subtle(rgb(166, 173, 200))
+            .primary(rgb(137, 180, 250))
+            .secondary(rgb(180, 190, 254))
+            .accent(rgb(250, 179, 135))
+            .info(rgb(148, 226, 213))
+            .success(rgb(166, 227, 161))
+            .warning(rgb(249, 226, 175))
+            .error(rgb(243, 139, 168))
+            .border(rgb(108, 112, 134))
+            .border_focused(rgb(137, 180, 250))
+            .selection_bg(rgb(69, 71, 90))
+            .selection_fg(rgb(205, 214, 244))
+            .scrollbar_track(rgb(30, 30, 46))
+            .scrollbar_thumb(rgb(49, 50, 68))
+            .build(),
+        ThemeName::RosePine => ThemeBuilder::new()
+            .background(rgb(25, 23, 36))
+            .surface(rgb(31, 29, 46))
+            .overlay(rgb(64, 61, 82))
+            .text(rgb(224, 222, 244))
+            .text_muted(rgb(184, 181, 207))
+            .text_subtle(rgb(144, 140, 170))
+            .primary(rgb(156, 207, 216))
+            .secondary(rgb(235, 188, 186))
+            .accent(rgb(246, 193, 119))
+            .info(rgb(49, 116, 143))
+            .success(rgb(156, 207, 216))
+            .warning(rgb(246, 193, 119))
+            .error(rgb(235, 111, 146))
+            .border(rgb(110, 106, 134))
+            .border_focused(rgb(156, 207, 216))
+            .selection_bg(rgb(38, 35, 58))
+            .selection_fg(rgb(224, 222, 244))
+            .scrollbar_track(rgb(25, 23, 36))
+            .scrollbar_thumb(rgb(31, 29, 46))
+            .build(),
+        ThemeName::RosePineMoon => ThemeBuilder::new()
+            .background(rgb(35, 33, 54))
+            .surface(rgb(42, 39, 63))
+            .overlay(rgb(68, 65, 90))
+            .text(rgb(224, 222, 244))
+            .text_muted(rgb(184, 181, 207))
+            .text_subtle(rgb(144, 140, 170))
+            .primary(rgb(156, 207, 216))
+            .secondary(rgb(235, 188, 186))
+            .accent(rgb(246, 193, 119))
+            .info(rgb(62, 143, 176))
+            .success(rgb(156, 207, 216))
+            .warning(rgb(246, 193, 119))
+            .error(rgb(235, 111, 146))
+            .border(rgb(110, 106, 134))
+            .border_focused(rgb(156, 207, 216))
+            .selection_bg(rgb(57, 53, 82))
+            .selection_fg(rgb(224, 222, 244))
+            .scrollbar_track(rgb(35, 33, 54))
+            .scrollbar_thumb(rgb(42, 39, 63))
+            .build(),
+        ThemeName::RosePineDawn => ThemeBuilder::new()
+            .background(rgb(250, 244, 237))
+            .surface(rgb(223, 218, 217))
+            .overlay(rgb(188, 186, 193))
+            .text(rgb(87, 82, 121))
+            .text_muted(rgb(104, 100, 134))
+            .text_subtle(rgb(121, 117, 147))
+            .primary(rgb(86, 148, 159))
+            .secondary(rgb(215, 130, 126))
+            .accent(rgb(234, 157, 52))
+            .info(rgb(40, 105, 131))
+            .success(rgb(86, 148, 159))
+            .warning(rgb(234, 157, 52))
+            .error(rgb(180, 99, 122))
+            .border(rgb(152, 147, 165))
+            .border_focused(rgb(86, 148, 159))
+            .selection_bg(rgb(206, 202, 205))
+            .selection_fg(rgb(87, 82, 121))
+            .scrollbar_track(rgb(250, 244, 237))
+            .scrollbar_thumb(rgb(223, 218, 217))
+            .build(),
+    }
+}
+
+pub(crate) fn packed(color: Color) -> PackedRgba {
+    let rgb = color.to_rgb();
+    PackedRgba::rgb(rgb.r, rgb.g, rgb.b)
+}
 
 fn theme_preset(theme_name: ThemeName) -> ThemePreset {
     THEME_PRESETS
@@ -477,21 +429,17 @@ pub(super) fn previous_theme_name(theme_name: ThemeName) -> ThemeName {
     THEME_PRESETS[(index + THEME_PRESETS.len() - 1) % THEME_PRESETS.len()].name
 }
 
-fn theme_palette(theme_name: ThemeName) -> ThemePalette {
-    theme_preset(theme_name).palette
-}
-
-pub(super) fn ui_theme_for(theme_name: ThemeName) -> UiTheme {
-    theme_palette(theme_name).to_ui_theme()
+pub(crate) fn ui_theme_for(theme_name: ThemeName) -> ResolvedTheme {
+    build_theme(theme_name).resolve(Theme::detect_dark_mode())
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub(super) fn ui_theme() -> UiTheme {
+pub(super) fn ui_theme() -> ResolvedTheme {
     ui_theme_for(ThemeName::default())
 }
 
 impl super::GroveApp {
-    pub(super) fn active_ui_theme(&self) -> UiTheme {
+    pub(super) fn active_ui_theme(&self) -> ResolvedTheme {
         ui_theme_for(self.theme_name)
     }
 }

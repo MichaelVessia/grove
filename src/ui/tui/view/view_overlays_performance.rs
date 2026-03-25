@@ -11,7 +11,7 @@ struct PerformanceModalContent {
     summary: FtText<'static>,
     scheduler: FtText<'static>,
     sessions: Vec<SessionPerformanceRow>,
-    theme: UiTheme,
+    theme: ftui::ResolvedTheme,
 }
 
 impl Widget for PerformanceModalContent {
@@ -20,7 +20,9 @@ impl Widget for PerformanceModalContent {
             return;
         }
 
-        let content_style = Style::new().bg(self.theme.base).fg(self.theme.text);
+        let content_style = Style::new()
+            .bg(packed(self.theme.background))
+            .fg(packed(self.theme.text));
         Paragraph::new("").style(content_style).render(area, frame);
 
         let block = Block::new()
@@ -28,7 +30,7 @@ impl Widget for PerformanceModalContent {
             .title_alignment(BlockAlignment::Center)
             .borders(Borders::ALL)
             .style(content_style)
-            .border_style(Style::new().fg(self.theme.peach).bold());
+            .border_style(Style::new().fg(packed(self.theme.accent)).bold());
         let inner = block.inner(area);
         block.render(area, frame);
 
@@ -51,7 +53,11 @@ impl Widget for PerformanceModalContent {
         self.render_text_panel(frame, top[1], "Scheduler", self.scheduler.clone());
         self.render_sessions_table(frame, sections[1]);
         Paragraph::new("Close: Esc")
-            .style(Style::new().fg(self.theme.overlay0).bg(self.theme.base))
+            .style(
+                Style::new()
+                    .fg(packed(self.theme.border))
+                    .bg(packed(self.theme.background)),
+            )
             .render(sections[2], frame);
     }
 }
@@ -65,8 +71,12 @@ impl PerformanceModalContent {
         let block = Block::new()
             .title(title)
             .borders(Borders::ALL)
-            .style(Style::new().bg(self.theme.base).fg(self.theme.text))
-            .border_style(Style::new().fg(self.theme.overlay0));
+            .style(
+                Style::new()
+                    .bg(packed(self.theme.background))
+                    .fg(packed(self.theme.text)),
+            )
+            .border_style(Style::new().fg(packed(self.theme.border)));
         let inner = block.inner(area);
         block.render(area, frame);
         if inner.is_empty() {
@@ -74,7 +84,11 @@ impl PerformanceModalContent {
         }
 
         Paragraph::new(body)
-            .style(Style::new().bg(self.theme.base).fg(self.theme.text))
+            .style(
+                Style::new()
+                    .bg(packed(self.theme.background))
+                    .fg(packed(self.theme.text)),
+            )
             .render(inner, frame);
     }
 
@@ -86,8 +100,12 @@ impl PerformanceModalContent {
         let block = Block::new()
             .title("Sessions")
             .borders(Borders::ALL)
-            .style(Style::new().bg(self.theme.base).fg(self.theme.text))
-            .border_style(Style::new().fg(self.theme.overlay0));
+            .style(
+                Style::new()
+                    .bg(packed(self.theme.background))
+                    .fg(packed(self.theme.text)),
+            )
+            .border_style(Style::new().fg(packed(self.theme.border)));
         let inner = block.inner(area);
         block.render(area, frame);
         if inner.is_empty() {
@@ -96,13 +114,17 @@ impl PerformanceModalContent {
 
         if self.sessions.is_empty() {
             Paragraph::new("No known workspaces")
-                .style(Style::new().bg(self.theme.base).fg(self.theme.overlay0))
+                .style(
+                    Style::new()
+                        .bg(packed(self.theme.background))
+                        .fg(packed(self.theme.border)),
+                )
                 .render(inner, frame);
             return;
         }
 
         let header = Row::new(["Workspace", "Status", "Cadence", "Role", "Reason"])
-            .style(Style::new().fg(self.theme.blue).bold());
+            .style(Style::new().fg(packed(self.theme.primary)).bold());
         let rows = self.sessions.iter().map(|row| {
             Row::new([
                 row.label.clone(),
@@ -122,7 +144,11 @@ impl PerformanceModalContent {
         let table = Table::new(rows, widths)
             .header(header)
             .column_spacing(2)
-            .style(Style::new().bg(self.theme.base).fg(self.theme.text));
+            .style(
+                Style::new()
+                    .bg(packed(self.theme.background))
+                    .fg(packed(self.theme.text)),
+            );
         let mut state = TableState::default();
         StatefulWidget::render(&table, inner, frame, &mut state);
     }
@@ -219,7 +245,7 @@ impl GroveApp {
                     .min_height(dialog_height)
                     .max_height(dialog_height),
             )
-            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .backdrop(BackdropConfig::new(packed(theme.background), 0.55))
             .hit_id(HitId::new(HIT_ID_PERFORMANCE_DIALOG))
             .render(area, frame);
     }

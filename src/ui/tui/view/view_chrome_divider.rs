@@ -14,9 +14,9 @@ impl GroveApp {
         let theme = self.active_ui_theme();
         Paragraph::new(divider)
             .style(Style::new().fg(if divider_resize_active {
-                theme.blue
+                packed(theme.primary)
             } else {
-                theme.overlay0
+                packed(theme.border)
             }))
             .render(area, frame);
         let _ = frame.register_hit_region(

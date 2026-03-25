@@ -45,7 +45,7 @@ impl GroveApp {
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 fit("Workspace settings"),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]),
             FtLine::raw(""),
             modal_static_badged_row(
@@ -53,24 +53,24 @@ impl GroveApp {
                 theme,
                 "Name",
                 dialog.workspace_name.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Branch",
                 dialog.branch.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Path",
                 path.as_str(),
-                theme.blue,
-                theme.overlay0,
+                packed(theme.primary),
+                packed(theme.border),
             ),
             FtLine::raw(""),
             modal_labeled_input_row(
@@ -107,7 +107,7 @@ impl GroveApp {
                 dialog_height,
                 title: "Edit Workspace",
                 theme,
-                border_color: theme.teal,
+                border_color: packed(theme.info),
                 hit_id: HIT_ID_EDIT_DIALOG,
             },
         );

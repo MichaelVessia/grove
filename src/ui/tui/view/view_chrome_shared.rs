@@ -4,7 +4,7 @@ impl GroveApp {
     fn workspace_attention_color(&self, attention: WorkspaceAttention) -> PackedRgba {
         let theme = self.active_ui_theme();
         match attention {
-            WorkspaceAttention::NeedsAttention => theme.yellow,
+            WorkspaceAttention::NeedsAttention => packed(theme.warning),
         }
     }
 
@@ -22,27 +22,27 @@ impl GroveApp {
     pub(super) fn pane_border_style(&self, focused: bool) -> Style {
         let theme = self.active_ui_theme();
         if focused {
-            return Style::new().fg(theme.blue).bold();
+            return Style::new().fg(packed(theme.primary)).bold();
         }
 
-        Style::new().fg(theme.overlay0)
+        Style::new().fg(packed(theme.border))
     }
 
     pub(super) fn workspace_agent_color(&self, agent: AgentType) -> PackedRgba {
         let theme = self.active_ui_theme();
         match agent {
-            AgentType::Claude => theme.peach,
-            AgentType::Codex => theme.text,
-            AgentType::OpenCode => theme.text,
+            AgentType::Claude => packed(theme.accent),
+            AgentType::Codex => packed(theme.text),
+            AgentType::OpenCode => packed(theme.text),
         }
     }
 
     fn preview_activity_effect_gradient(&self) -> ColorGradient {
         let theme = self.active_ui_theme();
         ColorGradient::new(vec![
-            (0.0, theme.blue),
-            (0.5, theme.overlay0),
-            (1.0, theme.blue),
+            (0.0, packed(theme.primary)),
+            (0.5, packed(theme.border)),
+            (1.0, packed(theme.primary)),
         ])
     }
 
@@ -63,7 +63,7 @@ impl GroveApp {
         let theme = self.active_ui_theme();
         StyledText::new(label)
             .bold()
-            .base_color(theme.blue)
+            .base_color(packed(theme.primary))
             .effect(TextEffect::AnimatedGradient {
                 gradient: self.preview_activity_effect_gradient(),
                 speed: 1.8,

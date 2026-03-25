@@ -7,6 +7,8 @@ mod bootstrap_discovery;
 mod terminal;
 #[macro_use]
 mod shared;
+use shared::*;
+pub(crate) use shared::{packed, ui_theme_for};
 #[path = "app/mod.rs"]
 mod app;
 #[path = "commands/catalog.rs"]
@@ -242,7 +244,7 @@ mod tests {
         TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WorkspaceAttention,
         WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind,
         WorkspaceTabRuntimeState, decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data,
-        parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
+        packed, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
     use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
     use crate::application::interactive::InteractiveState;
@@ -305,6 +307,7 @@ mod tests {
         captures: RecordedCaptures,
         cursor_captures: RecordedCaptures,
         calls: RecordedCalls,
+        session_rows: String,
     }
 
     #[derive(Clone, Default)]
@@ -398,6 +401,10 @@ mod tests {
                 text.to_string(),
             ]);
             Ok(())
+        }
+
+        fn list_sessions_with_tab_metadata(&self) -> std::io::Result<String> {
+            Ok(self.session_rows.clone())
         }
     }
 
@@ -676,6 +683,7 @@ mod tests {
                     captures: Rc::new(RefCell::new(Vec::new())),
                     cursor_captures: Rc::new(RefCell::new(Vec::new())),
                     calls: Rc::new(RefCell::new(Vec::new())),
+                    session_rows: String::new(),
                 }),
                 clipboard: test_clipboard(),
                 config_path,
@@ -1135,6 +1143,7 @@ mod tests {
             captures: captures.clone(),
             cursor_captures: cursor_captures.clone(),
             calls: Rc::new(RefCell::new(Vec::new())),
+            session_rows: String::new(),
         };
         let mut app = GroveApp::from_task_state(
             "grove".to_string(),
@@ -1169,6 +1178,7 @@ mod tests {
             captures: captures.clone(),
             cursor_captures: cursor_captures.clone(),
             calls: calls.clone(),
+            session_rows: String::new(),
         };
 
         let mut app = GroveApp::from_task_state(
@@ -1204,6 +1214,7 @@ mod tests {
             captures: captures.clone(),
             cursor_captures: cursor_captures.clone(),
             calls: Rc::new(RefCell::new(Vec::new())),
+            session_rows: String::new(),
         };
         let event_log = RecordingEventLogger {
             events: events.clone(),
@@ -1225,6 +1236,41 @@ mod tests {
         );
         seed_running_agent_tabs_for_running_workspaces(&mut app);
         (app, commands, captures, cursor_captures, events)
+    }
+
+    fn fixture_app_with_tmux_and_session_rows(
+        status: WorkspaceStatus,
+        captures: Vec<Result<String, String>>,
+        cursor_captures: Vec<Result<String, String>>,
+        session_rows: String,
+    ) -> FixtureApp {
+        let config_path = unique_config_path("fixture-with-session-rows");
+        let commands = Rc::new(RefCell::new(Vec::new()));
+        let captures = Rc::new(RefCell::new(captures));
+        let cursor_captures = Rc::new(RefCell::new(cursor_captures));
+        let tmux = RecordingTmuxInput {
+            commands: commands.clone(),
+            captures: captures.clone(),
+            cursor_captures: cursor_captures.clone(),
+            calls: Rc::new(RefCell::new(Vec::new())),
+            session_rows,
+        };
+        let mut app = GroveApp::from_task_state(
+            "grove".to_string(),
+            crate::ui::state::AppState::new(fixture_tasks(status)),
+            DiscoveryState::Ready,
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(tmux),
+                clipboard: test_clipboard(),
+                config_path,
+
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+        seed_running_agent_tabs_for_running_workspaces(&mut app);
+        (app, commands, captures, cursor_captures)
     }
 
     fn fixture_background_app(status: WorkspaceStatus) -> GroveApp {
@@ -2718,7 +2764,7 @@ mod tests {
             };
             assert_eq!(
                 name_cell.fg,
-                ui_theme().blue,
+                packed(ui_theme().primary),
                 "working workspace header should use theme accent color",
             );
         });
@@ -2881,7 +2927,13 @@ mod tests {
             let Some(open_col) = find_cell_with_char(frame, row, x_start, x_end, '') else {
                 panic!("open PR icon should render");
             };
-            assert_row_fg(frame, row, open_col, open_col.saturating_add(1), theme.teal);
+            assert_row_fg(
+                frame,
+                row,
+                open_col,
+                open_col.saturating_add(1),
+                packed(theme.info),
+            );
 
             let Some(merged_col) = find_cell_with_char(frame, row, x_start, x_end, '') else {
                 panic!("merged PR icon should render");
@@ -2891,7 +2943,7 @@ mod tests {
                 row,
                 merged_col,
                 merged_col.saturating_add(1),
-                theme.mauve,
+                packed(theme.secondary),
             );
 
             let Some(closed_col) = find_cell_with_char(frame, row, x_start, x_end, '') else {
@@ -2902,7 +2954,7 @@ mod tests {
                 row,
                 closed_col,
                 closed_col.saturating_add(1),
-                theme.red,
+                packed(theme.error),
             );
         });
     }
@@ -4420,7 +4472,7 @@ mod tests {
             let Some(cell) = frame.buffer.get(probe_x, probe_y) else {
                 panic!("expected dialog probe cell at ({probe_x},{probe_y})");
             };
-            assert_eq!(cell.bg, ui_theme().base);
+            assert_eq!(cell.bg, packed(ui_theme().background));
         });
     }
 
@@ -4439,7 +4491,7 @@ mod tests {
             let Some(cell) = frame.buffer.get(probe_x, probe_y) else {
                 panic!("expected dialog probe cell at ({probe_x},{probe_y})");
             };
-            assert_eq!(cell.bg, ui_theme().base);
+            assert_eq!(cell.bg, packed(ui_theme().background));
         });
     }
 
@@ -4471,12 +4523,24 @@ mod tests {
             let Some(selected_row) = find_dialog_row("[Included] grove  Enter browse") else {
                 panic!("selected included row should be rendered");
             };
-            assert_row_bg(frame, selected_row, x_start, x_end, ui_theme().surface1);
+            assert_row_bg(
+                frame,
+                selected_row,
+                x_start,
+                x_end,
+                packed(ui_theme().selection_bg),
+            );
 
             let Some(unselected_row) = find_dialog_row("[Task]") else {
                 panic!("unselected task row should be rendered");
             };
-            assert_row_bg(frame, unselected_row, x_start, x_end, ui_theme().base);
+            assert_row_bg(
+                frame,
+                unselected_row,
+                x_start,
+                x_end,
+                packed(ui_theme().background),
+            );
 
             let Some(cell) = frame.buffer.get(x_start, dialog_y.saturating_add(1)) else {
                 panic!(
@@ -4484,7 +4548,7 @@ mod tests {
                     dialog_y.saturating_add(1)
                 );
             };
-            assert_eq!(cell.bg, ui_theme().base);
+            assert_eq!(cell.bg, packed(ui_theme().background));
         });
     }
 
@@ -4509,12 +4573,24 @@ mod tests {
             let Some(name_row) = find_dialog_row("[Task]") else {
                 panic!("task row should be rendered");
             };
-            assert_row_bg(frame, name_row, x_start, x_end, ui_theme().surface1);
+            assert_row_bg(
+                frame,
+                name_row,
+                x_start,
+                x_end,
+                packed(ui_theme().selection_bg),
+            );
 
             let Some(included_row) = find_dialog_row("[Included] grove  Enter browse") else {
                 panic!("included row should be rendered");
             };
-            assert_row_bg(frame, included_row, x_start, x_end, ui_theme().base);
+            assert_row_bg(
+                frame,
+                included_row,
+                x_start,
+                x_end,
+                packed(ui_theme().background),
+            );
         });
     }
 
@@ -6388,6 +6464,62 @@ mod tests {
     }
 
     #[test]
+    fn settings_dialog_save_rethemes_existing_grove_tmux_sessions() {
+        let session_rows = format!(
+            "{}\t\t\t\t\t\t\n{}\t\t\t\t\t\t\nscratch\t\t\t\t\t\t\n",
+            main_workspace_session(),
+            "grove-task-feature-a"
+        );
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux_and_session_rows(
+                WorkspaceStatus::Idle,
+                Vec::new(),
+                Vec::new(),
+                session_rows,
+            );
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
+
+        let recorded = commands.borrow().clone();
+
+        assert!(
+            recorded.iter().any(|command| {
+                command.len() == 6
+                    && command[0] == "tmux"
+                    && command[1] == "set-option"
+                    && command[2] == "-t"
+                    && command[3] == main_workspace_session()
+                    && command[4] == "status-style"
+            }),
+            "{recorded:#?}"
+        );
+        assert!(
+            recorded.iter().any(|command| {
+                command.len() == 6
+                    && command[0] == "tmux"
+                    && command[1] == "set-option"
+                    && command[2] == "-t"
+                    && command[3] == "grove-task-feature-a"
+                    && command[4] == "status-style"
+            }),
+            "{recorded:#?}"
+        );
+        assert!(
+            !recorded.iter().any(|command| {
+                command.len() >= 4
+                    && command[0] == "tmux"
+                    && command[1] == "set-option"
+                    && command[2] == "-t"
+                    && command[3] == "scratch"
+            }),
+            "{recorded:#?}"
+        );
+    }
+
+    #[test]
     fn render_uses_selected_theme_palette() {
         let mut monokai_app = fixture_app();
         monokai_app.theme_name = ThemeName::Monokai;
@@ -6397,13 +6529,16 @@ mod tests {
 
         with_rendered_frame(&monokai_app, 80, 24, |frame| {
             let header_bg = frame.buffer.get(0, 0).expect("header cell should exist").bg;
-            assert_eq!(header_bg, ui_theme_for(ThemeName::Monokai).crust);
+            assert_eq!(header_bg, packed(ui_theme_for(ThemeName::Monokai).overlay));
         });
 
         with_rendered_frame(&latte_app, 80, 24, |frame| {
             let header_bg = frame.buffer.get(0, 0).expect("header cell should exist").bg;
-            assert_eq!(header_bg, ui_theme_for(ThemeName::CatppuccinLatte).crust);
-            assert_ne!(header_bg, ui_theme_for(ThemeName::Monokai).crust);
+            assert_eq!(
+                header_bg,
+                packed(ui_theme_for(ThemeName::CatppuccinLatte).overlay)
+            );
+            assert_ne!(header_bg, packed(ui_theme_for(ThemeName::Monokai).overlay));
         });
     }
 
@@ -6428,8 +6563,14 @@ mod tests {
                 .buffer
                 .get(content_x, content_y)
                 .expect("preview content cell should exist");
-            assert_eq!(cell.bg, ui_theme_for(ThemeName::CatppuccinLatte).base);
-            assert_eq!(cell.fg, ui_theme_for(ThemeName::CatppuccinLatte).text);
+            assert_eq!(
+                cell.bg,
+                packed(ui_theme_for(ThemeName::CatppuccinLatte).background)
+            );
+            assert_eq!(
+                cell.fg,
+                packed(ui_theme_for(ThemeName::CatppuccinLatte).text)
+            );
         });
     }
 
@@ -7288,8 +7429,8 @@ mod tests {
                 "create dialog wrapped hint second row should be rendered"
             );
 
-            assert_row_fg(frame, first_row, x_start, x_end, ui_theme().overlay0);
-            assert_row_fg(frame, second_row, x_start, x_end, ui_theme().overlay0);
+            assert_row_fg(frame, first_row, x_start, x_end, packed(ui_theme().border));
+            assert_row_fg(frame, second_row, x_start, x_end, packed(ui_theme().border));
         });
     }
 
@@ -7642,7 +7783,7 @@ mod tests {
             let Some(corner_cell) = frame.buffer.get(layout.preview.x, layout.preview.y) else {
                 panic!("preview border corner should exist");
             };
-            assert_eq!(corner_cell.fg, ui_theme().blue);
+            assert_eq!(corner_cell.fg, packed(ui_theme().primary));
 
             let title_text = row_text(
                 frame,
@@ -7673,7 +7814,7 @@ mod tests {
             let Some(corner_cell) = frame.buffer.get(layout.preview.x, layout.preview.y) else {
                 panic!("preview border corner should exist");
             };
-            assert_eq!(corner_cell.fg, ui_theme().teal);
+            assert_eq!(corner_cell.fg, packed(ui_theme().info));
 
             let title_text = row_text(
                 frame,
@@ -9069,6 +9210,7 @@ mod tests {
                             captures: Rc::new(RefCell::new(Vec::new())),
                             cursor_captures: Rc::new(RefCell::new(Vec::new())),
                             calls: Rc::new(RefCell::new(Vec::new())),
+                            session_rows: String::new(),
                         }),
                         clipboard: test_clipboard(),
                         config_path,
@@ -11318,7 +11460,7 @@ mod tests {
                     };
                     assert_eq!(
                         text_end_cell.bg,
-                        ui_theme().surface1,
+                        packed(ui_theme().selection_bg),
                         "visible text should stay highlighted"
                     );
 
@@ -11327,7 +11469,7 @@ mod tests {
                     };
                     assert_eq!(
                         far_right_cell.bg,
-                        ui_theme().base,
+                        packed(ui_theme().background),
                         "pane padding should not be highlighted"
                     );
                 });
@@ -11388,7 +11530,7 @@ mod tests {
                         };
                         assert_eq!(
                             cell.bg,
-                            ui_theme().base,
+                            packed(ui_theme().background),
                             "expected theme background at ({x},{output_y})",
                         );
                     }
@@ -11423,7 +11565,7 @@ mod tests {
                     };
                     assert_eq!(
                         cell.bg,
-                        ui_theme().base,
+                        packed(ui_theme().background),
                         "agent tab should use theme background at ({far_right_x},{output_y})",
                     );
                 });
@@ -11465,6 +11607,7 @@ mod tests {
                             captures: Rc::new(RefCell::new(Vec::new())),
                             cursor_captures: Rc::new(RefCell::new(Vec::new())),
                             calls: Rc::new(RefCell::new(Vec::new())),
+                            session_rows: String::new(),
                         }),
                         clipboard: test_clipboard(),
                         config_path,
@@ -11493,6 +11636,7 @@ mod tests {
                             captures: Rc::new(RefCell::new(Vec::new())),
                             cursor_captures: Rc::new(RefCell::new(Vec::new())),
                             calls: Rc::new(RefCell::new(Vec::new())),
+                            session_rows: String::new(),
                         }),
                         clipboard: test_clipboard(),
                         config_path,
@@ -12085,6 +12229,7 @@ mod tests {
                             captures: Rc::new(RefCell::new(Vec::new())),
                             cursor_captures: Rc::new(RefCell::new(Vec::new())),
                             calls: Rc::new(RefCell::new(Vec::new())),
+                            session_rows: String::new(),
                         }),
                         clipboard: test_clipboard(),
                         config_path,
@@ -12137,6 +12282,7 @@ mod tests {
                             captures: Rc::new(RefCell::new(Vec::new())),
                             cursor_captures: Rc::new(RefCell::new(Vec::new())),
                             calls: Rc::new(RefCell::new(Vec::new())),
+                            session_rows: String::new(),
                         }),
                         clipboard: test_clipboard(),
                         config_path,
@@ -12212,6 +12358,7 @@ mod tests {
                             captures: Rc::new(RefCell::new(Vec::new())),
                             cursor_captures: Rc::new(RefCell::new(Vec::new())),
                             calls: Rc::new(RefCell::new(Vec::new())),
+                            session_rows: String::new(),
                         }),
                         clipboard: test_clipboard(),
                         config_path,

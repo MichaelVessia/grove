@@ -24,24 +24,24 @@ impl GroveApp {
             Paragraph::new(FtText::from_lines(vec![
                 FtLine::from_spans(vec![FtSpan::styled(
                     "No projects configured",
-                    Style::new().fg(theme.subtext0),
+                    Style::new().fg(packed(theme.text_subtle)),
                 )]),
                 FtLine::raw(""),
                 FtLine::from_spans(vec![FtSpan::styled(
                     "Press Ctrl+K for command palette",
-                    Style::new().fg(theme.text).bold(),
+                    Style::new().fg(packed(theme.text)).bold(),
                 )]),
                 FtLine::from_spans(vec![FtSpan::styled(
                     "Type help",
-                    Style::new().fg(theme.text),
+                    Style::new().fg(packed(theme.text)),
                 )]),
                 FtLine::from_spans(vec![FtSpan::styled(
                     "Press p to add a project",
-                    Style::new().fg(theme.text),
+                    Style::new().fg(packed(theme.text)),
                 )]),
                 FtLine::from_spans(vec![FtSpan::styled(
                     "Press n to create a task",
-                    Style::new().fg(theme.text),
+                    Style::new().fg(packed(theme.text)),
                 )]),
             ]))
             .render(inner, frame);
@@ -55,11 +55,11 @@ impl GroveApp {
                 Paragraph::new(FtText::from_lines(vec![
                     FtLine::from_spans(vec![FtSpan::styled(
                         "Discovery error",
-                        Style::new().fg(theme.red).bold(),
+                        Style::new().fg(packed(theme.error)).bold(),
                     )]),
                     FtLine::from_spans(vec![FtSpan::styled(
                         message.as_str(),
-                        Style::new().fg(theme.peach),
+                        Style::new().fg(packed(theme.accent)),
                     )]),
                 ]))
                 .render(inner, frame);

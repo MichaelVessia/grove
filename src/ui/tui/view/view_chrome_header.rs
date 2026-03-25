@@ -7,7 +7,9 @@ impl GroveApp {
         }
 
         let theme = self.active_ui_theme();
-        let base_style = Style::new().bg(theme.crust).fg(theme.text);
+        let base_style = Style::new()
+            .bg(packed(theme.overlay))
+            .fg(packed(theme.text));
         let mut line = StatusLine::new()
             .style(base_style)
             .separator("  ")

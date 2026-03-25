@@ -253,6 +253,7 @@ impl GroveApp {
             workspace,
             session_name.clone(),
             command,
+            self.theme_name,
             workspace_init_command,
             Some(capture_cols),
             Some(capture_rows),

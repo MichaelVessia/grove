@@ -1,22 +1,25 @@
 use std::path::Path;
 
 use crate::domain::{AgentType, Workspace};
+use crate::infrastructure::config::ThemeName;
 
 use super::sessions::{session_name_for_task, session_name_for_workspace_in_project};
 use super::{
     GROVE_LAUNCHER_SCRIPT_PATH, LaunchPlan, LaunchRequest, LauncherScript,
-    OPENCODE_UNSAFE_PERMISSION_JSON, ShellLaunchRequest,
+    OPENCODE_UNSAFE_PERMISSION_JSON, ShellLaunchRequest, tmux_theme_commands,
 };
 
 pub fn launch_request_for_workspace(
     workspace: &Workspace,
     prompt: Option<String>,
+    theme_name: ThemeName,
     workspace_init_command: Option<String>,
     skip_permissions: bool,
     agent_env: Vec<(String, String)>,
-    capture_cols: Option<u16>,
-    capture_rows: Option<u16>,
+    capture_size: Option<(u16, u16)>,
 ) -> LaunchRequest {
+    let (capture_cols, capture_rows) =
+        capture_size.map_or((None, None), |(cols, rows)| (Some(cols), Some(rows)));
     LaunchRequest {
         session_name: None,
         task_slug: workspace.task_slug.clone(),
@@ -24,6 +27,7 @@ pub fn launch_request_for_workspace(
         workspace_name: workspace.name.clone(),
         workspace_path: workspace.path.clone(),
         agent: workspace.agent,
+        theme_name,
         prompt,
         workspace_init_command,
         skip_permissions,
@@ -37,6 +41,7 @@ pub fn shell_launch_request_for_workspace(
     workspace: &Workspace,
     session_name: String,
     command: String,
+    theme_name: ThemeName,
     workspace_init_command: Option<String>,
     capture_cols: Option<u16>,
     capture_rows: Option<u16>,
@@ -45,6 +50,7 @@ pub fn shell_launch_request_for_workspace(
         session_name,
         workspace_path: workspace.path.clone(),
         command,
+        theme_name,
         workspace_init_command,
         capture_cols,
         capture_rows,
@@ -108,6 +114,7 @@ pub fn build_task_launch_plan(request: &super::TaskLaunchRequest) -> LaunchPlan 
         workspace_name: request.task_slug.clone(),
         workspace_path: request.task_root.clone(),
         agent: request.agent,
+        theme_name: request.theme_name,
         prompt: request.prompt.clone(),
         workspace_init_command: request.workspace_init_command.clone(),
         skip_permissions: request.skip_permissions,
@@ -139,6 +146,7 @@ pub fn build_shell_launch_plan(request: &ShellLaunchRequest) -> LaunchPlan {
         workspace_name: request.session_name.clone(),
         workspace_path: request.workspace_path.clone(),
         agent: AgentType::Codex,
+        theme_name: request.theme_name,
         prompt: None,
         workspace_init_command: request.workspace_init_command.clone(),
         skip_permissions: false,
@@ -189,6 +197,10 @@ fn tmux_launch_plan(
             "10000".to_string(),
         ],
     ];
+    pre_launch_cmds.extend(tmux_theme_commands(
+        session_name.as_str(),
+        request.theme_name,
+    ));
     if let Some(agent_env_cmd) = build_agent_env_command(&request.agent_env) {
         pre_launch_cmds.push(vec![
             "tmux".to_string(),
@@ -398,6 +410,7 @@ mod tests {
             task_slug: "flohome-launch".to_string(),
             task_root: PathBuf::from("/tmp/.grove/tasks/flohome-launch"),
             agent: AgentType::Codex,
+            theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: None,
             skip_permissions: false,
@@ -500,6 +513,7 @@ mod tests {
             workspace_name: "auth-flow".to_string(),
             workspace_path: PathBuf::from("/repos/grove-auth-flow"),
             agent: AgentType::Claude,
+            theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: None,
             skip_permissions: true,
@@ -534,6 +548,7 @@ mod tests {
             workspace_name: "auth-flow".to_string(),
             workspace_path: PathBuf::from("/repos/grove-auth-flow"),
             agent: AgentType::Claude,
+            theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: Some("direnv allow".to_string()),
             skip_permissions: false,
@@ -575,6 +590,7 @@ mod tests {
             workspace_name: "auth-flow".to_string(),
             workspace_path: PathBuf::from("/repos/grove-auth-flow"),
             agent: AgentType::Claude,
+            theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: Some("echo init".to_string()),
             skip_permissions: false,
@@ -600,6 +616,7 @@ mod tests {
             workspace_name: "auth-flow".to_string(),
             workspace_path: PathBuf::from("/repos/grove-auth-flow"),
             agent: AgentType::Claude,
+            theme_name: crate::infrastructure::config::ThemeName::CatppuccinMocha,
             prompt: None,
             workspace_init_command: None,
             skip_permissions: true,
@@ -626,6 +643,50 @@ mod tests {
     }
 
     #[test]
+    fn launch_plan_applies_tmux_theme_commands_before_agent_start() {
+        let request = LaunchRequest {
+            session_name: None,
+            task_slug: None,
+            project_name: None,
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+            agent: AgentType::Claude,
+            theme_name: crate::infrastructure::config::ThemeName::CatppuccinMocha,
+            prompt: None,
+            workspace_init_command: None,
+            skip_permissions: false,
+            agent_env: Vec::new(),
+            capture_cols: None,
+            capture_rows: None,
+        };
+
+        let plan = build_launch_plan(&request);
+
+        assert!(plan.pre_launch_cmds.iter().any(|command| {
+            command
+                == &vec![
+                    "tmux".to_string(),
+                    "set-option".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-auth-flow".to_string(),
+                    "status-style".to_string(),
+                    "bg=#313244,fg=#cdd6f4".to_string(),
+                ]
+        }));
+        assert!(plan.pre_launch_cmds.iter().any(|command| {
+            command
+                == &vec![
+                    "tmux".to_string(),
+                    "set-option".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-auth-flow".to_string(),
+                    "pane-active-border-style".to_string(),
+                    "fg=#89b4fa".to_string(),
+                ]
+        }));
+    }
+
+    #[test]
     fn launch_plan_with_agent_env_exports_before_agent_start() {
         let request = LaunchRequest {
             session_name: None,
@@ -634,6 +695,7 @@ mod tests {
             workspace_name: "auth-flow".to_string(),
             workspace_path: PathBuf::from("/repos/grove-auth-flow"),
             agent: AgentType::Claude,
+            theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: None,
             skip_permissions: false,
@@ -676,6 +738,7 @@ mod tests {
             workspace_name: "db_migration".to_string(),
             workspace_path: PathBuf::from("/repos/grove-db_migration"),
             agent: AgentType::Codex,
+            theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: Some("fix migration".to_string()),
             workspace_init_command: None,
             skip_permissions: false,
@@ -726,6 +789,7 @@ mod tests {
             workspace_name: "auth-flow".to_string(),
             workspace_path: PathBuf::from("/repos/grove-auth-flow"),
             agent: AgentType::Claude,
+            theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: Some("direnv allow".to_string()),
             skip_permissions: true,

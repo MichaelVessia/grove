@@ -25,7 +25,7 @@ impl GroveApp {
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 fit("Rename active tab title"),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]),
             FtLine::raw(""),
             modal_static_badged_row(
@@ -33,8 +33,8 @@ impl GroveApp {
                 theme,
                 "Current",
                 dialog.current_title.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             FtLine::raw(""),
             modal_labeled_input_row(
@@ -71,7 +71,7 @@ impl GroveApp {
                 dialog_height,
                 title: "Rename Tab",
                 theme,
-                border_color: theme.teal,
+                border_color: packed(theme.info),
                 hit_id: HIT_ID_RENAME_TAB_DIALOG,
             },
         );

@@ -50,13 +50,13 @@ pub(super) struct ProjectDefaultsDialogLayout {
 struct ProjectListModalContent<'a> {
     dialog: &'a ProjectDialogState,
     projects: &'a [ProjectConfig],
-    theme: UiTheme,
+    theme: ftui::ResolvedTheme,
 }
 
 #[derive(Clone)]
 struct ProjectAddModalContent<'a> {
     dialog: &'a ProjectAddDialogState,
-    theme: UiTheme,
+    theme: ftui::ResolvedTheme,
 }
 
 #[derive(Clone)]
@@ -64,7 +64,7 @@ struct ProjectDefaultsModalContent<'a> {
     dialog: &'a ProjectDefaultsDialogState,
     project_label: &'a str,
     project_path: &'a str,
-    theme: UiTheme,
+    theme: ftui::ResolvedTheme,
 }
 
 fn modal_button_rects(actions: Rect) -> (Rect, Rect) {
@@ -187,38 +187,48 @@ fn project_defaults_dialog_layout(area: Rect) -> Option<ProjectDefaultsDialogLay
     })
 }
 
-fn modal_input_style(theme: UiTheme) -> Style {
-    Style::new().fg(theme.text).bg(theme.surface0)
+fn modal_input_style(theme: ftui::ResolvedTheme) -> Style {
+    Style::new()
+        .fg(packed(theme.text))
+        .bg(packed(theme.surface))
 }
 
-fn modal_input_selection_style(theme: UiTheme) -> Style {
-    Style::new().fg(theme.text).bg(theme.surface1)
+fn modal_input_selection_style(theme: ftui::ResolvedTheme) -> Style {
+    Style::new()
+        .fg(packed(theme.text))
+        .bg(packed(theme.selection_bg))
 }
 
-fn modal_input_placeholder_style(theme: UiTheme) -> Style {
-    Style::new().fg(theme.overlay0)
+fn modal_input_placeholder_style(theme: ftui::ResolvedTheme) -> Style {
+    Style::new().fg(packed(theme.border))
 }
 
-fn modal_input_cursor_style(theme: UiTheme) -> Style {
-    Style::new().fg(theme.base).bg(theme.mauve)
+fn modal_input_cursor_style(theme: ftui::ResolvedTheme) -> Style {
+    Style::new()
+        .fg(packed(theme.background))
+        .bg(packed(theme.secondary))
 }
 
-fn modal_content_style(theme: UiTheme) -> Style {
-    Style::new().bg(theme.base).fg(theme.text)
+fn modal_content_style(theme: ftui::ResolvedTheme) -> Style {
+    Style::new()
+        .bg(packed(theme.background))
+        .fg(packed(theme.text))
 }
 
 fn render_modal_button(
     frame: &mut Frame,
     area: Rect,
-    theme: UiTheme,
+    theme: ftui::ResolvedTheme,
     label: &str,
     focused: bool,
     accent: PackedRgba,
 ) {
     let style = if focused {
-        Style::new().fg(theme.base).bg(accent).bold()
+        Style::new().fg(packed(theme.background)).bg(accent).bold()
     } else {
-        Style::new().fg(theme.text).bg(theme.surface0)
+        Style::new()
+            .fg(packed(theme.text))
+            .bg(packed(theme.surface))
     };
     Paragraph::new(format!(
         "{:^width$}",
@@ -243,7 +253,7 @@ impl Widget for ProjectListModalContent<'_> {
             .title_alignment(BlockAlignment::Center)
             .borders(Borders::ALL)
             .style(content_style)
-            .border_style(Style::new().fg(self.theme.teal).bold());
+            .border_style(Style::new().fg(packed(self.theme.info)).bold());
         let inner = block.inner(area);
         block.render(area, frame);
 
@@ -276,12 +286,12 @@ impl Widget for ProjectListModalContent<'_> {
         }
 
         Paragraph::new(format!("{} projects", self.projects.len()))
-            .style(Style::new().fg(self.theme.overlay0))
+            .style(Style::new().fg(packed(self.theme.border)))
             .render(rows[1], frame);
 
         if self.dialog.filtered_project_indices.is_empty() {
             Paragraph::new("No matches")
-                .style(Style::new().fg(self.theme.subtext0))
+                .style(Style::new().fg(packed(self.theme.text_subtle)))
                 .render(rows[2], frame);
         } else {
             let items = self
@@ -300,15 +310,15 @@ impl Widget for ProjectListModalContent<'_> {
                         project.name,
                         project.path.display()
                     );
-                    ListItem::new(label).style(Style::new().fg(self.theme.subtext1))
+                    ListItem::new(label).style(Style::new().fg(packed(self.theme.text_muted)))
                 })
                 .collect::<Vec<_>>();
             let list = List::new(items)
                 .highlight_symbol("> ")
                 .highlight_style(
                     Style::new()
-                        .fg(self.theme.text)
-                        .bg(self.theme.surface1)
+                        .fg(packed(self.theme.text))
+                        .bg(packed(self.theme.selection_bg))
                         .bold(),
                 )
                 .hit_id(HitId::new(HIT_ID_PROJECT_DIALOG_LIST));
@@ -318,7 +328,7 @@ impl Widget for ProjectListModalContent<'_> {
 
         Paragraph::new("Enter open, Up/Down or Tab/S-Tab/C-n/C-p navigate, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close")
             .wrap(ftui::text::WrapMode::Word)
-            .style(Style::new().fg(self.theme.overlay0))
+            .style(Style::new().fg(packed(self.theme.border)))
             .render(rows[3], frame);
     }
 }
@@ -339,11 +349,11 @@ impl Widget for ProjectAddModalContent<'_> {
             .title_alignment(BlockAlignment::Center)
             .borders(Borders::ALL)
             .style(content_style)
-            .border_style(Style::new().fg(self.theme.mauve).bold());
+            .border_style(Style::new().fg(packed(self.theme.secondary)).bold());
         block.render(layout.dialog_area, frame);
 
         Paragraph::new("Path")
-            .style(Style::new().fg(self.theme.subtext0))
+            .style(Style::new().fg(packed(self.theme.text_subtle)))
             .render(layout.path_label, frame);
         let path_input = self
             .dialog
@@ -382,7 +392,7 @@ impl Widget for ProjectAddModalContent<'_> {
             _ => "Repo matches".to_string(),
         };
         Paragraph::new(results_label)
-            .style(Style::new().fg(self.theme.subtext0))
+            .style(Style::new().fg(packed(self.theme.text_subtle)))
             .render(layout.results_label, frame);
 
         if self.dialog.path_matches.is_empty() {
@@ -404,7 +414,7 @@ impl Widget for ProjectAddModalContent<'_> {
             };
             Paragraph::new(empty_label)
                 .wrap(ftui::text::WrapMode::Word)
-                .style(Style::new().fg(self.theme.subtext0))
+                .style(Style::new().fg(packed(self.theme.text_subtle)))
                 .render(layout.results, frame);
         } else {
             let max_row_width = usize::from(layout.results.width.saturating_sub(4));
@@ -435,28 +445,31 @@ impl Widget for ProjectAddModalContent<'_> {
                         FtSpan::styled(
                             project_name,
                             Style::new().fg(if path_match.already_added {
-                                self.theme.subtext0
+                                packed(self.theme.text_subtle)
                             } else {
-                                self.theme.text
+                                packed(self.theme.text)
                             }),
                         ),
-                        FtSpan::styled("  ", Style::new().fg(self.theme.subtext0)),
+                        FtSpan::styled("  ", Style::new().fg(packed(self.theme.text_subtle))),
                         FtSpan::styled(
                             rendered_path,
                             Style::new().fg(if path_match.already_added {
-                                self.theme.overlay0
+                                packed(self.theme.border)
                             } else {
-                                self.theme.subtext1
+                                packed(self.theme.text_muted)
                             }),
                         ),
                     ];
                     if path_match.already_added {
-                        spans.push(FtSpan::styled("  ", Style::new().fg(self.theme.overlay0)));
+                        spans.push(FtSpan::styled(
+                            "  ",
+                            Style::new().fg(packed(self.theme.border)),
+                        ));
                         spans.push(FtSpan::styled(
                             badge_label,
                             Style::new()
-                                .fg(self.theme.base)
-                                .bg(self.theme.surface2)
+                                .fg(packed(self.theme.background))
+                                .bg(packed(self.theme.overlay))
                                 .bold(),
                         ));
                     }
@@ -467,8 +480,8 @@ impl Widget for ProjectAddModalContent<'_> {
                 .highlight_symbol("> ")
                 .highlight_style(
                     Style::new()
-                        .fg(self.theme.text)
-                        .bg(self.theme.surface1)
+                        .fg(packed(self.theme.text))
+                        .bg(packed(self.theme.selection_bg))
                         .bold(),
                 )
                 .hit_id(HitId::new(HIT_ID_PROJECT_ADD_RESULTS_LIST));
@@ -477,7 +490,7 @@ impl Widget for ProjectAddModalContent<'_> {
         }
 
         Paragraph::new("Name")
-            .style(Style::new().fg(self.theme.subtext0))
+            .style(Style::new().fg(packed(self.theme.text_subtle)))
             .render(layout.name_label, frame);
         let name_input = self
             .dialog
@@ -495,7 +508,7 @@ impl Widget for ProjectAddModalContent<'_> {
         }
 
         Paragraph::new("")
-            .style(Style::new().bg(self.theme.base))
+            .style(Style::new().bg(packed(self.theme.background)))
             .render(layout.actions, frame);
         render_modal_button(
             frame,
@@ -503,7 +516,7 @@ impl Widget for ProjectAddModalContent<'_> {
             self.theme,
             "Add",
             self.dialog.focused_field == ProjectAddDialogField::AddButton,
-            self.theme.green,
+            packed(self.theme.success),
         );
         render_modal_button(
             frame,
@@ -511,14 +524,14 @@ impl Widget for ProjectAddModalContent<'_> {
             self.theme,
             "Cancel",
             self.dialog.focused_field == ProjectAddDialogField::CancelButton,
-            self.theme.surface1,
+            packed(self.theme.selection_bg),
         );
 
         Paragraph::new(
             "Enter accept match or confirm, Up/Down browse matches, already added repos are informational, Tab/S-Tab move, Esc back",
         )
         .wrap(ftui::text::WrapMode::Word)
-        .style(Style::new().fg(self.theme.overlay0))
+        .style(Style::new().fg(packed(self.theme.border)))
         .render(layout.hints, frame);
     }
 }
@@ -539,17 +552,17 @@ impl Widget for ProjectDefaultsModalContent<'_> {
             .title_alignment(BlockAlignment::Center)
             .borders(Borders::ALL)
             .style(content_style)
-            .border_style(Style::new().fg(self.theme.peach).bold());
+            .border_style(Style::new().fg(packed(self.theme.accent)).bold());
         block.render(layout.dialog_area, frame);
 
         Paragraph::new(format!("Project  {}", self.project_label))
-            .style(Style::new().fg(self.theme.text))
+            .style(Style::new().fg(packed(self.theme.text)))
             .render(layout.project_label, frame);
         Paragraph::new(format!("Path  {}", self.project_path))
-            .style(Style::new().fg(self.theme.overlay0))
+            .style(Style::new().fg(packed(self.theme.border)))
             .render(layout.project_path, frame);
 
-        let label_style = Style::new().fg(self.theme.subtext0);
+        let label_style = Style::new().fg(packed(self.theme.text_subtle));
         Paragraph::new("Base branch")
             .style(label_style)
             .render(layout.base_branch_label, frame);
@@ -653,10 +666,10 @@ impl Widget for ProjectDefaultsModalContent<'_> {
         }
 
         Paragraph::new("Env changes apply on next agent start or restart")
-            .style(Style::new().fg(self.theme.overlay0))
+            .style(Style::new().fg(packed(self.theme.border)))
             .render(layout.note, frame);
         Paragraph::new("")
-            .style(Style::new().bg(self.theme.base))
+            .style(Style::new().bg(packed(self.theme.background)))
             .render(layout.actions, frame);
         render_modal_button(
             frame,
@@ -664,7 +677,7 @@ impl Widget for ProjectDefaultsModalContent<'_> {
             self.theme,
             "Save",
             self.dialog.focused_field == ProjectDefaultsDialogField::SaveButton,
-            self.theme.green,
+            packed(self.theme.success),
         );
         render_modal_button(
             frame,
@@ -672,10 +685,10 @@ impl Widget for ProjectDefaultsModalContent<'_> {
             self.theme,
             "Cancel",
             self.dialog.focused_field == ProjectDefaultsDialogField::CancelButton,
-            self.theme.surface1,
+            packed(self.theme.selection_bg),
         );
         Paragraph::new("Tab/S-Tab or C-n/C-p move, Enter confirm, Esc back")
-            .style(Style::new().fg(self.theme.overlay0))
+            .style(Style::new().fg(packed(self.theme.border)))
             .render(layout.hints, frame);
     }
 }
@@ -719,7 +732,7 @@ impl GroveApp {
                         .min_height(PROJECT_ADD_DIALOG_HEIGHT)
                         .max_height(PROJECT_ADD_DIALOG_HEIGHT),
                 )
-                .backdrop(BackdropConfig::new(theme.crust, 0.55))
+                .backdrop(BackdropConfig::new(packed(theme.background), 0.55))
                 .hit_id(HitId::new(HIT_ID_PROJECT_ADD_DIALOG))
                 .render(area, frame);
             return;
@@ -751,7 +764,7 @@ impl GroveApp {
                         .min_height(PROJECT_DEFAULTS_DIALOG_HEIGHT)
                         .max_height(PROJECT_DEFAULTS_DIALOG_HEIGHT),
                 )
-                .backdrop(BackdropConfig::new(theme.crust, 0.55))
+                .backdrop(BackdropConfig::new(packed(theme.background), 0.55))
                 .hit_id(HitId::new(HIT_ID_PROJECT_DEFAULTS_DIALOG))
                 .render(area, frame);
             return;
@@ -772,7 +785,7 @@ impl GroveApp {
                     .min_height(dialog_height)
                     .max_height(dialog_height),
             )
-            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .backdrop(BackdropConfig::new(packed(theme.background), 0.55))
             .hit_id(HitId::new(HIT_ID_PROJECT_DIALOG))
             .render(area, frame);
     }

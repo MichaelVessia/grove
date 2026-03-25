@@ -86,33 +86,40 @@ impl GroveApp {
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 fit("Deletion plan"),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]),
             FtLine::raw(""),
-            modal_static_badged_row(content_width, theme, "Name", name, theme.blue, theme.text),
+            modal_static_badged_row(
+                content_width,
+                theme,
+                "Name",
+                name,
+                packed(theme.primary),
+                packed(theme.text),
+            ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Branch",
                 branch,
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Worktrees",
                 worktree_count.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Path",
                 path.as_str(),
-                theme.blue,
-                theme.overlay0,
+                packed(theme.primary),
+                packed(theme.border),
             ),
             FtLine::from_spans(vec![FtSpan::styled(
                 fit(
@@ -128,22 +135,22 @@ impl GroveApp {
                     .fg(
                         if matches!(dialog.target, DeleteDialogTarget::Task) && dialog.is_base_task
                         {
-                            theme.blue
+                            packed(theme.primary)
                         } else if matches!(dialog.target, DeleteDialogTarget::Worktree { .. }) {
-                            theme.yellow
+                            packed(theme.warning)
                         } else {
-                            theme.peach
+                            packed(theme.accent)
                         },
                     )
                     .bold(),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 warning_lines.0,
-                Style::new().fg(theme.subtext0),
+                Style::new().fg(packed(theme.text_subtle)),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 warning_lines.1,
-                Style::new().fg(theme.subtext0),
+                Style::new().fg(packed(theme.text_subtle)),
             )]),
             FtLine::raw(""),
             modal_focus_badged_row(
@@ -152,13 +159,13 @@ impl GroveApp {
                 "BranchCleanup",
                 cleanup_state.as_str(),
                 cleanup_focused,
-                theme.peach,
+                packed(theme.accent),
                 if dialog.is_base_task {
-                    theme.overlay0
+                    packed(theme.border)
                 } else if dialog.delete_local_branch {
-                    theme.red
+                    packed(theme.error)
                 } else {
-                    theme.text
+                    packed(theme.text)
                 },
             ),
             modal_focus_badged_row(
@@ -167,11 +174,11 @@ impl GroveApp {
                 "SessionCleanup",
                 kill_sessions_state.as_str(),
                 kill_sessions_focused,
-                theme.peach,
+                packed(theme.accent),
                 if dialog.kill_tmux_sessions {
-                    theme.red
+                    packed(theme.error)
                 } else {
-                    theme.text
+                    packed(theme.text)
                 },
             ),
             FtLine::raw(""),
@@ -222,11 +229,11 @@ impl GroveApp {
                 border_color: if matches!(dialog.target, DeleteDialogTarget::Task)
                     && dialog.is_base_task
                 {
-                    theme.blue
+                    packed(theme.primary)
                 } else if matches!(dialog.target, DeleteDialogTarget::Worktree { .. }) {
-                    theme.yellow
+                    packed(theme.warning)
                 } else {
-                    theme.red
+                    packed(theme.error)
                 },
                 hit_id: HIT_ID_DELETE_DIALOG,
             },

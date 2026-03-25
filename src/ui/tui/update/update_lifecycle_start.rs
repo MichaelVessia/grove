@@ -116,6 +116,7 @@ impl GroveApp {
             task_slug: task.slug.clone(),
             task_root: task.root_path.clone(),
             agent,
+            theme_name: self.theme_name,
             prompt,
             workspace_init_command: init_command.or_else(|| self.task_init_command_for_task(&task)),
             skip_permissions,
@@ -186,11 +187,11 @@ impl GroveApp {
         let request = launch_request_for_workspace(
             &workspace,
             prompt,
+            self.theme_name,
             workspace_init_command,
             skip_permissions,
             agent_env,
-            Some(capture_cols),
-            Some(capture_rows),
+            Some((capture_cols, capture_rows)),
         );
 
         if !self.tmux_input.supports_background_launch() {

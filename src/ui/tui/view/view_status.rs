@@ -168,7 +168,9 @@ impl GroveApp {
         let state_label = self.footer_state_chip_label();
         let state_chip = format!("[{state_label}]");
         let context = self.footer_context_line();
-        let base_style = Style::new().bg(theme.mantle).fg(theme.text);
+        let base_style = Style::new()
+            .bg(packed(theme.surface))
+            .fg(packed(theme.text));
         StatusLine::new()
             .style(base_style)
             .separator("  ")

@@ -15,11 +15,16 @@ impl GroveApp {
 
     fn create_dialog_mode_tabs_row(
         content_width: usize,
-        theme: UiTheme,
+        theme: ftui::ResolvedTheme,
         selected_tab: CreateDialogTab,
     ) -> (FtLine<'static>, Vec<(CreateDialogTab, usize, usize)>) {
-        let tab_active_style = Style::new().fg(theme.base).bg(theme.blue).bold();
-        let tab_inactive_style = Style::new().fg(theme.subtext0).bg(theme.surface0);
+        let tab_active_style = Style::new()
+            .fg(packed(theme.background))
+            .bg(packed(theme.primary))
+            .bold();
+        let tab_inactive_style = Style::new()
+            .fg(packed(theme.text_subtle))
+            .bg(packed(theme.surface));
         let mut spans = Vec::new();
         let mut tab_ranges = Vec::new();
         let mut used_width = 0usize;
@@ -29,7 +34,10 @@ impl GroveApp {
             .enumerate()
         {
             if index > 0 {
-                spans.push(FtSpan::styled(" ".to_string(), Style::new().bg(theme.base)));
+                spans.push(FtSpan::styled(
+                    " ".to_string(),
+                    Style::new().bg(packed(theme.background)),
+                ));
                 used_width = used_width.saturating_add(1);
             }
             let label = format!(" {} ", tab.label());
@@ -48,7 +56,7 @@ impl GroveApp {
         }
         spans.push(FtSpan::styled(
             " ".repeat(content_width.saturating_sub(used_width)),
-            Style::new().bg(theme.base),
+            Style::new().bg(packed(theme.background)),
         ));
         (FtLine::from_spans(spans), tab_ranges)
     }
@@ -99,7 +107,7 @@ impl GroveApp {
                 } else {
                     "Task setup (create)"
                 }),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]),
             FtLine::raw(""),
         ];
@@ -107,7 +115,7 @@ impl GroveApp {
             lines.push(mode_tabs_row);
             lines.push(FtLine::from_spans(vec![FtSpan::styled(
                 fit("  [Mode] click tab or Alt+[/Alt+]"),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]));
         }
         if let Some(picker) = dialog.project_picker.as_ref() {
@@ -123,7 +131,9 @@ impl GroveApp {
             let total_projects = self.projects.len();
             let filtered_projects = picker.filtered_project_indices.len();
             let dialog_area = Self::centered_modal_rect(area, dialog_width, dialog_height);
-            let content_style = Style::new().fg(theme.text).bg(theme.base);
+            let content_style = Style::new()
+                .fg(packed(theme.text))
+                .bg(packed(theme.background));
             Paragraph::new("")
                 .style(content_style)
                 .render(dialog_area, frame);
@@ -133,7 +143,7 @@ impl GroveApp {
                 .title_alignment(BlockAlignment::Center)
                 .borders(Borders::ALL)
                 .style(content_style)
-                .border_style(Style::new().fg(theme.mauve).bold());
+                .border_style(Style::new().fg(packed(theme.secondary)).bold());
             let inner = block.inner(dialog_area);
             block.render(dialog_area, frame);
             if inner.is_empty() {
@@ -176,7 +186,7 @@ impl GroveApp {
 
             Paragraph::new(FtText::from_line(FtLine::from_spans(vec![FtSpan::styled(
                 fit(format!("{filtered_projects} of {total_projects} projects").as_str()),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )])))
             .style(content_style)
             .render(rows[5], frame);
@@ -194,11 +204,11 @@ impl GroveApp {
                 Paragraph::new(FtText::from_lines(vec![
                     FtLine::from_spans(vec![FtSpan::styled(
                         fit(empty_label),
-                        Style::new().fg(theme.subtext0),
+                        Style::new().fg(packed(theme.text_subtle)),
                     )]),
                     FtLine::from_spans(vec![FtSpan::styled(
                         fit("Need a project first? Close this dialog, press p, then Ctrl+A"),
-                        Style::new().fg(theme.overlay0),
+                        Style::new().fg(packed(theme.border)),
                     )]),
                 ]))
                 .style(content_style)
@@ -224,12 +234,17 @@ impl GroveApp {
                         } else {
                             format!("{}  {}", project.name, project.path.display())
                         };
-                        ListItem::new(label).style(Style::new().fg(theme.subtext1))
+                        ListItem::new(label).style(Style::new().fg(packed(theme.text_muted)))
                     })
                     .collect::<Vec<_>>();
                 let list = List::new(items)
                     .highlight_symbol("> ")
-                    .highlight_style(Style::new().fg(theme.text).bg(theme.surface1).bold())
+                    .highlight_style(
+                        Style::new()
+                            .fg(packed(theme.text))
+                            .bg(packed(theme.selection_bg))
+                            .bold(),
+                    )
                     .style(content_style);
                 let mut list_state = picker.project_list.clone();
                 StatefulWidget::render(&list, rows[7], frame, &mut list_state);
@@ -250,16 +265,16 @@ impl GroveApp {
                 theme,
                 "Task",
                 task.name.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ));
             lines.push(modal_static_badged_row(
                 content_width,
                 theme,
                 "Branch",
                 task.branch.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ));
             lines.push(modal_labeled_input_row(
                 content_width,
@@ -271,7 +286,7 @@ impl GroveApp {
             ));
             lines.push(FtLine::from_spans(vec![FtSpan::styled(
                 fit("  [Task] Adds one repository worktree to the selected task"),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]));
         } else {
             match dialog.tab {
@@ -291,8 +306,8 @@ impl GroveApp {
                                         .and_then(|name| name.to_str()))
                                     .unwrap_or("(project)")
                             ),
-                            theme.overlay0,
-                            theme.subtext0,
+                            packed(theme.border),
+                            packed(theme.text_subtle),
                         ));
                     } else {
                         lines.push(modal_labeled_input_row(
@@ -315,8 +330,8 @@ impl GroveApp {
                         "Base",
                         base_toggle_label,
                         focused(CreateDialogField::RegisterAsBase),
-                        theme.overlay0,
-                        theme.subtext0,
+                        packed(theme.border),
+                        packed(theme.text_subtle),
                     ));
                     if dialog.register_as_base {
                         lines.push(modal_labeled_input_row(
@@ -334,12 +349,12 @@ impl GroveApp {
                             "Included",
                             format!("{selected_projects_label}  Enter browse").as_str(),
                             focused(CreateDialogField::Project),
-                            theme.blue,
-                            theme.subtext0,
+                            packed(theme.primary),
+                            packed(theme.text_subtle),
                         ));
                         lines.push(FtLine::from_spans(vec![FtSpan::styled(
                         fit("  [Defaults] base branch is implicit per project, configure in Project Defaults"),
-                        Style::new().fg(theme.overlay0),
+                        Style::new().fg(packed(theme.border)),
                     )]));
                     }
                 }
@@ -365,8 +380,8 @@ impl GroveApp {
                         theme,
                         "Name",
                         "auto: pr-<number>",
-                        theme.overlay0,
-                        theme.subtext0,
+                        packed(theme.border),
+                        packed(theme.text_subtle),
                     ));
                 }
             }
@@ -379,7 +394,7 @@ impl GroveApp {
         {
             lines.push(FtLine::from_spans(vec![FtSpan::styled(
                 fit(format!("  [ProjectPath] {}", project.path.display()).as_str()),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]));
         }
         lines.push(FtLine::raw(""));
@@ -419,7 +434,7 @@ impl GroveApp {
                     "New Task"
                 },
                 theme,
-                border_color: theme.mauve,
+                border_color: packed(theme.secondary),
                 hit_id: HIT_ID_CREATE_DIALOG,
             },
         );

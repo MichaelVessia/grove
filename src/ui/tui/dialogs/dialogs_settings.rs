@@ -1,6 +1,23 @@
 use super::*;
 
 impl GroveApp {
+    fn retheme_grove_tmux_sessions(&mut self, theme: ThemeName) -> Result<(), String> {
+        let rows = self
+            .tmux_input
+            .list_sessions_with_tab_metadata()
+            .map_err(|error| format!("session query failed: {error}"))?;
+        let sessions = crate::application::agent_runtime::grove_managed_tmux_sessions(&rows);
+        for session_name in sessions {
+            for command in
+                crate::application::agent_runtime::tmux_theme_commands(session_name.as_str(), theme)
+            {
+                self.execute_tmux_command(command.as_slice())
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+        Ok(())
+    }
+
     fn cycle_settings_theme(&mut self, next: bool) {
         let Some(next_theme) = ({
             let Some(dialog) = self.settings_dialog_mut() else {
@@ -123,6 +140,11 @@ impl GroveApp {
 
         self.theme_name = theme;
         self.close_active_dialog();
-        self.show_success_toast(format!("theme saved: {}", theme.config_key()));
+        match self.retheme_grove_tmux_sessions(theme) {
+            Ok(()) => self.show_success_toast(format!("theme saved: {}", theme.config_key())),
+            Err(error) => {
+                self.show_warning_toast(format!("theme saved, tmux retheme failed: {error}"));
+            }
+        }
     }
 }

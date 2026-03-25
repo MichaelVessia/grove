@@ -32,7 +32,7 @@ impl GroveApp {
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 fit("Global settings"),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]),
             FtLine::raw(""),
         ];
@@ -42,8 +42,8 @@ impl GroveApp {
             "Theme",
             theme_value.as_str(),
             theme_focused,
-            theme.blue,
-            theme.text,
+            packed(theme.primary),
+            packed(theme.text),
         ));
         lines.push(FtLine::raw(""));
         lines.push(modal_actions_row(
@@ -66,7 +66,7 @@ impl GroveApp {
             title: "Settings",
             body,
             theme,
-            border_color: theme.teal,
+            border_color: packed(theme.info),
         };
 
         Modal::new(content)
@@ -77,7 +77,7 @@ impl GroveApp {
                     .min_height(dialog_height)
                     .max_height(dialog_height),
             )
-            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .backdrop(BackdropConfig::new(packed(theme.background), 0.55))
             .hit_id(HitId::new(HIT_ID_SETTINGS_DIALOG))
             .render(area, frame);
     }

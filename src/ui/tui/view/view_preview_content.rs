@@ -53,55 +53,72 @@ impl GroveApp {
                     let mut spans = vec![FtSpan::styled(
                         name_label.clone(),
                         if *is_working {
-                            Style::new().fg(theme.blue).bold()
+                            Style::new().fg(packed(theme.primary)).bold()
                         } else {
-                            Style::new().fg(theme.text).bold()
+                            Style::new().fg(packed(theme.text)).bold()
                         },
                     )];
                     if let Some(branch_label) = branch_label {
-                        spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                        spans.push(FtSpan::styled(
+                            " · ",
+                            Style::new().fg(packed(theme.text_subtle)),
+                        ));
                         spans.push(FtSpan::styled(
                             branch_label.clone(),
-                            Style::new().fg(theme.subtext0),
+                            Style::new().fg(packed(theme.text_subtle)),
                         ));
                     }
                     if !age_label.is_empty() {
-                        spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                        spans.push(FtSpan::styled(
+                            " · ",
+                            Style::new().fg(packed(theme.text_subtle)),
+                        ));
                         spans.push(FtSpan::styled(
                             age_label.clone(),
-                            Style::new().fg(theme.overlay0),
+                            Style::new().fg(packed(theme.border)),
                         ));
                     }
                     if let Some(diff_stat) = selected_workspace
                         .and_then(|ws| self.diff_stat_for_workspace(ws.path.as_path()))
                     {
-                        spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                        spans.push(FtSpan::styled(
+                            " · ",
+                            Style::new().fg(packed(theme.text_subtle)),
+                        ));
                         spans.push(FtSpan::styled(
                             format!("+{}", diff_stat.insertions),
-                            Style::new().fg(theme.green).bold(),
+                            Style::new().fg(packed(theme.success)).bold(),
                         ));
                         spans.push(FtSpan::styled(
                             format!(" -{}", diff_stat.deletions),
-                            Style::new().fg(theme.red).bold(),
+                            Style::new().fg(packed(theme.error)).bold(),
                         ));
                     }
                     if *is_orphaned {
-                        spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                        spans.push(FtSpan::styled(
+                            " · ",
+                            Style::new().fg(packed(theme.text_subtle)),
+                        ));
                         spans.push(FtSpan::styled(
                             "session ended",
-                            Style::new().fg(theme.peach),
+                            Style::new().fg(packed(theme.accent)),
                         ));
                     }
                     FtLine::from_spans(spans)
                 } else {
                     FtLine::from_spans(vec![FtSpan::styled(
                         "none selected",
-                        Style::new().fg(theme.subtext0),
+                        Style::new().fg(packed(theme.text_subtle)),
                     )])
                 },
             ];
-        let tab_active_style = Style::new().fg(theme.base).bg(theme.blue).bold();
-        let tab_inactive_style = Style::new().fg(theme.subtext0).bg(theme.surface0);
+        let tab_active_style = Style::new()
+            .fg(packed(theme.background))
+            .bg(packed(theme.primary))
+            .bold();
+        let tab_inactive_style = Style::new()
+            .fg(packed(theme.text_subtle))
+            .bg(packed(theme.surface));
         let mut tab_spans = Vec::new();
         if let Some(workspace) = selected_workspace
             && let Some(tabs) = self.workspace_tabs.get(workspace.path.as_path())
@@ -120,23 +137,32 @@ impl GroveApp {
         }
         if self.preview_tab == PreviewTab::Home && self.selected_task_supports_parent_agent() {
             if let Some(task) = self.state.selected_task() {
-                tab_spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                tab_spans.push(FtSpan::styled(
+                    " · ",
+                    Style::new().fg(packed(theme.text_subtle)),
+                ));
                 tab_spans.push(FtSpan::styled(
                     task.root_path.display().to_string(),
-                    Style::new().fg(theme.overlay0),
+                    Style::new().fg(packed(theme.border)),
                 ));
             }
         } else if let Some(workspace) = selected_workspace {
-            tab_spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+            tab_spans.push(FtSpan::styled(
+                " · ",
+                Style::new().fg(packed(theme.text_subtle)),
+            ));
             tab_spans.push(FtSpan::styled(
                 workspace.path.display().to_string(),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             ));
         } else {
-            tab_spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+            tab_spans.push(FtSpan::styled(
+                " · ",
+                Style::new().fg(packed(theme.text_subtle)),
+            ));
             tab_spans.push(FtSpan::styled(
                 "no workspace",
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             ));
         }
         text_lines.push(FtLine::from_spans(tab_spans));
@@ -267,7 +293,10 @@ fn plain_preview_line(line: &str) -> PreviewParsedLine {
     }
 }
 
-fn parsed_preview_line_to_ft_line(line: &PreviewParsedLine, theme: UiTheme) -> FtLine<'static> {
+fn parsed_preview_line_to_ft_line(
+    line: &PreviewParsedLine,
+    theme: ftui::ResolvedTheme,
+) -> FtLine<'static> {
     if line.spans.is_empty() {
         return FtLine::raw("");
     }
@@ -282,7 +311,10 @@ fn parsed_preview_line_to_ft_line(line: &PreviewParsedLine, theme: UiTheme) -> F
     )
 }
 
-fn parsed_preview_span_to_ft_span(span: &PreviewParsedSpan, _theme: UiTheme) -> FtSpan<'static> {
+fn parsed_preview_span_to_ft_span(
+    span: &PreviewParsedSpan,
+    _theme: ftui::ResolvedTheme,
+) -> FtSpan<'static> {
     if let Some(style) = parsed_preview_style_to_ft_style(&span.style) {
         FtSpan::styled(span.text.clone(), style)
     } else {

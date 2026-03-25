@@ -105,7 +105,6 @@ use terminal::{
 };
 use selection::{TextSelectionPoint, TextSelectionState};
 use msg::*;
-use shared::*;
 use dialogs::*;
 use dialogs_state::*;
 use commands::*;

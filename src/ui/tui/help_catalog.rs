@@ -208,9 +208,17 @@ impl GroveApp {
 
     pub(super) fn build_keybind_help_hints(&self) -> KeybindingHints {
         let theme = self.active_ui_theme();
-        let key_style = Style::new().fg(theme.lavender).bg(theme.base).bold();
-        let desc_style = Style::new().fg(theme.text).bg(theme.base);
-        let category_style = Style::new().fg(theme.blue).bg(theme.base).bold();
+        let key_style = Style::new()
+            .fg(packed(theme.secondary))
+            .bg(packed(theme.background))
+            .bold();
+        let desc_style = Style::new()
+            .fg(packed(theme.text))
+            .bg(packed(theme.background));
+        let category_style = Style::new()
+            .fg(packed(theme.primary))
+            .bg(packed(theme.background))
+            .bold();
         let registry = self.build_help_registry();
         let mut hints = KeybindingHints::new()
             .with_mode(HelpMode::Full)

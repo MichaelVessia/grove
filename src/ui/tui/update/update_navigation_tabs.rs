@@ -908,6 +908,7 @@ impl GroveApp {
             &workspace,
             session_name.clone(),
             String::new(),
+            self.theme_name,
             workspace_init_command,
             Some(capture_cols),
             Some(capture_rows),
@@ -1015,13 +1016,13 @@ impl GroveApp {
         let mut request = launch_request_for_workspace(
             &launch_workspace,
             options.prompt,
+            self.theme_name,
             options
                 .init_command
                 .or_else(|| self.workspace_init_command_for_workspace(&workspace)),
             options.skip_permissions,
             agent_env,
-            Some(capture_cols),
-            Some(capture_rows),
+            Some((capture_cols, capture_rows)),
         );
         request.session_name = Some(session_name.clone());
         self.session

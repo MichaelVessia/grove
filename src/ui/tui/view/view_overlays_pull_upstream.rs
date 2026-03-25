@@ -32,7 +32,7 @@ impl GroveApp {
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 fit("Pull plan"),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]),
             FtLine::raw(""),
             modal_static_badged_row(
@@ -40,30 +40,32 @@ impl GroveApp {
                 theme,
                 "Name",
                 dialog.workspace_name.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Branch",
                 dialog.base_branch.as_str(),
-                theme.blue,
-                theme.text,
+                packed(theme.primary),
+                packed(theme.text),
             ),
             modal_static_badged_row(
                 content_width,
                 theme,
                 "Path",
                 path.as_str(),
-                theme.blue,
-                theme.overlay0,
+                packed(theme.primary),
+                packed(theme.border),
             ),
         ];
         lines.extend(modal_wrapped_rows(
             content_width,
             strategy.as_str(),
-            Style::new().fg(theme.subtext0).bg(theme.base),
+            Style::new()
+                .fg(packed(theme.text_subtle))
+                .bg(packed(theme.background)),
         ));
         if has_propagate {
             let propagate_text = format!(
@@ -73,7 +75,9 @@ impl GroveApp {
             lines.extend(modal_wrapped_rows(
                 content_width,
                 propagate_text.as_str(),
-                Style::new().fg(theme.yellow).bg(theme.base),
+                Style::new()
+                    .fg(packed(theme.warning))
+                    .bg(packed(theme.background)),
             ));
         }
         lines.push(FtLine::raw(""));
@@ -100,7 +104,7 @@ impl GroveApp {
                 dialog_height,
                 title: "Pull Upstream",
                 theme,
-                border_color: theme.teal,
+                border_color: packed(theme.info),
                 hit_id: HIT_ID_PULL_UPSTREAM_DIALOG,
             },
         );

@@ -28,25 +28,25 @@ impl GroveApp {
                 "Close Active Tab?",
                 "Kill session and close this tab?".to_string(),
                 format!("Session '{session_name}' is still live in tmux"),
-                theme.yellow,
+                packed(theme.warning),
             ),
             ConfirmDialogAction::QuitApp => (
                 "Are you sure?",
                 "Quit Grove now?".to_string(),
                 "Agent sessions persist in tmux, you can resume after reopen".to_string(),
-                theme.red,
+                packed(theme.error),
             ),
         };
 
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 fit(message.as_str()),
-                Style::new().fg(theme.text).bold(),
+                Style::new().fg(packed(theme.text)).bold(),
             )]),
             FtLine::raw(""),
             FtLine::from_spans(vec![FtSpan::styled(
                 fit(detail.as_str()),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]),
             FtLine::raw(""),
             modal_actions_row(

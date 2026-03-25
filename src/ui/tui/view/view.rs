@@ -8,6 +8,7 @@ use ftui::widgets::paragraph::Paragraph;
 use serde_json::Value;
 
 use crate::infrastructure::event_log::Event as LogEvent;
+use crate::ui::tui::packed;
 
 use super::panes::PaneRole;
 use super::{DIVIDER_WIDTH, GroveApp};
@@ -22,7 +23,7 @@ impl GroveApp {
         let area = Rect::from_size(frame.buffer.width(), frame.buffer.height());
         let theme = self.active_ui_theme();
         Paragraph::new("")
-            .style(Style::new().bg(theme.base))
+            .style(Style::new().bg(packed(theme.background)))
             .render(area, frame);
 
         let Some(pane_layout) = self.panes.solve(area) else {

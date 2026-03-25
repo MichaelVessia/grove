@@ -74,25 +74,25 @@ impl GroveApp {
                 dialog.plan.skipped_attached.len()
             )
             .as_str()),
-            Style::new().fg(theme.overlay0),
+            Style::new().fg(packed(theme.border)),
         )])];
         if let Some(error) = dialog.last_error.as_ref() {
             lines.push(FtLine::from_spans(vec![FtSpan::styled(
                 fit(format!("Error: {error}").as_str()),
-                Style::new().fg(theme.red).bold(),
+                Style::new().fg(packed(theme.error)).bold(),
             )]));
         }
         lines.push(FtLine::raw(""));
         lines.push(FtLine::from_spans(vec![FtSpan::styled(
             fit("Planned session cleanup"),
-            Style::new().fg(theme.subtext1).bold(),
+            Style::new().fg(packed(theme.text_muted)).bold(),
         )]));
 
         let max_list_rows = usize::from(dialog_height).saturating_sub(13).max(3);
         if dialog.plan.candidates.is_empty() {
             lines.push(FtLine::from_spans(vec![FtSpan::styled(
                 fit("  none"),
-                Style::new().fg(theme.subtext0),
+                Style::new().fg(packed(theme.text_subtle)),
             )]));
         } else {
             for entry in dialog.plan.candidates.iter().take(max_list_rows) {
@@ -103,12 +103,12 @@ impl GroveApp {
                     entry.session_name, entry.attached_clients
                 );
                 let reason_color = if entry.reason == SessionCleanupReason::Orphaned {
-                    theme.red
+                    packed(theme.error)
                 } else {
-                    theme.peach
+                    packed(theme.accent)
                 };
                 lines.push(FtLine::from_spans(vec![
-                    FtSpan::styled("  ", Style::new().fg(theme.subtext0)),
+                    FtSpan::styled("  ", Style::new().fg(packed(theme.text_subtle))),
                     FtSpan::styled(fit_nested(line.trim_start()), Style::new().fg(reason_color)),
                 ]));
             }
@@ -119,7 +119,7 @@ impl GroveApp {
                         dialog.plan.candidates.len().saturating_sub(max_list_rows)
                     )
                     .as_str()),
-                    Style::new().fg(theme.overlay0),
+                    Style::new().fg(packed(theme.border)),
                 )]));
             }
         }
@@ -131,11 +131,11 @@ impl GroveApp {
             "IncludeStale",
             include_stale_state.as_str(),
             include_stale_focused,
-            theme.peach,
+            packed(theme.accent),
             if dialog.options.include_stale {
-                theme.red
+                packed(theme.error)
             } else {
-                theme.text
+                packed(theme.text)
             },
         ));
         lines.push(modal_focus_badged_row(
@@ -144,11 +144,11 @@ impl GroveApp {
             "IncludeAttached",
             include_attached_state.as_str(),
             include_attached_focused,
-            theme.peach,
+            packed(theme.accent),
             if dialog.options.include_attached {
-                theme.red
+                packed(theme.error)
             } else {
-                theme.text
+                packed(theme.text)
             },
         ));
         lines.push(FtLine::raw(""));
@@ -182,7 +182,7 @@ impl GroveApp {
                 dialog_height,
                 title: "Cleanup Sessions",
                 theme,
-                border_color: theme.yellow,
+                border_color: packed(theme.warning),
                 hit_id: HIT_ID_SESSION_CLEANUP_DIALOG,
             },
         );

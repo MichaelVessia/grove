@@ -10,7 +10,10 @@ impl GroveApp {
         let interactive_input_active = self.session.interactive.is_some() && !self.modal_open();
         let theme = self.active_ui_theme();
         let (title, border_style) = if interactive_input_active {
-            ("Preview · INSERT", Style::new().fg(theme.teal).bold())
+            (
+                "Preview · INSERT",
+                Style::new().fg(packed(theme.info)).bold(),
+            )
         } else {
             ("Preview", self.pane_border_style(preview_focused))
         };
@@ -51,7 +54,11 @@ impl GroveApp {
         ));
 
         Paragraph::new(FtText::from_lines(text_lines))
-            .style(Style::new().fg(theme.text).bg(theme.base))
+            .style(
+                Style::new()
+                    .fg(packed(theme.text))
+                    .bg(packed(theme.background)),
+            )
             .render(inner, frame);
         for (label, x, y) in animated_labels {
             if y >= inner.bottom() {

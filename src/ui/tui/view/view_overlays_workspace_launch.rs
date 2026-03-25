@@ -28,9 +28,9 @@ impl GroveApp {
             )
         };
         let agent_row = |agent: AgentType| {
-            let mut style = Style::new().fg(theme.overlay0);
+            let mut style = Style::new().fg(packed(theme.border));
             if dialog.focused_field == LaunchDialogField::Agent {
-                style = style.bg(theme.surface0);
+                style = style.bg(packed(theme.surface));
             }
             let marker = if dialog.agent == agent { "●" } else { "○" };
             let label = format!("{marker} {}", agent.label());
@@ -50,12 +50,12 @@ impl GroveApp {
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 fit("Launch profile"),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]),
             FtLine::raw(""),
             FtLine::from_spans(vec![FtSpan::styled(
                 fit("Agent"),
-                Style::new().fg(theme.overlay0),
+                Style::new().fg(packed(theme.border)),
             )]),
             agent_row(AgentType::Claude),
             agent_row(AgentType::Codex),
@@ -90,7 +90,7 @@ impl GroveApp {
                 dialog_height,
                 title,
                 theme,
-                border_color: theme.mauve,
+                border_color: packed(theme.secondary),
                 hit_id: HIT_ID_LAUNCH_DIALOG,
             },
         );

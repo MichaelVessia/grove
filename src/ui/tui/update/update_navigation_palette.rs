@@ -6,14 +6,34 @@ impl GroveApp {
     fn command_palette_style(&self) -> PaletteStyle {
         let theme = self.active_ui_theme();
         PaletteStyle {
-            border: Style::new().fg(theme.blue).bg(theme.base).bold(),
-            input: Style::new().fg(theme.text).bg(theme.base),
-            item: Style::new().fg(theme.subtext0).bg(theme.base),
-            item_selected: Style::new().fg(theme.text).bg(theme.surface0).bold(),
-            match_highlight: Style::new().fg(theme.yellow).bg(theme.base).bold(),
-            description: Style::new().fg(theme.overlay0).bg(theme.base),
-            category: Style::new().fg(theme.blue).bg(theme.base).bold(),
-            hint: Style::new().fg(theme.overlay0).bg(theme.base),
+            border: Style::new()
+                .fg(packed(theme.primary))
+                .bg(packed(theme.background))
+                .bold(),
+            input: Style::new()
+                .fg(packed(theme.text))
+                .bg(packed(theme.background)),
+            item: Style::new()
+                .fg(packed(theme.text_subtle))
+                .bg(packed(theme.background)),
+            item_selected: Style::new()
+                .fg(packed(theme.text))
+                .bg(packed(theme.surface))
+                .bold(),
+            match_highlight: Style::new()
+                .fg(packed(theme.warning))
+                .bg(packed(theme.background))
+                .bold(),
+            description: Style::new()
+                .fg(packed(theme.border))
+                .bg(packed(theme.background)),
+            category: Style::new()
+                .fg(packed(theme.primary))
+                .bg(packed(theme.background))
+                .bold(),
+            hint: Style::new()
+                .fg(packed(theme.border))
+                .bg(packed(theme.background)),
         }
     }
 
