@@ -117,6 +117,7 @@ impl GroveApp {
         self.polling.preview_stream.connected_session = None;
         self.polling.preview_stream.bootstrap_completed = false;
         self.polling.preview_stream.last_chunk_bytes = 0;
+        self.preview.clear_selected_terminal();
         self.polling.preview_stream.source = if desired.is_some() {
             PreviewStreamSource::Connecting
         } else {
@@ -169,6 +170,19 @@ impl GroveApp {
             return;
         }
 
+        let (width, height) = self.preview_output_dimensions().unwrap_or((80, 24));
+        if self.preview.selected_terminal().is_some() {
+            self.preview
+                .apply_selected_terminal_chunk(output.chunk.as_str());
+        } else {
+            self.preview.bootstrap_selected_terminal(
+                output.chunk.as_str(),
+                width,
+                height,
+                (0, 0),
+                true,
+            );
+        }
         self.polling.preview_stream.bootstrap_completed = true;
         self.polling.preview_stream.last_chunk_bytes = output.chunk.len();
         self.polling.preview_stream.buffer = output.chunk.clone();
@@ -232,6 +246,16 @@ impl GroveApp {
     ) {
         if self.polling.preview_stream.target_session.as_deref() != Some(session_name) {
             return;
+        }
+        if let Some(raw_output) = self.latest_preview_raw_output() {
+            let (width, height) = self.preview_output_dimensions().unwrap_or((80, 24));
+            self.preview.bootstrap_selected_terminal(
+                raw_output.as_str(),
+                width,
+                height,
+                (0, 0),
+                true,
+            );
         }
         self.polling.preview_stream.bootstrap_completed = true;
         if self.polling.preview_stream.source == PreviewStreamSource::Connecting {
