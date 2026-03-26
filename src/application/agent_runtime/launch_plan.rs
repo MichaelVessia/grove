@@ -716,8 +716,8 @@ mod tests {
         let plan = build_launch_plan(&request);
 
         assert_eq!(
-            plan.pre_launch_cmds[2],
-            vec![
+            plan.pre_launch_cmds.last(),
+            Some(&vec![
                 "tmux".to_string(),
                 "send-keys".to_string(),
                 "-t".to_string(),
@@ -725,7 +725,7 @@ mod tests {
                 "export CLAUDE_CONFIG_DIR='~/.claude-work' OPENAI_API_BASE='https://api.example.com/v1'"
                     .to_string(),
                 "Enter".to_string(),
-            ]
+            ])
         );
     }
 
