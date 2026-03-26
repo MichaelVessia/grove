@@ -7160,6 +7160,128 @@ mod tests {
     }
 
     #[test]
+    fn preview_stream_disconnect_resumes_selected_poll_via_fallback() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+        let generation = app.polling.preview_stream.generation;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Disconnected(
+                PreviewStreamDisconnected {
+                    session: feature_workspace_session(),
+                    generation,
+                    error: Some("stream exited".to_string()),
+                },
+            )),
+        );
+        app.telemetry.deferred_cmds.clear();
+
+        app.poll_preview();
+
+        assert!(app.polling.preview_poll_in_flight);
+        assert!(
+            app.telemetry.deferred_cmds.iter().any(cmd_contains_task),
+            "fallback should resume selected-session polling"
+        );
+    }
+
+    #[test]
+    fn preview_stream_reconnect_bootstrap_reseeds_selected_terminal() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.preview.apply_capture("stale output\n");
+        app.sync_preview_stream_target();
+        let generation = app.polling.preview_stream.generation;
+        app.preview
+            .bootstrap_selected_terminal("stream snapshot\n", 80, 24, (0, 0), true);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Disconnected(
+                PreviewStreamDisconnected {
+                    session: feature_workspace_session(),
+                    generation,
+                    error: Some("stream exited".to_string()),
+                },
+            )),
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation: 1,
+                live_capture: Some(LivePreviewCapture {
+                    session: feature_workspace_session(),
+                    scrollback_lines: crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES,
+                    include_escape_sequences: true,
+                    capture_ms: 1,
+                    total_ms: 1,
+                    result: Ok("fresh output\n".to_string()),
+                }),
+                cursor_capture: None,
+                workspace_status_captures: Vec::new(),
+            }),
+        );
+
+        assert_eq!(
+            app.preview
+                .selected_terminal()
+                .expect("selected terminal should be reseeded")
+                .plain_lines[0],
+            "fresh output"
+        );
+        assert!(app.polling.preview_stream.bootstrap_completed);
+    }
+
+    #[test]
+    fn stale_preview_stream_output_does_not_corrupt_selected_terminal() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.preview.apply_capture("current output\n");
+        app.sync_preview_stream_target();
+        let stale_generation = app.polling.preview_stream.generation.saturating_sub(1);
+        app.preview
+            .bootstrap_selected_terminal("current output\n", 80, 24, (0, 0), true);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: feature_workspace_session(),
+                generation: stale_generation,
+                chunk: "stale output\n".to_string(),
+            })),
+        );
+
+        assert_eq!(
+            app.preview
+                .selected_terminal()
+                .expect("selected terminal should remain available")
+                .plain_lines[0],
+            "current output"
+        );
+    }
+
+    #[test]
     fn performance_dialog_reports_selected_preview_stream_source() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
@@ -15145,6 +15267,37 @@ mod tests {
             }
 
             #[test]
+            fn missing_preview_session_clears_selected_terminal_for_selected_session() {
+                let mut app = fixture_app();
+                select_workspace(&mut app, 1);
+                app.preview_tab = PreviewTab::Agent;
+                app.preview
+                    .bootstrap_selected_terminal("stale output\n", 80, 24, (0, 0), true);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 1,
+                        live_capture: Some(LivePreviewCapture {
+                            session: feature_workspace_session(),
+                            scrollback_lines: 600,
+                            include_escape_sequences: true,
+                            capture_ms: 1,
+                            total_ms: 1,
+                            result: Err(format!(
+                                "tmux capture-pane failed for '{}': can't find pane",
+                                feature_workspace_session()
+                            )),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                assert!(app.preview.selected_terminal().is_none());
+            }
+
+            #[test]
             fn preview_poll_missing_live_session_with_other_agent_tab_keeps_workspace_running() {
                 let mut app = fixture_app();
                 select_workspace(&mut app, 1);
@@ -15209,6 +15362,62 @@ mod tests {
                         .ready
                         .contains(&remaining_session)
                 );
+            }
+
+            #[test]
+            fn resize_updates_selected_terminal_dimensions() {
+                let (mut app, _commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                select_workspace(&mut app, 1);
+                app.preview_tab = PreviewTab::Agent;
+                app.session.interactive = Some(InteractiveState::new(
+                    "%0".to_string(),
+                    feature_workspace_session(),
+                    Instant::now(),
+                    34,
+                    78,
+                ));
+                app.preview
+                    .bootstrap_selected_terminal("abcdef", 78, 34, (0, 0), true);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 80,
+                        height: 40,
+                    },
+                );
+
+                let (expected_width, expected_height) = app
+                    .preview_output_dimensions()
+                    .expect("preview output dimensions should exist");
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 1,
+                        live_capture: None,
+                        cursor_capture: Some(CursorCapture {
+                            session: feature_workspace_session(),
+                            capture_ms: 1,
+                            result: Ok(format!("1 0 0 {expected_width} {expected_height}")),
+                        }),
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+                let terminal = app
+                    .preview
+                    .selected_terminal()
+                    .expect("selected terminal should remain available after resize");
+                assert_eq!(terminal.width, expected_width);
+                assert_eq!(terminal.height, expected_height);
+                assert_eq!(terminal.plain_lines[0], "abcdef");
             }
 
             #[test]

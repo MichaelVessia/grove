@@ -8,6 +8,15 @@ struct PreviewViewportAnchor {
 
 impl GroveApp {
     pub(super) fn handle_missing_preview_session(&mut self, session_name: &str) {
+        let clear_selected_terminal = self.interactive_target_session().as_deref()
+            == Some(session_name)
+            || self.selected_live_preview_session_if_ready().as_deref() == Some(session_name)
+            || self.polling.preview_stream.target_session.as_deref() == Some(session_name)
+            || self.state.selected_workspace().is_some_and(|workspace| {
+                session_name_for_workspace_ref(workspace) == session_name
+                    || git_session_name_for_workspace(workspace) == session_name
+                    || shell_session_name_for_workspace(workspace) == session_name
+            });
         self.session.agent_sessions.remove_ready(session_name);
         self.session.lazygit_sessions.remove_ready(session_name);
         self.session.shell_sessions.remove_ready(session_name);
@@ -63,6 +72,9 @@ impl GroveApp {
             .is_some_and(|interactive| interactive.target_session == session_name)
         {
             self.session.interactive = None;
+        }
+        if clear_selected_terminal {
+            self.preview.clear_selected_terminal();
         }
     }
 
