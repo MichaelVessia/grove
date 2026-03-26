@@ -183,7 +183,7 @@ impl GroveApp {
         start: TextSelectionPoint,
         end: TextSelectionPoint,
     ) -> Option<Vec<String>> {
-        let source_len = self.preview.lines.len();
+        let source_len = self.preview.active_plain_lines().len();
         if source_len == 0 {
             return None;
         }
@@ -311,7 +311,7 @@ impl GroveApp {
         let (start, end) = self.preview_copy_bounds()?;
         let joined_lines = self.capture_joined_preview_lines_for_copy()?;
         let segments =
-            Self::preview_copy_line_segments(self.preview.lines.as_slice(), &joined_lines)?;
+            Self::preview_copy_line_segments(self.preview.active_plain_lines(), &joined_lines)?;
         let start_segment = *segments.get(start.line)?;
         let end_segment = *segments.get(end.line)?;
         if end_segment.logical_line < start_segment.logical_line {
@@ -344,17 +344,23 @@ impl GroveApp {
 
     fn preview_copy_lines_from_wrapped_raw_rows(&self) -> Option<Vec<String>> {
         let pane_width = self
-            .session
-            .interactive
-            .as_ref()
-            .map(|interactive| usize::from(interactive.pane_width.max(1)))
+            .preview
+            .selected_terminal()
+            .map(|terminal| usize::from(terminal.width.max(1)))
+            .or_else(|| {
+                self.session
+                    .interactive
+                    .as_ref()
+                    .map(|interactive| usize::from(interactive.pane_width.max(1)))
+            })
             .or_else(|| {
                 self.preview_output_dimensions()
                     .map(|(width, _)| usize::from(width.max(1)))
             })?;
         let (start, end) = self.preview_copy_bounds()?;
-        let start_line = start.line.min(self.preview.lines.len().saturating_sub(1));
-        let end_line = end.line.min(self.preview.lines.len().saturating_sub(1));
+        let source_len = self.preview.active_plain_lines().len();
+        let start_line = start.line.min(source_len.saturating_sub(1));
+        let end_line = end.line.min(source_len.saturating_sub(1));
         if end_line < start_line {
             return None;
         }

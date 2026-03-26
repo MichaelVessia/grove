@@ -8,7 +8,8 @@ impl GroveApp {
 
         // tmux capture-pane cannot represent a final empty row, so recover it
         // when interactive cursor geometry shows the pane is exactly one row taller.
-        self.preview.lines.len().saturating_add(1) == usize::from(interactive.pane_height)
+        self.preview.active_plain_lines().len().saturating_add(1)
+            == usize::from(interactive.pane_height)
     }
 
     pub(super) fn preview_line_count(&self) -> usize {

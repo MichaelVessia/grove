@@ -166,12 +166,26 @@ impl GroveApp {
         preview_height: usize,
     ) -> Option<(usize, usize, bool)> {
         let interactive = self.session.interactive.as_ref()?;
-        if self.preview.lines.is_empty() {
+        if self.preview.active_plain_lines().is_empty() {
             return None;
         }
 
-        let pane_height = usize::from(interactive.pane_height.max(1));
-        let cursor_row = usize::from(interactive.cursor_row);
+        let (pane_height, cursor_row, cursor_col, cursor_visible) =
+            if let Some(terminal) = self.preview.selected_terminal() {
+                (
+                    usize::from(terminal.height.max(1)),
+                    usize::from(terminal.cursor.1),
+                    usize::from(terminal.cursor.0),
+                    terminal.cursor_visible,
+                )
+            } else {
+                (
+                    usize::from(interactive.pane_height.max(1)),
+                    usize::from(interactive.cursor_row),
+                    usize::from(interactive.cursor_col),
+                    interactive.cursor_visible,
+                )
+            };
         if cursor_row >= pane_height {
             return None;
         }
@@ -189,11 +203,7 @@ impl GroveApp {
         }
 
         let visible_index = cursor_line - start;
-        Some((
-            visible_index,
-            usize::from(interactive.cursor_col),
-            interactive.cursor_visible,
-        ))
+        Some((visible_index, cursor_col, cursor_visible))
     }
 
     pub(super) fn interactive_cursor_screen_position(

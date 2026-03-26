@@ -10428,6 +10428,116 @@ mod tests {
             }
 
             #[test]
+            fn interactive_cursor_prefers_selected_terminal_state_when_available() {
+                let (mut app, _commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                select_workspace(&mut app, 1);
+                app.preview_tab = PreviewTab::Agent;
+                app.session.interactive = Some(InteractiveState::new(
+                    "%0".to_string(),
+                    feature_workspace_session(),
+                    Instant::now(),
+                    34,
+                    78,
+                ));
+                if let Some(interactive) = app.session.interactive.as_mut() {
+                    let _ = interactive.update_cursor(0, 0, true, 34, 78);
+                }
+                app.preview.bootstrap_selected_terminal(
+                    "first\nsecond\nthird\n",
+                    78,
+                    34,
+                    (2, 1),
+                    true,
+                );
+
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let output_x = preview_inner.x;
+
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    assert_eq!(
+                        frame.cursor_position,
+                        Some((output_x.saturating_add(2), output_y.saturating_add(1)))
+                    );
+                    assert!(frame.cursor_visible);
+                });
+            }
+
+            #[test]
+            fn interactive_selected_terminal_height_does_not_double_count_blank_tail() {
+                let (mut app, _commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                select_workspace(&mut app, 1);
+                app.preview_tab = PreviewTab::Agent;
+                app.session.interactive = Some(InteractiveState::new(
+                    "%0".to_string(),
+                    feature_workspace_session(),
+                    Instant::now(),
+                    34,
+                    78,
+                ));
+                app.preview.lines = (0..33)
+                    .map(|row| {
+                        if row == 32 {
+                            "textbox>".to_string()
+                        } else {
+                            String::new()
+                        }
+                    })
+                    .collect();
+                app.preview.bootstrap_selected_terminal(
+                    &(0..33)
+                        .map(|row| {
+                            if row == 32 {
+                                "textbox>".to_string()
+                            } else {
+                                String::new()
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    78,
+                    34,
+                    (0, 33),
+                    true,
+                );
+
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let x_start = layout.preview.x.saturating_add(1);
+                let x_end = layout.preview.right().saturating_sub(1);
+
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let rows = (output_y..preview_inner.bottom())
+                        .map(|row| row_text(frame, row, x_start, x_end))
+                        .collect::<Vec<_>>();
+                    assert_eq!(rows.last(), Some(&String::new()), "{}", rows.join("\n"));
+                    assert_eq!(
+                        frame.cursor_position,
+                        Some((x_start, output_y.saturating_add(33)))
+                    );
+                    assert!(frame.cursor_visible);
+                });
+            }
+
+            #[test]
             fn interactive_agent_preview_renders_real_cursor_for_codex_in_frame() {
                 let config_path = unique_config_path("cursor-overlay-frame-codex");
                 let (mut app, _commands, _captures, cursor_captures) =

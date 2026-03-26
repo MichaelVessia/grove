@@ -28,7 +28,7 @@ impl GroveApp {
     }
 
     pub(super) fn preview_auto_scroll_for_height(&self, preview_height: usize) -> bool {
-        let total_lines = self.preview.lines.len();
+        let total_lines = self.preview_line_count();
         let mut preview_scroll = self.preview_scroll.borrow_mut();
         preview_scroll.set_external_len(total_lines);
         let viewport_height = u16::try_from(preview_height).unwrap_or(u16::MAX);
@@ -37,7 +37,7 @@ impl GroveApp {
     }
 
     pub(super) fn preview_scroll_to_bottom(&mut self, preview_height: usize) {
-        let total_lines = self.preview.lines.len();
+        let total_lines = self.preview_line_count();
         let mut preview_scroll = self.preview_scroll.borrow_mut();
         preview_scroll.set_external_len(total_lines);
         let viewport_height = u16::try_from(preview_height).unwrap_or(u16::MAX);
@@ -50,7 +50,7 @@ impl GroveApp {
             return false;
         }
 
-        let total_lines = self.preview.lines.len();
+        let total_lines = self.preview_line_count();
         let mut preview_scroll = self.preview_scroll.borrow_mut();
         preview_scroll.set_external_len(total_lines);
         let viewport_height = u16::try_from(preview_height).unwrap_or(u16::MAX);

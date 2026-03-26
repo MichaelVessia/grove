@@ -31,13 +31,24 @@ impl GroveApp {
             return;
         }
 
-        if let Some(state) = self.session.interactive.as_mut() {
+        let selected_terminal_cursor = if let Some(state) = self.session.interactive.as_mut() {
             state.update_cursor(
                 state.cursor_row,
                 state.cursor_col,
                 state.cursor_visible,
                 pane_height,
                 pane_width,
+            );
+            Some((state.cursor_col, state.cursor_row, state.cursor_visible))
+        } else {
+            None
+        };
+        if let Some((cursor_col, cursor_row, cursor_visible)) = selected_terminal_cursor {
+            self.preview.sync_selected_terminal_geometry(
+                pane_width,
+                pane_height,
+                (cursor_col, cursor_row),
+                cursor_visible,
             );
         }
 
@@ -116,6 +127,12 @@ impl GroveApp {
                 metadata.pane_width,
             )
         };
+        self.preview.sync_selected_terminal_geometry(
+            metadata.pane_width,
+            metadata.pane_height,
+            (metadata.cursor_col, metadata.cursor_row),
+            metadata.cursor_visible,
+        );
         self.verify_resize_after_cursor_capture(
             &session,
             metadata.pane_width,

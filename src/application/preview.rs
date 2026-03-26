@@ -148,6 +148,29 @@ impl PreviewState {
             })
     }
 
+    pub(crate) fn sync_selected_terminal_geometry(
+        &mut self,
+        width: u16,
+        height: u16,
+        cursor: (u16, u16),
+        cursor_visible: bool,
+    ) {
+        let Some(raw_stream) = self
+            .selected_terminal
+            .as_ref()
+            .map(|terminal| terminal.raw_stream.clone())
+        else {
+            return;
+        };
+        self.selected_terminal = Some(render_selected_terminal_state(
+            raw_stream.as_str(),
+            width,
+            height,
+            Some(cursor),
+            Some(cursor_visible),
+        ));
+    }
+
     pub(crate) fn clear_selected_terminal(&mut self) {
         self.selected_terminal = None;
     }
