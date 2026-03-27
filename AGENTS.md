@@ -103,6 +103,40 @@ make ci
   modal content and the Command Palette actions so UI discoverability stays in
   sync.
 
+## Commit Messages (Conventional Commits)
+
+All commits MUST use [Conventional Commits](https://www.conventionalcommits.org/)
+format. This is required for accurate changelog generation via release-please.
+
+Format: `type(optional-scope): lowercase description`
+
+Allowed types and when to use each:
+
+| Type       | Use when                                                      |
+| ---------- | ------------------------------------------------------------- |
+| `feat`     | Adding new user-facing functionality                          |
+| `fix`      | Fixing a bug or correcting broken behavior                    |
+| `refactor` | Restructuring code without changing behavior                  |
+| `test`     | Adding or updating tests only                                 |
+| `docs`     | Documentation-only changes                                    |
+| `chore`    | Maintenance (deps, ignores, config) with no runtime effect    |
+| `ci`       | CI/CD pipeline changes                                       |
+| `perf`     | Performance improvements                                      |
+| `style`    | Formatting, whitespace, linting (no logic change)             |
+| `build`    | Build system or dependency changes affecting compilation      |
+| `revert`   | Reverting a previous commit                                   |
+
+Rules:
+
+- Description must be lowercase, imperative mood ("add X", not "Added X").
+- Scope is optional but encouraged when the change is clearly scoped to a
+  subsystem (e.g., `fix(preview):`, `feat(tui):`).
+- Breaking changes: add `!` after type/scope (e.g., `feat!:` or
+  `refactor(runtime)!:`) and explain in the commit body.
+- Never use bare descriptions without a type prefix.
+- Pick the type that matches the **primary intent**, not a secondary effect.
+  A bug fix that also adds a test is `fix`, not `test`.
+
 ## Replay Debugging
 
 - For runtime race, polling, interactive input, or rendering regressions,

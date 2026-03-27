@@ -6,33 +6,16 @@ on:
       tag:
         required: true
         type: string
-      release_name:
-        required: true
-        type: string
-      unstable:
-        required: true
-        type: boolean
-
-  workflow_run:
-    workflows:
-      - CI
-    types:
-      - completed
-    branches:
-      - master
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ inputs.tag || 'unstable' }}
+  group: release-${{ inputs.tag }}
   cancel-in-progress: true
 
 jobs:
   build:
-    if: >-
-      (github.event_name == 'workflow_call') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     strategy:
       matrix:
         include:
@@ -47,7 +30,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.event.workflow_run.head_sha }}
+          ref: ${{ inputs.tag }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -80,28 +63,7 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Publish unstable release
-        if: >-
-          (github.event_name == 'workflow_run') ||
-          (inputs.unstable)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          if gh release view unstable >/dev/null 2>&1; then
-            gh release delete unstable --cleanup-tag --yes
-          fi
-
-          gh release create unstable \
-            dist/* \
-            --title "Unstable" \
-            --notes "Automated build from master at $(date -u +%Y-%m-%dT%H:%M:%SZ)." \
-            --prerelease
-
       - name: Upload assets to versioned release
-        if: >-
-          (github.event_name == 'workflow_call') &&
-          (!inputs.unstable)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
