@@ -16929,11 +16929,8 @@ second row\n",
                     }),
                 );
 
-                let selected_terminal = app
-                    .preview
-                    .selected_terminal()
-                    .expect("selected terminal should remain available");
-                assert_eq!(selected_terminal.plain_lines[0], "partial prompt update");
+                assert!(app.preview.selected_terminal().is_none());
+                assert_eq!(app.preview.lines, vec!["partial prompt update".to_string()]);
                 ftui::Model::update(
                     &mut app,
                     Msg::Resize {
