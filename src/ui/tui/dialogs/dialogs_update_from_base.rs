@@ -150,8 +150,6 @@ impl GroveApp {
                 ),
             ],
         );
-        self.state.mode = UiMode::List;
-        self.state.focus = PaneFocus::WorkspaceList;
         self.session.last_tmux_error = None;
     }
     fn confirm_update_from_base_dialog(&mut self) {

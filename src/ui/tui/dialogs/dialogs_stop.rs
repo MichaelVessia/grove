@@ -140,8 +140,6 @@ impl GroveApp {
                     ("session".to_string(), Value::from(session_name)),
                 ],
             );
-            self.state.mode = UiMode::List;
-            self.state.focus = PaneFocus::WorkspaceList;
             self.session.last_tmux_error = None;
             return;
         }
@@ -174,8 +172,6 @@ impl GroveApp {
                 ("session".to_string(), Value::from(session_name)),
             ],
         );
-        self.state.mode = UiMode::List;
-        self.state.focus = PaneFocus::WorkspaceList;
         self.session.last_tmux_error = None;
     }
 

@@ -26,8 +26,6 @@ impl GroveApp {
             focused_field: SessionCleanupDialogField::IncludeStale,
         });
         self.log_dialog_event("session_cleanup", "dialog_opened");
-        self.state.mode = UiMode::List;
-        self.state.focus = PaneFocus::WorkspaceList;
     }
 
     fn refresh_session_cleanup_dialog_plan_with_options(&mut self, options: SessionCleanupOptions) {

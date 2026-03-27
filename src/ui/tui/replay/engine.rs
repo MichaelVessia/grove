@@ -121,7 +121,6 @@ pub(crate) fn app_from_bootstrap(snapshot: &ReplayBootstrapSnapshot) -> GroveApp
     app.state.select_index(selected_index);
     app.sync_workspace_tab_maps();
     app.refresh_preview_summary();
-    app.state.focus = snapshot.focus.to_focus();
     app.state.mode = snapshot.mode.to_mode();
     app.preview_tab = snapshot.preview_tab.to_preview_tab();
     app.viewport_width = snapshot.viewport_width.max(1);
@@ -131,6 +130,8 @@ pub(crate) fn app_from_bootstrap(snapshot: &ReplayBootstrapSnapshot) -> GroveApp
     app.mouse_capture_enabled = snapshot.mouse_capture_enabled;
     app.launch_permission_mode = snapshot.launch_permission_mode;
     app.theme_name = snapshot.theme_name;
+    app.sync_main_focus_nodes();
+    let _ = app.focus_main_pane(snapshot.focus.to_focus_id());
     app.telemetry.replay_msg_seq_counter = 0;
     app
 }

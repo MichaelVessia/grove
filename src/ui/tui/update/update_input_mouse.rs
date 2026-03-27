@@ -380,7 +380,7 @@ impl GroveApp {
                 "divider_drag_active",
                 Value::from(self.divider_resize.is_active()),
             )
-            .with_data("focus", Value::from(self.state.focus.name()))
+            .with_data("focus", Value::from(self.focus_name()))
             .with_data("mode", Value::from(self.state.mode.name()));
         if let Some(row_data) = row_data {
             event = event.with_data("row_data", Value::from(row_data));
@@ -563,9 +563,8 @@ impl GroveApp {
                     if self.session.interactive.is_some() {
                         self.exit_interactive_to_list();
                     } else {
-                        reduce(&mut self.state, Action::EnterListMode);
+                        let _ = self.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
                     }
-                    let _ = self.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
                     if let Some(row_data) = row_data {
                         if let Ok(index) = usize::try_from(row_data) {
                             self.select_workspace_by_index(index);
@@ -578,9 +577,8 @@ impl GroveApp {
                     if self.session.interactive.is_some() {
                         self.exit_interactive_to_list();
                     } else {
-                        reduce(&mut self.state, Action::EnterListMode);
+                        let _ = self.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
                     }
-                    let _ = self.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
                     self.open_workspace_pull_request_link(row_data);
                 }
                 HitRegion::Preview => {
@@ -590,8 +588,7 @@ impl GroveApp {
                         if self.session.interactive.is_some() {
                             self.exit_interactive_to_list();
                         }
-                        reduce(&mut self.state, Action::EnterPreviewMode);
-                        let _ = self.focus_manager.focus(FOCUS_ID_PREVIEW);
+                        let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
                         self.acknowledge_selected_workspace_attention_for_preview_focus();
                         let _ = self.select_tab_by_id_for_selected_workspace(tab_id);
                         self.clear_preview_selection();
@@ -653,18 +650,15 @@ impl GroveApp {
                     if self.session.interactive.is_some() {
                         self.exit_interactive_to_list();
                     } else {
-                        reduce(&mut self.state, Action::EnterListMode);
+                        let _ = self.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
                     }
-                    let _ = self.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
                     if self.should_handle_sidebar_mouse_scroll(-1, Instant::now()) {
                         for _ in 0..Self::SIDEBAR_MOUSE_SCROLL_WORKSPACES {
                             self.move_selection(Action::MoveSelectionUp);
                         }
                     }
                 } else if matches!(region, HitRegion::Preview) {
-                    self.state.mode = UiMode::Preview;
-                    self.state.focus = PaneFocus::Preview;
-                    let _ = self.focus_manager.focus(FOCUS_ID_PREVIEW);
+                    let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
                     self.acknowledge_selected_workspace_attention_for_preview_focus();
                     if self.preview_scroll_tab_is_focused() {
                         self.scroll_preview(-Self::PREVIEW_MOUSE_SCROLL_LINES);
@@ -676,18 +670,15 @@ impl GroveApp {
                     if self.session.interactive.is_some() {
                         self.exit_interactive_to_list();
                     } else {
-                        reduce(&mut self.state, Action::EnterListMode);
+                        let _ = self.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
                     }
-                    let _ = self.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
                     if self.should_handle_sidebar_mouse_scroll(1, Instant::now()) {
                         for _ in 0..Self::SIDEBAR_MOUSE_SCROLL_WORKSPACES {
                             self.move_selection(Action::MoveSelectionDown);
                         }
                     }
                 } else if matches!(region, HitRegion::Preview) {
-                    self.state.mode = UiMode::Preview;
-                    self.state.focus = PaneFocus::Preview;
-                    let _ = self.focus_manager.focus(FOCUS_ID_PREVIEW);
+                    let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
                     self.acknowledge_selected_workspace_attention_for_preview_focus();
                     if self.preview_scroll_tab_is_focused() {
                         self.scroll_preview(Self::PREVIEW_MOUSE_SCROLL_LINES);

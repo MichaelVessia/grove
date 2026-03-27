@@ -264,7 +264,7 @@ mod tests {
     use crate::infrastructure::adapters::DiscoveryState;
     use crate::infrastructure::config::{ProjectConfig, ProjectDefaults, ThemeName};
     use crate::infrastructure::event_log::{Event as LoggedEvent, NullEventLogger};
-    use crate::ui::state::{Action, PaneFocus, UiMode, reduce};
+    use crate::ui::state::{Action, UiMode, reduce};
     use ftui::core::event::{
         Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
         PasteEvent,
@@ -860,7 +860,7 @@ mod tests {
 
     fn focus_agent_preview_tab(app: &mut GroveApp) {
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         app.sync_workspace_tab_maps();
         let Some(workspace) = app.state.selected_workspace().cloned() else {
             return;
@@ -903,7 +903,7 @@ mod tests {
 
     fn focus_home_preview_tab(app: &mut GroveApp) {
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         app.sync_workspace_tab_maps();
         let Some(workspace) = app.state.selected_workspace().cloned() else {
             return;
@@ -3626,7 +3626,7 @@ mod tests {
                 .map(|workspace| workspace.path.as_path()),
             Some(feature_path.as_path())
         );
-        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+        assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
         assert!(!matches!(cmd, Cmd::Quit));
     }
 
@@ -3668,7 +3668,7 @@ mod tests {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         reduce(&mut app.state, Action::EnterPreviewMode);
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         app.clear_startup_attention_focus_pending();
         seed_feature_finished_attention(&mut app);
 
@@ -3676,7 +3676,7 @@ mod tests {
 
         assert_eq!(app.selected_attention_item, Some(0));
         assert_eq!(app.state.selected_index, 1);
-        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+        assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
     }
 
     #[test]
@@ -3684,7 +3684,7 @@ mod tests {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         reduce(&mut app.state, Action::EnterPreviewMode);
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         insert_running_agent_tab(
             &mut app,
             1,
@@ -3701,7 +3701,7 @@ mod tests {
 
         assert_eq!(app.selected_attention_item, Some(0));
         assert_eq!(app.state.selected_index, 1);
-        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+        assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
         assert_eq!(app.preview_tab, PreviewTab::Agent);
         assert_eq!(
             app.selected_active_tab().map(|tab| tab.kind),
@@ -3713,7 +3713,7 @@ mod tests {
     fn focus_attention_inbox_key_selects_first_attention_item_from_list() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-        app.state.focus = PaneFocus::WorkspaceList;
+        let _ = app.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
         app.clear_startup_attention_focus_pending();
         seed_feature_finished_attention(&mut app);
 
@@ -3721,7 +3721,7 @@ mod tests {
 
         assert_eq!(app.selected_attention_item, Some(0));
         assert_eq!(app.state.selected_index, 1);
-        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+        assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
     }
 
     #[test]
@@ -3729,7 +3729,7 @@ mod tests {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         reduce(&mut app.state, Action::EnterPreviewMode);
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         app.clear_startup_attention_focus_pending();
         seed_feature_finished_attention(&mut app);
 
@@ -3746,7 +3746,7 @@ mod tests {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         reduce(&mut app.state, Action::EnterPreviewMode);
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         app.clear_startup_attention_focus_pending();
         seed_feature_finished_attention(&mut app);
         app.session.interactive = Some(InteractiveState::new(
@@ -3762,7 +3762,7 @@ mod tests {
         assert!(app.session.interactive.is_none());
         assert_eq!(app.selected_attention_item, Some(0));
         assert_eq!(app.state.selected_index, 1);
-        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+        assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
     }
 
     #[test]
@@ -3778,7 +3778,7 @@ mod tests {
 
         assert_eq!(app.selected_attention_item, Some(0));
         assert_eq!(app.state.selected_index, 1);
-        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+        assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
     }
 
     #[test]
@@ -3790,7 +3790,7 @@ mod tests {
         insert_running_agent_tab(&mut app, 1, session_name.as_str(), "Codex 1");
         focus_home_preview_tab(&mut app);
         app.state.mode = UiMode::List;
-        app.state.focus = PaneFocus::WorkspaceList;
+        let _ = app.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
         app.attention_items = vec![fixture_attention_item(
             feature_workspace_path(),
             "feature-a",
@@ -3802,7 +3802,7 @@ mod tests {
 
         assert!(app.selected_attention_item.is_none());
         assert_eq!(app.state.mode, UiMode::Preview);
-        assert_eq!(app.state.focus, PaneFocus::Preview);
+        assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
         assert_eq!(app.preview_tab, PreviewTab::Agent);
         assert_eq!(
             app.selected_active_tab().map(|tab| tab.kind),
@@ -3919,7 +3919,7 @@ mod tests {
 
         assert_eq!(app.selected_attention_item, Some(0));
         assert_eq!(app.state.selected_index, 1);
-        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+        assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
     }
 
     #[test]
@@ -5202,7 +5202,7 @@ mod tests {
     fn status_row_keeps_compact_footer_in_preview_mode() {
         let mut app = fixture_app();
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         app.preview_tab = PreviewTab::Agent;
 
         with_rendered_frame(&app, 220, 24, |frame| {
@@ -5219,7 +5219,7 @@ mod tests {
     fn status_row_keeps_compact_footer_in_git_tab() {
         let mut app = fixture_app();
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         app.preview_tab = PreviewTab::Git;
 
         with_rendered_frame(&app, 180, 24, |frame| {
@@ -5238,7 +5238,7 @@ mod tests {
     fn status_row_keeps_compact_footer_in_shell_tab() {
         let mut app = fixture_app();
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         app.preview_tab = PreviewTab::Shell;
 
         with_rendered_frame(&app, 180, 24, |frame| {
@@ -5721,7 +5721,7 @@ mod tests {
         );
 
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         app.preview_tab = PreviewTab::Agent;
         let preview_ids: Vec<String> = app
             .build_command_palette_actions()
@@ -6903,7 +6903,7 @@ mod tests {
     fn session_performance_rows_preserve_background_cadence_when_selected_preview_is_fast() {
         let mut app = fixture_app();
         select_workspace(&mut app, 1);
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         app.state.workspaces[1].status = WorkspaceStatus::Waiting;
         app.state.workspaces[0].status = WorkspaceStatus::Active;
 
@@ -6940,7 +6940,7 @@ mod tests {
     fn preview_stream_retargets_on_workspace_change() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
 
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
@@ -6974,7 +6974,7 @@ mod tests {
     fn preview_stream_disconnects_when_agent_preview_is_not_visible() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -6998,7 +6998,7 @@ mod tests {
     fn preview_stream_stays_targeted_in_interactive_mode() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7027,7 +7027,7 @@ mod tests {
     fn interactive_preview_poll_is_not_blocked_by_healthy_stream() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7052,7 +7052,7 @@ mod tests {
     fn preview_stream_output_in_interactive_mode_preserves_snapshot_until_bootstrap_capture() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7094,7 +7094,7 @@ mod tests {
     fn preview_stream_output_in_interactive_mode_seeds_terminal_from_latest_live_capture() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7142,7 +7142,7 @@ mod tests {
     fn selected_preview_stream_reports_connecting_before_first_stream_event() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7164,7 +7164,7 @@ mod tests {
     fn selected_preview_stream_replaces_stale_placeholder_with_snapshot() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7214,7 +7214,7 @@ mod tests {
     fn preview_stream_output_preserves_snapshot_until_bootstrap_capture() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7251,7 +7251,7 @@ mod tests {
     fn healthy_preview_stream_output_updates_without_selected_poll() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7291,7 +7291,7 @@ mod tests {
     fn preview_stream_output_requests_prioritized_snapshot_poll() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7319,7 +7319,7 @@ mod tests {
     fn connected_preview_stream_snapshot_does_not_enter_terminal_wrap_mode() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7371,7 +7371,7 @@ mod tests {
     fn refresh_preview_summary_does_not_clobber_ready_agent_preview() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 0);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7388,7 +7388,7 @@ mod tests {
     fn switching_ready_agent_tabs_clears_stale_preview_until_new_session_bootstraps() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         let first_session = feature_agent_tab_session(1);
         let second_session = feature_agent_tab_session(2);
@@ -7426,7 +7426,7 @@ mod tests {
     fn refresh_preview_summary_does_not_clobber_diff_capture() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 0);
         app.preview_tab = PreviewTab::Diff;
         app.preview.apply_capture("1 file changed, +5 -2\n");
@@ -7440,7 +7440,7 @@ mod tests {
     fn selected_preview_stream_drops_stale_output_for_old_generation() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7466,7 +7466,7 @@ mod tests {
     fn preview_stream_marks_disconnected_after_disconnect() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7498,7 +7498,7 @@ mod tests {
     fn selected_preview_stream_stays_stream_only_after_disconnect() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7558,7 +7558,7 @@ mod tests {
     fn preview_stream_disconnect_resumes_selected_poll_via_fallback() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7592,7 +7592,7 @@ mod tests {
     fn preview_stream_reconnect_bootstrap_clears_stale_selected_terminal() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7641,7 +7641,7 @@ mod tests {
     fn stale_preview_stream_output_does_not_corrupt_selected_terminal() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7675,7 +7675,7 @@ mod tests {
     fn performance_dialog_reports_selected_preview_stream_source() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7709,7 +7709,7 @@ mod tests {
     fn stream_blocking_poll_preserves_preview_content() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         select_workspace(&mut app, 1);
         focus_agent_preview_tab(&mut app);
         app.session
@@ -7842,7 +7842,7 @@ mod tests {
     fn status_row_uses_list_state_chip_when_workspace_list_is_focused_in_preview_mode() {
         let mut app = fixture_app();
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::WorkspaceList;
+        let _ = app.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
         app.preview_tab = PreviewTab::Home;
 
         with_rendered_frame(&app, 120, 24, |frame| {
@@ -8311,7 +8311,7 @@ mod tests {
     fn preview_pane_border_is_blue_when_preview_focused_without_interactive_input() {
         let mut app = fixture_app();
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
 
         let layout = app.panes.test_rects(80, 24);
         with_rendered_frame(&app, 80, 24, |frame| {
@@ -8335,7 +8335,7 @@ mod tests {
     fn interactive_preview_border_is_teal_and_shows_insert_label() {
         let mut app = fixture_app();
         app.state.mode = UiMode::Preview;
-        app.state.focus = PaneFocus::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
         app.session.interactive = Some(InteractiveState::new(
             "%1".to_string(),
             "grove-ws-feature-a".to_string(),
@@ -8693,7 +8693,7 @@ mod tests {
                 select_workspace(&mut app, 1);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.state.mode = UiMode::Preview;
-                app.state.focus = PaneFocus::WorkspaceList;
+                let _ = app.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
                 app.preview_tab = PreviewTab::Agent;
 
                 ftui::Model::update(
@@ -8710,7 +8710,7 @@ mod tests {
                 select_workspace(&mut app, 1);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.state.mode = UiMode::List;
-                app.state.focus = PaneFocus::WorkspaceList;
+                let _ = app.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
                 app.preview_tab = PreviewTab::Agent;
 
                 ftui::Model::update(
@@ -8718,7 +8718,7 @@ mod tests {
                     Msg::Key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press)),
                 );
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
 
                 ftui::Model::update(
                     &mut app,
@@ -8734,7 +8734,7 @@ mod tests {
                 select_workspace(&mut app, 1);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.state.mode = UiMode::List;
-                app.state.focus = PaneFocus::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
                 app.preview_tab = PreviewTab::Agent;
 
                 ftui::Model::update(
@@ -8751,7 +8751,7 @@ mod tests {
                 select_workspace(&mut app, 1);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.state.mode = UiMode::Preview;
-                app.state.focus = PaneFocus::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
                 app.preview_tab = PreviewTab::Shell;
 
                 ftui::Model::update(
@@ -9205,7 +9205,7 @@ mod tests {
                 let mut app = fixture_app();
                 select_workspace(&mut app, 1);
                 app.state.mode = UiMode::Preview;
-                app.state.focus = PaneFocus::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
                 app.preview.lines = vec!["stale-preview".to_string()];
                 app.preview.render_lines = app.preview.lines.clone();
                 app.session.interactive = Some(InteractiveState::new(
@@ -9234,7 +9234,7 @@ mod tests {
                 );
                 assert!(app.session.interactive.is_none());
                 assert_eq!(app.state.mode, UiMode::List);
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
                 let preview_text = app.preview.lines.join("\n");
                 assert!(!preview_text.contains("stale-preview"));
             }
@@ -9530,7 +9530,7 @@ mod tests {
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 select_workspace(&mut app, 1);
                 app.state.mode = UiMode::Preview;
-                app.state.focus = PaneFocus::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
                 app.preview_tab = PreviewTab::Git;
 
                 ftui::Model::update(
@@ -9547,7 +9547,7 @@ mod tests {
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 select_workspace(&mut app, 1);
                 app.state.mode = UiMode::Preview;
-                app.state.focus = PaneFocus::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
                 app.preview_tab = PreviewTab::Git;
 
                 ftui::Model::update(
@@ -9910,7 +9910,7 @@ mod tests {
                 select_workspace(&mut app, 1);
                 focus_agent_preview_tab(&mut app);
                 app.state.mode = UiMode::Preview;
-                app.state.focus = PaneFocus::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
                 app.session
                     .agent_sessions
                     .mark_ready(feature_workspace_session());
@@ -10312,7 +10312,7 @@ mod tests {
 
                 assert!(app.session.interactive.is_some());
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert_eq!(
                     commands.borrow().as_slice(),
                     &[
@@ -10359,7 +10359,7 @@ mod tests {
 
                 assert!(app.session.interactive.is_none());
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert!(commands.borrow().is_empty());
             }
 
@@ -10384,7 +10384,7 @@ mod tests {
 
                 assert!(app.session.interactive.is_none());
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert!(commands.borrow().is_empty());
             }
 
@@ -10413,7 +10413,7 @@ mod tests {
 
                 assert!(app.session.interactive.is_some());
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert_eq!(commands.borrow().len(), 2);
             }
 
@@ -10442,7 +10442,7 @@ mod tests {
 
                 assert!(app.session.interactive.is_none());
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert!(commands.borrow().is_empty());
             }
 
@@ -10469,7 +10469,7 @@ mod tests {
 
                 assert!(app.session.interactive.is_none());
                 assert_eq!(app.state.mode, UiMode::List);
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
                 assert_eq!(app.state.selected_index, 0);
                 assert!(commands.borrow().is_empty());
             }
@@ -10506,7 +10506,7 @@ mod tests {
 
                 assert!(app.session.interactive.is_none());
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert_eq!(app.preview_tab, PreviewTab::Agent);
             }
 
@@ -10570,7 +10570,7 @@ mod tests {
             fn focused_preview_schedules_fast_poll_deadline() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
                 select_workspace(&mut app, 1);
-                app.state.focus = PaneFocus::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
 
                 let cmd = app.schedule_next_tick();
 
@@ -11614,7 +11614,7 @@ mod tests {
                 assert_eq!(app.state.selected_index, 0);
                 assert!(app.session.interactive.is_none());
                 assert_eq!(app.state.mode, UiMode::List);
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
             }
         }
         mod mouse_preview {
@@ -11684,7 +11684,7 @@ mod tests {
 
                 assert_eq!(app.preview_tab, PreviewTab::Shell);
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert!(app.session.interactive.is_none());
             }
 
@@ -11727,7 +11727,7 @@ mod tests {
                 assert_eq!(app.preview_tab, PreviewTab::Git);
                 assert!(app.session.interactive.is_none());
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
             }
 
             #[test]
@@ -11757,7 +11757,7 @@ mod tests {
 
                 assert!(app.session.interactive.is_some());
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
             }
 
             #[test]
@@ -11788,7 +11788,7 @@ mod tests {
                 );
 
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert!(
                     app.workspace_attention
                         .contains_key(&feature_workspace_path())
@@ -11835,7 +11835,7 @@ mod tests {
                 assert_eq!(app.state.selected_index, 1);
                 assert!(app.session.interactive.is_none());
                 assert_eq!(app.state.mode, UiMode::List);
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
             }
 
             #[test]
@@ -12951,7 +12951,7 @@ mod tests {
                 select_workspace(&mut app, 1);
                 focus_agent_preview_tab(&mut app);
                 app.state.mode = UiMode::List;
-                app.state.focus = PaneFocus::WorkspaceList;
+                let _ = app.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
                 app.session
                     .shell_sessions
                     .in_flight
@@ -13566,34 +13566,34 @@ mod tests {
             fn h_and_l_toggle_focus_between_panes_when_not_interactive() {
                 let mut app = fixture_app();
                 app.state.mode = UiMode::List;
-                app.state.focus = PaneFocus::WorkspaceList;
+                let _ = app.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press)),
                 );
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert_eq!(app.state.mode, UiMode::Preview);
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press)),
                 );
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
                 assert_eq!(app.state.mode, UiMode::Preview);
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press)),
                 );
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert_eq!(app.state.mode, UiMode::Preview);
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press)),
                 );
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
                 assert_eq!(app.state.mode, UiMode::Preview);
             }
 
@@ -13602,7 +13602,7 @@ mod tests {
                 let mut app = fixture_app();
                 select_workspace(&mut app, 1);
                 app.state.mode = UiMode::Preview;
-                app.state.focus = PaneFocus::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
 
                 ftui::Model::update(
                     &mut app,
@@ -13614,7 +13614,7 @@ mod tests {
                 );
                 assert_eq!(app.state.selected_index, 0);
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
 
                 ftui::Model::update(
                     &mut app,
@@ -13632,7 +13632,7 @@ mod tests {
                 let mut app = fixture_app();
                 select_workspace(&mut app, 1);
                 app.state.mode = UiMode::List;
-                app.state.focus = PaneFocus::WorkspaceList;
+                let _ = app.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
                 app.open_new_shell_tab();
                 app.open_or_focus_git_tab();
                 let Some(home_id) = app
@@ -13654,7 +13654,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert_eq!(app.preview_tab, PreviewTab::Shell);
 
                 ftui::Model::update(
@@ -13845,7 +13845,7 @@ mod tests {
                 app.open_new_shell_tab();
                 app.open_or_focus_git_tab();
                 app.state.mode = UiMode::List;
-                app.state.focus = PaneFocus::WorkspaceList;
+                let _ = app.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
 
                 ftui::Model::update(
                     &mut app,
@@ -13870,7 +13870,7 @@ mod tests {
                     ]
                 );
                 assert_eq!(app.state.mode, UiMode::List);
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
             }
 
             #[test]
@@ -14730,7 +14730,7 @@ mod tests {
                         Vec::new(),
                     );
                 app.state.mode = UiMode::Preview;
-                app.state.focus = PaneFocus::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
                 select_workspace(&mut app, 1);
                 let first_session = feature_agent_tab_session(1);
                 let second_session = feature_agent_tab_session(2);
@@ -14865,7 +14865,7 @@ mod tests {
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
                 select_workspace(&mut app, 1);
                 app.state.mode = UiMode::List;
-                app.state.focus = PaneFocus::WorkspaceList;
+                let _ = app.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
 
                 let live_preview = app.prepare_live_preview_session();
 
@@ -15690,7 +15690,7 @@ mod tests {
                 app.execute_ui_command(UiCommand::FocusPreview);
 
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert!(
                     app.workspace_attention
                         .contains_key(&feature_workspace_path())
@@ -15709,7 +15709,7 @@ mod tests {
                 app.execute_ui_command(UiCommand::ToggleFocus);
 
                 assert_eq!(app.state.mode, UiMode::Preview);
-                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
                 assert!(
                     app.workspace_attention
                         .contains_key(&feature_workspace_path())
@@ -15720,7 +15720,6 @@ mod tests {
             fn focus_manager_shadow_default_focus_matches_workspace_list() {
                 let app = fixture_app();
 
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
                 assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
             }
 
@@ -15730,8 +15729,16 @@ mod tests {
 
                 app.execute_ui_command(UiCommand::ToggleFocus);
 
-                assert_eq!(app.state.focus, PaneFocus::Preview);
                 assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
+            }
+
+            #[test]
+            fn focus_manager_shadow_focus_label_follows_focus_manager() {
+                let mut app = fixture_app();
+
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
+
+                assert_eq!(app.focus_label(), "Preview");
             }
 
             #[test]
@@ -15756,7 +15763,6 @@ mod tests {
                     )),
                 );
 
-                assert_eq!(app.state.focus, PaneFocus::Preview);
                 assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
             }
 
@@ -15796,7 +15802,6 @@ mod tests {
                     )),
                 );
 
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
                 assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
             }
 
@@ -15830,7 +15835,6 @@ mod tests {
 
                 assert!(app.sidebar_hidden);
                 assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
-                assert_eq!(app.state.focus, PaneFocus::Preview);
                 assert_eq!(
                     app.focus_node_is_focusable(FOCUS_ID_WORKSPACE_LIST),
                     Some(false)
@@ -16243,7 +16247,6 @@ mod tests {
                     app.handle_key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press));
 
                 assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
-                assert_eq!(app.state.focus, PaneFocus::Preview);
                 assert_eq!(app.state.mode, UiMode::Preview);
             }
 
@@ -16255,7 +16258,6 @@ mod tests {
                 let _ = app.handle_key(KeyEvent::new(KeyCode::Left).with_kind(KeyEventKind::Press));
 
                 assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
                 assert_eq!(app.state.mode, UiMode::List);
             }
 
@@ -16301,7 +16303,7 @@ mod tests {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
                 select_workspace(&mut app, 1);
                 app.state.mode = UiMode::Preview;
-                app.state.focus = PaneFocus::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.workspace_attention.insert(
                     feature_workspace_path(),

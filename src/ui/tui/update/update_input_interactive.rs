@@ -3,13 +3,13 @@ use super::update_prelude::*;
 impl GroveApp {
     pub(super) fn exit_interactive_to_list(&mut self) {
         self.session.interactive = None;
-        reduce(&mut self.state, Action::EnterListMode);
+        let _ = self.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
         self.clear_preview_selection();
     }
 
     pub(super) fn exit_interactive_to_preview(&mut self) {
         self.session.interactive = None;
-        reduce(&mut self.state, Action::EnterPreviewMode);
+        let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
         self.clear_preview_selection();
     }
 
@@ -232,8 +232,7 @@ impl GroveApp {
         ));
         self.polling.interactive_poll_due_at = None;
         self.session.last_tmux_error = None;
-        self.state.mode = UiMode::Preview;
-        self.state.focus = PaneFocus::Preview;
+        let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
         self.clear_preview_selection();
         self.sync_interactive_session_geometry();
         self.poll_preview();

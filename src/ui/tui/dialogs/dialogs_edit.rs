@@ -181,8 +181,6 @@ impl GroveApp {
                 ("running".to_string(), Value::from(has_running_tabs)),
             ],
         );
-        self.state.mode = UiMode::List;
-        self.state.focus = PaneFocus::WorkspaceList;
         self.session.last_tmux_error = None;
     }
 

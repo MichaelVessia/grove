@@ -4,7 +4,7 @@ use super::*;
 pub(super) struct TransitionSnapshot {
     selected_index: usize,
     selected_workspace: Option<String>,
-    focus: PaneFocus,
+    focus_name: &'static str,
     mode: UiMode,
     interactive_session: Option<String>,
 }
@@ -22,11 +22,21 @@ impl GroveApp {
         if self.session.interactive.is_some() {
             return "Interactive";
         }
-        self.state.mode.label()
+        self.active_main_pane_mode().label()
     }
 
     pub(super) fn focus_label(&self) -> &'static str {
-        self.state.focus.label()
+        match self.active_main_pane_mode() {
+            UiMode::List => "WorkspaceList",
+            UiMode::Preview => "Preview",
+        }
+    }
+
+    pub(super) fn focus_name(&self) -> &'static str {
+        match self.active_main_pane_mode() {
+            UiMode::List => "workspace_list",
+            UiMode::Preview => "preview",
+        }
     }
 
     pub(super) fn hit_region_name(region: HitRegion) -> &'static str {
@@ -106,8 +116,8 @@ impl GroveApp {
         TransitionSnapshot {
             selected_index: self.state.selected_index,
             selected_workspace: self.selected_workspace_name(),
-            focus: self.state.focus,
-            mode: self.state.mode,
+            focus_name: self.focus_name(),
+            mode: self.active_main_pane_mode(),
             interactive_session: self.interactive_target_session(),
         }
     }
@@ -130,11 +140,11 @@ impl GroveApp {
                 ],
             );
         }
-        if after.focus != before.focus {
+        if after.focus_name != before.focus_name {
             self.log_event_with_fields(
                 "state_change",
                 "focus_changed",
-                [("focus".to_string(), Value::from(after.focus.name()))],
+                [("focus".to_string(), Value::from(after.focus_name))],
             );
         }
         if after.mode != before.mode {

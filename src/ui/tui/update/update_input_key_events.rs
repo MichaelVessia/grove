@@ -226,16 +226,14 @@ impl GroveApp {
 
     pub(super) fn enter_preview_or_interactive(&mut self) {
         if self.selected_attention_item.is_some() {
-            reduce(&mut self.state, Action::EnterPreviewMode);
-            self.sync_focus_manager_to_state();
+            let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
             self.focus_selected_workspace_attention_tab();
             self.selected_attention_item = None;
             self.poll_preview();
             return;
         }
         if !self.enter_interactive(Instant::now()) {
-            reduce(&mut self.state, Action::EnterPreviewMode);
-            self.sync_focus_manager_to_state();
+            let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
             self.acknowledge_selected_workspace_attention_for_preview_focus();
             self.poll_preview();
         }
@@ -330,10 +328,10 @@ impl GroveApp {
             _ => return false,
         };
         let mode_before = self.state.mode;
-        let focus_before = self.state.focus;
+        let focus_before = self.focus_manager.current();
         let moved = self.navigate_main_panes(dir);
         if moved
-            && (self.state.mode != mode_before || self.state.focus != focus_before)
+            && (self.state.mode != mode_before || self.focus_manager.current() != focus_before)
             && self.preview_focused()
         {
             self.acknowledge_selected_workspace_attention_for_preview_focus();
@@ -561,7 +559,8 @@ impl GroveApp {
         let direction: isize = match action {
             Action::MoveSelectionUp => -1,
             Action::MoveSelectionDown => 1,
-            _ => return,
+            #[cfg(test)]
+            Action::EnterPreviewMode | Action::EnterListMode => return,
         };
         let len = row_map.len();
         let mut candidate = current_line;

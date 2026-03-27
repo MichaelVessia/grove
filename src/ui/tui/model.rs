@@ -89,7 +89,7 @@ use crate::infrastructure::event_log::{Event as LogEvent, EventLogger, now_milli
 use crate::infrastructure::paths::refer_to_same_location;
 use crate::infrastructure::process_metrics::{ProcessMetricsSampler, ProcessMetricsSnapshot};
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};
-use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
+use crate::ui::state::{Action, AppState, UiMode};
 use performance::DurationWindow;
 
 #[cfg(test)]
@@ -456,37 +456,32 @@ impl GroveApp {
         focus_manager
     }
 
-    fn sync_focus_manager_to_state(&mut self) {
-        let focus_id = match self.state.focus {
-            PaneFocus::WorkspaceList => FOCUS_ID_WORKSPACE_LIST,
-            PaneFocus::Preview => FOCUS_ID_PREVIEW,
-        };
-        let _ = self.focus_manager.focus(focus_id);
-    }
-
     fn sync_main_pane_state_from_focus_manager(&mut self) {
         match self.focus_manager.current() {
             Some(FOCUS_ID_WORKSPACE_LIST) => {
-                self.state.focus = PaneFocus::WorkspaceList;
                 self.state.mode = UiMode::List;
             }
             Some(FOCUS_ID_PREVIEW) => {
-                self.state.focus = PaneFocus::Preview;
                 self.state.mode = UiMode::Preview;
             }
             _ => {}
         }
     }
 
+    pub(super) fn active_main_pane_mode(&self) -> UiMode {
+        match self.focus_manager.current() {
+            Some(FOCUS_ID_WORKSPACE_LIST) => UiMode::List,
+            Some(FOCUS_ID_PREVIEW) => UiMode::Preview,
+            _ => self.state.mode,
+        }
+    }
+
     pub(super) fn workspace_list_focused(&self) -> bool {
-        !self.preview_focused()
-            && (self.focus_manager.current() == Some(FOCUS_ID_WORKSPACE_LIST)
-                || self.state.focus == PaneFocus::WorkspaceList)
+        self.focus_manager.current() == Some(FOCUS_ID_WORKSPACE_LIST)
     }
 
     pub(super) fn preview_focused(&self) -> bool {
         self.focus_manager.current() == Some(FOCUS_ID_PREVIEW)
-            || self.state.focus == PaneFocus::Preview
     }
 
     pub(super) fn focus_main_pane(&mut self, focus_id: u64) -> bool {
@@ -515,12 +510,10 @@ impl GroveApp {
                 .with_focusable(!preview_rect.is_empty()),
         );
 
-        if self.sidebar_hidden && self.state.focus == PaneFocus::WorkspaceList {
-            self.state.mode = UiMode::Preview;
-            self.state.focus = PaneFocus::Preview;
+        if self.sidebar_hidden && self.focus_manager.current() == Some(FOCUS_ID_WORKSPACE_LIST) {
+            let _ = self.focus_manager.focus(FOCUS_ID_PREVIEW);
         }
 
-        self.sync_focus_manager_to_state();
         self.sync_main_pane_state_from_focus_manager();
     }
 
@@ -545,6 +538,7 @@ impl GroveApp {
         for id in members {
             let _ = self.focus_manager.graph_mut().remove(*id);
         }
+        self.sync_main_pane_state_from_focus_manager();
     }
 
     #[cfg(test)]

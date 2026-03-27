@@ -124,14 +124,14 @@ impl GroveApp {
         match command {
             UiCommand::ToggleFocus => {
                 let mode_before = self.state.mode;
-                let focus_before = self.state.focus;
+                let focus_before = self.focus_manager.current();
                 let target = if self.preview_focused() {
                     FOCUS_ID_WORKSPACE_LIST
                 } else {
                     FOCUS_ID_PREVIEW
                 };
                 let _ = self.focus_main_pane(target);
-                if self.state.mode != mode_before || self.state.focus != focus_before {
+                if self.state.mode != mode_before || self.focus_manager.current() != focus_before {
                     self.acknowledge_selected_workspace_attention_for_preview_focus();
                 }
             }
@@ -151,9 +151,9 @@ impl GroveApp {
             }
             UiCommand::FocusPreview => {
                 let mode_before = self.state.mode;
-                let focus_before = self.state.focus;
+                let focus_before = self.focus_manager.current();
                 let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
-                if self.state.mode != mode_before || self.state.focus != focus_before {
+                if self.state.mode != mode_before || self.focus_manager.current() != focus_before {
                     self.acknowledge_selected_workspace_attention_for_preview_focus();
                     self.poll_preview();
                 }

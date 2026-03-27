@@ -75,7 +75,7 @@ impl GroveApp {
                 Value::from(self.session.interactive.is_some()),
             )
             .with_data("mode", Value::from(self.state.mode.name()))
-            .with_data("focus", Value::from(self.state.focus.name()))
+            .with_data("focus", Value::from(self.focus_name()))
             .with_data(
                 "preview_offset",
                 Value::from(usize_to_u64({

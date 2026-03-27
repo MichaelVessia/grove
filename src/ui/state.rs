@@ -3,28 +3,6 @@ use crate::infrastructure::paths::refer_to_same_location;
 use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PaneFocus {
-    WorkspaceList,
-    Preview,
-}
-
-impl PaneFocus {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::WorkspaceList => "WorkspaceList",
-            Self::Preview => "Preview",
-        }
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::WorkspaceList => "workspace_list",
-            Self::Preview => "preview",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiMode {
     List,
     Preview,
@@ -50,7 +28,9 @@ impl UiMode {
 pub enum Action {
     MoveSelectionUp,
     MoveSelectionDown,
+    #[cfg(test)]
     EnterPreviewMode,
+    #[cfg(test)]
     EnterListMode,
 }
 
@@ -61,7 +41,6 @@ pub struct AppState {
     pub selected_task_index: usize,
     pub selected_worktree_index: usize,
     pub selected_index: usize,
-    pub focus: PaneFocus,
     pub mode: UiMode,
 }
 
@@ -74,7 +53,6 @@ impl AppState {
             selected_task_index: 0,
             selected_worktree_index: 0,
             selected_index: 0,
-            focus: PaneFocus::WorkspaceList,
             mode: UiMode::List,
         };
         state.sync_selection_fields();
@@ -205,6 +183,7 @@ fn selection_for_flat_index(tasks: &[Task], selected_index: usize) -> Option<(us
     None
 }
 
+#[cfg(test)]
 pub fn reduce(state: &mut AppState, action: Action) {
     match action {
         Action::MoveSelectionUp => {
@@ -220,22 +199,22 @@ pub fn reduce(state: &mut AppState, action: Action) {
             }
             state.sync_selection_fields();
         }
+        #[cfg(test)]
         Action::EnterPreviewMode => {
             if state.selected_workspace().is_some() {
                 state.mode = UiMode::Preview;
-                state.focus = PaneFocus::Preview;
             }
         }
+        #[cfg(test)]
         Action::EnterListMode => {
             state.mode = UiMode::List;
-            state.focus = PaneFocus::WorkspaceList;
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Action, AppState, PaneFocus, UiMode, reduce};
+    use super::{Action, AppState, UiMode, reduce};
     use crate::domain::{AgentType, Task, WorkspaceStatus, Worktree};
     use std::path::PathBuf;
 
@@ -276,7 +255,6 @@ mod tests {
     fn app_state_tracks_selected_task_and_selected_worktree() {
         let state = fixture_state();
 
-        assert_eq!(state.focus, PaneFocus::WorkspaceList);
         assert_eq!(state.mode, UiMode::List);
         assert_eq!(
             state.selected_task().map(|task| task.slug.as_str()),
@@ -353,10 +331,8 @@ mod tests {
 
         reduce(&mut state, Action::EnterPreviewMode);
         assert_eq!(state.mode, UiMode::Preview);
-        assert_eq!(state.focus, PaneFocus::Preview);
 
         reduce(&mut state, Action::EnterListMode);
         assert_eq!(state.mode, UiMode::List);
-        assert_eq!(state.focus, PaneFocus::WorkspaceList);
     }
 }

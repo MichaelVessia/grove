@@ -131,7 +131,6 @@ impl GroveApp {
     ) {
         let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
         let previous_mode = self.state.mode;
-        let previous_focus = self.state.focus;
         let refreshed = refreshed_app_state(
             tasks_root_path.as_deref(),
             &self.projects,
@@ -147,7 +146,6 @@ impl GroveApp {
         self.reconcile_task_order();
         self.reorder_tasks_for_task_order();
         self.state.mode = previous_mode;
-        self.state.focus = previous_focus;
         self.sync_workspace_tab_maps();
         self.reconcile_workspace_attention_tracking();
         self.clear_agent_activity_tracking();
@@ -161,7 +159,6 @@ impl GroveApp {
         completion: RefreshWorkspacesCompletion,
     ) {
         let previous_mode = self.state.mode;
-        let previous_focus = self.state.focus;
 
         self.repo_name = completion.repo_name;
         self.discovery_state = completion.discovery_state;
@@ -172,7 +169,6 @@ impl GroveApp {
         self.reconcile_task_order();
         self.reorder_tasks_for_task_order();
         self.state.mode = previous_mode;
-        self.state.focus = previous_focus;
         self.sync_workspace_tab_maps();
         self.dialogs.refresh_in_flight = false;
         self.reconcile_workspace_attention_tracking();

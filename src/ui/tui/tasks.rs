@@ -54,7 +54,6 @@ impl GroveApp {
 
         let selected_workspace_path = self.selected_workspace_path();
         let previous_mode = self.state.mode;
-        let previous_focus = self.state.focus;
         let previous_selected_index = self.state.selected_index;
         let mut state = AppState::new(self.ordered_tasks());
 
@@ -65,7 +64,6 @@ impl GroveApp {
         }
 
         state.mode = previous_mode;
-        state.focus = previous_focus;
         self.state = state;
     }
 

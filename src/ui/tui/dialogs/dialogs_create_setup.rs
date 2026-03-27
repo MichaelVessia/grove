@@ -242,8 +242,6 @@ impl GroveApp {
             focused_field: CreateDialogField::first_for_tab(CreateDialogTab::Manual),
         });
         self.log_dialog_event("create", "dialog_opened");
-        self.state.mode = UiMode::List;
-        self.state.focus = PaneFocus::WorkspaceList;
         self.session.last_tmux_error = None;
     }
 
@@ -285,8 +283,6 @@ impl GroveApp {
             focused_field: CreateDialogField::Project,
         });
         self.log_dialog_event("create", "dialog_opened");
-        self.state.mode = UiMode::List;
-        self.state.focus = PaneFocus::WorkspaceList;
         self.session.last_tmux_error = None;
     }
 }

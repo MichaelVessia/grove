@@ -56,8 +56,8 @@ impl ReplayStateSnapshot {
                 .state
                 .selected_worktree()
                 .map(|worktree| worktree.repository_name.clone()),
-            focus: ReplayFocus::from_focus(app.state.focus),
-            mode: ReplayMode::from_mode(app.state.mode),
+            focus: ReplayFocus::from_mode(app.active_main_pane_mode()),
+            mode: ReplayMode::from_mode(app.active_main_pane_mode()),
             preview_tab: ReplayPreviewTab::from_preview_tab(app.preview_tab),
             interactive_session: app.interactive_target_session(),
             poll_generation: app.polling.poll_generation,

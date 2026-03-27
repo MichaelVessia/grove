@@ -307,8 +307,7 @@ impl GroveApp {
                         .first()
                         .map(|worktree| worktree.path.clone());
                     self.refresh_workspaces(preferred_workspace_path);
-                    self.state.mode = UiMode::List;
-                    self.state.focus = PaneFocus::WorkspaceList;
+                    let _ = self.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
                     if result.warnings.is_empty() {
                         self.show_success_toast(format!("task '{}' created", request.task_name));
                     } else if let Some(first_warning) = result.warnings.first() {
@@ -332,8 +331,7 @@ impl GroveApp {
                 Ok(result) => {
                     self.close_active_dialog();
                     self.refresh_workspaces(Some(result.added_worktree_path));
-                    self.state.mode = UiMode::List;
-                    self.state.focus = PaneFocus::WorkspaceList;
+                    let _ = self.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
                     if result.warnings.is_empty() {
                         self.show_success_toast(format!(
                             "worktree added to task '{}'",

@@ -97,8 +97,8 @@ impl ReplayBootstrapSnapshot {
             tasks: app.state.tasks.iter().map(ReplayTask::from_task).collect(),
             selected_task_index: app.state.selected_task_index,
             selected_worktree_index: app.state.selected_worktree_index,
-            focus: ReplayFocus::from_focus(app.state.focus),
-            mode: ReplayMode::from_mode(app.state.mode),
+            focus: ReplayFocus::from_mode(app.active_main_pane_mode()),
+            mode: ReplayMode::from_mode(app.active_main_pane_mode()),
             preview_tab: ReplayPreviewTab::from_preview_tab(app.preview_tab),
             viewport_width: app.viewport_width,
             viewport_height: app.viewport_height,
@@ -116,17 +116,17 @@ impl ReplayBootstrapSnapshot {
 }
 
 impl ReplayFocus {
-    fn from_focus(focus: PaneFocus) -> Self {
-        match focus {
-            PaneFocus::WorkspaceList => Self::WorkspaceList,
-            PaneFocus::Preview => Self::Preview,
+    fn from_mode(mode: UiMode) -> Self {
+        match mode {
+            UiMode::List => Self::WorkspaceList,
+            UiMode::Preview => Self::Preview,
         }
     }
 
-    fn to_focus(self) -> PaneFocus {
+    fn to_focus_id(self) -> u64 {
         match self {
-            Self::WorkspaceList => PaneFocus::WorkspaceList,
-            Self::Preview => PaneFocus::Preview,
+            Self::WorkspaceList => FOCUS_ID_WORKSPACE_LIST,
+            Self::Preview => FOCUS_ID_PREVIEW,
         }
     }
 }

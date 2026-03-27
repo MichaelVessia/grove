@@ -220,8 +220,7 @@ impl GroveApp {
                 }
                 self.clear_status_tracking_for_workspace_path(&completion.workspace_path);
                 self.clear_agent_activity_tracking();
-                self.state.mode = UiMode::List;
-                self.state.focus = PaneFocus::WorkspaceList;
+                let _ = self.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
                 self.refresh_preview_summary();
                 self.telemetry.event_log.log(
                     LogEvent::new("agent_lifecycle", "agent_stopped")

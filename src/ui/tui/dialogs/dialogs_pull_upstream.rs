@@ -155,8 +155,6 @@ impl GroveApp {
                 ),
             ],
         );
-        self.state.mode = UiMode::List;
-        self.state.focus = PaneFocus::WorkspaceList;
         self.session.last_tmux_error = None;
     }
 

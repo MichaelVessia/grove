@@ -242,8 +242,6 @@ impl GroveApp {
                 ("is_missing".to_string(), Value::from(is_missing)),
             ],
         );
-        self.state.mode = UiMode::List;
-        self.state.focus = PaneFocus::WorkspaceList;
         self.session.last_tmux_error = None;
     }
 
@@ -310,8 +308,6 @@ impl GroveApp {
                 ("deletes_task".to_string(), Value::from(deletes_task)),
             ],
         );
-        self.state.mode = UiMode::List;
-        self.state.focus = PaneFocus::WorkspaceList;
         self.session.last_tmux_error = None;
     }
 
