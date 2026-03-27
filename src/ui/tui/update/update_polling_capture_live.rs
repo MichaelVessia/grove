@@ -163,25 +163,13 @@ impl GroveApp {
                         == Some(session_name);
                 let suppress_recent_local_echo =
                     self.polling.recent_local_echo_session.as_deref() == Some(session_name);
-                let interactive_target_session =
-                    self.interactive_target_session().as_deref() == Some(session_name);
                 let update = self.preview.apply_capture(&output);
                 if self.polling.preview_stream.target_session.as_deref() == Some(session_name)
                     && self.polling.preview_stream.source == PreviewStreamSource::Stream
                     && (self.preview.selected_terminal().is_some()
                         || self.polling.preview_stream.reconciliation_pending)
                 {
-                    if interactive_target_session {
-                        self.preview.clear_selected_terminal();
-                    } else if let Some((pane_width, pane_height)) =
-                        self.local_preview_terminal_geometry(session_name)
-                    {
-                        self.preview.bootstrap_selected_terminal_from_stream(
-                            output.as_str(),
-                            pane_width,
-                            pane_height,
-                        );
-                    }
+                    self.preview.clear_selected_terminal();
                 }
                 self.polling.last_live_preview_session = Some(session_name.to_string());
                 if update.changed_raw

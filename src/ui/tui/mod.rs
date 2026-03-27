@@ -7217,6 +7217,39 @@ mod tests {
     }
 
     #[test]
+    fn preview_stream_output_outside_interactive_preserves_capture_rendering_until_poll() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.preview.apply_capture("history line\n");
+        app.polling.last_live_preview_session = Some(feature_workspace_session());
+        app.sync_preview_stream_target();
+        let generation = app.polling.preview_stream.generation;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: feature_workspace_session(),
+                generation,
+                chunk: "partial prompt update".to_string(),
+            })),
+        );
+
+        assert!(app.preview.selected_terminal().is_none());
+        assert_eq!(
+            app.preview.active_plain_lines(),
+            &["history line".to_string()]
+        );
+        assert!(!app.polling.preview_stream.bootstrap_completed);
+        assert!(app.polling.preview_stream.reconciliation_pending);
+    }
+
+    #[test]
     fn selected_preview_stream_reports_connecting_before_first_stream_event() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
@@ -7520,6 +7553,37 @@ mod tests {
                 "expected snapshot rendering to preserve second row without terminal wrapping, got: {second_row}"
             );
         });
+    }
+
+    #[test]
+    fn non_interactive_live_capture_keeps_snapshot_rendering_when_stream_is_connected() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+        app.polling.preview_stream.connected_session = Some(feature_workspace_session());
+        app.polling.preview_stream.source = PreviewStreamSource::Stream;
+        app.polling.preview_stream.reconciliation_pending = true;
+
+        app.apply_live_preview_capture(
+            &feature_workspace_session(),
+            crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES,
+            true,
+            0,
+            0,
+            Ok("history line\nnext line\n".to_string()),
+        );
+
+        assert!(app.preview.selected_terminal().is_none());
+        assert_eq!(
+            app.preview.active_plain_lines(),
+            &["history line".to_string(), "next line".to_string()]
+        );
     }
 
     #[test]
@@ -8506,6 +8570,57 @@ mod tests {
             };
 
             assert_eq!(cell.fg, PackedRgba::rgb(12, 34, 56));
+        });
+    }
+
+    #[test]
+    fn preview_capture_rows_do_not_soft_wrap_long_ansi_lines() {
+        let mut app = fixture_app();
+        app.preview.apply_capture(
+            "\u{1b}[1m\u{1b}[38;5;2m•\u{1b}[0m \u{1b}[1mRan\u{1b}[0m \
+\u{1b}[38;2;137;180;250mcargo\u{1b}[39m \
+\u{1b}[38;2;137;180;250mtest\u{1b}[39m \
+\u{1b}[38;2;166;227;161mpreview_stream_output_outside_interactive_preserves_capture_rendering_until_poll\u{1b}[39m \
+\u{1b}[38;2;147;153;178m--lib\u{1b}[39m\n\
+second row\n",
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+
+        let layout = app.panes.test_rects(100, 40);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+        let x_start = layout.preview.x.saturating_add(1);
+        let x_end = layout.preview.right().saturating_sub(1);
+        with_rendered_frame(&app, 100, 40, |frame| {
+            let first_row = row_text(frame, output_y, x_start, x_end);
+            let trailing_rows = [
+                row_text(frame, output_y.saturating_add(1), x_start, x_end),
+                row_text(frame, output_y.saturating_add(2), x_start, x_end),
+                row_text(frame, output_y.saturating_add(3), x_start, x_end),
+            ];
+            assert!(
+                first_row.contains("cargo test"),
+                "expected first captured row to render in-place, got: {first_row}"
+            );
+            assert!(
+                trailing_rows.iter().all(|row| {
+                    !row.contains(
+                        "preview_stream_output_outside_interactive_preserves_capture_rendering_until_poll",
+                    )
+                }),
+                "expected long captured row to be clipped, not wrapped into following rows: {trailing_rows:?}"
+            );
+            assert!(
+                trailing_rows.iter().any(|row| row.contains("second row")),
+                "expected second logical row to stay nearby, got: {trailing_rows:?}"
+            );
         });
     }
 
@@ -10251,7 +10366,7 @@ mod tests {
             }
 
             #[test]
-            fn live_capture_prefers_current_preview_dimensions_over_stale_cached_geometry() {
+            fn live_capture_uses_snapshot_rendering_outside_interactive() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
                 let long_line = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzab";
 
@@ -10290,21 +10405,16 @@ mod tests {
                     Ok(long_line.to_string()),
                 );
 
-                let (expected_width, expected_height) = app
-                    .preview_output_dimensions()
-                    .expect("preview output dimensions should exist");
-                let terminal = app
-                    .preview
-                    .selected_terminal()
-                    .expect("selected terminal should be rebuilt from current pane geometry");
-                assert_eq!(terminal.width, expected_width);
-                assert_eq!(terminal.height, expected_height);
+                assert!(app.preview.selected_terminal().is_none());
+                assert_eq!(app.preview.lines, vec![long_line.to_string()]);
+                assert_eq!(app.preview.active_plain_lines(), &[long_line.to_string()]);
                 assert_eq!(
-                    terminal.plain_lines[1].chars().count(),
-                    long_line
-                        .chars()
-                        .count()
-                        .saturating_sub(usize::from(expected_width))
+                    app.polling.preview_session_geometry,
+                    Some(PreviewSessionGeometry {
+                        session: feature_workspace_session(),
+                        width: 78,
+                        height: 34,
+                    })
                 );
             }
 

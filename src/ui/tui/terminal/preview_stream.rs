@@ -200,6 +200,16 @@ impl GroveApp {
             .buffer
             .push_str(output.chunk.as_str());
 
+        let interactive_target_session =
+            self.interactive_target_session().as_deref() == Some(output.session.as_str());
+
+        if !interactive_target_session {
+            self.preview.clear_selected_terminal();
+            self.polling.preview_stream.reconciliation_pending = true;
+            self.poll_preview_prioritized();
+            return;
+        }
+
         if let Some((width, height)) = self.local_preview_terminal_geometry(output.session.as_str())
         {
             if self.polling.preview_stream.bootstrap_completed {
