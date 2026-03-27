@@ -261,6 +261,7 @@ impl GroveApp {
             last_sidebar_mouse_scroll_at: None,
             workspace_diff_stats: HashMap::new(),
             last_sidebar_mouse_scroll_delta: 0,
+            focus_manager: Self::build_main_focus_manager(),
             #[cfg(test)]
             task_root_override: None,
             #[cfg(test)]
@@ -272,6 +273,7 @@ impl GroveApp {
         app.rebuild_workspace_tabs_from_tmux_metadata();
         app.reconcile_workspace_attention_tracking();
         app.refresh_preview_summary();
+        app.sync_focus_manager_to_state();
         app
     }
 

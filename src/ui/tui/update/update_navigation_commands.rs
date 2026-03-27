@@ -21,6 +21,7 @@ impl GroveApp {
         } else {
             reduce(&mut self.state, Action::EnterListMode);
         }
+        self.sync_focus_manager_to_state();
         self.select_attention_item(0);
     }
 
@@ -125,6 +126,7 @@ impl GroveApp {
                 let mode_before = self.state.mode;
                 let focus_before = self.state.focus;
                 reduce(&mut self.state, Action::ToggleFocus);
+                self.sync_focus_manager_to_state();
                 if self.state.mode != mode_before || self.state.focus != focus_before {
                     self.acknowledge_selected_workspace_attention_for_preview_focus();
                 }
@@ -146,6 +148,7 @@ impl GroveApp {
                 let mode_before = self.state.mode;
                 let focus_before = self.state.focus;
                 reduce(&mut self.state, Action::EnterPreviewMode);
+                self.sync_focus_manager_to_state();
                 if self.state.mode != mode_before || self.state.focus != focus_before {
                     self.acknowledge_selected_workspace_attention_for_preview_focus();
                     self.poll_preview();
@@ -153,6 +156,7 @@ impl GroveApp {
             }
             UiCommand::FocusList => {
                 reduce(&mut self.state, Action::EnterListMode);
+                self.sync_focus_manager_to_state();
             }
             UiCommand::MoveSelectionUp => {
                 self.move_selection(Action::MoveSelectionUp);

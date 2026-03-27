@@ -190,6 +190,7 @@ impl GroveApp {
     pub(super) fn enter_preview_or_interactive(&mut self) {
         if self.selected_attention_item.is_some() {
             reduce(&mut self.state, Action::EnterPreviewMode);
+            self.sync_focus_manager_to_state();
             self.focus_selected_workspace_attention_tab();
             self.selected_attention_item = None;
             self.poll_preview();
@@ -197,6 +198,7 @@ impl GroveApp {
         }
         if !self.enter_interactive(Instant::now()) {
             reduce(&mut self.state, Action::EnterPreviewMode);
+            self.sync_focus_manager_to_state();
             self.acknowledge_selected_workspace_attention_for_preview_focus();
             self.poll_preview();
         }

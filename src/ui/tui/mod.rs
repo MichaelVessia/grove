@@ -231,21 +231,22 @@ mod tests {
         AppDependencies, AttentionItem, AttentionReason, ClipboardAccess, CommandTmuxInput,
         CreateDialogField, CreateDialogTab, CreateWorkspaceCompletion, CreateWorkspaceRequest,
         CreateWorkspaceResult, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
-        DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_CREATE_DIALOG_TAB,
-        HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_PROJECT_ADD_RESULTS_LIST, HIT_ID_PROJECT_DIALOG_LIST,
-        HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW,
-        HelpHintContext, LaunchDialogField, LaunchDialogState, LaunchDialogTarget,
-        LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion,
-        Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
-        PreviewSessionGeometry, PreviewStreamConnected, PreviewStreamDisconnected,
-        PreviewStreamEvent, PreviewStreamOutput, PreviewStreamSource, PreviewTab,
-        ProjectAddDialogField, ProjectDefaultsDialogField, PullUpstreamDialogField,
-        RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion,
-        StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
-        TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WorkspaceAttention,
-        WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind,
-        WorkspaceTabRuntimeState, decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data,
-        packed, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
+        DeleteWorkspaceCompletion, EditDialogField, FOCUS_ID_PREVIEW, FOCUS_ID_WORKSPACE_LIST,
+        GroveApp, HIT_ID_CREATE_DIALOG_TAB, HIT_ID_HEADER, HIT_ID_PREVIEW,
+        HIT_ID_PROJECT_ADD_RESULTS_LIST, HIT_ID_PROJECT_DIALOG_LIST, HIT_ID_STATUS,
+        HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW, HelpHintContext,
+        LaunchDialogField, LaunchDialogState, LaunchDialogTarget, LazygitLaunchCompletion,
+        LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
+        PendingResizeVerification, PreviewPollCompletion, PreviewSessionGeometry,
+        PreviewStreamConnected, PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput,
+        PreviewStreamSource, PreviewTab, ProjectAddDialogField, ProjectDefaultsDialogField,
+        PullUpstreamDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
+        StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
+        StopDialogField, TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField,
+        WorkspaceAttention, WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab,
+        WorkspaceTabKind, WorkspaceTabRuntimeState, decode_create_dialog_tab_hit_data,
+        decode_workspace_pr_hit_data, packed, parse_cursor_metadata, ui_theme, ui_theme_for,
+        usize_to_u64,
     };
     use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
     use crate::application::interactive::InteractiveState;
@@ -15697,6 +15698,90 @@ mod tests {
                     app.workspace_attention
                         .contains_key(&feature_workspace_path())
                 );
+            }
+
+            #[test]
+            fn focus_manager_shadow_default_focus_matches_workspace_list() {
+                let app = fixture_app();
+
+                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
+            }
+
+            #[test]
+            fn focus_manager_shadow_toggle_focus_matches_preview() {
+                let mut app = fixture_app();
+
+                app.execute_ui_command(UiCommand::ToggleFocus);
+
+                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
+            }
+
+            #[test]
+            fn focus_manager_shadow_mouse_click_preview_matches_preview() {
+                let mut app = fixture_app();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                let layout = app.panes.test_rects(100, 40);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Mouse(MouseEvent::new(
+                        MouseEventKind::Down(MouseButton::Left),
+                        layout.preview.x.saturating_add(1),
+                        layout.preview.y.saturating_add(1),
+                    )),
+                );
+
+                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
+            }
+
+            #[test]
+            fn focus_manager_shadow_mouse_click_workspace_list_matches_workspace_list() {
+                let mut app = fixture_app();
+                app.execute_ui_command(UiCommand::FocusPreview);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+
+                let mut target = None;
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let layout = app.panes.test_rects(100, 40);
+                    let x_start = layout.sidebar.x.saturating_add(1);
+                    let x_end = layout.sidebar.right().saturating_sub(1);
+                    let Some(row_y) = find_workspace_row(frame, 0, x_start, x_end) else {
+                        panic!("workspace row should be rendered");
+                    };
+                    target = Some((x_start, row_y));
+                });
+                let Some((target_x, target_y)) = target else {
+                    panic!("workspace row click target should exist");
+                };
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Mouse(MouseEvent::new(
+                        MouseEventKind::Down(MouseButton::Left),
+                        target_x,
+                        target_y,
+                    )),
+                );
+
+                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
             }
 
             #[test]

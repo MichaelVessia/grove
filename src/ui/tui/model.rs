@@ -25,16 +25,17 @@ use ftui::widgets::borders::Borders;
 use ftui::widgets::command_palette::{
     ActionItem as PaletteActionItem, CommandPalette, PaletteAction, PaletteStyle,
 };
+use ftui::widgets::input::TextInput;
+use ftui::widgets::list::{List, ListItem, ListState};
 use ftui::widgets::modal::{BackdropConfig, Modal, ModalSizeConstraints};
 use ftui::widgets::notification_queue::{
     NotificationPriority, NotificationQueue, NotificationStack, QueueConfig,
 };
-use ftui::widgets::input::TextInput;
-use ftui::widgets::list::{List, ListItem, ListState};
 use ftui::widgets::paragraph::Paragraph;
-use ftui::widgets::{StatefulWidget, StatusItem, StatusLine, Widget};
 use ftui::widgets::toast::{Toast, ToastIcon, ToastPosition, ToastStyle};
 use ftui::widgets::virtualized::{Virtualized, VirtualizedListState};
+use ftui::widgets::{FocusManager, FocusNode, NavDirection};
+use ftui::widgets::{StatefulWidget, StatusItem, StatusLine, Widget};
 use ftui::{Cmd, Model, PackedRgba, Style};
 use ftui_extras::text_effects::{AnimationClock, ColorGradient, StyledText, TextEffect};
 use serde_json::Value;
@@ -44,12 +45,19 @@ use crate::application::agent_runtime::capture::{
 };
 use crate::application::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
-    TaskLaunchRequest, WorkspaceStatusTarget, execute_command_with,
-    git_session_name_for_workspace, infer_workspace_permission_mode, poll_interval,
-    restart_workspace_in_pane_with_io, session_name_for_task, session_name_for_workspace_ref,
-    shell_session_name_for_workspace, tmux_launch_error_indicates_duplicate_session,
-    trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
-    workspace_can_stop_agent,
+    TaskLaunchRequest, WorkspaceStatusTarget, execute_command_with, git_session_name_for_workspace,
+    infer_workspace_permission_mode, poll_interval, restart_workspace_in_pane_with_io,
+    session_name_for_task, session_name_for_workspace_ref, shell_session_name_for_workspace,
+    tmux_launch_error_indicates_duplicate_session, trimmed_nonempty,
+    workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
+};
+use crate::application::agent_runtime::{
+    detect_status_with_session_override, execute_launch_request_with_result_for_mode,
+    execute_restart_workspace_in_pane_with_result, execute_shell_launch_request_for_mode,
+    execute_stop_task_with_result_for_mode, execute_stop_workspace_with_result_for_mode,
+    execute_task_launch_request_with_result_for_mode, latest_assistant_attention_marker,
+    launch_request_for_workspace, shell_launch_request_for_workspace,
+    status::detect_waiting_prompt,
 };
 use crate::application::interactive::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
@@ -64,14 +72,6 @@ use crate::application::task_lifecycle::{
     AddWorktreeToTaskRequest, AddWorktreeToTaskResult, CreateTaskRequest, CreateTaskResult,
     DeleteTaskRequest, TaskLifecycleError, create_task, create_task_in_root, delete_task,
     task_lifecycle_error_message,
-};
-use crate::application::agent_runtime::{
-    detect_status_with_session_override, execute_launch_request_with_result_for_mode,
-    execute_restart_workspace_in_pane_with_result, execute_shell_launch_request_for_mode,
-    execute_stop_task_with_result_for_mode, execute_stop_workspace_with_result_for_mode,
-    execute_task_launch_request_with_result_for_mode, latest_assistant_attention_marker,
-    status::detect_waiting_prompt,
-    launch_request_for_workspace, shell_launch_request_for_workspace,
 };
 use crate::application::workspace_lifecycle::{
     CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner, DeleteWorkspaceRequest,
@@ -98,16 +98,15 @@ use bootstrap_config::{
     project_display_name, read_workspace_init_command, read_workspace_launch_prompt,
     read_workspace_permission_mode, write_workspace_init_command, write_workspace_permission_mode,
 };
-use terminal::{
-    ClipboardAccess, CommandTmuxInput, PreviewStreamSource, PreviewStreamState,
-    SystemClipboardAccess, TmuxInput,
-    parse_cursor_metadata,
-};
-use selection::{TextSelectionPoint, TextSelectionState};
-use msg::*;
+use commands::*;
 use dialogs::*;
 use dialogs_state::*;
-use commands::*;
+use msg::*;
+use selection::{TextSelectionPoint, TextSelectionState};
+use terminal::{
+    ClipboardAccess, CommandTmuxInput, PreviewStreamSource, PreviewStreamState,
+    SystemClipboardAccess, TmuxInput, parse_cursor_metadata,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct QueuedDeleteWorkspace {
@@ -403,6 +402,7 @@ struct GroveApp {
     last_sidebar_mouse_scroll_at: Option<Instant>,
     workspace_diff_stats: HashMap<PathBuf, DiffStatBadge>,
     last_sidebar_mouse_scroll_delta: i8,
+    focus_manager: FocusManager,
     #[cfg(test)]
     task_root_override: Option<PathBuf>,
     #[cfg(test)]
@@ -426,5 +426,46 @@ impl Model for GroveApp {
 
     fn subscriptions(&self) -> Vec<Box<dyn ftui::runtime::Subscription<Self::Message>>> {
         self.preview_stream_subscription().into_iter().collect()
+    }
+}
+
+impl GroveApp {
+    fn build_main_focus_manager() -> FocusManager {
+        let mut focus_manager = FocusManager::new();
+        focus_manager.graph_mut().insert(
+            FocusNode::new(FOCUS_ID_WORKSPACE_LIST, Rect::new(0, 0, 1, 1)).with_tab_index(0),
+        );
+        focus_manager
+            .graph_mut()
+            .insert(FocusNode::new(FOCUS_ID_PREVIEW, Rect::new(0, 0, 1, 1)).with_tab_index(1));
+        focus_manager.graph_mut().connect(
+            FOCUS_ID_WORKSPACE_LIST,
+            NavDirection::Right,
+            FOCUS_ID_PREVIEW,
+        );
+        focus_manager.graph_mut().connect(
+            FOCUS_ID_PREVIEW,
+            NavDirection::Left,
+            FOCUS_ID_WORKSPACE_LIST,
+        );
+        focus_manager.create_group(
+            FOCUS_GROUP_MAIN_PANES,
+            vec![FOCUS_ID_WORKSPACE_LIST, FOCUS_ID_PREVIEW],
+        );
+        let _ = focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
+        focus_manager
+    }
+
+    fn sync_focus_manager_to_state(&mut self) {
+        let focus_id = match self.state.focus {
+            PaneFocus::WorkspaceList => FOCUS_ID_WORKSPACE_LIST,
+            PaneFocus::Preview => FOCUS_ID_PREVIEW,
+        };
+        let _ = self.focus_manager.focus(focus_id);
+    }
+
+    #[cfg(test)]
+    pub(super) fn current_focus_id(&self) -> Option<u64> {
+        self.focus_manager.current()
     }
 }
