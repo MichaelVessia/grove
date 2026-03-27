@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.3](https://github.com/MichaelVessia/grove/compare/grove-v0.1.2...grove-v0.1.3) (2026-03-27)
+
+
+### Features
+
+* **runtime:** replace text-based done/error heuristics with shell exit-code hook ([cdd8195](https://github.com/MichaelVessia/grove/commit/cdd819584be80c4e7829d60f74cc4e5aeb18b856))
+
+
+### Bug Fixes
+
+* **tui:** preserve selected terminal cursor ([12b2a34](https://github.com/MichaelVessia/grove/commit/12b2a34342f0a7e0122c33fe9a1feed1adada490))
+
 ## [0.1.2](https://github.com/MichaelVessia/grove/compare/grove-v0.1.1...grove-v0.1.2) (2026-03-27)
 
 
