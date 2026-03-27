@@ -474,64 +474,6 @@ impl CreateDialogField {
         }
     }
 
-    pub(super) fn next(self, dialog: &CreateDialogState) -> Self {
-        if dialog.is_add_worktree_mode() {
-            return match self {
-                Self::Project => Self::CreateButton,
-                Self::CreateButton => Self::CancelButton,
-                Self::CancelButton => Self::Project,
-                Self::WorkspaceName | Self::RegisterAsBase | Self::PullRequestUrl => Self::Project,
-            };
-        }
-
-        match dialog.tab {
-            CreateDialogTab::Manual => match self {
-                Self::WorkspaceName => Self::RegisterAsBase,
-                Self::RegisterAsBase => Self::Project,
-                Self::Project => Self::CreateButton,
-                Self::CreateButton => Self::CancelButton,
-                Self::CancelButton => Self::WorkspaceName,
-                Self::PullRequestUrl => Self::Project,
-            },
-            CreateDialogTab::PullRequest => match self {
-                Self::Project => Self::PullRequestUrl,
-                Self::PullRequestUrl => Self::CreateButton,
-                Self::CreateButton => Self::CancelButton,
-                Self::CancelButton => Self::Project,
-                Self::WorkspaceName | Self::RegisterAsBase => Self::Project,
-            },
-        }
-    }
-
-    pub(super) fn previous(self, dialog: &CreateDialogState) -> Self {
-        if dialog.is_add_worktree_mode() {
-            return match self {
-                Self::Project => Self::CancelButton,
-                Self::CreateButton => Self::Project,
-                Self::CancelButton => Self::CreateButton,
-                Self::WorkspaceName | Self::RegisterAsBase | Self::PullRequestUrl => Self::Project,
-            };
-        }
-
-        match dialog.tab {
-            CreateDialogTab::Manual => match self {
-                Self::WorkspaceName => Self::CancelButton,
-                Self::RegisterAsBase => Self::WorkspaceName,
-                Self::Project => Self::RegisterAsBase,
-                Self::CreateButton => Self::Project,
-                Self::CancelButton => Self::CreateButton,
-                Self::PullRequestUrl => Self::Project,
-            },
-            CreateDialogTab::PullRequest => match self {
-                Self::Project => Self::CancelButton,
-                Self::PullRequestUrl => Self::Project,
-                Self::CreateButton => Self::PullRequestUrl,
-                Self::CancelButton => Self::CreateButton,
-                Self::WorkspaceName | Self::RegisterAsBase => Self::Project,
-            },
-        }
-    }
-
     #[cfg(test)]
     pub(super) fn label(self) -> &'static str {
         match self {

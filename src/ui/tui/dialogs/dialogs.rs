@@ -566,6 +566,59 @@ fn launch_dialog_focus_field(focus_id: Option<u64>) -> Option<LaunchDialogField>
     }
 }
 
+fn create_dialog_focus_ids(dialog: &CreateDialogState) -> Vec<u64> {
+    if dialog.is_add_worktree_mode() {
+        return vec![
+            FOCUS_ID_CREATE_PROJECT,
+            FOCUS_ID_CREATE_CREATE_BUTTON,
+            FOCUS_ID_CREATE_CANCEL_BUTTON,
+        ];
+    }
+
+    match dialog.tab {
+        CreateDialogTab::Manual => {
+            let mut members = Vec::new();
+            if !dialog.register_as_base {
+                members.push(FOCUS_ID_CREATE_WORKSPACE_NAME);
+            }
+            members.push(FOCUS_ID_CREATE_REGISTER_AS_BASE);
+            members.push(FOCUS_ID_CREATE_PROJECT);
+            members.push(FOCUS_ID_CREATE_CREATE_BUTTON);
+            members.push(FOCUS_ID_CREATE_CANCEL_BUTTON);
+            members
+        }
+        CreateDialogTab::PullRequest => vec![
+            FOCUS_ID_CREATE_PROJECT,
+            FOCUS_ID_CREATE_PULL_REQUEST_URL,
+            FOCUS_ID_CREATE_CREATE_BUTTON,
+            FOCUS_ID_CREATE_CANCEL_BUTTON,
+        ],
+    }
+}
+
+pub(super) fn create_dialog_focus_id(field: CreateDialogField) -> u64 {
+    match field {
+        CreateDialogField::WorkspaceName => FOCUS_ID_CREATE_WORKSPACE_NAME,
+        CreateDialogField::RegisterAsBase => FOCUS_ID_CREATE_REGISTER_AS_BASE,
+        CreateDialogField::PullRequestUrl => FOCUS_ID_CREATE_PULL_REQUEST_URL,
+        CreateDialogField::Project => FOCUS_ID_CREATE_PROJECT,
+        CreateDialogField::CreateButton => FOCUS_ID_CREATE_CREATE_BUTTON,
+        CreateDialogField::CancelButton => FOCUS_ID_CREATE_CANCEL_BUTTON,
+    }
+}
+
+fn create_dialog_focus_field(focus_id: Option<u64>) -> Option<CreateDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_CREATE_WORKSPACE_NAME) => Some(CreateDialogField::WorkspaceName),
+        Some(FOCUS_ID_CREATE_REGISTER_AS_BASE) => Some(CreateDialogField::RegisterAsBase),
+        Some(FOCUS_ID_CREATE_PULL_REQUEST_URL) => Some(CreateDialogField::PullRequestUrl),
+        Some(FOCUS_ID_CREATE_PROJECT) => Some(CreateDialogField::Project),
+        Some(FOCUS_ID_CREATE_CREATE_BUTTON) => Some(CreateDialogField::CreateButton),
+        Some(FOCUS_ID_CREATE_CANCEL_BUTTON) => Some(CreateDialogField::CancelButton),
+        _ => None,
+    }
+}
+
 fn project_add_dialog_focus_ids() -> [u64; 4] {
     [
         FOCUS_ID_PROJECT_ADD_PATH_INPUT,
@@ -766,6 +819,11 @@ impl GroveApp {
     pub(super) fn sync_active_dialog_focus_field(&mut self) {
         let focus_id = self.focus_manager.current();
         match self.dialogs.active_dialog.as_mut() {
+            Some(ActiveDialog::Create(dialog)) => {
+                if let Some(field) = create_dialog_focus_field(focus_id) {
+                    dialog.focused_field = field;
+                }
+            }
             Some(ActiveDialog::Launch(dialog)) => {
                 if let Some(field) = launch_dialog_focus_field(focus_id) {
                     dialog.focused_field = field;
@@ -827,6 +885,11 @@ impl GroveApp {
 
     fn open_focus_trap_for_active_dialog(&mut self, dialog: &ActiveDialog) {
         match dialog {
+            ActiveDialog::Create(dialog) => {
+                let members = create_dialog_focus_ids(dialog);
+                let initial = create_dialog_focus_id(dialog.focused_field);
+                self.activate_focus_trap(FOCUS_GROUP_CREATE_DIALOG, &members, initial);
+            }
             ActiveDialog::Launch(dialog) => {
                 let members = launch_dialog_focus_ids();
                 self.activate_focus_trap(
@@ -937,6 +1000,10 @@ impl GroveApp {
 
     fn close_focus_trap_for_active_dialog(&mut self, dialog: &ActiveDialog) {
         match dialog {
+            ActiveDialog::Create(dialog) => {
+                let members = create_dialog_focus_ids(dialog);
+                self.deactivate_focus_trap(&members);
+            }
             ActiveDialog::Launch(_) => {
                 let members = launch_dialog_focus_ids();
                 self.deactivate_focus_trap(&members);
@@ -1004,6 +1071,11 @@ impl GroveApp {
         if let Some(dialog) = self.dialogs.active_dialog.clone() {
             self.close_focus_trap_for_active_dialog(&dialog);
         }
+    }
+
+    pub(super) fn refresh_active_dialog_focus_trap(&mut self) {
+        self.clear_active_dialog_focus_trap();
+        self.sync_active_dialog_focus_trap();
     }
 
     pub(super) fn open_project_add_dialog_focus_trap(&mut self, field: ProjectAddDialogField) {

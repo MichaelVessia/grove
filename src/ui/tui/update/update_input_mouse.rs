@@ -579,12 +579,15 @@ impl GroveApp {
                 && let Some(next_tab) = self
                     .create_dialog_tab_from_hit_grid(mouse_event.x, mouse_event.y)
                     .or_else(|| self.create_dialog_tab_at_pointer(mouse_event.x, mouse_event.y))
-                && let Some(dialog) = self.create_dialog_mut()
-                && !dialog.is_add_worktree_mode()
-                && dialog.tab != next_tab
+                && self
+                    .create_dialog()
+                    .is_some_and(|dialog| !dialog.is_add_worktree_mode() && dialog.tab != next_tab)
             {
-                dialog.tab = next_tab;
-                dialog.focused_field = dialog.first_field();
+                if let Some(dialog) = self.create_dialog_mut() {
+                    dialog.tab = next_tab;
+                    dialog.focused_field = dialog.first_field();
+                }
+                self.refresh_active_dialog_focus_trap();
             }
             return;
         }

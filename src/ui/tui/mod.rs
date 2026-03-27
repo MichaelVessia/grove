@@ -4907,6 +4907,8 @@ mod tests {
         let dialog = app.create_dialog_mut().expect("dialog should open");
         dialog.tab = CreateDialogTab::PullRequest;
         dialog.focused_field = CreateDialogField::Project;
+        let _ = dialog;
+        app.refresh_active_dialog_focus_trap();
 
         ftui::Model::update(
             &mut app,
@@ -16124,6 +16126,62 @@ mod tests {
             }
 
             #[test]
+            fn create_dialog_focus_ftui_trap_restores_workspace_list_focus() {
+                let mut app = fixture_app();
+
+                app.open_create_dialog();
+
+                assert!(app.focus_is_trapped());
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(crate::ui::tui::FOCUS_ID_CREATE_WORKSPACE_NAME)
+                );
+
+                app.close_active_dialog();
+
+                assert!(!app.focus_is_trapped());
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
+            }
+
+            #[test]
+            fn create_dialog_focus_ftui_tab_traverses_fields() {
+                let mut app = fixture_app();
+
+                app.open_create_dialog();
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(crate::ui::tui::FOCUS_ID_CREATE_WORKSPACE_NAME)
+                );
+
+                let _ = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+                );
+
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(crate::ui::tui::FOCUS_ID_CREATE_REGISTER_AS_BASE)
+                );
+            }
+
+            #[test]
+            fn create_dialog_focus_ftui_enter_uses_focused_cancel_button() {
+                let mut app = fixture_app();
+
+                app.open_create_dialog();
+                let _ = app
+                    .focus_manager
+                    .focus(crate::ui::tui::FOCUS_ID_CREATE_CANCEL_BUTTON);
+
+                let _ = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(app.create_dialog().is_none());
+            }
+
+            #[test]
             fn session_cleanup_focus_space_uses_ftui_focused_toggle() {
                 let mut app = fixture_app();
 
@@ -16705,6 +16763,8 @@ mod tests {
                 dialog.task_name = "flohome-launch".to_string();
                 dialog.selected_repository_indices = vec![0, 1];
                 dialog.focused_field = CreateDialogField::CreateButton;
+                let _ = dialog;
+                app.focus_dialog_field(crate::ui::tui::FOCUS_ID_CREATE_CREATE_BUTTON);
 
                 ftui::Model::update(
                     &mut app,
@@ -16822,6 +16882,9 @@ mod tests {
                 dialog.selected_repository_indices = vec![0, 1];
                 dialog.pr_url = "https://github.com/flocasts/flohome/pull/123".to_string();
                 dialog.focused_field = CreateDialogField::CreateButton;
+                let _ = dialog;
+                app.refresh_active_dialog_focus_trap();
+                app.focus_dialog_field(crate::ui::tui::FOCUS_ID_CREATE_CREATE_BUTTON);
 
                 ftui::Model::update(
                     &mut app,
@@ -16886,6 +16949,9 @@ mod tests {
                 dialog.register_as_base = true;
                 dialog.project_index = 0;
                 dialog.focused_field = CreateDialogField::CreateButton;
+                let _ = dialog;
+                app.refresh_active_dialog_focus_trap();
+                app.focus_dialog_field(crate::ui::tui::FOCUS_ID_CREATE_CREATE_BUTTON);
 
                 ftui::Model::update(
                     &mut app,
@@ -17081,6 +17147,8 @@ mod tests {
                 let dialog = app.create_dialog_mut().expect("create dialog should open");
                 dialog.project_index = 1;
                 dialog.focused_field = CreateDialogField::CreateButton;
+                let _ = dialog;
+                app.focus_dialog_field(crate::ui::tui::FOCUS_ID_CREATE_CREATE_BUTTON);
 
                 ftui::Model::update(
                     &mut app,

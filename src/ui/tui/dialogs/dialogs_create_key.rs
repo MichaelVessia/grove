@@ -154,6 +154,12 @@ impl GroveApp {
             key_event.code == KeyCode::Char('[') && key_event.modifiers == Modifiers::ALT;
         let alt_next_tab =
             key_event.code == KeyCode::Char(']') && key_event.modifiers == Modifiers::ALT;
+
+        self.sync_active_dialog_focus_field();
+        let Some(focused_field) = self.create_dialog().map(|dialog| dialog.focused_field) else {
+            return;
+        };
+
         if alt_previous_tab
             && self
                 .create_dialog()
@@ -186,30 +192,28 @@ impl GroveApp {
                     AdvanceField,
                 }
 
-                let focused_field = self.create_dialog().map(|dialog| dialog.focused_field);
-                if focused_field == Some(CreateDialogField::Project) {
+                if focused_field == CreateDialogField::Project {
                     self.open_create_project_picker();
                     return;
                 }
-                let action = focused_field.map(|field| match field {
+                let action = match focused_field {
                     CreateDialogField::CreateButton => EnterAction::ConfirmCreate,
                     CreateDialogField::CancelButton => EnterAction::CancelDialog,
                     CreateDialogField::WorkspaceName
                     | CreateDialogField::RegisterAsBase
                     | CreateDialogField::PullRequestUrl
                     | CreateDialogField::Project => EnterAction::AdvanceField,
-                });
+                };
 
                 match action {
-                    Some(EnterAction::ConfirmCreate) => self.confirm_create_dialog(),
-                    Some(EnterAction::CancelDialog) => {
+                    EnterAction::ConfirmCreate => self.confirm_create_dialog(),
+                    EnterAction::CancelDialog => {
                         self.log_dialog_event("create", "dialog_cancelled");
                         self.close_active_dialog();
                     }
-                    Some(EnterAction::AdvanceField) => {
+                    EnterAction::AdvanceField => {
                         self.create_dialog_focus_next();
                     }
-                    None => {}
                 }
             }
             KeyCode::Tab => {
@@ -220,14 +224,19 @@ impl GroveApp {
             }
             KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => {}
             KeyCode::Char(' ') if key_event.modifiers.is_empty() => {
+                let mut refresh_focus = false;
                 if let Some(dialog) = self.create_dialog_mut()
-                    && dialog.focused_field == CreateDialogField::RegisterAsBase
+                    && focused_field == CreateDialogField::RegisterAsBase
                 {
                     dialog.register_as_base = !dialog.register_as_base;
                     if dialog.register_as_base {
                         dialog.task_name.clear();
                         dialog.selected_repository_indices = vec![dialog.project_index];
                     }
+                    refresh_focus = true;
+                }
+                if refresh_focus {
+                    self.refresh_create_dialog_focus_trap();
                 }
             }
             KeyCode::Char(_) if ctrl_n || ctrl_p => {
@@ -239,7 +248,7 @@ impl GroveApp {
             }
             KeyCode::Backspace => {
                 if let Some(dialog) = self.create_dialog_mut() {
-                    match dialog.focused_field {
+                    match focused_field {
                         CreateDialogField::WorkspaceName if !dialog.register_as_base => {
                             dialog.task_name.pop();
                         }
@@ -255,20 +264,20 @@ impl GroveApp {
                 }
             }
             KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
+                if (focused_field == CreateDialogField::CreateButton
+                    || focused_field == CreateDialogField::CancelButton)
+                    && (character == 'h' || character == 'l')
+                {
+                    self.focus_dialog_field(if focused_field == CreateDialogField::CreateButton {
+                        FOCUS_ID_CREATE_CANCEL_BUTTON
+                    } else {
+                        FOCUS_ID_CREATE_CREATE_BUTTON
+                    });
+                    return;
+                }
+
                 if let Some(dialog) = self.create_dialog_mut() {
-                    if (dialog.focused_field == CreateDialogField::CreateButton
-                        || dialog.focused_field == CreateDialogField::CancelButton)
-                        && (character == 'h' || character == 'l')
-                    {
-                        dialog.focused_field =
-                            if dialog.focused_field == CreateDialogField::CreateButton {
-                                CreateDialogField::CancelButton
-                            } else {
-                                CreateDialogField::CreateButton
-                            };
-                        return;
-                    }
-                    match dialog.focused_field {
+                    match focused_field {
                         CreateDialogField::WorkspaceName if !dialog.register_as_base => {
                             if character.is_ascii_alphanumeric()
                                 || character == '-'
@@ -294,18 +303,23 @@ impl GroveApp {
     }
 
     fn create_dialog_focus_next(&mut self) {
-        if let Some(dialog) = self.create_dialog_mut() {
-            dialog.focused_field = dialog.focused_field.next(dialog);
+        if self.create_dialog().is_some() {
+            self.focus_next_dialog_field();
         }
     }
 
     fn create_dialog_focus_previous(&mut self) {
-        if let Some(dialog) = self.create_dialog_mut() {
-            dialog.focused_field = dialog.focused_field.previous(dialog);
+        if self.create_dialog().is_some() {
+            self.focus_prev_dialog_field();
         }
     }
 
+    fn refresh_create_dialog_focus_trap(&mut self) {
+        self.refresh_active_dialog_focus_trap();
+    }
+
     fn switch_create_dialog_tab(&mut self, forward: bool) {
+        let mut refresh_focus = false;
         if let Some(dialog) = self.create_dialog_mut() {
             if dialog.is_add_worktree_mode() {
                 return;
@@ -317,6 +331,10 @@ impl GroveApp {
             };
             dialog.project_picker = None;
             dialog.focused_field = dialog.first_field();
+            refresh_focus = true;
+        }
+        if refresh_focus {
+            self.refresh_create_dialog_focus_trap();
         }
     }
 }

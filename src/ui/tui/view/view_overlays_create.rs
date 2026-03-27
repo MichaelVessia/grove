@@ -89,7 +89,7 @@ impl GroveApp {
                 .collect::<Vec<String>>()
                 .join(", ")
         };
-        let focused = |field| dialog.focused_field == field;
+        let focused = |field| self.dialog_focus_is(create_dialog_focus_id(field));
         let fit = |text: &str| {
             let text = ftui::text::truncate_with_ellipsis(text, content_width, "…");
             format!(
