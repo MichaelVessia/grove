@@ -102,7 +102,7 @@ impl GroveApp {
 
         let mut confirm_delete = false;
         let mut cancel_dialog = false;
-        let Some(focused_field) = self.delete_dialog().map(|dialog| dialog.focused_field) else {
+        let Some(focused_field) = self.current_delete_dialog_focus_field() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -218,11 +218,6 @@ impl GroveApp {
             is_missing,
             delete_local_branch: is_missing && !is_base_task,
             kill_tmux_sessions: true,
-            focused_field: if is_base_task {
-                DeleteDialogField::KillTmuxSessions
-            } else {
-                DeleteDialogField::DeleteLocalBranch
-            },
         });
         self.log_dialog_event_with_fields(
             "delete",
@@ -280,11 +275,6 @@ impl GroveApp {
             is_missing,
             delete_local_branch: is_missing && !is_main_worktree,
             kill_tmux_sessions: true,
-            focused_field: if is_main_worktree {
-                DeleteDialogField::KillTmuxSessions
-            } else {
-                DeleteDialogField::DeleteLocalBranch
-            },
         });
         self.log_dialog_event_with_fields(
             "delete",

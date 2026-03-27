@@ -27,10 +27,7 @@ impl GroveApp {
 
         let mut confirm_update = false;
         let mut cancel_dialog = false;
-        let Some(focused_field) = self
-            .update_from_base_dialog()
-            .map(|dialog| dialog.focused_field)
-        else {
+        let Some(focused_field) = self.current_update_from_base_dialog_focus_field() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -131,7 +128,6 @@ impl GroveApp {
             workspace_branch: workspace.branch.clone(),
             workspace_path: workspace.path.clone(),
             base_branch: base_branch.clone(),
-            focused_field: UpdateFromBaseDialogField::UpdateButton,
         });
         self.log_dialog_event_with_fields(
             "update_from_base",

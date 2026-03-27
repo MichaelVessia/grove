@@ -1122,7 +1122,6 @@ impl GroveApp {
                     tab_id: tab.id,
                     session_name: session_name.to_string(),
                 },
-                focused_field: ConfirmDialogField::CancelButton,
             });
             return;
         }

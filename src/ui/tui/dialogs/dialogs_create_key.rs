@@ -156,7 +156,7 @@ impl GroveApp {
             key_event.code == KeyCode::Char(']') && key_event.modifiers == Modifiers::ALT;
 
         self.sync_active_dialog_focus_field();
-        let Some(focused_field) = self.create_dialog().map(|dialog| dialog.focused_field) else {
+        let Some(focused_field) = self.current_create_dialog_focus_field() else {
             return;
         };
 
@@ -330,7 +330,6 @@ impl GroveApp {
                 dialog.tab.previous()
             };
             dialog.project_picker = None;
-            dialog.focused_field = dialog.first_field();
             refresh_focus = true;
         }
         if refresh_focus {

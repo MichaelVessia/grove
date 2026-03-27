@@ -127,13 +127,12 @@ impl GroveApp {
         let mut add_dialog = ProjectAddDialogState {
             path_input: TextInput::new().with_focused(true),
             name_input: TextInput::new(),
-            focused_field: ProjectAddDialogField::Path,
             path_matches: Vec::new(),
             path_match_list: ListState::default(),
             cached_search_root: None,
             cached_repo_roots: Vec::new(),
         };
-        add_dialog.sync_focus();
+        add_dialog.sync_focus(Some(ProjectAddDialogField::Path));
         project_dialog.add_dialog = Some(add_dialog);
         self.open_project_add_dialog_focus_trap(ProjectAddDialogField::Path);
         self.sync_active_dialog_focus_field();

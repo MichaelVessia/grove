@@ -239,18 +239,18 @@ mod tests {
         FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT, FOCUS_ID_WORKSPACE_LIST, GroveApp,
         HIT_ID_CREATE_DIALOG_TAB, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_PROJECT_ADD_RESULTS_LIST,
         HIT_ID_PROJECT_DIALOG_LIST, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK,
-        HIT_ID_WORKSPACE_ROW, HelpHintContext, LaunchDialogField, LaunchDialogState,
-        LaunchDialogTarget, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField,
-        MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification,
-        PreviewPollCompletion, PreviewSessionGeometry, PreviewStreamConnected,
-        PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput, PreviewStreamSource,
-        PreviewTab, ProjectAddDialogField, ProjectDefaultsDialogField, PullUpstreamDialogField,
+        HIT_ID_WORKSPACE_ROW, HelpHintContext, LaunchDialogState, LaunchDialogTarget,
+        LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion,
+        Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
+        PreviewSessionGeometry, PreviewStreamConnected, PreviewStreamDisconnected,
+        PreviewStreamEvent, PreviewStreamOutput, PreviewStreamSource, PreviewTab,
+        ProjectAddDialogField, ProjectDefaultsDialogField, PullUpstreamDialogField,
         RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion,
-        StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
-        TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WorkspaceAttention,
-        WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind,
-        WorkspaceTabRuntimeState, decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data,
-        packed, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
+        StartAgentConfigState, StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput,
+        UiCommand, UpdateFromBaseDialogField, WorkspaceAttention, WorkspaceShellLaunchCompletion,
+        WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind, WorkspaceTabRuntimeState,
+        decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data, packed,
+        parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
     use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
     use crate::application::interactive::InteractiveState;
@@ -4474,7 +4474,6 @@ mod tests {
                 String::new(),
                 PermissionMode::Default,
             ),
-            focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
 
         with_rendered_frame(&app, 80, 24, |frame| {
@@ -4505,7 +4504,6 @@ mod tests {
                 String::new(),
                 PermissionMode::Default,
             ),
-            focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
 
         with_rendered_frame(&app, 80, 24, |frame| {
@@ -4917,7 +4915,6 @@ mod tests {
         app.open_create_dialog();
         let dialog = app.create_dialog_mut().expect("dialog should open");
         dialog.tab = CreateDialogTab::PullRequest;
-        dialog.focused_field = CreateDialogField::Project;
         let _ = dialog;
         app.refresh_active_dialog_focus_trap();
 
@@ -5028,7 +5025,7 @@ mod tests {
             Some(CreateDialogTab::Manual)
         );
         assert_eq!(
-            app.create_dialog().map(|dialog| dialog.focused_field),
+            app.current_create_dialog_focus_field(),
             Some(CreateDialogField::WorkspaceName)
         );
 
@@ -5046,7 +5043,7 @@ mod tests {
             Some(CreateDialogTab::PullRequest)
         );
         assert_eq!(
-            app.create_dialog().map(|dialog| dialog.focused_field),
+            app.current_create_dialog_focus_field(),
             Some(CreateDialogField::Project)
         );
 
@@ -5064,7 +5061,7 @@ mod tests {
             Some(CreateDialogTab::Manual)
         );
         assert_eq!(
-            app.create_dialog().map(|dialog| dialog.focused_field),
+            app.current_create_dialog_focus_field(),
             Some(CreateDialogField::WorkspaceName)
         );
     }
@@ -5130,7 +5127,7 @@ mod tests {
             Some(CreateDialogTab::PullRequest)
         );
         assert_eq!(
-            app.create_dialog().map(|dialog| dialog.focused_field),
+            app.current_create_dialog_focus_field(),
             Some(CreateDialogField::Project)
         );
 
@@ -5148,7 +5145,7 @@ mod tests {
             Some(CreateDialogTab::Manual)
         );
         assert_eq!(
-            app.create_dialog().map(|dialog| dialog.focused_field),
+            app.current_create_dialog_focus_field(),
             Some(CreateDialogField::WorkspaceName)
         );
     }
@@ -5171,7 +5168,7 @@ mod tests {
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
         );
         assert_eq!(
-            app.create_dialog().map(|dialog| dialog.focused_field),
+            app.current_create_dialog_focus_field(),
             Some(CreateDialogField::PullRequestUrl)
         );
 
@@ -6461,7 +6458,7 @@ mod tests {
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
         assert!(app.settings_dialog().is_some());
         assert_eq!(
-            app.settings_dialog().map(|dialog| dialog.focused_field),
+            app.current_settings_dialog_focus_field(),
             Some(SettingsDialogField::Theme)
         );
 
@@ -8007,7 +8004,6 @@ mod tests {
                 String::new(),
                 PermissionMode::Default,
             ),
-            focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
 
         with_rendered_frame(&app, 60, 24, |frame| {
@@ -8213,7 +8209,6 @@ mod tests {
                 String::new(),
                 PermissionMode::Default,
             ),
-            focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
 
         with_rendered_frame(&app, 140, 24, |frame| {
@@ -8963,7 +8958,7 @@ mod tests {
                 );
                 assert_eq!(app.state.selected_index, 1);
                 assert_eq!(
-                    app.stop_dialog().map(|dialog| dialog.focused_field),
+                    app.current_stop_dialog_focus_field(),
                     Some(StopDialogField::CancelButton)
                 );
 
@@ -9398,7 +9393,7 @@ mod tests {
                 assert!(app.create_dialog().is_some());
                 assert!(app.launch_dialog().is_none());
                 assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.focused_field),
+                    app.current_create_dialog_focus_field(),
                     Some(CreateDialogField::Project)
                 );
                 assert!(commands.borrow().is_empty());
@@ -9417,7 +9412,6 @@ mod tests {
                         String::new(),
                         PermissionMode::Default,
                     ),
-                    focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Name),
                 });
 
                 ftui::Model::update(
@@ -9447,7 +9441,6 @@ mod tests {
                         String::new(),
                         PermissionMode::Default,
                     ),
-                    focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Name),
                 });
 
                 app.confirm_start_dialog();
@@ -9480,7 +9473,6 @@ mod tests {
                         String::new(),
                         PermissionMode::Default,
                     ),
-                    focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Name),
                 });
 
                 app.confirm_start_dialog();
@@ -9513,7 +9505,6 @@ mod tests {
                         String::new(),
                         PermissionMode::Default,
                     ),
-                    focused_field: LaunchDialogField::StartButton,
                 });
 
                 app.confirm_start_dialog();
@@ -9547,7 +9538,6 @@ mod tests {
                         String::new(),
                         PermissionMode::Default,
                     ),
-                    focused_field: LaunchDialogField::StartButton,
                 });
 
                 app.confirm_start_dialog();
@@ -9586,7 +9576,6 @@ mod tests {
                         String::new(),
                         PermissionMode::Default,
                     ),
-                    focused_field: LaunchDialogField::StartButton,
                 });
 
                 app.confirm_start_dialog();
@@ -13454,7 +13443,7 @@ mod tests {
                 );
                 assert!(!matches!(cmd, Cmd::Quit));
                 assert_eq!(
-                    app.confirm_dialog().map(|dialog| dialog.focused_field),
+                    app.current_confirm_dialog_focus_field(),
                     Some(crate::ui::tui::ConfirmDialogField::CancelButton)
                 );
             }
@@ -13553,7 +13542,7 @@ mod tests {
                 );
                 assert!(!matches!(cmd, Cmd::Quit));
                 assert_eq!(
-                    app.confirm_dialog().map(|dialog| dialog.focused_field),
+                    app.current_confirm_dialog_focus_field(),
                     Some(crate::ui::tui::ConfirmDialogField::CancelButton)
                 );
             }
@@ -13597,7 +13586,7 @@ mod tests {
 
                 assert!(!matches!(cmd, Cmd::Quit));
                 assert_eq!(
-                    app.confirm_dialog().map(|dialog| dialog.focused_field),
+                    app.current_confirm_dialog_focus_field(),
                     Some(crate::ui::tui::ConfirmDialogField::CancelButton)
                 );
             }
@@ -14161,7 +14150,7 @@ mod tests {
                 );
 
                 assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.focused_field),
+                    app.current_create_dialog_focus_field(),
                     Some(CreateDialogField::WorkspaceName)
                 );
             }
@@ -14182,7 +14171,10 @@ mod tests {
                 assert!(dialog.is_main);
                 assert_eq!(dialog.branch, "main");
                 assert_eq!(dialog.base_branch, "main");
-                assert_eq!(dialog.focused_field, EditDialogField::BaseBranch);
+                assert_eq!(
+                    app.current_edit_dialog_focus_field(),
+                    Some(EditDialogField::BaseBranch)
+                );
             }
 
             #[test]
@@ -14410,7 +14402,7 @@ mod tests {
                 app.open_edit_dialog();
 
                 assert_eq!(
-                    app.edit_dialog().map(|dialog| dialog.focused_field),
+                    app.current_edit_dialog_focus_field(),
                     Some(EditDialogField::BaseBranch)
                 );
                 ftui::Model::update(
@@ -14422,7 +14414,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.edit_dialog().map(|dialog| dialog.focused_field),
+                    app.current_edit_dialog_focus_field(),
                     Some(EditDialogField::SaveButton)
                 );
                 ftui::Model::update(
@@ -14434,7 +14426,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.edit_dialog().map(|dialog| dialog.focused_field),
+                    app.current_edit_dialog_focus_field(),
                     Some(EditDialogField::BaseBranch)
                 );
             }
@@ -14457,7 +14449,10 @@ mod tests {
                 };
                 assert_eq!(dialog.task.name, "feature-a");
                 assert_eq!(dialog.task.branch, "feature-a");
-                assert_eq!(dialog.focused_field, DeleteDialogField::DeleteLocalBranch);
+                assert_eq!(
+                    app.current_delete_dialog_focus_field(),
+                    Some(DeleteDialogField::DeleteLocalBranch)
+                );
                 assert!(dialog.kill_tmux_sessions);
             }
 
@@ -14523,7 +14518,7 @@ mod tests {
                 );
                 assert_eq!(app.state.selected_index, 1);
                 assert_eq!(
-                    app.delete_dialog().map(|dialog| dialog.focused_field),
+                    app.current_delete_dialog_focus_field(),
                     Some(DeleteDialogField::KillTmuxSessions)
                 );
 
@@ -14549,7 +14544,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.delete_dialog().map(|dialog| dialog.focused_field),
+                    app.current_delete_dialog_focus_field(),
                     Some(DeleteDialogField::KillTmuxSessions)
                 );
                 ftui::Model::update(
@@ -14561,7 +14556,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.delete_dialog().map(|dialog| dialog.focused_field),
+                    app.current_delete_dialog_focus_field(),
                     Some(DeleteDialogField::DeleteLocalBranch)
                 );
             }
@@ -14577,7 +14572,7 @@ mod tests {
                     Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
                 );
                 assert_eq!(
-                    app.delete_dialog().map(|dialog| dialog.focused_field),
+                    app.current_delete_dialog_focus_field(),
                     Some(DeleteDialogField::KillTmuxSessions)
                 );
                 assert!(
@@ -16251,6 +16246,19 @@ mod tests {
             }
 
             #[test]
+            fn launch_dialog_status_field_follows_focus_manager() {
+                let mut app = fixture_app();
+                select_workspace(&mut app, 1);
+
+                app.open_start_dialog();
+                let _ = app
+                    .focus_manager
+                    .focus(crate::ui::tui::FOCUS_ID_LAUNCH_CANCEL_BUTTON);
+
+                assert!(app.status_bar_line().contains("field=cancel"));
+            }
+
+            #[test]
             fn launch_dialog_focus_enter_uses_ftui_focused_cancel_button() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
@@ -17004,7 +17012,6 @@ mod tests {
                     .expect("create dialog should be open");
                 dialog.task_name = "flohome-launch".to_string();
                 dialog.selected_repository_indices = vec![0, 1];
-                dialog.focused_field = CreateDialogField::CreateButton;
                 let _ = dialog;
                 app.focus_dialog_field(crate::ui::tui::FOCUS_ID_CREATE_CREATE_BUTTON);
 
@@ -17123,7 +17130,6 @@ mod tests {
                 dialog.project_index = 0;
                 dialog.selected_repository_indices = vec![0, 1];
                 dialog.pr_url = "https://github.com/flocasts/flohome/pull/123".to_string();
-                dialog.focused_field = CreateDialogField::CreateButton;
                 let _ = dialog;
                 app.refresh_active_dialog_focus_trap();
                 app.focus_dialog_field(crate::ui::tui::FOCUS_ID_CREATE_CREATE_BUTTON);
@@ -17190,7 +17196,6 @@ mod tests {
                     .expect("create dialog should be open");
                 dialog.register_as_base = true;
                 dialog.project_index = 0;
-                dialog.focused_field = CreateDialogField::CreateButton;
                 let _ = dialog;
                 app.refresh_active_dialog_focus_trap();
                 app.focus_dialog_field(crate::ui::tui::FOCUS_ID_CREATE_CREATE_BUTTON);
@@ -17388,7 +17393,6 @@ mod tests {
 
                 let dialog = app.create_dialog_mut().expect("create dialog should open");
                 dialog.project_index = 1;
-                dialog.focused_field = CreateDialogField::CreateButton;
                 let _ = dialog;
                 app.focus_dialog_field(crate::ui::tui::FOCUS_ID_CREATE_CREATE_BUTTON);
 
@@ -18117,9 +18121,7 @@ mod tests {
                 );
 
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_add_dialog_focus_field(),
                     Some(ProjectAddDialogField::Path)
                 );
                 ftui::Model::update(
@@ -18173,9 +18175,7 @@ mod tests {
                     Some(0)
                 );
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_add_dialog_focus_field(),
                     Some(ProjectAddDialogField::Path)
                 );
             }
@@ -18202,9 +18202,7 @@ mod tests {
                 );
 
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_add_dialog_focus_field(),
                     Some(ProjectAddDialogField::Name)
                 );
                 ftui::Model::update(
@@ -18225,9 +18223,7 @@ mod tests {
                 );
 
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_add_dialog_focus_field(),
                     Some(ProjectAddDialogField::Name)
                 );
             }
@@ -18249,9 +18245,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_add_dialog_focus_field(),
                     Some(ProjectAddDialogField::Path)
                 );
 
@@ -18321,9 +18315,7 @@ mod tests {
                     Some("grove".to_string())
                 );
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_add_dialog_focus_field(),
                     Some(ProjectAddDialogField::AddButton)
                 );
             }
@@ -18385,9 +18377,7 @@ mod tests {
                     Some(repo_root.display().to_string())
                 );
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_add_dialog_focus_field(),
                     Some(ProjectAddDialogField::AddButton)
                 );
             }
@@ -18536,9 +18526,7 @@ mod tests {
                     Some(String::new())
                 );
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_add_dialog_focus_field(),
                     Some(ProjectAddDialogField::Path)
                 );
             }
@@ -18605,9 +18593,7 @@ mod tests {
                     Some(partial_path.display().to_string())
                 );
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_add_dialog_focus_field(),
                     Some(ProjectAddDialogField::Path)
                 );
             }
@@ -18800,9 +18786,7 @@ mod tests {
                 );
 
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.defaults_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_defaults_dialog_focus_field(),
                     Some(ProjectDefaultsDialogField::BaseBranch)
                 );
                 ftui::Model::update(
@@ -18814,9 +18798,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.defaults_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_defaults_dialog_focus_field(),
                     Some(ProjectDefaultsDialogField::WorkspaceInitCommand)
                 );
                 ftui::Model::update(
@@ -18828,9 +18810,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.defaults_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_defaults_dialog_focus_field(),
                     Some(ProjectDefaultsDialogField::BaseBranch)
                 );
             }
@@ -18853,9 +18833,7 @@ mod tests {
                 );
 
                 assert_eq!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.defaults_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
+                    app.current_project_defaults_dialog_focus_field(),
                     Some(ProjectDefaultsDialogField::BaseBranch)
                 );
 
@@ -19437,7 +19415,10 @@ mod tests {
                 assert_eq!(dialog.base_branch, "main");
                 assert!(dialog.cleanup_workspace);
                 assert!(dialog.cleanup_local_branch);
-                assert_eq!(dialog.focused_field, MergeDialogField::CleanupWorkspace);
+                assert_eq!(
+                    app.current_merge_dialog_focus_field(),
+                    Some(MergeDialogField::CleanupWorkspace)
+                );
             }
 
             #[test]
@@ -19490,7 +19471,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.merge_dialog().map(|dialog| dialog.focused_field),
+                    app.current_merge_dialog_focus_field(),
                     Some(MergeDialogField::CleanupLocalBranch)
                 );
                 ftui::Model::update(
@@ -19502,7 +19483,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.merge_dialog().map(|dialog| dialog.focused_field),
+                    app.current_merge_dialog_focus_field(),
                     Some(MergeDialogField::CleanupWorkspace)
                 );
             }
@@ -19552,8 +19533,8 @@ mod tests {
                 assert_eq!(dialog.workspace_branch, "feature-a");
                 assert_eq!(dialog.base_branch, "main");
                 assert_eq!(
-                    dialog.focused_field,
-                    UpdateFromBaseDialogField::UpdateButton
+                    app.current_update_from_base_dialog_focus_field(),
+                    Some(UpdateFromBaseDialogField::UpdateButton)
                 );
             }
 
@@ -19609,8 +19590,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.update_from_base_dialog()
-                        .map(|dialog| dialog.focused_field),
+                    app.current_update_from_base_dialog_focus_field(),
                     Some(UpdateFromBaseDialogField::CancelButton)
                 );
                 ftui::Model::update(
@@ -19622,8 +19602,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.update_from_base_dialog()
-                        .map(|dialog| dialog.focused_field),
+                    app.current_update_from_base_dialog_focus_field(),
                     Some(UpdateFromBaseDialogField::UpdateButton)
                 );
             }
@@ -19634,7 +19613,7 @@ mod tests {
                 app.open_settings_dialog();
 
                 assert_eq!(
-                    app.settings_dialog().map(|dialog| dialog.focused_field),
+                    app.current_settings_dialog_focus_field(),
                     Some(SettingsDialogField::Theme)
                 );
                 ftui::Model::update(
@@ -19646,7 +19625,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.settings_dialog().map(|dialog| dialog.focused_field),
+                    app.current_settings_dialog_focus_field(),
                     Some(SettingsDialogField::SaveButton)
                 );
                 ftui::Model::update(
@@ -19658,7 +19637,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.settings_dialog().map(|dialog| dialog.focused_field),
+                    app.current_settings_dialog_focus_field(),
                     Some(SettingsDialogField::CancelButton)
                 );
                 ftui::Model::update(
@@ -19670,7 +19649,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.settings_dialog().map(|dialog| dialog.focused_field),
+                    app.current_settings_dialog_focus_field(),
                     Some(SettingsDialogField::SaveButton)
                 );
             }
@@ -19688,7 +19667,7 @@ mod tests {
                 );
 
                 assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.focused_field),
+                    app.current_create_dialog_focus_field(),
                     Some(CreateDialogField::RegisterAsBase)
                 );
             }
@@ -19716,7 +19695,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.focused_field),
+                    app.current_create_dialog_focus_field(),
                     Some(CreateDialogField::CancelButton)
                 );
                 ftui::Model::update(
@@ -19728,7 +19707,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.focused_field),
+                    app.current_create_dialog_focus_field(),
                     Some(CreateDialogField::CreateButton)
                 );
             }
@@ -19756,7 +19735,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.focused_field),
+                    app.current_create_dialog_focus_field(),
                     Some(CreateDialogField::CreateButton)
                 );
                 ftui::Model::update(
@@ -19768,7 +19747,7 @@ mod tests {
                     ),
                 );
                 assert_eq!(
-                    app.create_dialog().map(|dialog| dialog.focused_field),
+                    app.current_create_dialog_focus_field(),
                     Some(CreateDialogField::Project)
                 );
             }
@@ -19915,7 +19894,10 @@ mod tests {
             assert_eq!(dialog.base_branch, "main");
             assert_eq!(dialog.workspace_name, "grove");
             assert_eq!(dialog.workspace_path, PathBuf::from("/repos/grove"));
-            assert_eq!(dialog.focused_field, PullUpstreamDialogField::PullButton);
+            assert_eq!(
+                app.current_pull_upstream_dialog_focus_field(),
+                Some(PullUpstreamDialogField::PullButton)
+            );
         }
 
         #[test]

@@ -70,25 +70,33 @@ impl GroveApp {
                 false
             }
             KeybindingAction::ClearInput => {
+                let launch_focus = self.current_launch_dialog_focus_field();
                 if let Some(dialog) = self.launch_dialog_mut() {
-                    match dialog.focused_field {
-                        LaunchDialogField::Agent => {}
-                        LaunchDialogField::StartConfig(field) => dialog.start_config.clear(field),
-                        LaunchDialogField::StartButton | LaunchDialogField::CancelButton => {}
+                    match launch_focus {
+                        Some(LaunchDialogField::Agent) => {}
+                        Some(LaunchDialogField::StartConfig(field)) => {
+                            dialog.start_config.clear(field);
+                        }
+                        Some(LaunchDialogField::StartButton | LaunchDialogField::CancelButton)
+                        | None => {}
                     }
                     return false;
                 }
+                let create_focus = self.current_create_dialog_focus_field();
                 if let Some(dialog) = self.create_dialog_mut() {
-                    match dialog.focused_field {
-                        CreateDialogField::WorkspaceName if !dialog.register_as_base => {
+                    match create_focus {
+                        Some(CreateDialogField::WorkspaceName) if !dialog.register_as_base => {
                             dialog.task_name.clear();
                         }
-                        CreateDialogField::PullRequestUrl => dialog.pr_url.clear(),
-                        CreateDialogField::WorkspaceName
-                        | CreateDialogField::RegisterAsBase
-                        | CreateDialogField::Project
-                        | CreateDialogField::CreateButton
-                        | CreateDialogField::CancelButton => {}
+                        Some(CreateDialogField::PullRequestUrl) => dialog.pr_url.clear(),
+                        Some(
+                            CreateDialogField::WorkspaceName
+                            | CreateDialogField::RegisterAsBase
+                            | CreateDialogField::Project
+                            | CreateDialogField::CreateButton
+                            | CreateDialogField::CancelButton,
+                        )
+                        | None => {}
                     }
                 }
                 false

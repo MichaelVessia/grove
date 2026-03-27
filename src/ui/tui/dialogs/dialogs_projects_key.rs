@@ -2,34 +2,7 @@ use super::*;
 
 impl GroveApp {
     fn handle_project_defaults_dialog_key(&mut self, key_event: KeyEvent) {
-        let Some(focused_field) = self.project_dialog().and_then(|dialog| {
-            dialog.defaults_dialog.as_ref().map(|defaults_dialog| {
-                match self.focus_manager.current() {
-                    Some(FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT) => {
-                        ProjectDefaultsDialogField::BaseBranch
-                    }
-                    Some(FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT) => {
-                        ProjectDefaultsDialogField::WorkspaceInitCommand
-                    }
-                    Some(FOCUS_ID_PROJECT_DEFAULTS_CLAUDE_ENV_INPUT) => {
-                        ProjectDefaultsDialogField::ClaudeEnv
-                    }
-                    Some(FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT) => {
-                        ProjectDefaultsDialogField::CodexEnv
-                    }
-                    Some(FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT) => {
-                        ProjectDefaultsDialogField::OpenCodeEnv
-                    }
-                    Some(FOCUS_ID_PROJECT_DEFAULTS_SAVE_BUTTON) => {
-                        ProjectDefaultsDialogField::SaveButton
-                    }
-                    Some(FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON) => {
-                        ProjectDefaultsDialogField::CancelButton
-                    }
-                    _ => defaults_dialog.focused_field,
-                }
-            })
-        }) else {
+        let Some(focused_field) = self.current_project_defaults_dialog_focus_field() else {
             return;
         };
 
@@ -170,18 +143,7 @@ impl GroveApp {
     }
 
     pub(super) fn handle_project_add_dialog_key(&mut self, key_event: KeyEvent) {
-        let Some(focused_field) = self.project_dialog().and_then(|dialog| {
-            dialog
-                .add_dialog
-                .as_ref()
-                .map(|add_dialog| match self.focus_manager.current() {
-                    Some(FOCUS_ID_PROJECT_ADD_PATH_INPUT) => ProjectAddDialogField::Path,
-                    Some(FOCUS_ID_PROJECT_ADD_NAME_INPUT) => ProjectAddDialogField::Name,
-                    Some(FOCUS_ID_PROJECT_ADD_ADD_BUTTON) => ProjectAddDialogField::AddButton,
-                    Some(FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON) => ProjectAddDialogField::CancelButton,
-                    _ => add_dialog.focused_field,
-                })
-        }) else {
+        let Some(focused_field) = self.current_project_add_dialog_focus_field() else {
             return;
         };
 

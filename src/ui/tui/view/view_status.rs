@@ -78,17 +78,25 @@ impl GroveApp {
             DiscoveryState::Empty => "Status: no worktrees found".to_string(),
             DiscoveryState::Ready => {
                 if let Some(dialog) = self.create_dialog() {
+                    let field_label = self
+                        .current_create_dialog_focus_field()
+                        .map(CreateDialogField::label)
+                        .unwrap_or("unknown");
                     return format!(
                         "Status: new task, field={}, name=\"{}\", pr_url=\"{}\"",
-                        dialog.focused_field.label(),
+                        field_label,
                         dialog.task_name,
                         dialog.pr_url.replace('\n', "\\n"),
                     );
                 }
                 if let Some(dialog) = self.launch_dialog() {
+                    let field_label = self
+                        .current_launch_dialog_focus_field()
+                        .map(LaunchDialogField::label)
+                        .unwrap_or("unknown");
                     return format!(
                         "Status: start agent, field={}, perm={}, name=\"{}\", prompt=\"{}\", init=\"{}\"",
-                        dialog.focused_field.label(),
+                        field_label,
                         dialog.start_config.permission_mode.label(),
                         dialog.start_config.name.replace('\n', "\\n"),
                         dialog.start_config.prompt.replace('\n', "\\n"),

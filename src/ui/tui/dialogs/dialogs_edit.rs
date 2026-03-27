@@ -25,7 +25,7 @@ impl GroveApp {
 
     pub(super) fn handle_edit_dialog_key(&mut self, key_event: KeyEvent) {
         self.sync_active_dialog_focus_field();
-        let Some(focused_field) = self.edit_dialog().map(|dialog| dialog.focused_field) else {
+        let Some(focused_field) = self.current_edit_dialog_focus_field() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -170,7 +170,6 @@ impl GroveApp {
             branch: workspace.branch.clone(),
             base_branch: base_branch.clone(),
             was_running: has_running_tabs,
-            focused_field: EditDialogField::BaseBranch,
         });
         self.log_dialog_event_with_fields(
             "edit",

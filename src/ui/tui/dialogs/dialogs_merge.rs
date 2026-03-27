@@ -27,7 +27,7 @@ impl GroveApp {
 
         let mut confirm_merge = false;
         let mut cancel_dialog = false;
-        let Some(focused_field) = self.merge_dialog().map(|dialog| dialog.focused_field) else {
+        let Some(focused_field) = self.current_merge_dialog_focus_field() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -149,7 +149,6 @@ impl GroveApp {
             base_branch,
             cleanup_workspace: true,
             cleanup_local_branch: true,
-            focused_field: MergeDialogField::CleanupWorkspace,
         });
         self.log_dialog_event_with_fields(
             "merge",

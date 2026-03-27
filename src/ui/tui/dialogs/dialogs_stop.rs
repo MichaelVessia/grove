@@ -28,7 +28,7 @@ impl GroveApp {
 
         let mut confirm_stop = false;
         let mut cancel_dialog = false;
-        let Some(focused_field) = self.stop_dialog().map(|dialog| dialog.focused_field) else {
+        let Some(focused_field) = self.current_stop_dialog_focus_field() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -125,7 +125,6 @@ impl GroveApp {
             self.set_stop_dialog(StopDialogState {
                 workspace: workspace.clone(),
                 session_name: session_name.clone(),
-                focused_field: StopDialogField::StopButton,
             });
             self.log_dialog_event_with_fields(
                 "stop",
@@ -157,7 +156,6 @@ impl GroveApp {
         self.set_stop_dialog(StopDialogState {
             workspace: workspace.clone(),
             session_name: session_name.clone(),
-            focused_field: StopDialogField::StopButton,
         });
         self.log_dialog_event_with_fields(
             "stop",

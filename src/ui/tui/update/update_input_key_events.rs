@@ -49,9 +49,10 @@ impl GroveApp {
 
     fn apply_paste_to_create_dialog(&mut self, text: &str) -> bool {
         let mut handled = false;
+        let focused_field = self.current_create_dialog_focus_field();
         if let Some(dialog) = self.create_dialog_mut() {
-            match dialog.focused_field {
-                CreateDialogField::WorkspaceName if !dialog.register_as_base => {
+            match focused_field {
+                Some(CreateDialogField::WorkspaceName) if !dialog.register_as_base => {
                     handled = true;
                     for character in text.chars() {
                         if character.is_ascii_alphanumeric() || character == '-' || character == '_'
@@ -60,7 +61,7 @@ impl GroveApp {
                         }
                     }
                 }
-                CreateDialogField::PullRequestUrl => {
+                Some(CreateDialogField::PullRequestUrl) => {
                     handled = true;
                     for character in text.chars() {
                         if !character.is_control() {
@@ -68,11 +69,14 @@ impl GroveApp {
                         }
                     }
                 }
-                CreateDialogField::WorkspaceName
-                | CreateDialogField::RegisterAsBase
-                | CreateDialogField::Project
-                | CreateDialogField::CreateButton
-                | CreateDialogField::CancelButton => {}
+                Some(
+                    CreateDialogField::WorkspaceName
+                    | CreateDialogField::RegisterAsBase
+                    | CreateDialogField::Project
+                    | CreateDialogField::CreateButton
+                    | CreateDialogField::CancelButton,
+                )
+                | None => {}
             }
         }
         handled
@@ -107,21 +111,7 @@ impl GroveApp {
                     }
                     Some(FOCUS_ID_PROJECT_ADD_ADD_BUTTON)
                     | Some(FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON) => false,
-                    _ => match add_dialog.focused_field {
-                        ProjectAddDialogField::Path => {
-                            let changed = Self::paste_text_input(&mut add_dialog.path_input, text);
-                            if changed {
-                                post_action = PostAction::RefreshProjectAddMatches;
-                            }
-                            changed
-                        }
-                        ProjectAddDialogField::Name => {
-                            Self::paste_text_input(&mut add_dialog.name_input, text)
-                        }
-                        ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton => {
-                            false
-                        }
-                    },
+                    _ => false,
                 };
             } else if let Some(defaults_dialog) = project_dialog.defaults_dialog.as_mut() {
                 handled = match current_focus_id {
@@ -143,26 +133,7 @@ impl GroveApp {
                     }
                     Some(FOCUS_ID_PROJECT_DEFAULTS_SAVE_BUTTON)
                     | Some(FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON) => false,
-                    _ => match defaults_dialog.focused_field {
-                        ProjectDefaultsDialogField::BaseBranch => {
-                            Self::paste_text_input(&mut defaults_dialog.base_branch_input, text)
-                        }
-                        ProjectDefaultsDialogField::WorkspaceInitCommand => Self::paste_text_input(
-                            &mut defaults_dialog.workspace_init_command_input,
-                            text,
-                        ),
-                        ProjectDefaultsDialogField::ClaudeEnv => {
-                            Self::paste_text_input(&mut defaults_dialog.claude_env_input, text)
-                        }
-                        ProjectDefaultsDialogField::CodexEnv => {
-                            Self::paste_text_input(&mut defaults_dialog.codex_env_input, text)
-                        }
-                        ProjectDefaultsDialogField::OpenCodeEnv => {
-                            Self::paste_text_input(&mut defaults_dialog.opencode_env_input, text)
-                        }
-                        ProjectDefaultsDialogField::SaveButton
-                        | ProjectDefaultsDialogField::CancelButton => false,
-                    },
+                    _ => false,
                 };
             } else {
                 handled = Self::paste_text_input(&mut project_dialog.filter_input, text);

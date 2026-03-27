@@ -49,7 +49,12 @@ impl GroveApp {
         if let Some(dialog) = self.launch_dialog() {
             lines.push(String::new());
             lines.push("Start Agent Dialog".to_string());
-            lines.push(format!("Field: {}", dialog.focused_field.label()));
+            lines.push(format!(
+                "Field: {}",
+                self.current_launch_dialog_focus_field()
+                    .map(LaunchDialogField::label)
+                    .unwrap_or("unknown")
+            ));
             lines.push(format!(
                 "Name: {}",
                 if dialog.start_config.name.is_empty() {

@@ -239,7 +239,6 @@ impl GroveApp {
             project_index,
             selected_repository_indices: vec![project_index],
             project_picker: None,
-            focused_field: CreateDialogField::first_for_tab(CreateDialogTab::Manual),
         });
         self.log_dialog_event("create", "dialog_opened");
         self.session.last_tmux_error = None;
@@ -280,7 +279,6 @@ impl GroveApp {
             project_index,
             selected_repository_indices: vec![project_index],
             project_picker: None,
-            focused_field: CreateDialogField::Project,
         });
         self.log_dialog_event("create", "dialog_opened");
         self.session.last_tmux_error = None;

@@ -8,7 +8,6 @@ impl GroveApp {
 
         self.set_confirm_dialog(ConfirmDialogState {
             action: ConfirmDialogAction::QuitApp,
-            focused_field: ConfirmDialogField::CancelButton,
         });
         self.log_dialog_event_with_fields(
             "confirm",
@@ -87,7 +86,7 @@ impl GroveApp {
 
         let mut should_confirm = false;
         let mut should_cancel = false;
-        let Some(focused_field) = self.confirm_dialog().map(|dialog| dialog.focused_field) else {
+        let Some(focused_field) = self.current_confirm_dialog_focus_field() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL

@@ -25,7 +25,6 @@ impl GroveApp {
                 init_command.clone().unwrap_or_default(),
                 permission_mode,
             ),
-            focused_field: LaunchDialogField::Agent,
         });
         self.log_dialog_event_with_fields(
             "launch",
@@ -56,7 +55,7 @@ impl GroveApp {
             return;
         }
         self.sync_active_dialog_focus_field();
-        let Some(focused_field) = self.launch_dialog().map(|dialog| dialog.focused_field) else {
+        let Some(focused_field) = self.current_launch_dialog_focus_field() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -194,7 +193,6 @@ impl GroveApp {
                 init_command.clone().unwrap_or_default(),
                 permission_mode,
             ),
-            focused_field: LaunchDialogField::Agent,
         });
         self.log_dialog_event_with_fields(
             "launch",

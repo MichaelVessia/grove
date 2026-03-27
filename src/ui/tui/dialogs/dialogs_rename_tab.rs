@@ -24,7 +24,6 @@ impl GroveApp {
             tab_id: tab.id,
             current_title: tab.title.clone(),
             title: tab.title,
-            focused_field: RenameTabDialogField::Title,
         });
         self.log_dialog_event_with_fields(
             "rename_tab",
@@ -77,8 +76,7 @@ impl GroveApp {
 
     pub(super) fn handle_rename_tab_dialog_key(&mut self, key_event: KeyEvent) {
         self.sync_active_dialog_focus_field();
-        let Some(focused_field) = self.rename_tab_dialog().map(|dialog| dialog.focused_field)
-        else {
+        let Some(focused_field) = self.current_rename_tab_dialog_focus_field() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL

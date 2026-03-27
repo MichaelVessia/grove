@@ -24,9 +24,8 @@ impl GroveApp {
                 claude_env_input: TextInput::new().with_value(claude_env),
                 codex_env_input: TextInput::new().with_value(codex_env),
                 opencode_env_input: TextInput::new().with_value(opencode_env),
-                focused_field: ProjectDefaultsDialogField::BaseBranch,
             };
-            defaults_dialog.sync_focus();
+            defaults_dialog.sync_focus(Some(ProjectDefaultsDialogField::BaseBranch));
             project_dialog.defaults_dialog = Some(defaults_dialog);
         }
         self.open_project_defaults_dialog_focus_trap(ProjectDefaultsDialogField::BaseBranch);

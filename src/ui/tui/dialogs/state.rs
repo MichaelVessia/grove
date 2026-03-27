@@ -88,14 +88,12 @@ pub(super) struct LaunchDialogState {
     pub(super) target: LaunchDialogTarget,
     pub(super) agent: AgentType,
     pub(super) start_config: StartAgentConfigState,
-    pub(super) focused_field: LaunchDialogField,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StopDialogState {
     pub(super) workspace: Workspace,
     pub(super) session_name: String,
-    pub(super) focused_field: StopDialogField,
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -112,7 +110,6 @@ pub(super) enum ConfirmDialogAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ConfirmDialogState {
     pub(super) action: ConfirmDialogAction,
-    pub(super) focused_field: ConfirmDialogField,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,7 +117,6 @@ pub(super) struct SessionCleanupDialogState {
     pub(super) options: SessionCleanupOptions,
     pub(super) plan: SessionCleanupPlan,
     pub(super) last_error: Option<String>,
-    pub(super) focused_field: SessionCleanupDialogField,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,7 +127,6 @@ pub(super) struct DeleteDialogState {
     pub(super) is_missing: bool,
     pub(super) delete_local_branch: bool,
     pub(super) kill_tmux_sessions: bool,
-    pub(super) focused_field: DeleteDialogField,
 }
 
 impl DeleteDialogState {
@@ -173,7 +168,6 @@ pub(super) struct MergeDialogState {
     pub(super) base_branch: String,
     pub(super) cleanup_workspace: bool,
     pub(super) cleanup_local_branch: bool,
-    pub(super) focused_field: MergeDialogField,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,7 +180,6 @@ pub(super) struct UpdateFromBaseDialogState {
     pub(super) workspace_branch: String,
     pub(super) workspace_path: PathBuf,
     pub(super) base_branch: String,
-    pub(super) focused_field: UpdateFromBaseDialogField,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -240,7 +233,6 @@ pub(super) struct PullUpstreamDialogState {
     pub(super) workspace_path: PathBuf,
     pub(super) base_branch: String,
     pub(super) propagate_target_count: usize,
-    pub(super) focused_field: PullUpstreamDialogField,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -336,7 +328,6 @@ pub(super) struct CreateDialogState {
     pub(super) project_index: usize,
     pub(super) selected_repository_indices: Vec<usize>,
     pub(super) project_picker: Option<CreateProjectPickerState>,
-    pub(super) focused_field: CreateDialogField,
 }
 
 impl CreateDialogState {
@@ -401,7 +392,6 @@ pub(super) struct EditDialogState {
     pub(super) branch: String,
     pub(super) base_branch: String,
     pub(super) was_running: bool,
-    pub(super) focused_field: EditDialogField,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -410,7 +400,6 @@ pub(super) struct RenameTabDialogState {
     pub(super) tab_id: u64,
     pub(super) current_title: String,
     pub(super) title: String,
-    pub(super) focused_field: RenameTabDialogField,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -514,7 +503,6 @@ impl ProjectDialogState {
 pub(super) struct ProjectAddDialogState {
     pub(super) path_input: TextInput,
     pub(super) name_input: TextInput,
-    pub(super) focused_field: ProjectAddDialogField,
     pub(super) path_matches: Vec<ProjectPathMatch>,
     pub(super) path_match_list: ListState,
     pub(super) cached_search_root: Option<PathBuf>,
@@ -522,11 +510,11 @@ pub(super) struct ProjectAddDialogState {
 }
 
 impl ProjectAddDialogState {
-    pub(super) fn sync_focus(&mut self) {
+    pub(super) fn sync_focus(&mut self, focused_field: Option<ProjectAddDialogField>) {
         self.path_input
-            .set_focused(self.focused_field == ProjectAddDialogField::Path);
+            .set_focused(focused_field == Some(ProjectAddDialogField::Path));
         self.name_input
-            .set_focused(self.focused_field == ProjectAddDialogField::Name);
+            .set_focused(focused_field == Some(ProjectAddDialogField::Name));
     }
 
     pub(super) fn selected_path_match_index(&self) -> usize {
@@ -550,21 +538,20 @@ pub(super) struct ProjectDefaultsDialogState {
     pub(super) claude_env_input: TextInput,
     pub(super) codex_env_input: TextInput,
     pub(super) opencode_env_input: TextInput,
-    pub(super) focused_field: ProjectDefaultsDialogField,
 }
 
 impl ProjectDefaultsDialogState {
-    pub(super) fn sync_focus(&mut self) {
+    pub(super) fn sync_focus(&mut self, focused_field: Option<ProjectDefaultsDialogField>) {
         self.base_branch_input
-            .set_focused(self.focused_field == ProjectDefaultsDialogField::BaseBranch);
+            .set_focused(focused_field == Some(ProjectDefaultsDialogField::BaseBranch));
         self.workspace_init_command_input
-            .set_focused(self.focused_field == ProjectDefaultsDialogField::WorkspaceInitCommand);
+            .set_focused(focused_field == Some(ProjectDefaultsDialogField::WorkspaceInitCommand));
         self.claude_env_input
-            .set_focused(self.focused_field == ProjectDefaultsDialogField::ClaudeEnv);
+            .set_focused(focused_field == Some(ProjectDefaultsDialogField::ClaudeEnv));
         self.codex_env_input
-            .set_focused(self.focused_field == ProjectDefaultsDialogField::CodexEnv);
+            .set_focused(focused_field == Some(ProjectDefaultsDialogField::CodexEnv));
         self.opencode_env_input
-            .set_focused(self.focused_field == ProjectDefaultsDialogField::OpenCodeEnv);
+            .set_focused(focused_field == Some(ProjectDefaultsDialogField::OpenCodeEnv));
     }
 }
 
@@ -596,7 +583,6 @@ pub(super) enum ProjectDefaultsDialogField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SettingsDialogState {
-    pub(super) focused_field: SettingsDialogField,
     pub(super) initial_theme: ThemeName,
     pub(super) theme: ThemeName,
 }

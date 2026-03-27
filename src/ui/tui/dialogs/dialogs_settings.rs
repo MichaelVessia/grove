@@ -19,11 +19,13 @@ impl GroveApp {
     }
 
     fn cycle_settings_theme(&mut self, next: bool) {
+        let focused_theme =
+            self.current_settings_dialog_focus_field() == Some(SettingsDialogField::Theme);
         let Some(next_theme) = ({
             let Some(dialog) = self.settings_dialog_mut() else {
                 return;
             };
-            if dialog.focused_field != SettingsDialogField::Theme {
+            if !focused_theme {
                 return;
             }
 
@@ -91,7 +93,7 @@ impl GroveApp {
             KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') => {
                 self.cycle_settings_theme(true);
             }
-            KeyCode::Enter => match self.settings_dialog().map(|dialog| dialog.focused_field) {
+            KeyCode::Enter => match self.current_settings_dialog_focus_field() {
                 Some(SettingsDialogField::Theme) => self.cycle_settings_theme(true),
                 Some(SettingsDialogField::SaveButton) => post_action = PostAction::Save,
                 Some(SettingsDialogField::CancelButton) => post_action = PostAction::Cancel,
@@ -115,7 +117,6 @@ impl GroveApp {
             return;
         }
         self.set_settings_dialog(SettingsDialogState {
-            focused_field: SettingsDialogField::Theme,
             initial_theme: self.theme_name,
             theme: self.theme_name,
         });

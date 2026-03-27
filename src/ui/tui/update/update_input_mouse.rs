@@ -536,7 +536,6 @@ impl GroveApp {
             {
                 if let Some(dialog) = self.create_dialog_mut() {
                     dialog.tab = next_tab;
-                    dialog.focused_field = dialog.first_field();
                 }
                 self.refresh_active_dialog_focus_trap();
             }

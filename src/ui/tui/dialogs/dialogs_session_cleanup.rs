@@ -40,7 +40,6 @@ impl GroveApp {
             options,
             plan,
             last_error: None,
-            focused_field: SessionCleanupDialogField::IncludeStale,
         });
         self.log_dialog_event("session_cleanup", "dialog_opened");
     }
@@ -150,10 +149,7 @@ impl GroveApp {
         let mut refresh_options = None;
         let mut confirm_cleanup = false;
         let mut cancel_dialog = false;
-        let Some(focused_field) = self
-            .session_cleanup_dialog()
-            .map(|dialog| dialog.focused_field)
-        else {
+        let Some(focused_field) = self.current_session_cleanup_dialog_focus_field() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL

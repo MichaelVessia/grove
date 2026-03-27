@@ -27,10 +27,7 @@ impl GroveApp {
 
         let mut confirm_pull = false;
         let mut cancel_dialog = false;
-        let Some(focused_field) = self
-            .pull_upstream_dialog()
-            .map(|dialog| dialog.focused_field)
-        else {
+        let Some(focused_field) = self.current_pull_upstream_dialog_focus_field() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -136,7 +133,6 @@ impl GroveApp {
             workspace_path: workspace.path.clone(),
             base_branch: base_branch.clone(),
             propagate_target_count,
-            focused_field: PullUpstreamDialogField::PullButton,
         });
         self.log_dialog_event_with_fields(
             "pull_upstream",
