@@ -11478,6 +11478,62 @@ second row\n",
             }
 
             #[test]
+            fn cursor_capture_does_not_override_selected_terminal_cursor() {
+                let (mut app, _commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                select_workspace(&mut app, 1);
+                app.preview_tab = PreviewTab::Agent;
+                app.session.interactive = Some(InteractiveState::new(
+                    "%0".to_string(),
+                    feature_workspace_session(),
+                    Instant::now(),
+                    34,
+                    78,
+                ));
+                app.preview.bootstrap_selected_terminal(
+                    "first\nsecond\nthird\n",
+                    78,
+                    34,
+                    (2, 1),
+                    true,
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 1,
+                        live_capture: None,
+                        cursor_capture: Some(CursorCapture {
+                            session: feature_workspace_session(),
+                            capture_ms: 1,
+                            result: Ok("1 9 7 78 34".to_string()),
+                        }),
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let output_x = preview_inner.x;
+
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    assert_eq!(
+                        frame.cursor_position,
+                        Some((output_x.saturating_add(2), output_y.saturating_add(1)))
+                    );
+                    assert!(frame.cursor_visible);
+                });
+            }
+
+            #[test]
             fn interactive_selected_terminal_height_does_not_double_count_blank_tail() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -17132,7 +17188,7 @@ second row\n",
                     78,
                 ));
                 app.preview
-                    .bootstrap_selected_terminal("abcdef", 78, 34, (0, 0), true);
+                    .bootstrap_selected_terminal("abcdef", 78, 34, (5, 0), true);
 
                 ftui::Model::update(
                     &mut app,
@@ -17164,6 +17220,7 @@ second row\n",
                     .expect("selected terminal should remain available after resize");
                 assert_eq!(terminal.width, expected_width);
                 assert_eq!(terminal.height, expected_height);
+                assert_eq!(terminal.cursor, (5, 0));
                 assert_eq!(terminal.plain_lines[0], "abcdef");
             }
 
