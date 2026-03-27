@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/MichaelVessia/grove/compare/grove-v0.1.1...grove-v0.1.2) (2026-03-27)
+
+
+### Bug Fixes
+
+* use inputs.tag for homebrew tap version and URLs ([b45748b](https://github.com/MichaelVessia/grove/commit/b45748b4512f3421fb7b4e78ee9bea7c2f295225))
+
 ## [0.1.1](https://github.com/MichaelVessia/grove/compare/grove-v0.1.0...grove-v0.1.1) (2026-03-27)
 
 
