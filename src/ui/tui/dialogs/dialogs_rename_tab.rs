@@ -76,7 +76,9 @@ impl GroveApp {
     }
 
     pub(super) fn handle_rename_tab_dialog_key(&mut self, key_event: KeyEvent) {
-        let Some(dialog) = self.rename_tab_dialog_mut() else {
+        self.sync_active_dialog_focus_field();
+        let Some(focused_field) = self.rename_tab_dialog().map(|dialog| dialog.focused_field)
+        else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -90,16 +92,20 @@ impl GroveApp {
             Cancel,
         }
 
-        if dialog.focused_field == RenameTabDialogField::Title
+        if focused_field == RenameTabDialogField::Title
             && Self::allows_text_input_modifiers(key_event.modifiers)
         {
             match key_event.code {
                 KeyCode::Backspace => {
-                    dialog.title.pop();
+                    if let Some(dialog) = self.rename_tab_dialog_mut() {
+                        dialog.title.pop();
+                    }
                     return;
                 }
                 KeyCode::Char(character) if !character.is_control() => {
-                    dialog.title.push(character);
+                    if let Some(dialog) = self.rename_tab_dialog_mut() {
+                        dialog.title.push(character);
+                    }
                     return;
                 }
                 _ => {}
@@ -112,46 +118,46 @@ impl GroveApp {
                 post_action = PostAction::Cancel;
             }
             KeyCode::Tab | KeyCode::Down => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::BackTab | KeyCode::Up => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Char(_) if ctrl_n => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(_) if ctrl_p => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Left => {
-                if dialog.focused_field == RenameTabDialogField::CancelButton {
-                    dialog.focused_field = RenameTabDialogField::RenameButton;
+                if focused_field == RenameTabDialogField::CancelButton {
+                    self.focus_dialog_field(FOCUS_ID_RENAME_TAB_RENAME_BUTTON);
                 }
             }
             KeyCode::Right => {
-                if dialog.focused_field == RenameTabDialogField::RenameButton {
-                    dialog.focused_field = RenameTabDialogField::CancelButton;
+                if focused_field == RenameTabDialogField::RenameButton {
+                    self.focus_dialog_field(FOCUS_ID_RENAME_TAB_CANCEL_BUTTON);
                 }
             }
             KeyCode::Char('h')
                 if key_event.modifiers.is_empty()
-                    && dialog.focused_field != RenameTabDialogField::Title =>
+                    && focused_field != RenameTabDialogField::Title =>
             {
-                if dialog.focused_field == RenameTabDialogField::CancelButton {
-                    dialog.focused_field = RenameTabDialogField::RenameButton;
+                if focused_field == RenameTabDialogField::CancelButton {
+                    self.focus_dialog_field(FOCUS_ID_RENAME_TAB_RENAME_BUTTON);
                 }
             }
             KeyCode::Char('l')
                 if key_event.modifiers.is_empty()
-                    && dialog.focused_field != RenameTabDialogField::Title =>
+                    && focused_field != RenameTabDialogField::Title =>
             {
-                if dialog.focused_field == RenameTabDialogField::RenameButton {
-                    dialog.focused_field = RenameTabDialogField::CancelButton;
+                if focused_field == RenameTabDialogField::RenameButton {
+                    self.focus_dialog_field(FOCUS_ID_RENAME_TAB_CANCEL_BUTTON);
                 }
             }
-            KeyCode::Enter => match dialog.focused_field {
+            KeyCode::Enter => match focused_field {
                 RenameTabDialogField::Title => {
-                    dialog.focused_field = dialog.focused_field.next();
+                    self.focus_next_dialog_field();
                 }
                 RenameTabDialogField::RenameButton => post_action = PostAction::Rename,
                 RenameTabDialogField::CancelButton => post_action = PostAction::Cancel,

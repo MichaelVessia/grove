@@ -456,20 +456,12 @@ pub(super) enum EditDialogField {
     CancelButton,
 }
 
-cyclic_field_nav!(pub(super) EditDialogField {
-    BaseBranch, SaveButton, CancelButton,
-});
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RenameTabDialogField {
     Title,
     RenameButton,
     CancelButton,
 }
-
-cyclic_field_nav!(pub(super) RenameTabDialogField {
-    Title, RenameButton, CancelButton,
-});
 
 impl CreateDialogField {
     pub(super) fn first_for_tab(tab: CreateDialogTab) -> Self {

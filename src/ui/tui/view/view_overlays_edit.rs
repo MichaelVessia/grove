@@ -13,7 +13,6 @@ impl GroveApp {
         let dialog_height = 14u16;
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
-        let focused = |field| dialog.focused_field == field;
         let path = dialog.workspace_path.display().to_string();
         let running_note = if dialog.was_running && dialog.is_main {
             "Branch switches now, restart active tabs to apply change"
@@ -79,7 +78,7 @@ impl GroveApp {
                 branch_field_label,
                 dialog.base_branch.as_str(),
                 "main",
-                focused(EditDialogField::BaseBranch),
+                self.dialog_focus_is(FOCUS_ID_EDIT_BASE_BRANCH),
             ),
         ];
         lines.extend(modal_wrapped_hint_rows(
@@ -93,8 +92,8 @@ impl GroveApp {
             theme,
             "Save",
             "Cancel",
-            focused(EditDialogField::SaveButton),
-            focused(EditDialogField::CancelButton),
+            self.dialog_focus_is(FOCUS_ID_EDIT_SAVE_BUTTON),
+            self.dialog_focus_is(FOCUS_ID_EDIT_CANCEL_BUTTON),
         ));
         lines.extend(modal_wrapped_hint_rows(content_width, theme, edit_hint));
         let body = FtText::from_lines(lines);

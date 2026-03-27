@@ -15971,6 +15971,97 @@ mod tests {
             }
 
             #[test]
+            fn rename_tab_dialog_focus_enter_uses_ftui_focused_rename_button() {
+                let mut app = fixture_app();
+                focus_agent_preview_tab(&mut app);
+                let previous_title = app
+                    .selected_active_tab()
+                    .map(|tab| tab.title.clone())
+                    .expect("active tab should exist");
+
+                app.open_rename_tab_dialog();
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(crate::ui::tui::FOCUS_ID_RENAME_TAB_TITLE)
+                );
+
+                let _ = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Backspace).with_kind(KeyEventKind::Press)),
+                );
+                let _ = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('X')).with_kind(KeyEventKind::Press)),
+                );
+                let _ = app
+                    .focus_manager
+                    .focus(crate::ui::tui::FOCUS_ID_RENAME_TAB_RENAME_BUTTON);
+
+                let _ = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                let updated_title = app
+                    .selected_active_tab()
+                    .map(|tab| tab.title.clone())
+                    .expect("active tab should exist");
+                assert_eq!(
+                    updated_title,
+                    format!("{}X", &previous_title[..previous_title.len() - 1])
+                );
+                assert!(app.rename_tab_dialog().is_none());
+            }
+
+            #[test]
+            fn edit_dialog_focus_enter_uses_ftui_focused_save_button() {
+                let mut app = fixture_app();
+                let workspace_dir = unique_temp_workspace_dir("edit-focus-save");
+                select_workspace(&mut app, 1);
+                app.state.workspaces[1].path = workspace_dir.clone();
+
+                app.open_edit_dialog();
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(crate::ui::tui::FOCUS_ID_EDIT_BASE_BRANCH)
+                );
+                for _ in 0..4 {
+                    let _ = ftui::Model::update(
+                        &mut app,
+                        Msg::Key(KeyEvent::new(KeyCode::Backspace).with_kind(KeyEventKind::Press)),
+                    );
+                }
+                for character in ['d', 'e', 'v', 'e', 'l', 'o', 'p'] {
+                    let _ = ftui::Model::update(
+                        &mut app,
+                        Msg::Key(
+                            KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press),
+                        ),
+                    );
+                }
+                let _ = app
+                    .focus_manager
+                    .focus(crate::ui::tui::FOCUS_ID_EDIT_SAVE_BUTTON);
+
+                let _ = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(app.edit_dialog().is_none());
+                assert_eq!(
+                    app.state.workspaces[1].base_branch.as_deref(),
+                    Some("develop")
+                );
+                assert_eq!(
+                    fs::read_to_string(workspace_dir.join(".grove/base"))
+                        .expect("base marker should be readable")
+                        .trim(),
+                    "develop"
+                );
+            }
+
+            #[test]
             fn session_cleanup_focus_space_uses_ftui_focused_toggle() {
                 let mut app = fixture_app();
 

@@ -469,6 +469,56 @@ fn settings_dialog_focus_field(focus_id: Option<u64>) -> Option<SettingsDialogFi
     }
 }
 
+fn rename_tab_dialog_focus_ids() -> [u64; 3] {
+    [
+        FOCUS_ID_RENAME_TAB_TITLE,
+        FOCUS_ID_RENAME_TAB_RENAME_BUTTON,
+        FOCUS_ID_RENAME_TAB_CANCEL_BUTTON,
+    ]
+}
+
+fn rename_tab_dialog_focus_id(field: RenameTabDialogField) -> u64 {
+    match field {
+        RenameTabDialogField::Title => FOCUS_ID_RENAME_TAB_TITLE,
+        RenameTabDialogField::RenameButton => FOCUS_ID_RENAME_TAB_RENAME_BUTTON,
+        RenameTabDialogField::CancelButton => FOCUS_ID_RENAME_TAB_CANCEL_BUTTON,
+    }
+}
+
+fn rename_tab_dialog_focus_field(focus_id: Option<u64>) -> Option<RenameTabDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_RENAME_TAB_TITLE) => Some(RenameTabDialogField::Title),
+        Some(FOCUS_ID_RENAME_TAB_RENAME_BUTTON) => Some(RenameTabDialogField::RenameButton),
+        Some(FOCUS_ID_RENAME_TAB_CANCEL_BUTTON) => Some(RenameTabDialogField::CancelButton),
+        _ => None,
+    }
+}
+
+fn edit_dialog_focus_ids() -> [u64; 3] {
+    [
+        FOCUS_ID_EDIT_BASE_BRANCH,
+        FOCUS_ID_EDIT_SAVE_BUTTON,
+        FOCUS_ID_EDIT_CANCEL_BUTTON,
+    ]
+}
+
+fn edit_dialog_focus_id(field: EditDialogField) -> u64 {
+    match field {
+        EditDialogField::BaseBranch => FOCUS_ID_EDIT_BASE_BRANCH,
+        EditDialogField::SaveButton => FOCUS_ID_EDIT_SAVE_BUTTON,
+        EditDialogField::CancelButton => FOCUS_ID_EDIT_CANCEL_BUTTON,
+    }
+}
+
+fn edit_dialog_focus_field(focus_id: Option<u64>) -> Option<EditDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_EDIT_BASE_BRANCH) => Some(EditDialogField::BaseBranch),
+        Some(FOCUS_ID_EDIT_SAVE_BUTTON) => Some(EditDialogField::SaveButton),
+        Some(FOCUS_ID_EDIT_CANCEL_BUTTON) => Some(EditDialogField::CancelButton),
+        _ => None,
+    }
+}
+
 fn project_add_dialog_focus_ids() -> [u64; 4] {
     [
         FOCUS_ID_PROJECT_ADD_PATH_INPUT,
@@ -709,6 +759,16 @@ impl GroveApp {
                     dialog.focused_field = field;
                 }
             }
+            Some(ActiveDialog::Edit(dialog)) => {
+                if let Some(field) = edit_dialog_focus_field(focus_id) {
+                    dialog.focused_field = field;
+                }
+            }
+            Some(ActiveDialog::RenameTab(dialog)) => {
+                if let Some(field) = rename_tab_dialog_focus_field(focus_id) {
+                    dialog.focused_field = field;
+                }
+            }
             _ => {}
         }
     }
@@ -795,6 +855,22 @@ impl GroveApp {
                     settings_dialog_focus_id(dialog.focused_field),
                 );
             }
+            ActiveDialog::Edit(dialog) => {
+                let members = edit_dialog_focus_ids();
+                self.activate_focus_trap(
+                    FOCUS_GROUP_EDIT_DIALOG,
+                    &members,
+                    edit_dialog_focus_id(dialog.focused_field),
+                );
+            }
+            ActiveDialog::RenameTab(dialog) => {
+                let members = rename_tab_dialog_focus_ids();
+                self.activate_focus_trap(
+                    FOCUS_GROUP_RENAME_TAB_DIALOG,
+                    &members,
+                    rename_tab_dialog_focus_id(dialog.focused_field),
+                );
+            }
             _ => {}
         }
     }
@@ -839,6 +915,14 @@ impl GroveApp {
             }
             ActiveDialog::Settings(_) => {
                 let members = settings_dialog_focus_ids();
+                self.deactivate_focus_trap(&members);
+            }
+            ActiveDialog::Edit(_) => {
+                let members = edit_dialog_focus_ids();
+                self.deactivate_focus_trap(&members);
+            }
+            ActiveDialog::RenameTab(_) => {
+                let members = rename_tab_dialog_focus_ids();
                 self.deactivate_focus_trap(&members);
             }
             _ => {}

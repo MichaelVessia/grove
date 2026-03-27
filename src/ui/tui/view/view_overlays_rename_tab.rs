@@ -13,7 +13,6 @@ impl GroveApp {
         let dialog_height = 12u16;
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
-        let focused = |field| dialog.focused_field == field;
         let fit = |text: &str| {
             let text = ftui::text::truncate_with_ellipsis(text, content_width, "…");
             format!(
@@ -43,7 +42,7 @@ impl GroveApp {
                 "Title",
                 dialog.title.as_str(),
                 "Tab title",
-                focused(RenameTabDialogField::Title),
+                self.dialog_focus_is(FOCUS_ID_RENAME_TAB_TITLE),
             ),
             FtLine::raw(""),
             modal_actions_row(
@@ -51,8 +50,8 @@ impl GroveApp {
                 theme,
                 "Rename",
                 "Cancel",
-                focused(RenameTabDialogField::RenameButton),
-                focused(RenameTabDialogField::CancelButton),
+                self.dialog_focus_is(FOCUS_ID_RENAME_TAB_RENAME_BUTTON),
+                self.dialog_focus_is(FOCUS_ID_RENAME_TAB_CANCEL_BUTTON),
             ),
         ];
         lines.extend(modal_wrapped_hint_rows(
