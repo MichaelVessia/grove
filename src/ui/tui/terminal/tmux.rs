@@ -29,6 +29,9 @@ pub(in crate::ui::tui) trait TmuxInput {
         target_height: u16,
     ) -> std::io::Result<()>;
     fn paste_buffer(&self, target_session: &str, text: &str) -> std::io::Result<()>;
+    fn list_sessions_for_cleanup(&self) -> std::io::Result<String> {
+        Ok(String::new())
+    }
     fn list_sessions_with_tab_metadata(&self) -> std::io::Result<String> {
         Ok(String::new())
     }
@@ -96,6 +99,10 @@ impl TmuxInput for CommandTmuxInput {
         Self::list_sessions_with_tab_metadata_output()
     }
 
+    fn list_sessions_for_cleanup(&self) -> std::io::Result<String> {
+        Self::list_sessions_for_cleanup_output()
+    }
+
     fn supports_background_send(&self) -> bool {
         true
     }
@@ -110,6 +117,30 @@ impl TmuxInput for CommandTmuxInput {
 }
 
 impl CommandTmuxInput {
+    fn list_sessions_for_cleanup_output() -> std::io::Result<String> {
+        let output = std::process::Command::new("tmux")
+            .args([
+                "list-sessions",
+                "-F",
+                "#{session_name}\t#{session_created}\t#{session_attached}",
+            ])
+            .output()?;
+
+        if !output.status.success() {
+            let stderr = stderr_trimmed(&output);
+            if stderr.contains("no server running") {
+                return Ok(String::new());
+            }
+            return Err(std::io::Error::other(format!(
+                "tmux list-sessions failed: {stderr}"
+            )));
+        }
+
+        String::from_utf8(output.stdout).map_err(|error| {
+            std::io::Error::other(format!("tmux list-sessions utf8 decode failed: {error}"))
+        })
+    }
+
     fn list_sessions_with_tab_metadata_output() -> std::io::Result<String> {
         let output = std::process::Command::new("tmux")
             .args([

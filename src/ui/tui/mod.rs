@@ -431,6 +431,10 @@ mod tests {
             Ok(())
         }
 
+        fn list_sessions_for_cleanup(&self) -> std::io::Result<String> {
+            Ok(self.session_rows.clone())
+        }
+
         fn list_sessions_with_tab_metadata(&self) -> std::io::Result<String> {
             Ok(self.session_rows.clone())
         }
@@ -556,6 +560,10 @@ mod tests {
 
         fn paste_buffer(&self, _target_session: &str, _text: &str) -> std::io::Result<()> {
             Ok(())
+        }
+
+        fn list_sessions_for_cleanup(&self) -> std::io::Result<String> {
+            Ok(self.rows.clone())
         }
 
         fn list_sessions_with_tab_metadata(&self) -> std::io::Result<String> {
@@ -16316,6 +16324,29 @@ mod tests {
                 );
 
                 assert!(app.create_dialog().is_none());
+            }
+
+            #[test]
+            fn session_cleanup_dialog_uses_injected_tmux_session_rows() {
+                let synthetic_session = "grove-ws-ui-test-injected-cleanup-row";
+                let (mut app, _commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux_and_session_rows(
+                        WorkspaceStatus::Idle,
+                        Vec::new(),
+                        Vec::new(),
+                        format!("{synthetic_session}\t1700000000\t0"),
+                    );
+
+                app.open_session_cleanup_dialog();
+
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(crate::ui::tui::FOCUS_ID_SESSION_CLEANUP_INCLUDE_STALE)
+                );
+                assert!(app.session_cleanup_dialog().is_some_and(|dialog| {
+                    dialog.plan.candidates.len() == 1
+                        && dialog.plan.candidates[0].session_name == synthetic_session
+                }));
             }
 
             #[test]

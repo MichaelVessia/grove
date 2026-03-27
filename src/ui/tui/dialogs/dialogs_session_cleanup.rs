@@ -1,6 +1,23 @@
 use super::*;
 
 impl GroveApp {
+    fn plan_session_cleanup_dialog(
+        &self,
+        options: SessionCleanupOptions,
+    ) -> Result<SessionCleanupPlan, String> {
+        let session_rows = self
+            .tmux_input
+            .list_sessions_for_cleanup()
+            .map_err(|error| error.to_string())?;
+        Ok(
+            crate::application::session_cleanup::plan_session_cleanup_from_session_rows(
+                &self.state.tasks,
+                session_rows.as_str(),
+                options,
+            ),
+        )
+    }
+
     pub(super) fn open_session_cleanup_dialog(&mut self) {
         if self.modal_open() {
             return;
@@ -10,7 +27,7 @@ impl GroveApp {
             include_stale: false,
             include_attached: false,
         };
-        let plan = match plan_session_cleanup_for_tasks(&self.state.tasks, options) {
+        let plan = match self.plan_session_cleanup_dialog(options) {
             Ok(plan) => plan,
             Err(error) => {
                 self.session.last_tmux_error = Some(error.clone());
@@ -29,7 +46,7 @@ impl GroveApp {
     }
 
     fn refresh_session_cleanup_dialog_plan_with_options(&mut self, options: SessionCleanupOptions) {
-        let plan_result = plan_session_cleanup_for_tasks(&self.state.tasks, options);
+        let plan_result = self.plan_session_cleanup_dialog(options);
         let mut error_toast = None;
         if let Some(dialog) = self.session_cleanup_dialog_mut() {
             dialog.options = options;

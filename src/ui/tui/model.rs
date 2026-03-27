@@ -66,7 +66,6 @@ use crate::application::interactive::{
 use crate::application::preview::PreviewState;
 use crate::application::session_cleanup::{
     SessionCleanupOptions, SessionCleanupPlan, SessionCleanupReason, apply_session_cleanup,
-    plan_session_cleanup_for_tasks,
 };
 use crate::application::task_lifecycle::{
     AddWorktreeToTaskRequest, AddWorktreeToTaskResult, CreateTaskRequest, CreateTaskResult,

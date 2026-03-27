@@ -61,13 +61,34 @@ pub fn plan_session_cleanup_for_tasks(
     options: SessionCleanupOptions,
 ) -> Result<SessionCleanupPlan, String> {
     let sessions = list_tmux_sessions()?;
-    let now_unix_secs = now_unix_secs();
-    Ok(plan_session_cleanup_from_task_inputs(
+    Ok(plan_session_cleanup_for_session_rows_at_time(
         tasks,
         sessions.as_slice(),
         options,
-        now_unix_secs,
+        now_unix_secs(),
     ))
+}
+
+pub(crate) fn plan_session_cleanup_from_session_rows(
+    tasks: &[Task],
+    session_rows: &str,
+    options: SessionCleanupOptions,
+) -> SessionCleanupPlan {
+    plan_session_cleanup_for_session_rows_at_time(
+        tasks,
+        parse_tmux_sessions_output(session_rows).as_slice(),
+        options,
+        now_unix_secs(),
+    )
+}
+
+fn plan_session_cleanup_for_session_rows_at_time(
+    tasks: &[Task],
+    sessions: &[SessionRecord],
+    options: SessionCleanupOptions,
+    now_unix_secs: u64,
+) -> SessionCleanupPlan {
+    plan_session_cleanup_from_task_inputs(tasks, sessions, options, now_unix_secs)
 }
 
 pub fn apply_session_cleanup(plan: &SessionCleanupPlan) -> SessionCleanupApplyResult {
