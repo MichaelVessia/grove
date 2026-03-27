@@ -6995,6 +6995,32 @@ mod tests {
     }
 
     #[test]
+    fn preview_stream_stays_targeted_when_preview_pane_blurs() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+        let generation = app.polling.preview_stream.generation;
+        app.preview
+            .bootstrap_selected_terminal("stream snapshot\n", 80, 24, (0, 0), true);
+
+        let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
+        app.sync_preview_stream_target();
+
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(feature_workspace_session())
+        );
+        assert_eq!(app.polling.preview_stream.generation, generation);
+        assert!(app.preview.selected_terminal().is_some());
+    }
+
+    #[test]
     fn preview_stream_stays_targeted_in_interactive_mode() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;

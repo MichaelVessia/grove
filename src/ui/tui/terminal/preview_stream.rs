@@ -66,10 +66,14 @@ impl GroveApp {
     }
 
     fn desired_preview_stream_session(&self) -> Option<String> {
-        if !self.preview_focused() {
-            return None;
+        let selected_session = self.selected_live_preview_session_if_ready();
+        if self.preview_focused() {
+            return selected_session;
         }
-        self.selected_live_preview_session_if_ready()
+        if self.polling.preview_stream.target_session == selected_session {
+            return selected_session;
+        }
+        None
     }
 
     pub(in crate::ui::tui) fn preview_stream_subscription(
