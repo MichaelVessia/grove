@@ -136,5 +136,14 @@ impl GroveApp {
         add_dialog.sync_focus();
         project_dialog.add_dialog = Some(add_dialog);
         self.open_project_add_dialog_focus_trap(ProjectAddDialogField::Path);
+        self.sync_active_dialog_focus_field();
+    }
+
+    pub(super) fn close_project_add_dialog(&mut self) {
+        if let Some(project_dialog) = self.project_dialog_mut() {
+            project_dialog.add_dialog = None;
+        }
+        self.close_project_add_dialog_focus_trap();
+        self.sync_active_dialog_focus_field();
     }
 }

@@ -91,41 +91,78 @@ impl GroveApp {
 
         let mut handled = false;
         let mut post_action = PostAction::None;
+        let current_focus_id = self.focus_manager.current();
         if let Some(project_dialog) = self.project_dialog_mut() {
             if let Some(add_dialog) = project_dialog.add_dialog.as_mut() {
-                handled = match add_dialog.focused_field {
-                    ProjectAddDialogField::Path => {
+                handled = match current_focus_id {
+                    Some(FOCUS_ID_PROJECT_ADD_PATH_INPUT) => {
                         let changed = Self::paste_text_input(&mut add_dialog.path_input, text);
                         if changed {
                             post_action = PostAction::RefreshProjectAddMatches;
                         }
                         changed
                     }
-                    ProjectAddDialogField::Name => {
+                    Some(FOCUS_ID_PROJECT_ADD_NAME_INPUT) => {
                         Self::paste_text_input(&mut add_dialog.name_input, text)
                     }
-                    ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton => false,
+                    Some(FOCUS_ID_PROJECT_ADD_ADD_BUTTON)
+                    | Some(FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON) => false,
+                    _ => match add_dialog.focused_field {
+                        ProjectAddDialogField::Path => {
+                            let changed = Self::paste_text_input(&mut add_dialog.path_input, text);
+                            if changed {
+                                post_action = PostAction::RefreshProjectAddMatches;
+                            }
+                            changed
+                        }
+                        ProjectAddDialogField::Name => {
+                            Self::paste_text_input(&mut add_dialog.name_input, text)
+                        }
+                        ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton => {
+                            false
+                        }
+                    },
                 };
             } else if let Some(defaults_dialog) = project_dialog.defaults_dialog.as_mut() {
-                handled = match defaults_dialog.focused_field {
-                    ProjectDefaultsDialogField::BaseBranch => {
+                handled = match current_focus_id {
+                    Some(FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT) => {
                         Self::paste_text_input(&mut defaults_dialog.base_branch_input, text)
                     }
-                    ProjectDefaultsDialogField::WorkspaceInitCommand => Self::paste_text_input(
+                    Some(FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT) => Self::paste_text_input(
                         &mut defaults_dialog.workspace_init_command_input,
                         text,
                     ),
-                    ProjectDefaultsDialogField::ClaudeEnv => {
+                    Some(FOCUS_ID_PROJECT_DEFAULTS_CLAUDE_ENV_INPUT) => {
                         Self::paste_text_input(&mut defaults_dialog.claude_env_input, text)
                     }
-                    ProjectDefaultsDialogField::CodexEnv => {
+                    Some(FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT) => {
                         Self::paste_text_input(&mut defaults_dialog.codex_env_input, text)
                     }
-                    ProjectDefaultsDialogField::OpenCodeEnv => {
+                    Some(FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT) => {
                         Self::paste_text_input(&mut defaults_dialog.opencode_env_input, text)
                     }
-                    ProjectDefaultsDialogField::SaveButton
-                    | ProjectDefaultsDialogField::CancelButton => false,
+                    Some(FOCUS_ID_PROJECT_DEFAULTS_SAVE_BUTTON)
+                    | Some(FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON) => false,
+                    _ => match defaults_dialog.focused_field {
+                        ProjectDefaultsDialogField::BaseBranch => {
+                            Self::paste_text_input(&mut defaults_dialog.base_branch_input, text)
+                        }
+                        ProjectDefaultsDialogField::WorkspaceInitCommand => Self::paste_text_input(
+                            &mut defaults_dialog.workspace_init_command_input,
+                            text,
+                        ),
+                        ProjectDefaultsDialogField::ClaudeEnv => {
+                            Self::paste_text_input(&mut defaults_dialog.claude_env_input, text)
+                        }
+                        ProjectDefaultsDialogField::CodexEnv => {
+                            Self::paste_text_input(&mut defaults_dialog.codex_env_input, text)
+                        }
+                        ProjectDefaultsDialogField::OpenCodeEnv => {
+                            Self::paste_text_input(&mut defaults_dialog.opencode_env_input, text)
+                        }
+                        ProjectDefaultsDialogField::SaveButton
+                        | ProjectDefaultsDialogField::CancelButton => false,
+                    },
                 };
             } else {
                 handled = Self::paste_text_input(&mut project_dialog.filter_input, text);

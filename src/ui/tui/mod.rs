@@ -232,7 +232,10 @@ mod tests {
         CreateDialogField, CreateDialogTab, CreateWorkspaceCompletion, CreateWorkspaceRequest,
         CreateWorkspaceResult, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
         DeleteWorkspaceCompletion, EditDialogField, FOCUS_ID_CONFIRM_CANCEL_BUTTON,
-        FOCUS_ID_CONFIRM_CONFIRM_BUTTON, FOCUS_ID_PREVIEW, FOCUS_ID_PROJECT_ADD_PATH_INPUT,
+        FOCUS_ID_CONFIRM_CONFIRM_BUTTON, FOCUS_ID_PREVIEW, FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON,
+        FOCUS_ID_PROJECT_ADD_NAME_INPUT, FOCUS_ID_PROJECT_ADD_PATH_INPUT,
+        FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT, FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON,
+        FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT, FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT,
         FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT, FOCUS_ID_WORKSPACE_LIST, GroveApp,
         HIT_ID_CREATE_DIALOG_TAB, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_PROJECT_ADD_RESULTS_LIST,
         HIT_ID_PROJECT_DIALOG_LIST, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK,
@@ -15909,6 +15912,33 @@ mod tests {
             }
 
             #[test]
+            fn project_dialog_focus_trap_nested_defaults_dialog_restores_outer_focus() {
+                let mut app = fixture_app();
+
+                app.open_project_dialog();
+                assert!(app.focus_is_trapped());
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT)
+                );
+
+                app.open_selected_project_defaults_dialog();
+                assert!(app.focus_is_trapped());
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT)
+                );
+
+                app.handle_project_dialog_key(key_press(KeyCode::Escape));
+
+                assert!(app.focus_is_trapped());
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT)
+                );
+            }
+
+            #[test]
             fn confirm_dialog_focus_enter_uses_ftui_focused_button() {
                 let mut app = fixture_app();
 
@@ -17271,6 +17301,78 @@ mod tests {
             }
 
             #[test]
+            fn project_add_dialog_focus_tab_traverses_ftui_fields() {
+                let mut app = fixture_app();
+
+                app.open_project_dialog();
+                app.open_project_add_dialog();
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_ADD_PATH_INPUT)
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+                );
+
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_ADD_NAME_INPUT)
+                );
+            }
+
+            #[test]
+            fn project_add_dialog_focus_enter_uses_ftui_focused_cancel_button() {
+                let mut app = fixture_app();
+
+                app.open_project_dialog();
+                app.open_project_add_dialog();
+                app.focus_dialog_field(FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .is_none()
+                );
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT)
+                );
+            }
+
+            #[test]
+            fn project_add_dialog_focus_mouse_click_name_input_updates_focus() {
+                let mut app = fixture_app();
+
+                app.open_project_dialog();
+                app.open_project_add_dialog();
+                app.focus_dialog_field(FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON);
+                let layout = app
+                    .project_add_dialog_layout()
+                    .expect("project add dialog layout should exist");
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Mouse(MouseEvent::new(
+                        MouseEventKind::Down(MouseButton::Left),
+                        layout.name_input.x,
+                        layout.name_input.y,
+                    )),
+                );
+
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_ADD_NAME_INPUT)
+                );
+            }
+
+            #[test]
             fn project_dialog_native_state_defaults_dialog_opens_with_native_inputs() {
                 let mut app = fixture_app();
 
@@ -17298,6 +17400,78 @@ mod tests {
                         .and_then(|dialog| dialog.defaults_dialog.as_ref())
                         .map(|dialog| dialog.workspace_init_command_input.focused()),
                     Some(false)
+                );
+            }
+
+            #[test]
+            fn project_defaults_dialog_focus_tab_traverses_ftui_fields() {
+                let mut app = fixture_app();
+
+                app.open_project_dialog();
+                app.open_selected_project_defaults_dialog();
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT)
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+                );
+
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT)
+                );
+            }
+
+            #[test]
+            fn project_defaults_dialog_focus_enter_uses_ftui_focused_cancel_button() {
+                let mut app = fixture_app();
+
+                app.open_project_dialog();
+                app.open_selected_project_defaults_dialog();
+                app.focus_dialog_field(FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.defaults_dialog.as_ref())
+                        .is_none()
+                );
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT)
+                );
+            }
+
+            #[test]
+            fn project_defaults_dialog_focus_mouse_click_codex_input_updates_focus() {
+                let mut app = fixture_app();
+
+                app.open_project_dialog();
+                app.open_selected_project_defaults_dialog();
+                app.focus_dialog_field(FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON);
+                let layout = app
+                    .project_defaults_dialog_layout()
+                    .expect("project defaults dialog layout should exist");
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Mouse(MouseEvent::new(
+                        MouseEventKind::Down(MouseButton::Left),
+                        layout.codex_env_input.x,
+                        layout.codex_env_input.y,
+                    )),
+                );
+
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT)
                 );
             }
 

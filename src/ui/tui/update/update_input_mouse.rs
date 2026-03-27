@@ -421,12 +421,7 @@ impl GroveApp {
                             mouse_event.x,
                             mouse_event.y,
                         ) {
-                            if let Some(project_dialog) = self.project_dialog_mut()
-                                && let Some(add_dialog) = project_dialog.add_dialog.as_mut()
-                            {
-                                add_dialog.focused_field = ProjectAddDialogField::Path;
-                                add_dialog.sync_focus();
-                            }
+                            self.focus_dialog_field(FOCUS_ID_PROJECT_ADD_PATH_INPUT);
                             return;
                         }
                         if Self::rect_contains_point(
@@ -434,12 +429,7 @@ impl GroveApp {
                             mouse_event.x,
                             mouse_event.y,
                         ) {
-                            if let Some(project_dialog) = self.project_dialog_mut()
-                                && let Some(add_dialog) = project_dialog.add_dialog.as_mut()
-                            {
-                                add_dialog.focused_field = ProjectAddDialogField::Name;
-                                add_dialog.sync_focus();
-                            }
+                            self.focus_dialog_field(FOCUS_ID_PROJECT_ADD_NAME_INPUT);
                             return;
                         }
                         if Self::rect_contains_point(
@@ -455,9 +445,7 @@ impl GroveApp {
                             mouse_event.x,
                             mouse_event.y,
                         ) {
-                            if let Some(project_dialog) = self.project_dialog_mut() {
-                                project_dialog.add_dialog = None;
-                            }
+                            self.close_project_add_dialog();
                             return;
                         }
                     }
@@ -475,14 +463,7 @@ impl GroveApp {
                             mouse_event.x,
                             mouse_event.y,
                         ) {
-                            if let Some(project_dialog) = self.project_dialog_mut()
-                                && let Some(defaults_dialog) =
-                                    project_dialog.defaults_dialog.as_mut()
-                            {
-                                defaults_dialog.focused_field =
-                                    ProjectDefaultsDialogField::BaseBranch;
-                                defaults_dialog.sync_focus();
-                            }
+                            self.focus_dialog_field(FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT);
                             return;
                         }
                         if Self::rect_contains_point(
@@ -490,14 +471,7 @@ impl GroveApp {
                             mouse_event.x,
                             mouse_event.y,
                         ) {
-                            if let Some(project_dialog) = self.project_dialog_mut()
-                                && let Some(defaults_dialog) =
-                                    project_dialog.defaults_dialog.as_mut()
-                            {
-                                defaults_dialog.focused_field =
-                                    ProjectDefaultsDialogField::WorkspaceInitCommand;
-                                defaults_dialog.sync_focus();
-                            }
+                            self.focus_dialog_field(FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT);
                             return;
                         }
                         if Self::rect_contains_point(
@@ -505,14 +479,7 @@ impl GroveApp {
                             mouse_event.x,
                             mouse_event.y,
                         ) {
-                            if let Some(project_dialog) = self.project_dialog_mut()
-                                && let Some(defaults_dialog) =
-                                    project_dialog.defaults_dialog.as_mut()
-                            {
-                                defaults_dialog.focused_field =
-                                    ProjectDefaultsDialogField::ClaudeEnv;
-                                defaults_dialog.sync_focus();
-                            }
+                            self.focus_dialog_field(FOCUS_ID_PROJECT_DEFAULTS_CLAUDE_ENV_INPUT);
                             return;
                         }
                         if Self::rect_contains_point(
@@ -520,14 +487,7 @@ impl GroveApp {
                             mouse_event.x,
                             mouse_event.y,
                         ) {
-                            if let Some(project_dialog) = self.project_dialog_mut()
-                                && let Some(defaults_dialog) =
-                                    project_dialog.defaults_dialog.as_mut()
-                            {
-                                defaults_dialog.focused_field =
-                                    ProjectDefaultsDialogField::CodexEnv;
-                                defaults_dialog.sync_focus();
-                            }
+                            self.focus_dialog_field(FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT);
                             return;
                         }
                         if Self::rect_contains_point(
@@ -535,14 +495,7 @@ impl GroveApp {
                             mouse_event.x,
                             mouse_event.y,
                         ) {
-                            if let Some(project_dialog) = self.project_dialog_mut()
-                                && let Some(defaults_dialog) =
-                                    project_dialog.defaults_dialog.as_mut()
-                            {
-                                defaults_dialog.focused_field =
-                                    ProjectDefaultsDialogField::OpenCodeEnv;
-                                defaults_dialog.sync_focus();
-                            }
+                            self.focus_dialog_field(FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT);
                             return;
                         }
                         if Self::rect_contains_point(
@@ -558,9 +511,7 @@ impl GroveApp {
                             mouse_event.x,
                             mouse_event.y,
                         ) {
-                            if let Some(project_dialog) = self.project_dialog_mut() {
-                                project_dialog.defaults_dialog = None;
-                            }
+                            self.close_project_defaults_dialog();
                             return;
                         }
                     }

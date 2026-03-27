@@ -395,25 +395,26 @@ impl GroveApp {
         }
         let selected_path = path_match.path.clone();
 
-        let Some(project_dialog) = self.project_dialog_mut() else {
-            return;
-        };
-        let Some(add_dialog) = project_dialog.add_dialog.as_mut() else {
-            return;
-        };
+        {
+            let Some(project_dialog) = self.project_dialog_mut() else {
+                return;
+            };
+            let Some(add_dialog) = project_dialog.add_dialog.as_mut() else {
+                return;
+            };
 
-        add_dialog
-            .path_input
-            .set_value(selected_path.display().to_string());
-        if add_dialog.name_input.value().trim().is_empty() {
             add_dialog
-                .name_input
-                .set_value(project_display_name(&selected_path));
+                .path_input
+                .set_value(selected_path.display().to_string());
+            if add_dialog.name_input.value().trim().is_empty() {
+                add_dialog
+                    .name_input
+                    .set_value(project_display_name(&selected_path));
+            }
+            add_dialog.path_matches.clear();
+            add_dialog.path_match_list.select(None);
         }
-        add_dialog.path_matches.clear();
-        add_dialog.path_match_list.select(None);
-        add_dialog.focused_field = ProjectAddDialogField::AddButton;
-        add_dialog.sync_focus();
+        self.focus_dialog_field(FOCUS_ID_PROJECT_ADD_ADD_BUTTON);
     }
 }
 

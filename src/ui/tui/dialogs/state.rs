@@ -594,14 +594,6 @@ pub(super) enum ProjectDefaultsDialogField {
     CancelButton,
 }
 
-cyclic_field_nav!(pub(super) ProjectAddDialogField {
-    Path, Name, AddButton, CancelButton,
-});
-
-cyclic_field_nav!(pub(super) ProjectDefaultsDialogField {
-    BaseBranch, WorkspaceInitCommand, ClaudeEnv, CodexEnv, OpenCodeEnv, SaveButton, CancelButton,
-});
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SettingsDialogState {
     pub(super) focused_field: SettingsDialogField,

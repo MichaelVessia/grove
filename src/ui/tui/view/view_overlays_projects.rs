@@ -57,6 +57,7 @@ struct ProjectListModalContent<'a> {
 struct ProjectAddModalContent<'a> {
     dialog: &'a ProjectAddDialogState,
     theme: ftui::ResolvedTheme,
+    focused_id: Option<u64>,
 }
 
 #[derive(Clone)]
@@ -65,6 +66,7 @@ struct ProjectDefaultsModalContent<'a> {
     project_label: &'a str,
     project_path: &'a str,
     theme: ftui::ResolvedTheme,
+    focused_id: Option<u64>,
 }
 
 fn modal_button_rects(actions: Rect) -> (Rect, Rect) {
@@ -359,6 +361,7 @@ impl Widget for ProjectAddModalContent<'_> {
             .dialog
             .path_input
             .clone()
+            .with_focused(self.focused_id == Some(FOCUS_ID_PROJECT_ADD_PATH_INPUT))
             .with_style(modal_input_style(self.theme))
             .with_placeholder("Paste repo path or type 2+ chars")
             .with_placeholder_style(modal_input_placeholder_style(self.theme))
@@ -496,6 +499,7 @@ impl Widget for ProjectAddModalContent<'_> {
             .dialog
             .name_input
             .clone()
+            .with_focused(self.focused_id == Some(FOCUS_ID_PROJECT_ADD_NAME_INPUT))
             .with_style(modal_input_style(self.theme))
             .with_placeholder("Optional, defaults to repo directory name")
             .with_placeholder_style(modal_input_placeholder_style(self.theme))
@@ -515,7 +519,7 @@ impl Widget for ProjectAddModalContent<'_> {
             layout.add_button,
             self.theme,
             "Add",
-            self.dialog.focused_field == ProjectAddDialogField::AddButton,
+            self.focused_id == Some(FOCUS_ID_PROJECT_ADD_ADD_BUTTON),
             packed(self.theme.success),
         );
         render_modal_button(
@@ -523,7 +527,7 @@ impl Widget for ProjectAddModalContent<'_> {
             layout.cancel_button,
             self.theme,
             "Cancel",
-            self.dialog.focused_field == ProjectAddDialogField::CancelButton,
+            self.focused_id == Some(FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON),
             packed(self.theme.selection_bg),
         );
 
@@ -583,6 +587,7 @@ impl Widget for ProjectDefaultsModalContent<'_> {
             .dialog
             .base_branch_input
             .clone()
+            .with_focused(self.focused_id == Some(FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT))
             .with_style(modal_input_style(self.theme))
             .with_placeholder("Optional override, empty uses selected branch")
             .with_placeholder_style(modal_input_placeholder_style(self.theme))
@@ -592,6 +597,7 @@ impl Widget for ProjectDefaultsModalContent<'_> {
             .dialog
             .workspace_init_command_input
             .clone()
+            .with_focused(self.focused_id == Some(FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT))
             .with_style(modal_input_style(self.theme))
             .with_placeholder("Runs once per workspace start")
             .with_placeholder_style(modal_input_placeholder_style(self.theme))
@@ -601,6 +607,7 @@ impl Widget for ProjectDefaultsModalContent<'_> {
             .dialog
             .claude_env_input
             .clone()
+            .with_focused(self.focused_id == Some(FOCUS_ID_PROJECT_DEFAULTS_CLAUDE_ENV_INPUT))
             .with_style(modal_input_style(self.theme))
             .with_placeholder("KEY=VALUE; KEY2=VALUE")
             .with_placeholder_style(modal_input_placeholder_style(self.theme))
@@ -610,6 +617,7 @@ impl Widget for ProjectDefaultsModalContent<'_> {
             .dialog
             .codex_env_input
             .clone()
+            .with_focused(self.focused_id == Some(FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT))
             .with_style(modal_input_style(self.theme))
             .with_placeholder("KEY=VALUE; KEY2=VALUE")
             .with_placeholder_style(modal_input_placeholder_style(self.theme))
@@ -619,6 +627,7 @@ impl Widget for ProjectDefaultsModalContent<'_> {
             .dialog
             .opencode_env_input
             .clone()
+            .with_focused(self.focused_id == Some(FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT))
             .with_style(modal_input_style(self.theme))
             .with_placeholder("KEY=VALUE; KEY2=VALUE")
             .with_placeholder_style(modal_input_placeholder_style(self.theme))
@@ -631,38 +640,38 @@ impl Widget for ProjectDefaultsModalContent<'_> {
         Widget::render(&codex_env_input, layout.codex_env_input, frame);
         Widget::render(&opencode_env_input, layout.opencode_env_input, frame);
 
-        match self.dialog.focused_field {
-            ProjectDefaultsDialogField::BaseBranch => {
+        match self.focused_id {
+            Some(FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT) => {
                 frame.set_cursor(Some(
                     base_branch_input.cursor_position(layout.base_branch_input),
                 ));
                 frame.set_cursor_visible(true);
             }
-            ProjectDefaultsDialogField::WorkspaceInitCommand => {
+            Some(FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT) => {
                 frame.set_cursor(Some(
                     init_command_input.cursor_position(layout.init_command_input),
                 ));
                 frame.set_cursor_visible(true);
             }
-            ProjectDefaultsDialogField::ClaudeEnv => {
+            Some(FOCUS_ID_PROJECT_DEFAULTS_CLAUDE_ENV_INPUT) => {
                 frame.set_cursor(Some(
                     claude_env_input.cursor_position(layout.claude_env_input),
                 ));
                 frame.set_cursor_visible(true);
             }
-            ProjectDefaultsDialogField::CodexEnv => {
+            Some(FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT) => {
                 frame.set_cursor(Some(
                     codex_env_input.cursor_position(layout.codex_env_input),
                 ));
                 frame.set_cursor_visible(true);
             }
-            ProjectDefaultsDialogField::OpenCodeEnv => {
+            Some(FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT) => {
                 frame.set_cursor(Some(
                     opencode_env_input.cursor_position(layout.opencode_env_input),
                 ));
                 frame.set_cursor_visible(true);
             }
-            ProjectDefaultsDialogField::SaveButton | ProjectDefaultsDialogField::CancelButton => {}
+            _ => {}
         }
 
         Paragraph::new("Env changes apply on next agent start or restart")
@@ -676,7 +685,7 @@ impl Widget for ProjectDefaultsModalContent<'_> {
             layout.save_button,
             self.theme,
             "Save",
-            self.dialog.focused_field == ProjectDefaultsDialogField::SaveButton,
+            self.focused_id == Some(FOCUS_ID_PROJECT_DEFAULTS_SAVE_BUTTON),
             packed(self.theme.success),
         );
         render_modal_button(
@@ -684,7 +693,7 @@ impl Widget for ProjectDefaultsModalContent<'_> {
             layout.cancel_button,
             self.theme,
             "Cancel",
-            self.dialog.focused_field == ProjectDefaultsDialogField::CancelButton,
+            self.focused_id == Some(FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON),
             packed(self.theme.selection_bg),
         );
         Paragraph::new("Tab/S-Tab or C-n/C-p move, Enter confirm, Esc back")
@@ -723,6 +732,7 @@ impl GroveApp {
             let content = ProjectAddModalContent {
                 dialog: add_dialog,
                 theme,
+                focused_id: self.focus_manager.current(),
             };
             Modal::new(content)
                 .size(
@@ -754,6 +764,7 @@ impl GroveApp {
                 project_label: project_label.as_str(),
                 project_path: project_path.as_str(),
                 theme,
+                focused_id: self.focus_manager.current(),
             };
 
             Modal::new(content)

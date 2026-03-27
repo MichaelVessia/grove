@@ -637,6 +637,69 @@ fn project_add_dialog_focus_id(field: ProjectAddDialogField) -> u64 {
     }
 }
 
+fn project_add_dialog_focus_field(focus_id: Option<u64>) -> Option<ProjectAddDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_PROJECT_ADD_PATH_INPUT) => Some(ProjectAddDialogField::Path),
+        Some(FOCUS_ID_PROJECT_ADD_NAME_INPUT) => Some(ProjectAddDialogField::Name),
+        Some(FOCUS_ID_PROJECT_ADD_ADD_BUTTON) => Some(ProjectAddDialogField::AddButton),
+        Some(FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON) => Some(ProjectAddDialogField::CancelButton),
+        _ => None,
+    }
+}
+
+fn project_defaults_dialog_focus_ids() -> [u64; 7] {
+    [
+        FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT,
+        FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT,
+        FOCUS_ID_PROJECT_DEFAULTS_CLAUDE_ENV_INPUT,
+        FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT,
+        FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT,
+        FOCUS_ID_PROJECT_DEFAULTS_SAVE_BUTTON,
+        FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON,
+    ]
+}
+
+pub(super) fn project_defaults_dialog_focus_id(field: ProjectDefaultsDialogField) -> u64 {
+    match field {
+        ProjectDefaultsDialogField::BaseBranch => FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT,
+        ProjectDefaultsDialogField::WorkspaceInitCommand => {
+            FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT
+        }
+        ProjectDefaultsDialogField::ClaudeEnv => FOCUS_ID_PROJECT_DEFAULTS_CLAUDE_ENV_INPUT,
+        ProjectDefaultsDialogField::CodexEnv => FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT,
+        ProjectDefaultsDialogField::OpenCodeEnv => FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT,
+        ProjectDefaultsDialogField::SaveButton => FOCUS_ID_PROJECT_DEFAULTS_SAVE_BUTTON,
+        ProjectDefaultsDialogField::CancelButton => FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON,
+    }
+}
+
+fn project_defaults_dialog_focus_field(
+    focus_id: Option<u64>,
+) -> Option<ProjectDefaultsDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT) => {
+            Some(ProjectDefaultsDialogField::BaseBranch)
+        }
+        Some(FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT) => {
+            Some(ProjectDefaultsDialogField::WorkspaceInitCommand)
+        }
+        Some(FOCUS_ID_PROJECT_DEFAULTS_CLAUDE_ENV_INPUT) => {
+            Some(ProjectDefaultsDialogField::ClaudeEnv)
+        }
+        Some(FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT) => {
+            Some(ProjectDefaultsDialogField::CodexEnv)
+        }
+        Some(FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT) => {
+            Some(ProjectDefaultsDialogField::OpenCodeEnv)
+        }
+        Some(FOCUS_ID_PROJECT_DEFAULTS_SAVE_BUTTON) => Some(ProjectDefaultsDialogField::SaveButton),
+        Some(FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON) => {
+            Some(ProjectDefaultsDialogField::CancelButton)
+        }
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ModalDialogSpec<'a> {
     pub(super) dialog_width: u16,
@@ -839,6 +902,23 @@ impl GroveApp {
                     dialog.focused_field = field;
                 }
             }
+            Some(ActiveDialog::Project(dialog)) => {
+                dialog
+                    .filter_input
+                    .set_focused(focus_id == Some(FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT));
+                if let Some(add_dialog) = dialog.add_dialog.as_mut() {
+                    if let Some(field) = project_add_dialog_focus_field(focus_id) {
+                        add_dialog.focused_field = field;
+                    }
+                    add_dialog.sync_focus();
+                }
+                if let Some(defaults_dialog) = dialog.defaults_dialog.as_mut() {
+                    if let Some(field) = project_defaults_dialog_focus_field(focus_id) {
+                        defaults_dialog.focused_field = field;
+                    }
+                    defaults_dialog.sync_focus();
+                }
+            }
             Some(ActiveDialog::SessionCleanup(dialog)) => {
                 if let Some(field) = session_cleanup_dialog_focus_field(focus_id) {
                     dialog.focused_field = field;
@@ -927,6 +1007,13 @@ impl GroveApp {
                         FOCUS_GROUP_PROJECT_ADD_DIALOG,
                         &add_members,
                         project_add_dialog_focus_id(add_dialog.focused_field),
+                    );
+                } else if let Some(defaults_dialog) = dialog.defaults_dialog.as_ref() {
+                    let defaults_members = project_defaults_dialog_focus_ids();
+                    self.activate_focus_trap(
+                        FOCUS_GROUP_PROJECT_DEFAULTS_DIALOG,
+                        &defaults_members,
+                        project_defaults_dialog_focus_id(defaults_dialog.focused_field),
                     );
                 }
             }
@@ -1020,6 +1107,9 @@ impl GroveApp {
                 if dialog.add_dialog.is_some() {
                     let add_members = project_add_dialog_focus_ids();
                     self.deactivate_focus_trap(&add_members);
+                } else if dialog.defaults_dialog.is_some() {
+                    let defaults_members = project_defaults_dialog_focus_ids();
+                    self.deactivate_focus_trap(&defaults_members);
                 }
                 let members = project_dialog_focus_ids();
                 self.deactivate_focus_trap(&members);
@@ -1089,6 +1179,23 @@ impl GroveApp {
 
     pub(super) fn close_project_add_dialog_focus_trap(&mut self) {
         let members = project_add_dialog_focus_ids();
+        self.deactivate_focus_trap(&members);
+    }
+
+    pub(super) fn open_project_defaults_dialog_focus_trap(
+        &mut self,
+        field: ProjectDefaultsDialogField,
+    ) {
+        let members = project_defaults_dialog_focus_ids();
+        self.activate_focus_trap(
+            FOCUS_GROUP_PROJECT_DEFAULTS_DIALOG,
+            &members,
+            project_defaults_dialog_focus_id(field),
+        );
+    }
+
+    pub(super) fn close_project_defaults_dialog_focus_trap(&mut self) {
+        let members = project_defaults_dialog_focus_ids();
         self.deactivate_focus_trap(&members);
     }
 

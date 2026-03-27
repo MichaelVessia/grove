@@ -1,24 +1,3 @@
-/// Generates `next()` and `previous()` methods for a cyclic enum.
-/// Variants are listed in order; last wraps to first and vice versa.
-/// Requires the enum to derive `Copy` and `PartialEq`.
-macro_rules! cyclic_field_nav {
-    ($vis:vis $enum:ident { $($variant:ident),+ $(,)? }) => {
-        impl $enum {
-            const ALL: &[$enum] = &[$($enum::$variant),+];
-
-            $vis fn next(self) -> Self {
-                let index = Self::ALL.iter().position(|v| *v == self).unwrap_or(0);
-                Self::ALL[(index + 1) % Self::ALL.len()]
-            }
-
-            $vis fn previous(self) -> Self {
-                let index = Self::ALL.iter().position(|v| *v == self).unwrap_or(0);
-                Self::ALL[(index + Self::ALL.len() - 1) % Self::ALL.len()]
-            }
-        }
-    };
-}
-
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -51,6 +30,7 @@ pub(super) const FOCUS_GROUP_RENAME_TAB_DIALOG: u32 = 20;
 pub(super) const FOCUS_GROUP_EDIT_DIALOG: u32 = 21;
 pub(super) const FOCUS_GROUP_LAUNCH_DIALOG: u32 = 22;
 pub(super) const FOCUS_GROUP_CREATE_DIALOG: u32 = 23;
+pub(super) const FOCUS_GROUP_PROJECT_DEFAULTS_DIALOG: u32 = 24;
 pub(super) const FOCUS_ID_CONFIRM_CONFIRM_BUTTON: u64 = 1001;
 pub(super) const FOCUS_ID_CONFIRM_CANCEL_BUTTON: u64 = 1002;
 pub(super) const FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT: u64 = 1101;
@@ -59,6 +39,13 @@ pub(super) const FOCUS_ID_PROJECT_ADD_PATH_INPUT: u64 = 1201;
 pub(super) const FOCUS_ID_PROJECT_ADD_NAME_INPUT: u64 = 1202;
 pub(super) const FOCUS_ID_PROJECT_ADD_ADD_BUTTON: u64 = 1203;
 pub(super) const FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON: u64 = 1204;
+pub(super) const FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT: u64 = 2401;
+pub(super) const FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT: u64 = 2402;
+pub(super) const FOCUS_ID_PROJECT_DEFAULTS_CLAUDE_ENV_INPUT: u64 = 2403;
+pub(super) const FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT: u64 = 2404;
+pub(super) const FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT: u64 = 2405;
+pub(super) const FOCUS_ID_PROJECT_DEFAULTS_SAVE_BUTTON: u64 = 2406;
+pub(super) const FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON: u64 = 2407;
 pub(super) const FOCUS_ID_STOP_CONFIRM_BUTTON: u64 = 1301;
 pub(super) const FOCUS_ID_STOP_CANCEL_BUTTON: u64 = 1302;
 pub(super) const FOCUS_ID_SESSION_CLEANUP_INCLUDE_STALE: u64 = 1401;

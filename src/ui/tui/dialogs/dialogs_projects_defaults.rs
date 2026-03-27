@@ -29,6 +29,16 @@ impl GroveApp {
             defaults_dialog.sync_focus();
             project_dialog.defaults_dialog = Some(defaults_dialog);
         }
+        self.open_project_defaults_dialog_focus_trap(ProjectDefaultsDialogField::BaseBranch);
+        self.sync_active_dialog_focus_field();
+    }
+
+    pub(super) fn close_project_defaults_dialog(&mut self) {
+        if let Some(project_dialog) = self.project_dialog_mut() {
+            project_dialog.defaults_dialog = None;
+        }
+        self.close_project_defaults_dialog_focus_trap();
+        self.sync_active_dialog_focus_field();
     }
 
     pub(super) fn save_project_defaults_from_dialog(&mut self) {
@@ -85,9 +95,7 @@ impl GroveApp {
             return;
         }
 
-        if let Some(project_dialog) = self.project_dialog_mut() {
-            project_dialog.defaults_dialog = None;
-        }
+        self.close_project_defaults_dialog();
         self.show_success_toast(format!("project '{}' defaults saved", project_name));
     }
 }
