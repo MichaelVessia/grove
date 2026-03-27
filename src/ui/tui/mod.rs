@@ -7021,6 +7021,40 @@ mod tests {
     }
 
     #[test]
+    fn preview_stream_retargets_on_workspace_change_while_workspace_list_is_focused() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
+
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(feature_workspace_session())
+        );
+
+        let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
+        select_workspace(&mut app, 0);
+        focus_agent_preview_tab(&mut app);
+        let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
+        app.state.workspaces[0].status = WorkspaceStatus::Active;
+        app.session
+            .agent_sessions
+            .mark_ready(main_workspace_session());
+        app.sync_preview_stream_target();
+
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(main_workspace_session())
+        );
+    }
+
+    #[test]
     fn preview_stream_stays_targeted_in_interactive_mode() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
@@ -7294,6 +7328,47 @@ mod tests {
         app.polling.preview_stream.bootstrap_completed = true;
         app.preview
             .bootstrap_selected_terminal("partial prompt", 80, 24, (14, 0), true);
+        let generation = app.polling.preview_stream.generation;
+
+        let cmd = ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: feature_workspace_session(),
+                generation,
+                chunk: " update".to_string(),
+            })),
+        );
+
+        assert!(!cmd_contains_task(&cmd));
+        let selected_terminal = app
+            .preview
+            .selected_terminal()
+            .expect("selected terminal should remain available");
+        assert_eq!(selected_terminal.plain_lines[0], "partial prompt update");
+    }
+
+    #[test]
+    fn healthy_preview_stream_output_updates_while_workspace_list_is_focused() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+        app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
+            session: feature_workspace_session(),
+            width: 80,
+            height: 24,
+        });
+        app.polling.preview_stream.connected_session = Some(feature_workspace_session());
+        app.polling.preview_stream.source = PreviewStreamSource::Stream;
+        app.polling.preview_stream.bootstrap_completed = true;
+        app.preview
+            .bootstrap_selected_terminal("partial prompt", 80, 24, (14, 0), true);
+        let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
         let generation = app.polling.preview_stream.generation;
 
         let cmd = ftui::Model::update(
@@ -15641,6 +15716,7 @@ mod tests {
                             workspace_path: feature_workspace_path(),
                             session_name: feature_workspace_session(),
                             supported_agent: true,
+                            include_escape_sequences: false,
                             capture_ms: 1,
                             result: Ok("thinking...".to_string()),
                         }],
@@ -15674,6 +15750,7 @@ mod tests {
                             workspace_path: feature_workspace_path(),
                             session_name: feature_workspace_session(),
                             supported_agent: true,
+                            include_escape_sequences: false,
                             capture_ms: 1,
                             result: Ok("still working on it".to_string()),
                         }],
@@ -16359,6 +16436,7 @@ mod tests {
                             workspace_path: feature_workspace_path(),
                             session_name: feature_workspace_session(),
                             supported_agent: true,
+                            include_escape_sequences: false,
                             capture_ms: 1,
                             result: Ok("> Implement {feature}\n? for shortcuts\n".to_string()),
                         }],
@@ -16367,6 +16445,79 @@ mod tests {
 
                 assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Waiting);
                 assert!(!app.state.workspaces[1].is_orphaned);
+            }
+
+            #[test]
+            fn selected_workspace_status_capture_updates_preview_when_live_capture_is_absent() {
+                let mut app = fixture_background_app(WorkspaceStatus::Active);
+                app.state.mode = UiMode::List;
+                let _ = app.focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
+                select_workspace(&mut app, 1);
+                focus_agent_preview_tab(&mut app);
+                app.session
+                    .agent_sessions
+                    .mark_ready(feature_workspace_session());
+                app.sync_preview_stream_target();
+                app.polling.preview_stream.connected_session = Some(feature_workspace_session());
+                app.polling.preview_stream.source = PreviewStreamSource::Stream;
+                app.polling.preview_stream.bootstrap_completed = true;
+                app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
+                    session: feature_workspace_session(),
+                    width: 80,
+                    height: 24,
+                });
+                app.preview
+                    .bootstrap_selected_terminal("partial prompt", 80, 24, (14, 0), true);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 1,
+                        live_capture: None,
+                        cursor_capture: None,
+                        workspace_status_captures: vec![WorkspaceStatusCapture {
+                            workspace_name: "feature-a".to_string(),
+                            workspace_path: feature_workspace_path(),
+                            session_name: feature_workspace_session(),
+                            supported_agent: true,
+                            include_escape_sequences: true,
+                            capture_ms: 1,
+                            result: Ok("partial prompt \u{1b}[32mupdate\u{1b}[0m".to_string()),
+                        }],
+                    }),
+                );
+
+                let selected_terminal = app
+                    .preview
+                    .selected_terminal()
+                    .expect("selected terminal should remain available");
+                assert_eq!(selected_terminal.plain_lines[0], "partial prompt update");
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let x_start = preview_inner.x;
+                let x_end = preview_inner.right();
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let Some(row) =
+                        find_row_containing(frame, "partial prompt update", x_start, x_end)
+                    else {
+                        panic!("updated preview row should exist");
+                    };
+                    let Some(color_x) = find_cell_with_char(frame, row, x_start, x_end, 'u') else {
+                        panic!("colored update character should exist");
+                    };
+                    let Some(cell) = frame.buffer.get(color_x, row) else {
+                        panic!("preview content cell should exist");
+                    };
+                    assert_eq!(cell.content.as_char(), Some('u'));
+                    assert_eq!(cell.fg, packed(ui_theme().success));
+                });
             }
 
             #[test]
@@ -16399,6 +16550,7 @@ mod tests {
                             workspace_path: feature_workspace_path(),
                             session_name: feature_workspace_session(),
                             supported_agent: true,
+                            include_escape_sequences: false,
                             capture_ms: 1,
                             result: Err(format!(
                                 "tmux capture-pane failed for '{}': can't find pane",
@@ -16447,6 +16599,7 @@ mod tests {
                             workspace_path: workspace_path.clone(),
                             session_name: missing_session.clone(),
                             supported_agent: true,
+                            include_escape_sequences: false,
                             capture_ms: 1,
                             result: Err(format!(
                                 "tmux capture-pane failed for '{}': can't find pane",

@@ -111,6 +111,7 @@ pub(super) struct WorkspaceStatusCapture {
     pub(super) workspace_path: PathBuf,
     pub(super) session_name: String,
     pub(super) supported_agent: bool,
+    pub(super) include_escape_sequences: bool,
     pub(super) capture_ms: u64,
     pub(super) result: Result<String, String>,
 }

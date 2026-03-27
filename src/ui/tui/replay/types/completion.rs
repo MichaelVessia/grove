@@ -30,6 +30,8 @@ struct ReplayWorkspaceStatusCapture {
     workspace_path: PathBuf,
     session_name: String,
     supported_agent: bool,
+    #[serde(default)]
+    include_escape_sequences: bool,
     capture_ms: u64,
     result: ReplayStringResult,
 }
@@ -352,6 +354,7 @@ impl ReplayWorkspaceStatusCapture {
             workspace_path: capture.workspace_path.clone(),
             session_name: capture.session_name.clone(),
             supported_agent: capture.supported_agent,
+            include_escape_sequences: capture.include_escape_sequences,
             capture_ms: capture.capture_ms,
             result: ReplayStringResult::from_result(&capture.result),
         }
@@ -363,6 +366,7 @@ impl ReplayWorkspaceStatusCapture {
             workspace_path: self.workspace_path.clone(),
             session_name: self.session_name.clone(),
             supported_agent: self.supported_agent,
+            include_escape_sequences: self.include_escape_sequences,
             capture_ms: self.capture_ms,
             result: self.result.to_result(),
         }

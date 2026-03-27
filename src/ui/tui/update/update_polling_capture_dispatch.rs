@@ -252,6 +252,24 @@ impl GroveApp {
             else {
                 continue;
             };
+            let selected_status_capture = !had_live_capture
+                && workspace_index == self.state.selected_index
+                && self
+                    .selected_live_preview_session_for_completion()
+                    .as_deref()
+                    == Some(status_capture.session_name.as_str());
+            if selected_status_capture {
+                had_live_capture = true;
+                self.apply_live_preview_capture(
+                    status_capture.session_name.as_str(),
+                    120,
+                    status_capture.include_escape_sequences,
+                    status_capture.capture_ms,
+                    status_capture.capture_ms,
+                    status_capture.result,
+                );
+                continue;
+            }
             self.apply_workspace_status_capture_at_index(status_capture, workspace_index);
         }
         if !had_live_capture

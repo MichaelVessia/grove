@@ -30,6 +30,7 @@ impl GroveApp {
         let has_live_preview = live_preview.is_some();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = self.status_poll_targets_for_async_preview(live_preview.as_ref());
+        let selected_live_session = self.selected_live_preview_session_if_ready();
         let live_scrollback_lines = self.live_preview_scrollback_lines();
         if !status_poll_targets.is_empty() {
             self.polling.last_workspace_status_poll_at = Some(Instant::now());
@@ -68,10 +69,12 @@ impl GroveApp {
         }
 
         for target in status_poll_targets {
+            let include_escape_sequences =
+                selected_live_session.as_deref() == Some(target.session_name.as_str());
             let capture_started_at = Instant::now();
             let result = self
                 .tmux_input
-                .capture_output(&target.session_name, 120, false)
+                .capture_output(&target.session_name, 120, include_escape_sequences)
                 .map_err(|error| error.to_string());
             let capture_ms =
                 Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
@@ -80,6 +83,7 @@ impl GroveApp {
                 workspace_path: target.workspace_path,
                 session_name: target.session_name,
                 supported_agent: target.supported_agent,
+                include_escape_sequences,
                 capture_ms,
                 result,
             });
@@ -101,6 +105,7 @@ impl GroveApp {
         cursor_session: Option<String>,
         status_poll_targets: Vec<WorkspaceStatusTarget>,
     ) -> Cmd<Msg> {
+        let selected_live_session = self.selected_live_preview_session_if_ready();
         Cmd::task(move || {
             let live_capture = live_preview.map(|target| {
                 let capture_started_at = Instant::now();
@@ -147,10 +152,15 @@ impl GroveApp {
             let workspace_status_captures = status_poll_targets
                 .into_iter()
                 .map(|target| {
+                    let include_escape_sequences =
+                        selected_live_session.as_deref() == Some(target.session_name.as_str());
                     let capture_started_at = Instant::now();
-                    let result =
-                        CommandTmuxInput::capture_session_output(&target.session_name, 120, false)
-                            .map_err(|error| error.to_string());
+                    let result = CommandTmuxInput::capture_session_output(
+                        &target.session_name,
+                        120,
+                        include_escape_sequences,
+                    )
+                    .map_err(|error| error.to_string());
                     let capture_ms = GroveApp::duration_millis(
                         Instant::now().saturating_duration_since(capture_started_at),
                     );
@@ -159,6 +169,7 @@ impl GroveApp {
                         workspace_path: target.workspace_path,
                         session_name: target.session_name,
                         supported_agent: target.supported_agent,
+                        include_escape_sequences,
                         capture_ms,
                         result,
                     }
