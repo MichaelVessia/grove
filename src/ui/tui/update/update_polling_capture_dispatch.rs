@@ -72,6 +72,7 @@ impl GroveApp {
 
     fn selected_live_preview_session_for_completion(&self) -> Option<String> {
         self.selected_live_preview_session_if_ready()
+            .or_else(|| self.interactive_target_session())
     }
 
     pub(super) fn poll_preview(&mut self) {

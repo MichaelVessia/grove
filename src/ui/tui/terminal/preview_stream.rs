@@ -122,10 +122,14 @@ impl GroveApp {
         self.polling.preview_stream.reconciliation_pending = false;
         self.polling.preview_stream.last_chunk_bytes = 0;
         self.polling.preview_session_geometry = None;
-        if previous.is_some() {
-            self.preview.reset_selected_session_state();
-        } else {
-            self.preview.clear_selected_terminal();
+        let preserve_interactive_terminal = self.interactive_target_session().is_some()
+            && self.preview.selected_terminal().is_some();
+        if !preserve_interactive_terminal {
+            if previous.is_some() {
+                self.preview.reset_selected_session_state();
+            } else {
+                self.preview.clear_selected_terminal();
+            }
         }
         self.polling.preview_stream.source = if desired.is_some() {
             PreviewStreamSource::Connecting
