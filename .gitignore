@@ -9,4 +9,5 @@
 docs/superpowers/
 .sidecar/
 .lefthook-local.yml
+.githooks/
 *.local.*

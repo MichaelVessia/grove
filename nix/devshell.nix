@@ -42,6 +42,7 @@
         shellHook = ''
           if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
             git config --local core.hooksPath .githooks
+            lefthook install >/dev/null 2>&1
           fi
         '';
       };
