@@ -4,7 +4,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use ftui::text::display_width;
 use ftui_pty::virtual_terminal::{CellStyle, VirtualTerminal};
 
-use crate::application::agent_runtime::capture::strip_mouse_fragments;
 use crate::application::agent_runtime::{OutputDigest, evaluate_capture_change};
 
 const CAPTURE_RING_CAPACITY: usize = 10;
@@ -109,8 +108,7 @@ impl PreviewState {
 
         if change.changed_raw {
             self.render_lines = split_output_lines(&change.render_output);
-            let preview_source = strip_mouse_fragments(&change.render_output);
-            let preview_source_lines = split_output_lines(&preview_source);
+            let preview_source_lines = split_output_lines(&change.render_output);
             let snapshot = parse_preview_snapshot(&preview_source_lines);
             self.lines = snapshot.plain_lines;
             self.parsed_lines = snapshot.parsed_lines;

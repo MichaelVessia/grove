@@ -62,21 +62,6 @@ impl GroveApp {
     pub(super) fn handle_interactive_key(&mut self, key_event: KeyEvent) -> Cmd<Msg> {
         let now = Instant::now();
         let input_seq = self.next_input_seq();
-        if let KeyCode::Char(character) = key_event.code
-            && key_event.modifiers.is_empty()
-            && let Some(state) = self.session.interactive.as_mut()
-            && state.should_drop_split_mouse_fragment(character, now)
-        {
-            self.log_input_event_with_fields(
-                "interactive_key_dropped_mouse_fragment",
-                input_seq,
-                vec![
-                    ("code".to_string(), Value::from("char")),
-                    ("modifiers".to_string(), Value::from("none")),
-                ],
-            );
-            return Cmd::None;
-        }
 
         let Some(interactive_key) = Self::map_interactive_key(key_event) else {
             self.log_input_event_with_fields(

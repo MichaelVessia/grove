@@ -19,9 +19,8 @@ pub(crate) fn evaluate_capture_change(
     raw_output: &str,
 ) -> CaptureChange {
     let normalized_output = normalize_colon_delimited_sgr_sequences(raw_output);
-    let (render_output, cleaned_without_sgr) =
+    let (render_output, cleaned_output) =
         strip_non_sgr_control_sequences(normalized_output.as_str());
-    let cleaned_output = strip_mouse_fragments(&cleaned_without_sgr);
     let digest = OutputDigest {
         raw_hash: content_hash(raw_output),
         raw_len: raw_output.len(),
@@ -102,83 +101,6 @@ fn normalize_sgr_params(params: &str) -> String {
         .flat_map(|segment| segment.split(':').filter(|value| !value.is_empty()))
         .collect::<Vec<_>>()
         .join(";")
-}
-
-pub(crate) fn strip_mouse_fragments(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut output = Vec::with_capacity(bytes.len());
-    let mut index = 0usize;
-
-    while index < bytes.len() {
-        let byte = bytes[index];
-
-        if matches!(byte, b'[' | b'\x1b')
-            && let Some(end) = parse_mouse_mode_sequence_end(bytes, index)
-        {
-            index = end;
-            continue;
-        }
-
-        if matches!(byte, b'[' | b'M' | b'm')
-            && let Some(end) = parse_mouse_fragment_end(bytes, index)
-        {
-            index = end;
-            continue;
-        }
-
-        output.push(byte);
-        index = index.saturating_add(1);
-    }
-
-    String::from_utf8(output).unwrap_or_default()
-}
-
-const MOUSE_MODE_SEQUENCES: [&[u8]; 28] = [
-    b"\x1b[?1000h",
-    b"\x1b[?1000l",
-    b"[?1000h",
-    b"[?1000l",
-    b"\x1b[?1002h",
-    b"\x1b[?1002l",
-    b"[?1002h",
-    b"[?1002l",
-    b"\x1b[?1003h",
-    b"\x1b[?1003l",
-    b"[?1003h",
-    b"[?1003l",
-    b"\x1b[?1005h",
-    b"\x1b[?1005l",
-    b"[?1005h",
-    b"[?1005l",
-    b"\x1b[?1006h",
-    b"\x1b[?1006l",
-    b"[?1006h",
-    b"[?1006l",
-    b"\x1b[?1015h",
-    b"\x1b[?1015l",
-    b"[?1015h",
-    b"[?1015l",
-    b"\x1b[?2004h",
-    b"\x1b[?2004l",
-    b"[?2004h",
-    b"[?2004l",
-];
-
-fn parse_mouse_mode_sequence_end(bytes: &[u8], start: usize) -> Option<usize> {
-    if bytes
-        .get(start)
-        .is_none_or(|byte| *byte != b'[' && *byte != b'\x1b')
-    {
-        return None;
-    }
-
-    for pattern in MOUSE_MODE_SEQUENCES {
-        if bytes[start..].starts_with(pattern) {
-            return Some(start.saturating_add(pattern.len()));
-        }
-    }
-
-    None
 }
 
 fn strip_non_sgr_control_sequences(input: &str) -> (String, String) {
@@ -295,51 +217,6 @@ fn strip_non_sgr_control_sequences(input: &str) -> (String, String) {
     (render_output, cleaned_without_sgr)
 }
 
-fn parse_mouse_fragment_end(bytes: &[u8], start: usize) -> Option<usize> {
-    if bytes.get(start) == Some(&b'[') && bytes.get(start.saturating_add(1)) == Some(&b'<') {
-        return parse_sgr_mouse_tail(bytes, start.saturating_add(2));
-    }
-    if matches!(bytes.get(start), Some(b'M' | b'm'))
-        && bytes.get(start.saturating_add(1)) == Some(&b'[')
-        && bytes.get(start.saturating_add(2)) == Some(&b'<')
-    {
-        return parse_sgr_mouse_tail(bytes, start.saturating_add(3));
-    }
-
-    None
-}
-
-fn parse_sgr_mouse_tail(bytes: &[u8], mut index: usize) -> Option<usize> {
-    index = consume_ascii_digits(bytes, index)?;
-
-    if bytes.get(index) != Some(&b';') {
-        return None;
-    }
-    index = index.saturating_add(1);
-    index = consume_ascii_digits(bytes, index)?;
-
-    if bytes.get(index) != Some(&b';') {
-        return None;
-    }
-    index = index.saturating_add(1);
-    index = consume_ascii_digits(bytes, index)?;
-
-    if matches!(bytes.get(index), Some(b'M' | b'm')) {
-        index = index.saturating_add(1);
-    }
-
-    Some(index)
-}
-
-fn consume_ascii_digits(bytes: &[u8], mut start: usize) -> Option<usize> {
-    let initial = start;
-    while matches!(bytes.get(start), Some(b'0'..=b'9')) {
-        start = start.saturating_add(1);
-    }
-
-    if start == initial { None } else { Some(start) }
-}
-
 fn content_hash(content: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
     content.hash(&mut hasher);
@@ -348,25 +225,8 @@ fn content_hash(content: &str) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        evaluate_capture_change, normalize_colon_delimited_sgr_sequences, strip_mouse_fragments,
-    };
+    use super::{evaluate_capture_change, normalize_colon_delimited_sgr_sequences};
     use crate::application::agent_runtime::CaptureChange;
-
-    #[test]
-    fn capture_change_detects_mouse_fragment_noise() {
-        let first = evaluate_capture_change(None, "hello\u{1b}[?1000h\u{1b}[<35;192;47M");
-        assert!(first.changed_raw);
-        assert!(first.changed_cleaned);
-
-        let second = evaluate_capture_change(Some(&first.digest), "hello\u{1b}[?1000l");
-        assert!(second.changed_raw);
-        assert!(!second.changed_cleaned);
-        assert_eq!(second.cleaned_output, "hello");
-
-        let third = evaluate_capture_change(Some(&second.digest), "hello world");
-        assert!(third.changed_cleaned);
-    }
 
     #[test]
     fn capture_change_first_capture_marks_changed() {
@@ -423,41 +283,6 @@ mod tests {
         let change = evaluate_capture_change(None, raw);
         assert_eq!(change.cleaned_output, "AB");
         assert_eq!(change.render_output, "AB");
-    }
-
-    #[test]
-    fn capture_change_ignores_truncated_partial_mouse_fragments() {
-        let first = evaluate_capture_change(None, "prompt [<65;103;31");
-        assert_eq!(first.cleaned_output, "prompt ");
-
-        let second = evaluate_capture_change(Some(&first.digest), "prompt [<65;103;32");
-        assert!(!second.changed_cleaned);
-        assert_eq!(second.cleaned_output, "prompt ");
-    }
-
-    #[test]
-    fn strip_mouse_fragments_removes_terminal_modes_and_preserves_normal_brackets() {
-        assert_eq!(strip_mouse_fragments("value[?1002h"), "value");
-        assert_eq!(strip_mouse_fragments("keep [test]"), "keep [test]");
-        assert_eq!(strip_mouse_fragments("value[?9999h"), "value[?9999h");
-    }
-
-    #[test]
-    fn strip_mouse_fragments_removes_boundary_prefixed_partial_sequences() {
-        assert_eq!(strip_mouse_fragments("prompt M[<64;107;16M"), "prompt ");
-        assert_eq!(strip_mouse_fragments("prompt m[<65;107;14"), "prompt ");
-    }
-
-    #[test]
-    fn strip_mouse_fragments_removes_modes_and_partials_in_single_input() {
-        let raw = "A\u{1b}[?1002hB[<65;107;16MC";
-        assert_eq!(strip_mouse_fragments(raw), "ABC");
-    }
-
-    #[test]
-    fn strip_mouse_fragments_preserves_non_mouse_candidate_prefixes() {
-        assert_eq!(strip_mouse_fragments("Mnot-mouse"), "Mnot-mouse");
-        assert_eq!(strip_mouse_fragments("text [<x;1;2"), "text [<x;1;2");
     }
 
     #[test]

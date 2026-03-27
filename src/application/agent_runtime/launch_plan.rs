@@ -196,6 +196,14 @@ fn tmux_launch_plan(
             "history-limit".to_string(),
             "10000".to_string(),
         ],
+        vec![
+            "tmux".to_string(),
+            "set-option".to_string(),
+            "-t".to_string(),
+            session_name.clone(),
+            "mouse".to_string(),
+            "off".to_string(),
+        ],
     ];
     pre_launch_cmds.extend(tmux_theme_commands(
         session_name.as_str(),
@@ -446,6 +454,39 @@ mod tests {
                 "Enter".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn launch_plan_disables_mouse_on_managed_sessions() {
+        let request = LaunchRequest {
+            session_name: None,
+            task_slug: None,
+            project_name: None,
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+            agent: AgentType::Claude,
+            theme_name: crate::infrastructure::config::ThemeName::default(),
+            prompt: None,
+            workspace_init_command: None,
+            permission_mode: PermissionMode::Default,
+            agent_env: Vec::new(),
+            capture_cols: None,
+            capture_rows: None,
+        };
+
+        let plan = build_launch_plan(&request);
+
+        assert!(plan.pre_launch_cmds.iter().any(|command| {
+            command
+                == &vec![
+                    "tmux".to_string(),
+                    "set-option".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-auth-flow".to_string(),
+                    "mouse".to_string(),
+                    "off".to_string(),
+                ]
+        }));
     }
 
     #[test]

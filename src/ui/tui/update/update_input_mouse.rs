@@ -361,10 +361,6 @@ impl GroveApp {
     }
 
     pub(super) fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {
-        if let Some(state) = self.session.interactive.as_mut() {
-            state.note_mouse_event(Instant::now());
-        }
-
         let (region, row_data) = self.hit_region_for_point(mouse_event.x, mouse_event.y);
         let mut event = LogEvent::new("mouse", "event")
             .with_data("x", Value::from(mouse_event.x))
