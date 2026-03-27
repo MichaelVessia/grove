@@ -6,6 +6,9 @@ on:
       tag:
         required: true
         type: string
+    secrets:
+      HOMEBREW_TAP_TOKEN:
+        required: true
 
 permissions:
   contents: write
@@ -68,3 +71,52 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: gh release upload "${{ inputs.tag }}" dist/* --clobber
+
+      - name: Update Homebrew tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+
+          SHA_LINUX_X86_64=$(cat dist/grove-linux-x86_64.tar.gz.sha256 | cut -d' ' -f1)
+          SHA_MACOS_ARM64=$(cat dist/grove-macos-arm64.tar.gz.sha256 | cut -d' ' -f1)
+
+          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/MichaelVessia/homebrew-tap.git tap
+          cd tap
+
+          cat > Formula/grove.rb << FORMULA
+          class Grove < Formula
+            desc "Minimal workspace manager for AI coding agents"
+            homepage "https://github.com/MichaelVessia/grove"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/MichaelVessia/grove/releases/download/v${VERSION}/grove-macos-arm64.tar.gz"
+                sha256 "${SHA_MACOS_ARM64}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/MichaelVessia/grove/releases/download/v${VERSION}/grove-linux-x86_64.tar.gz"
+                sha256 "${SHA_LINUX_X86_64}"
+              end
+            end
+
+            def install
+              bin.install "grove"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/grove --version")
+            end
+          end
+          FORMULA
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/grove.rb
+          git commit -m "grove ${VERSION}"
+          git push
