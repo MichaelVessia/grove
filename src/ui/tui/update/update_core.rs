@@ -1,6 +1,15 @@
 use super::update_prelude::*;
 
 impl GroveApp {
+    pub(super) fn begin_interactive_preview_reset(&mut self) {
+        if self.interactive_preview_reset_pending {
+            return;
+        }
+
+        self.interactive_preview_reset_pending = true;
+        self.queue_cmd(Cmd::msg(Msg::Noop));
+    }
+
     pub(super) fn selected_workspace_name(&self) -> Option<String> {
         self.state
             .selected_workspace()

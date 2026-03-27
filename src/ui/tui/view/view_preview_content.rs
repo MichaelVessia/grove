@@ -249,6 +249,10 @@ impl GroveApp {
         visible_end: usize,
         preview_height: usize,
     ) -> Vec<FtLine<'static>> {
+        if self.interactive_preview_reset_pending {
+            return Vec::new();
+        }
+
         let theme = self.active_ui_theme();
         let visible_parsed_lines = self.preview_visible_parsed_lines(
             visible_plain_lines,

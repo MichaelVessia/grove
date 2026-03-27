@@ -12,8 +12,8 @@ use serde_json::Value;
 
 use crate::infrastructure::event_log::Event as LogEvent;
 use crate::ui::tui::{
-    CommandTmuxInput, GroveApp, LIVE_PREVIEW_FULL_SCROLLBACK_LINES, Msg, PreviewSessionGeometry,
-    PreviewStreamConnected, PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput,
+    CommandTmuxInput, GroveApp, LIVE_PREVIEW_FULL_SCROLLBACK_LINES, Msg, PreviewStreamConnected,
+    PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput,
 };
 
 const TMUX_CONTROL_MODE_POLL_MS: u64 = 50;
@@ -55,6 +55,19 @@ impl Default for PreviewStreamState {
 }
 
 impl GroveApp {
+    pub(in crate::ui::tui) fn local_preview_terminal_geometry(
+        &self,
+        session_name: &str,
+    ) -> Option<(u16, u16)> {
+        self.preview_output_dimensions().or_else(|| {
+            self.polling
+                .preview_session_geometry
+                .as_ref()
+                .filter(|geometry| geometry.session == session_name)
+                .map(|geometry| (geometry.width, geometry.height))
+        })
+    }
+
     fn latest_live_preview_raw_output_for_session(&self, session_name: &str) -> Option<String> {
         if self.polling.last_live_preview_session.as_deref() != Some(session_name) {
             return None;
@@ -66,7 +79,7 @@ impl GroveApp {
     }
 
     fn desired_preview_stream_session(&self) -> Option<String> {
-        self.selected_live_preview_session_if_ready()
+        self.interactive_target_session()
     }
 
     pub(in crate::ui::tui) fn preview_stream_subscription(
@@ -122,9 +135,10 @@ impl GroveApp {
         self.polling.preview_stream.reconciliation_pending = false;
         self.polling.preview_stream.last_chunk_bytes = 0;
         self.polling.preview_session_geometry = None;
-        let preserve_interactive_terminal = self.interactive_target_session().is_some()
-            && self.preview.selected_terminal().is_some();
-        if !preserve_interactive_terminal {
+        let preserve_selected_terminal = self.preview.selected_terminal().is_some()
+            && (self.interactive_target_session().is_some()
+                || self.interactive_preview_reset_pending);
+        if !preserve_selected_terminal {
             if previous.is_some() {
                 self.preview.reset_selected_session_state();
             } else {
@@ -185,22 +199,8 @@ impl GroveApp {
             .buffer
             .push_str(output.chunk.as_str());
 
-        let geometry = self
-            .polling
-            .preview_session_geometry
-            .as_ref()
-            .filter(|geometry| geometry.session == output.session)
-            .cloned()
-            .or_else(|| {
-                self.preview_output_dimensions()
-                    .map(|(width, height)| PreviewSessionGeometry {
-                        session: output.session.clone(),
-                        width,
-                        height,
-                    })
-            });
-
-        if let Some(geometry) = geometry {
+        if let Some((width, height)) = self.local_preview_terminal_geometry(output.session.as_str())
+        {
             if self.polling.preview_stream.bootstrap_completed {
                 if self.preview.selected_terminal().is_some() {
                     self.preview
@@ -208,8 +208,8 @@ impl GroveApp {
                 } else {
                     self.preview.bootstrap_selected_terminal_from_stream(
                         self.polling.preview_stream.buffer.as_str(),
-                        geometry.width,
-                        geometry.height,
+                        width,
+                        height,
                     );
                 }
             } else if let Some(raw_output) =
@@ -217,8 +217,8 @@ impl GroveApp {
             {
                 self.preview.bootstrap_selected_terminal_from_stream(
                     raw_output.as_str(),
-                    geometry.width,
-                    geometry.height,
+                    width,
+                    height,
                 );
                 self.preview
                     .apply_selected_terminal_chunk(output.chunk.as_str());

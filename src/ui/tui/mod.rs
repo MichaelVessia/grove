@@ -6945,7 +6945,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_stream_retargets_on_workspace_change() {
+    fn preview_stream_stays_disconnected_outside_interactive_on_workspace_change() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -6957,10 +6957,7 @@ mod tests {
             .mark_ready(feature_workspace_session());
         app.sync_preview_stream_target();
 
-        assert_eq!(
-            app.polling.preview_stream.target_session,
-            Some(feature_workspace_session())
-        );
+        assert!(app.polling.preview_stream.target_session.is_none());
         let first_generation = app.polling.preview_stream.generation;
 
         select_workspace(&mut app, 0);
@@ -6971,15 +6968,12 @@ mod tests {
         app.state.workspaces[0].status = WorkspaceStatus::Active;
         app.sync_preview_stream_target();
 
-        assert_eq!(
-            app.polling.preview_stream.target_session,
-            Some(main_workspace_session())
-        );
-        assert!(app.polling.preview_stream.generation > first_generation);
+        assert!(app.polling.preview_stream.target_session.is_none());
+        assert_eq!(app.polling.preview_stream.generation, first_generation);
     }
 
     #[test]
-    fn preview_stream_disconnects_when_agent_preview_is_not_visible() {
+    fn preview_stream_stays_disconnected_when_agent_preview_is_not_visible() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -6990,10 +6984,7 @@ mod tests {
             .mark_ready(feature_workspace_session());
 
         app.sync_preview_stream_target();
-        assert_eq!(
-            app.polling.preview_stream.target_session,
-            Some(feature_workspace_session())
-        );
+        assert!(app.polling.preview_stream.target_session.is_none());
 
         app.preview_tab = PreviewTab::Git;
         app.sync_preview_stream_target();
@@ -7003,7 +6994,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_stream_stays_targeted_when_preview_pane_blurs() {
+    fn preview_stream_stays_disconnected_when_preview_pane_blurs() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -7020,16 +7011,13 @@ mod tests {
         let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
         app.sync_preview_stream_target();
 
-        assert_eq!(
-            app.polling.preview_stream.target_session,
-            Some(feature_workspace_session())
-        );
+        assert!(app.polling.preview_stream.target_session.is_none());
         assert_eq!(app.polling.preview_stream.generation, generation);
         assert!(app.preview.selected_terminal().is_some());
     }
 
     #[test]
-    fn preview_stream_retargets_on_workspace_change_while_workspace_list_is_focused() {
+    fn preview_stream_stays_disconnected_while_workspace_list_is_focused() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -7041,10 +7029,7 @@ mod tests {
             .mark_ready(feature_workspace_session());
         app.sync_preview_stream_target();
 
-        assert_eq!(
-            app.polling.preview_stream.target_session,
-            Some(feature_workspace_session())
-        );
+        assert!(app.polling.preview_stream.target_session.is_none());
 
         let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
         select_workspace(&mut app, 0);
@@ -7056,10 +7041,7 @@ mod tests {
             .mark_ready(main_workspace_session());
         app.sync_preview_stream_target();
 
-        assert_eq!(
-            app.polling.preview_stream.target_session,
-            Some(main_workspace_session())
-        );
+        assert!(app.polling.preview_stream.target_session.is_none());
     }
 
     #[test]
@@ -7088,7 +7070,7 @@ mod tests {
             app.polling.preview_stream.target_session,
             Some(feature_workspace_session())
         );
-        assert_eq!(app.polling.preview_stream.generation, generation);
+        assert!(app.polling.preview_stream.generation > generation);
     }
 
     #[test]
@@ -7101,6 +7083,13 @@ mod tests {
         app.session
             .agent_sessions
             .mark_ready(feature_workspace_session());
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
         app.polling.preview_stream.connected_session = Some(feature_workspace_session());
         app.polling.preview_stream.source = PreviewStreamSource::Stream;
@@ -7216,6 +7205,13 @@ mod tests {
         app.session
             .agent_sessions
             .mark_ready(feature_workspace_session());
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
 
         let rows = app.session_performance_rows();
@@ -7240,6 +7236,13 @@ mod tests {
             .mark_ready(feature_workspace_session());
         app.preview
             .apply_capture("Connecting to main workspace session...\n");
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
         let generation = app.polling.preview_stream.generation;
 
@@ -7263,13 +7266,7 @@ mod tests {
         app.mark_preview_stream_bootstrap_completed(&feature_workspace_session());
 
         assert_eq!(app.preview.lines, vec!["snapshot line".to_string()]);
-        assert_eq!(
-            app.preview
-                .selected_terminal()
-                .expect("snapshot should seed selected terminal")
-                .plain_lines[0],
-            "snapshot line"
-        );
+        assert!(app.preview.selected_terminal().is_none());
         assert_eq!(
             app.polling.preview_stream.connected_session,
             Some(feature_workspace_session())
@@ -7289,6 +7286,13 @@ mod tests {
             .agent_sessions
             .mark_ready(feature_workspace_session());
         app.preview.apply_capture("stale snapshot\n");
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
         app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
             session: feature_workspace_session(),
@@ -7325,6 +7329,13 @@ mod tests {
         app.session
             .agent_sessions
             .mark_ready(feature_workspace_session());
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
         app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
             session: feature_workspace_session(),
@@ -7365,6 +7376,13 @@ mod tests {
         app.session
             .agent_sessions
             .mark_ready(feature_workspace_session());
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
         app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
             session: feature_workspace_session(),
@@ -7406,6 +7424,13 @@ mod tests {
         app.session
             .agent_sessions
             .mark_ready(feature_workspace_session());
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
         app.telemetry.deferred_cmds.clear();
         let generation = app.polling.preview_stream.generation;
@@ -7581,6 +7606,13 @@ mod tests {
         app.session
             .agent_sessions
             .mark_ready(feature_workspace_session());
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
         let generation = app.polling.preview_stream.generation;
 
@@ -7614,6 +7646,13 @@ mod tests {
             .agent_sessions
             .mark_ready(feature_workspace_session());
         app.preview.apply_capture("initial line\n");
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
         let generation = app.polling.preview_stream.generation;
 
@@ -7673,6 +7712,13 @@ mod tests {
         app.session
             .agent_sessions
             .mark_ready(feature_workspace_session());
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
         let generation = app.polling.preview_stream.generation;
 
@@ -7708,6 +7754,13 @@ mod tests {
             .agent_sessions
             .mark_ready(feature_workspace_session());
         app.preview.apply_capture("stale output\n");
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
         let generation = app.polling.preview_stream.generation;
         app.preview
@@ -7757,6 +7810,13 @@ mod tests {
             .agent_sessions
             .mark_ready(feature_workspace_session());
         app.preview.apply_capture("current output\n");
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
         let stale_generation = app.polling.preview_stream.generation.saturating_sub(1);
         app.preview
@@ -7791,6 +7851,13 @@ mod tests {
             .agent_sessions
             .mark_ready(feature_workspace_session());
         app.preview.apply_capture("initial line\n");
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
         let generation = app.polling.preview_stream.generation;
 
@@ -7825,6 +7892,13 @@ mod tests {
             .agent_sessions
             .mark_ready(feature_workspace_session());
         app.preview.apply_capture("agent output line\n");
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
         app.sync_preview_stream_target();
 
         app.polling.preview_stream.bootstrap_completed = true;
@@ -10094,6 +10168,143 @@ mod tests {
             }
 
             #[test]
+            fn resize_blurred_stream_preview_reflows_terminal_and_resizes_session() {
+                let (mut app, _commands, _captures, _cursor_captures, calls) =
+                    fixture_app_with_tmux_and_calls(
+                        WorkspaceStatus::Active,
+                        Vec::new(),
+                        Vec::new(),
+                    );
+                let long_line = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzab";
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                select_workspace(&mut app, 1);
+                focus_agent_preview_tab(&mut app);
+                app.state.mode = UiMode::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
+                app.session
+                    .agent_sessions
+                    .mark_ready(feature_workspace_session());
+                app.sync_preview_stream_target();
+                app.polling.preview_stream.connected_session = Some(feature_workspace_session());
+                app.polling.preview_stream.source = PreviewStreamSource::Stream;
+                app.polling.preview_stream.bootstrap_completed = true;
+                app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
+                    session: feature_workspace_session(),
+                    width: 78,
+                    height: 34,
+                });
+                app.preview
+                    .bootstrap_selected_terminal_from_stream(long_line, 78, 34);
+
+                let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
+                calls.borrow_mut().clear();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 80,
+                        height: 40,
+                    },
+                );
+
+                let (expected_width, expected_height) = app
+                    .preview_output_dimensions()
+                    .expect("preview output dimensions should exist");
+                let terminal = app
+                    .preview
+                    .selected_terminal()
+                    .expect("selected terminal should remain available after resize");
+                assert_eq!(terminal.width, expected_width);
+                assert_eq!(terminal.height, expected_height);
+                assert_eq!(
+                    terminal.plain_lines[1].chars().count(),
+                    long_line
+                        .chars()
+                        .count()
+                        .saturating_sub(usize::from(expected_width))
+                );
+                assert_eq!(
+                    app.polling.preview_session_geometry,
+                    Some(PreviewSessionGeometry {
+                        session: feature_workspace_session(),
+                        width: expected_width,
+                        height: expected_height,
+                    })
+                );
+                assert!(calls.borrow().iter().any(|call| {
+                    call == &format!(
+                        "resize:{}:{expected_width}:{expected_height}",
+                        feature_workspace_session()
+                    )
+                }));
+            }
+
+            #[test]
+            fn live_capture_prefers_current_preview_dimensions_over_stale_cached_geometry() {
+                let mut app = fixture_background_app(WorkspaceStatus::Active);
+                let long_line = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzab";
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 80,
+                        height: 40,
+                    },
+                );
+                select_workspace(&mut app, 1);
+                focus_agent_preview_tab(&mut app);
+                app.state.mode = UiMode::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
+                app.session
+                    .agent_sessions
+                    .mark_ready(feature_workspace_session());
+                app.sync_preview_stream_target();
+                app.polling.preview_stream.connected_session = Some(feature_workspace_session());
+                app.polling.preview_stream.source = PreviewStreamSource::Stream;
+                app.polling.preview_stream.bootstrap_completed = true;
+                app.polling.preview_stream.reconciliation_pending = true;
+                app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
+                    session: feature_workspace_session(),
+                    width: 78,
+                    height: 34,
+                });
+                let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
+
+                app.apply_live_preview_capture(
+                    &feature_workspace_session(),
+                    crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES,
+                    true,
+                    0,
+                    0,
+                    Ok(long_line.to_string()),
+                );
+
+                let (expected_width, expected_height) = app
+                    .preview_output_dimensions()
+                    .expect("preview output dimensions should exist");
+                let terminal = app
+                    .preview
+                    .selected_terminal()
+                    .expect("selected terminal should be rebuilt from current pane geometry");
+                assert_eq!(terminal.width, expected_width);
+                assert_eq!(terminal.height, expected_height);
+                assert_eq!(
+                    terminal.plain_lines[1].chars().count(),
+                    long_line
+                        .chars()
+                        .count()
+                        .saturating_sub(usize::from(expected_width))
+                );
+            }
+
+            #[test]
             fn resize_verify_retries_once_then_stops() {
                 let (mut app, _commands, _captures, _cursor_captures, calls) =
                     fixture_app_with_tmux_and_calls(
@@ -10983,6 +11194,78 @@ mod tests {
                         .and_then(Value::as_u64)
                         .is_some_and(|value| value > 0)
                 );
+            }
+
+            #[test]
+            fn interactive_exit_clears_preview_for_one_frame_before_restoring_output() {
+                let (mut app, _commands, _captures, _cursor_captures, _events) =
+                    fixture_app_with_tmux_and_events(
+                        WorkspaceStatus::Active,
+                        Vec::new(),
+                        Vec::new(),
+                    );
+                let width = 100;
+                let height = 40;
+
+                ftui::Model::update(&mut app, Msg::Resize { width, height });
+                select_workspace(&mut app, 1);
+                focus_agent_preview_tab(&mut app);
+                app.state.mode = UiMode::Preview;
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
+                app.preview.bootstrap_selected_terminal_from_stream(
+                    "first preview row\nsecond preview row\n",
+                    40,
+                    4,
+                );
+                app.session.interactive = Some(InteractiveState::new(
+                    "%0".to_string(),
+                    feature_workspace_session(),
+                    Instant::now(),
+                    height,
+                    width,
+                ));
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('\\'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+
+                assert!(app.interactive_preview_reset_pending);
+
+                let layout = app.panes.test_rects(width, height);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let x_start = layout.preview.x.saturating_add(1);
+                let x_end = layout.preview.right().saturating_sub(1);
+
+                with_rendered_frame(&app, width, height, |frame| {
+                    let cleared_row = row_text(frame, output_y, x_start, x_end);
+                    assert!(
+                        cleared_row.is_empty(),
+                        "expected first post-exit frame to clear preview output, got: {cleared_row}"
+                    );
+                });
+
+                ftui::Model::update(&mut app, Msg::Noop);
+
+                assert!(!app.interactive_preview_reset_pending);
+                let restored_preview_lines = app.preview.active_plain_lines().to_vec();
+                let selected_terminal_present = app.preview.selected_terminal().is_some();
+
+                with_rendered_frame(&app, width, height, |frame| {
+                    let restored_row = (output_y..preview_inner.bottom())
+                        .map(|row| row_text(frame, row, x_start, x_end))
+                        .find(|row| row.contains("first preview row"))
+                        .unwrap_or_default();
+                    assert!(
+                        restored_row.contains("first preview row"),
+                        "expected queued redraw to restore preview output, got: {restored_row}, selected_terminal_present: {selected_terminal_present}, preview_lines: {restored_preview_lines:?}"
+                    );
+                });
             }
 
             #[test]

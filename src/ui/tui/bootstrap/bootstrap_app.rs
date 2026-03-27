@@ -220,6 +220,7 @@ impl GroveApp {
             attention_observations: HashMap::new(),
             attention_items: Vec::new(),
             selected_attention_item: None,
+            interactive_preview_reset_pending: false,
             startup_attention_focus_pending: true,
             #[cfg(test)]
             attention_marker_overrides: HashMap::new(),

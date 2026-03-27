@@ -192,6 +192,7 @@ impl GroveApp {
                     .is_some_and(|state| state.target_session == completion.session_name)
                 {
                     self.session.interactive = None;
+                    self.begin_interactive_preview_reset();
                 }
 
                 if let Some(workspace_index) = self

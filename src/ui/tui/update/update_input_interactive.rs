@@ -3,12 +3,14 @@ use super::update_prelude::*;
 impl GroveApp {
     pub(super) fn exit_interactive_to_list(&mut self) {
         self.session.interactive = None;
+        self.begin_interactive_preview_reset();
         let _ = self.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
         self.clear_preview_selection();
     }
 
     pub(super) fn exit_interactive_to_preview(&mut self) {
         self.session.interactive = None;
+        self.begin_interactive_preview_reset();
         let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
         self.clear_preview_selection();
     }

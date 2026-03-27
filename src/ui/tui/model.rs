@@ -377,6 +377,7 @@ struct GroveApp {
     attention_observations: HashMap<PathBuf, AttentionObservation>,
     attention_items: Vec<AttentionItem>,
     selected_attention_item: Option<usize>,
+    interactive_preview_reset_pending: bool,
     startup_attention_focus_pending: bool,
     #[cfg(test)]
     attention_marker_overrides: HashMap<PathBuf, Option<String>>,

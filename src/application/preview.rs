@@ -171,6 +171,23 @@ impl PreviewState {
         ));
     }
 
+    pub(crate) fn rerender_selected_terminal(&mut self, width: u16, height: u16) {
+        let Some(raw_stream) = self
+            .selected_terminal
+            .as_ref()
+            .map(|terminal| terminal.raw_stream.clone())
+        else {
+            return;
+        };
+        self.selected_terminal = Some(render_selected_terminal_state(
+            raw_stream.as_str(),
+            width,
+            height,
+            None,
+            None,
+        ));
+    }
+
     pub(crate) fn clear_selected_terminal(&mut self) {
         self.selected_terminal = None;
     }

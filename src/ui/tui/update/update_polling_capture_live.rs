@@ -72,6 +72,7 @@ impl GroveApp {
             .is_some_and(|interactive| interactive.target_session == session_name)
         {
             self.session.interactive = None;
+            self.begin_interactive_preview_reset();
         }
         if clear_selected_terminal {
             self.preview.clear_selected_terminal();
@@ -172,16 +173,13 @@ impl GroveApp {
                 {
                     if interactive_target_session {
                         self.preview.clear_selected_terminal();
-                    } else if let Some(geometry) = self
-                        .polling
-                        .preview_session_geometry
-                        .as_ref()
-                        .filter(|geometry| geometry.session == session_name)
+                    } else if let Some((pane_width, pane_height)) =
+                        self.local_preview_terminal_geometry(session_name)
                     {
                         self.preview.bootstrap_selected_terminal_from_stream(
                             output.as_str(),
-                            geometry.width,
-                            geometry.height,
+                            pane_width,
+                            pane_height,
                         );
                     }
                 }
