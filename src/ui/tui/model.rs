@@ -43,12 +43,14 @@ use serde_json::Value;
 use crate::application::agent_runtime::capture::{
     evaluate_capture_change, tmux_capture_error_indicates_missing_session,
 };
+use crate::application::agent_runtime::status::WorkspaceStatusObservation;
 use crate::application::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
     TaskLaunchRequest, WorkspaceStatusTarget, execute_command_with, git_session_name_for_workspace,
-    infer_workspace_permission_mode, poll_interval, restart_workspace_in_pane_with_io,
-    session_name_for_task, session_name_for_workspace_ref, shell_session_name_for_workspace,
-    tmux_launch_error_indicates_duplicate_session, trimmed_nonempty,
+    infer_workspace_permission_mode, poll_interval,
+    restart_workspace_in_pane_with_io, session_name_for_task, session_name_for_workspace_ref,
+    shell_session_name_for_workspace, tmux_launch_error_indicates_duplicate_session,
+    trimmed_nonempty,
     workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
 };
 use crate::application::agent_runtime::{

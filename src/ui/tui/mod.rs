@@ -252,6 +252,7 @@ mod tests {
         decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data, packed,
         parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
+    use crate::application::agent_runtime::status::WorkspaceStatusObservation;
     use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
     use crate::application::interactive::InteractiveState;
     use crate::application::task_lifecycle::{
@@ -16831,6 +16832,44 @@ second row\n",
 
                 assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Waiting);
                 assert!(!app.state.workspaces[1].is_orphaned);
+            }
+
+            #[test]
+            fn background_status_observation_sets_waiting_prompt_without_capture_text() {
+                let mut app = fixture_background_app(WorkspaceStatus::Active);
+                let workspace_path = feature_workspace_path();
+                app.attention_marker_overrides
+                    .insert(workspace_path.clone(), Some("assistant-marker".to_string()));
+
+                app.apply_workspace_status_observation(
+                    workspace_path.as_path(),
+                    WorkspaceStatusObservation {
+                        status: WorkspaceStatus::Waiting,
+                        recent_activity: false,
+                        waiting_excerpt: Some("approve command".to_string()),
+                    },
+                );
+                app.apply_workspace_status_observation(
+                    workspace_path.as_path(),
+                    WorkspaceStatusObservation {
+                        status: WorkspaceStatus::Waiting,
+                        recent_activity: false,
+                        waiting_excerpt: Some("approve command".to_string()),
+                    },
+                );
+
+                assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Waiting);
+                assert_eq!(
+                    app.polling
+                        .workspace_waiting_prompts
+                        .get(workspace_path.as_path())
+                        .map(String::as_str),
+                    Some("approve command")
+                );
+                assert!(
+                    app.workspace_attention.contains_key(&workspace_path),
+                    "structured waiting observation should feed the attention inbox"
+                );
             }
 
             #[test]

@@ -5,6 +5,7 @@ mod shared;
 use std::path::Path;
 use std::time::Duration;
 
+use crate::application::agent_runtime::status::WorkspaceStatusObservation;
 use crate::domain::{AgentType, PermissionMode, WorkspaceStatus};
 
 #[cfg(test)]
@@ -101,6 +102,22 @@ pub(super) fn latest_attention_marker_in_home(
     match agent {
         AgentType::Claude => claude::latest_attention_marker_in_home(workspace_path, home_dir),
         AgentType::Codex => codex::latest_attention_marker_in_home(workspace_path, home_dir),
+    }
+}
+
+pub(super) fn status_observation_in_home(
+    agent: AgentType,
+    workspace_path: &Path,
+    home_dir: &Path,
+    activity_threshold: Duration,
+) -> Option<WorkspaceStatusObservation> {
+    match agent {
+        AgentType::Claude => {
+            claude::status_observation_in_home(workspace_path, home_dir, activity_threshold)
+        }
+        AgentType::Codex => {
+            codex::status_observation_in_home(workspace_path, home_dir, activity_threshold)
+        }
     }
 }
 

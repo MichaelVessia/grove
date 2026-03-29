@@ -6,7 +6,9 @@ use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-use crate::domain::{PermissionMode, WorkspaceStatus};
+use serde_json::Value;
+
+use crate::domain::PermissionMode;
 
 pub(super) fn session_file_permission_mode(
     path: &Path,
@@ -132,36 +134,6 @@ pub(super) fn read_tail_lines(path: &Path, max_bytes: usize) -> Option<Vec<Strin
     Some(lines)
 }
 
-pub(super) fn get_last_message_status_jsonl(
-    path: &Path,
-    type_field: &str,
-    user_value: &str,
-    assistant_value: &str,
-    tail_bytes: usize,
-) -> Option<WorkspaceStatus> {
-    let lines = read_tail_lines(path, tail_bytes)?;
-    for line in lines.iter().rev() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let value: serde_json::Value = match serde_json::from_str(trimmed) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        let Some(message_type) = value.get(type_field).and_then(|value| value.as_str()) else {
-            continue;
-        };
-        if message_type == user_value {
-            return Some(WorkspaceStatus::Active);
-        }
-        if message_type == assistant_value {
-            return Some(WorkspaceStatus::Waiting);
-        }
-    }
-    None
-}
-
 pub(super) fn marker_for_session_line(path: &Path, line: &str) -> Option<String> {
     let modified = fs::metadata(path)
         .and_then(|metadata| metadata.modified())
@@ -203,6 +175,44 @@ pub(super) fn get_last_message_marker_jsonl(
         }
     }
     None
+}
+
+pub(super) fn best_effort_excerpt_from_json_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => normalized_excerpt(text),
+        Value::Array(items) => items.iter().find_map(best_effort_excerpt_from_json_value),
+        Value::Object(entries) => {
+            for key in ["text", "content", "message"] {
+                if let Some(value) = entries.get(key)
+                    && let Some(excerpt) = best_effort_excerpt_from_json_value(value)
+                {
+                    return Some(excerpt);
+                }
+            }
+            for (key, value) in entries {
+                if matches!(
+                    key.as_str(),
+                    "type" | "role" | "id" | "uuid" | "timestamp" | "session_id" | "cwd"
+                ) {
+                    continue;
+                }
+                if let Some(excerpt) = best_effort_excerpt_from_json_value(value) {
+                    return Some(excerpt);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn normalized_excerpt(text: &str) -> Option<String> {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+
+    Some(collapsed)
 }
 
 pub(super) fn cwd_matches(cwd: &Path, workspace_path: &Path) -> bool {

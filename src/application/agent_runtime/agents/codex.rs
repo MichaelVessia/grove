@@ -9,6 +9,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use serde::Deserialize;
 
+use crate::application::agent_runtime::status::WorkspaceStatusObservation;
 use crate::domain::{PermissionMode, WorkspaceStatus};
 
 use super::shared;
@@ -28,7 +29,7 @@ struct SessionLookupCacheEntry {
 #[derive(Debug, Clone)]
 struct MessageStatusCacheEntry {
     modified_at: SystemTime,
-    status: Option<WorkspaceStatus>,
+    observation: Option<WorkspaceStatusObservation>,
 }
 
 #[derive(Debug, Clone)]
@@ -131,14 +132,27 @@ pub(super) fn detect_session_status_in_home(
     home_dir: &Path,
     activity_threshold: Duration,
 ) -> Option<WorkspaceStatus> {
+    status_observation_in_home(workspace_path, home_dir, activity_threshold)
+        .map(|observation| observation.status)
+}
+
+pub(super) fn status_observation_in_home(
+    workspace_path: &Path,
+    home_dir: &Path,
+    activity_threshold: Duration,
+) -> Option<WorkspaceStatusObservation> {
     let sessions_dir = home_dir.join(".codex").join("sessions");
     let session_file = find_session_for_path_cached(&sessions_dir, workspace_path)?;
 
     if shared::is_file_recently_modified(&session_file, activity_threshold) {
-        return Some(WorkspaceStatus::Active);
+        return Some(WorkspaceStatusObservation {
+            status: WorkspaceStatus::Active,
+            recent_activity: true,
+            waiting_excerpt: None,
+        });
     }
 
-    get_last_message_status_cached(&session_file)
+    get_last_message_observation_cached(&session_file)
 }
 
 pub(super) fn latest_attention_marker_in_home(
@@ -193,7 +207,12 @@ fn find_session_for_path_cached(sessions_dir: &Path, workspace_path: &Path) -> O
     session_file
 }
 
+#[cfg(test)]
 fn get_last_message_status_cached(path: &Path) -> Option<WorkspaceStatus> {
+    get_last_message_observation_cached(path).map(|observation| observation.status)
+}
+
+fn get_last_message_observation_cached(path: &Path) -> Option<WorkspaceStatusObservation> {
     let modified_at = fs::metadata(path)
         .and_then(|metadata| metadata.modified())
         .ok()?;
@@ -201,17 +220,17 @@ fn get_last_message_status_cached(path: &Path) -> Option<WorkspaceStatus> {
         && let Some(entry) = cache.get(path)
         && entry.modified_at == modified_at
     {
-        return entry.status;
+        return entry.observation.clone();
     }
 
-    let status = get_last_message_status(path);
+    let observation = get_last_message_observation(path);
     if let Ok(mut cache) = message_status_cache().lock() {
         let inserted_at = Instant::now();
         cache.insert(
             path.to_path_buf(),
             MessageStatusCacheEntry {
                 modified_at,
-                status,
+                observation: observation.clone(),
             },
         );
         shared::prune_by_oldest(
@@ -223,7 +242,7 @@ fn get_last_message_status_cached(path: &Path) -> Option<WorkspaceStatus> {
         );
     }
 
-    status
+    observation
 }
 
 #[cfg(test)]
@@ -347,16 +366,28 @@ fn get_session_cwd(path: &Path) -> Option<PathBuf> {
     None
 }
 
-fn get_last_message_status(path: &Path) -> Option<WorkspaceStatus> {
+fn get_last_message_observation(path: &Path) -> Option<WorkspaceStatusObservation> {
     let lines = shared::read_tail_lines(path, super::super::SESSION_STATUS_TAIL_BYTES)?;
     for line in lines.iter().rev() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-        match parse_response_message_role(trimmed) {
-            Some("assistant") => return Some(WorkspaceStatus::Waiting),
-            Some("user") => return Some(WorkspaceStatus::Active),
+        match parse_response_message_status_and_excerpt(trimmed) {
+            Some((WorkspaceStatus::Waiting, excerpt)) => {
+                return Some(WorkspaceStatusObservation {
+                    status: WorkspaceStatus::Waiting,
+                    recent_activity: false,
+                    waiting_excerpt: excerpt,
+                });
+            }
+            Some((WorkspaceStatus::Active, _)) => {
+                return Some(WorkspaceStatusObservation {
+                    status: WorkspaceStatus::Active,
+                    recent_activity: false,
+                    waiting_excerpt: None,
+                });
+            }
             _ => continue,
         }
     }
@@ -404,6 +435,25 @@ fn parse_response_message_role(line: &str) -> Option<&str> {
         return None;
     }
     payload.role
+}
+
+fn parse_response_message_status_and_excerpt(
+    line: &str,
+) -> Option<(WorkspaceStatus, Option<String>)> {
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    if value.get("type").and_then(serde_json::Value::as_str) != Some("response_item") {
+        return None;
+    }
+    let payload = value.get("payload")?;
+    if payload.get("type").and_then(serde_json::Value::as_str) != Some("message") {
+        return None;
+    }
+    let status = match payload.get("role").and_then(serde_json::Value::as_str)? {
+        "assistant" => WorkspaceStatus::Waiting,
+        "user" => WorkspaceStatus::Active,
+        _ => return None,
+    };
+    Some((status, shared::best_effort_excerpt_from_json_value(payload)))
 }
 
 #[cfg(test)]
@@ -592,5 +642,71 @@ mod tests {
         let cached_b = get_session_cwd_cached(&session_file, modified_b)
             .expect("cwd should refresh after modification");
         assert_eq!(cached_b, workspace_b);
+    }
+
+    #[test]
+    fn session_signal_codex_extracts_waiting_excerpt_from_output_text() {
+        let _guard = cache_test_guard();
+        reset_caches_for_test();
+        let root = unique_test_dir("codex-observation-excerpt");
+        let home = root.join("home");
+        let workspace_path = root.join("ws").join("feature-alpha");
+        let sessions_dir = home.join(".codex").join("sessions").join("2026").join("03");
+        fs::create_dir_all(&workspace_path).expect("workspace should exist");
+        fs::create_dir_all(&sessions_dir).expect("sessions directory should exist");
+
+        let session_file = sessions_dir.join("rollout-1.jsonl");
+        fs::write(
+            &session_file,
+            format!(
+                "{{\"type\":\"session_meta\",\"payload\":{{\"cwd\":\"{}\"}}}}\n{{\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{{\"type\":\"output_text\",\"text\":\"approve command\"}}]}}}}\n",
+                workspace_path.display()
+            ),
+        )
+        .expect("session file should be written");
+
+        assert_eq!(
+            status_observation_in_home(&workspace_path, &home, Duration::from_secs(0)),
+            Some(
+                crate::application::agent_runtime::status::WorkspaceStatusObservation {
+                    status: WorkspaceStatus::Waiting,
+                    recent_activity: false,
+                    waiting_excerpt: Some("approve command".to_string()),
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn session_signal_codex_marks_recent_activity_independently_of_excerpt() {
+        let _guard = cache_test_guard();
+        reset_caches_for_test();
+        let root = unique_test_dir("codex-observation-recent");
+        let home = root.join("home");
+        let workspace_path = root.join("ws").join("feature-beta");
+        let sessions_dir = home.join(".codex").join("sessions").join("2026").join("03");
+        fs::create_dir_all(&workspace_path).expect("workspace should exist");
+        fs::create_dir_all(&sessions_dir).expect("sessions directory should exist");
+
+        let session_file = sessions_dir.join("rollout-2.jsonl");
+        fs::write(
+            &session_file,
+            format!(
+                "{{\"type\":\"session_meta\",\"payload\":{{\"cwd\":\"{}\"}}}}\n{{\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{{\"type\":\"output_text\",\"text\":\"approve command\"}}]}}}}\n",
+                workspace_path.display()
+            ),
+        )
+        .expect("session file should be written");
+
+        assert_eq!(
+            status_observation_in_home(&workspace_path, &home, Duration::from_secs(60)),
+            Some(
+                crate::application::agent_runtime::status::WorkspaceStatusObservation {
+                    status: WorkspaceStatus::Active,
+                    recent_activity: true,
+                    waiting_excerpt: None,
+                }
+            )
+        );
     }
 }
