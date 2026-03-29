@@ -189,6 +189,7 @@ impl GroveApp {
         }
 
         let mut had_live_capture = false;
+        let mut had_deferred_status_captures = false;
         if let Some(live_capture) = completion.live_capture {
             let selected_live_session = self.selected_live_preview_session_for_completion();
             let captured_session = live_capture.session.clone();
@@ -271,7 +272,11 @@ impl GroveApp {
                 );
                 continue;
             }
-            self.apply_workspace_status_capture_at_index(status_capture, workspace_index);
+            self.apply_workspace_status_capture_at_index_deferred(status_capture, workspace_index);
+            had_deferred_status_captures = true;
+        }
+        if had_deferred_status_captures {
+            self.flush_deferred_attention_refresh();
         }
         if !had_live_capture
             && self

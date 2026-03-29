@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -19,8 +20,7 @@ pub(crate) fn evaluate_capture_change(
     raw_output: &str,
 ) -> CaptureChange {
     let normalized_output = normalize_colon_delimited_sgr_sequences(raw_output);
-    let (render_output, cleaned_output) =
-        strip_non_sgr_control_sequences(normalized_output.as_str());
+    let (render_output, cleaned_output) = strip_non_sgr_control_sequences(&normalized_output);
     let digest = OutputDigest {
         raw_hash: content_hash(raw_output),
         raw_len: raw_output.len(),
@@ -54,8 +54,48 @@ fn is_safe_render_text_character(character: char) -> bool {
     matches!(character, '\r' | '\n' | '\t') || !character.is_control()
 }
 
-fn normalize_colon_delimited_sgr_sequences(input: &str) -> String {
+fn has_colon_delimited_sgr(bytes: &[u8]) -> bool {
+    let mut index = 0usize;
+    while index.saturating_add(1) < bytes.len() {
+        if bytes[index] == b'\x1b' && bytes[index.saturating_add(1)] == b'[' {
+            let mut scan = index.saturating_add(2);
+            while scan < bytes.len() {
+                let byte = bytes[scan];
+                if byte == b':' {
+                    while scan < bytes.len() {
+                        if (b'@'..=b'~').contains(&bytes[scan]) {
+                            if bytes[scan] == b'm' {
+                                return true;
+                            }
+                            break;
+                        }
+                        scan = scan.saturating_add(1);
+                    }
+                    break;
+                }
+                if (b'@'..=b'~').contains(&byte) {
+                    break;
+                }
+                scan = scan.saturating_add(1);
+            }
+            index = if scan < bytes.len() {
+                scan.saturating_add(1)
+            } else {
+                bytes.len()
+            };
+        } else {
+            index = index.saturating_add(1);
+        }
+    }
+    false
+}
+
+fn normalize_colon_delimited_sgr_sequences(input: &str) -> Cow<'_, str> {
     let bytes = input.as_bytes();
+    if !has_colon_delimited_sgr(bytes) {
+        return Cow::Borrowed(input);
+    }
+
     let mut output = String::with_capacity(input.len());
     let mut index = 0usize;
 
@@ -92,7 +132,7 @@ fn normalize_colon_delimited_sgr_sequences(input: &str) -> String {
         index = index.saturating_add(character.len_utf8());
     }
 
-    output
+    Cow::Owned(output)
 }
 
 fn normalize_sgr_params(params: &str) -> String {

@@ -238,15 +238,23 @@ impl GroveApp {
                     let previous_status = self.state.workspaces[index].status;
                     let previous_orphaned = self.state.workspaces[index].is_orphaned;
                     let workspace_status_started_at = Instant::now();
-                    let (changed_cleaned, cleaned_output) = self
-                        .capture_changed_cleaned_for_workspace(&workspace_path, output.as_str());
+                    let previous_ws_digest =
+                        self.polling.workspace_status_digests.get(&workspace_path);
+                    let changed_cleaned = previous_ws_digest
+                        .is_none_or(|prev| prev.cleaned_hash != update.digest.cleaned_hash);
+                    self.polling
+                        .workspace_status_digests
+                        .insert(workspace_path.clone(), update.digest.clone());
+                    self.polling
+                        .workspace_output_changing
+                        .insert(workspace_path.clone(), changed_cleaned);
                     workspace_status_eval_ms = Self::duration_millis(
                         Instant::now().saturating_duration_since(workspace_status_started_at),
                     );
                     workspace_status_changed = changed_cleaned;
                     let status_detect_started_at = Instant::now();
                     let resolved_status = detect_status_with_session_override(
-                        cleaned_output.as_str(),
+                        update.cleaned_output.as_str(),
                         SessionActivity::Active,
                         workspace_is_main,
                         true,
@@ -261,7 +269,7 @@ impl GroveApp {
                     self.record_workspace_poll_state(
                         workspace_path.as_path(),
                         resolved_status,
-                        cleaned_output.as_str(),
+                        update.cleaned_output.as_str(),
                         changed_cleaned,
                     );
                     let workspace = &mut self.state.workspaces[index];

@@ -57,6 +57,8 @@ pub(crate) struct PreviewState {
 pub(crate) struct CaptureUpdate {
     pub changed_raw: bool,
     pub changed_cleaned: bool,
+    pub cleaned_output: String,
+    pub digest: OutputDigest,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,12 +106,12 @@ impl PreviewState {
         }
         self.recent_captures.push_back(record);
 
+        let result_digest = change.digest.clone();
         self.last_digest = Some(change.digest);
 
         if change.changed_raw {
             self.render_lines = split_output_lines(&change.render_output);
-            let preview_source_lines = split_output_lines(&change.render_output);
-            let snapshot = parse_preview_snapshot(&preview_source_lines);
+            let snapshot = parse_preview_snapshot(&self.render_lines);
             self.lines = snapshot.plain_lines;
             self.parsed_lines = snapshot.parsed_lines;
         } else if change.changed_cleaned {
@@ -119,6 +121,8 @@ impl PreviewState {
         CaptureUpdate {
             changed_raw: change.changed_raw,
             changed_cleaned: change.changed_cleaned,
+            cleaned_output: change.cleaned_output,
+            digest: result_digest,
         }
     }
 

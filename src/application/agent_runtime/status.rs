@@ -8,6 +8,23 @@ use crate::domain::{AgentType, WorkspaceStatus};
 use super::agents;
 use super::{SESSION_ACTIVITY_THRESHOLD, SessionActivity, WAITING_PATTERNS, WAITING_TAIL_LINES};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) struct WorkspaceStatusObservation {
+    pub(crate) status: WorkspaceStatus,
+    pub(crate) recent_activity: bool,
+    pub(crate) waiting_excerpt: Option<String>,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) struct BackgroundStatusObservationContext<'a> {
+    pub(crate) agent: AgentType,
+    pub(crate) workspace_path: &'a Path,
+    pub(crate) home_dir: Option<&'a Path>,
+    pub(crate) activity_threshold: Duration,
+    pub(crate) session_name: &'a str,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn detect_status_with_session_override(
     output: &str,
@@ -101,12 +118,10 @@ pub(crate) fn detect_status(
         return WorkspaceStatus::Waiting;
     }
 
-    let tail_lower = output.to_ascii_lowercase();
-
-    if has_unclosed_tag(&tail_lower, "<thinking>", "</thinking>")
-        || has_unclosed_tag(&tail_lower, "<internal_monologue>", "</internal_monologue>")
-        || tail_lower.contains("thinking...")
-        || tail_lower.contains("reasoning about")
+    if has_unclosed_tag_ci(output, b"<thinking>", b"</thinking>")
+        || has_unclosed_tag_ci(output, b"<internal_monologue>", b"</internal_monologue>")
+        || contains_ascii_ci(output.as_bytes(), b"thinking...")
+        || contains_ascii_ci(output.as_bytes(), b"reasoning about")
     {
         return WorkspaceStatus::Thinking;
     }
@@ -182,6 +197,35 @@ pub(crate) fn latest_assistant_attention_marker(
     agents::latest_attention_marker_in_home(agent, workspace_path, &home_dir)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn workspace_status_observation_in_home(
+    context: BackgroundStatusObservationContext<'_>,
+) -> Option<WorkspaceStatusObservation> {
+    if !context.workspace_path.exists() {
+        return None;
+    }
+
+    if let Some(exit_code) = read_session_exit_code(context.session_name) {
+        return Some(WorkspaceStatusObservation {
+            status: if exit_code == 0 {
+                WorkspaceStatus::Done
+            } else {
+                WorkspaceStatus::Error
+            },
+            recent_activity: false,
+            waiting_excerpt: None,
+        });
+    }
+
+    let home_dir = context.home_dir?;
+    agents::status_observation_in_home(
+        context.agent,
+        context.workspace_path,
+        home_dir,
+        context.activity_threshold,
+    )
+}
+
 #[cfg(test)]
 pub(super) fn infer_claude_permission_mode_in_home(
     workspace_path: &Path,
@@ -229,12 +273,33 @@ fn read_session_exit_code(session_name: &str) -> Option<i32> {
     content.trim().parse::<i32>().ok()
 }
 
-fn has_unclosed_tag(text: &str, open_tag: &str, close_tag: &str) -> bool {
-    let Some(open_index) = text.rfind(open_tag) else {
+fn rfind_ascii_ci(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.len() > haystack.len() {
+        return None;
+    }
+    for i in (0..=haystack.len() - needle.len()).rev() {
+        if haystack[i..i + needle.len()]
+            .iter()
+            .zip(needle)
+            .all(|(h, n)| h.to_ascii_lowercase() == *n)
+        {
+            return Some(i);
+        }
+    }
+    None
+}
+
+fn contains_ascii_ci(haystack: &[u8], needle: &[u8]) -> bool {
+    rfind_ascii_ci(haystack, needle).is_some()
+}
+
+fn has_unclosed_tag_ci(text: &str, open_tag: &[u8], close_tag: &[u8]) -> bool {
+    let bytes = text.as_bytes();
+    let Some(open_index) = rfind_ascii_ci(bytes, open_tag) else {
         return false;
     };
 
-    match text.rfind(close_tag) {
+    match rfind_ascii_ci(bytes, close_tag) {
         Some(close_index) => close_index < open_index,
         None => true,
     }
@@ -251,10 +316,12 @@ mod tests {
     use super::super::SessionActivity;
     use super::super::agents::claude_project_dir_name;
     use super::{
-        StatusOverrideContext, detect_agent_session_status_in_home, detect_status,
+        BackgroundStatusObservationContext, StatusOverrideContext, WorkspaceStatusObservation,
+        detect_agent_session_status_in_home, detect_status,
         detect_status_with_session_override_in_home, detect_waiting_prompt, exit_code_file_path,
         latest_claude_assistant_attention_marker_in_home,
         latest_codex_assistant_attention_marker_in_home, read_session_exit_code,
+        workspace_status_observation_in_home,
     };
 
     #[test]
@@ -450,6 +517,44 @@ mod tests {
             session_name: "no-session",
         });
         assert_eq!(status, WorkspaceStatus::Waiting);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn background_status_signal_reads_waiting_from_session_files_without_pane_text() {
+        let root = unique_test_dir("grove-background-signal");
+        let home = root.join("home");
+        let workspace_path = root.join("ws").join("feature-delta");
+        fs::create_dir_all(&home).expect("home directory should exist");
+        fs::create_dir_all(&workspace_path).expect("workspace directory should exist");
+
+        let project_dir_name = claude_project_dir_name(&workspace_path);
+        let project_dir = home.join(".claude").join("projects").join(project_dir_name);
+        fs::create_dir_all(&project_dir).expect("project directory should exist");
+        let session_file = project_dir.join("session-3.jsonl");
+        fs::write(
+            &session_file,
+            "{\"type\":\"system\"}\n{\"type\":\"assistant\"}\n",
+        )
+        .expect("session file should be written");
+
+        let observation =
+            workspace_status_observation_in_home(BackgroundStatusObservationContext {
+                agent: AgentType::Claude,
+                workspace_path: &workspace_path,
+                home_dir: Some(&home),
+                activity_threshold: Duration::from_secs(0),
+                session_name: "no-session",
+            });
+        assert_eq!(
+            observation,
+            Some(WorkspaceStatusObservation {
+                status: WorkspaceStatus::Waiting,
+                recent_activity: false,
+                waiting_excerpt: None,
+            })
+        );
 
         let _ = fs::remove_dir_all(root);
     }

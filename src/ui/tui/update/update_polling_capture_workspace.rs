@@ -13,10 +13,27 @@ impl GroveApp {
         self.apply_workspace_status_capture_at_index(capture, workspace_index);
     }
 
+    pub(super) fn apply_workspace_status_capture_at_index_deferred(
+        &mut self,
+        capture: WorkspaceStatusCapture,
+        workspace_index: usize,
+    ) {
+        self.apply_workspace_status_capture_at_index_inner(capture, workspace_index, true);
+    }
+
     pub(super) fn apply_workspace_status_capture_at_index(
         &mut self,
         capture: WorkspaceStatusCapture,
         workspace_index: usize,
+    ) {
+        self.apply_workspace_status_capture_at_index_inner(capture, workspace_index, false);
+    }
+
+    fn apply_workspace_status_capture_at_index_inner(
+        &mut self,
+        capture: WorkspaceStatusCapture,
+        workspace_index: usize,
+        defer_attention: bool,
     ) {
         let processing_started_at = Instant::now();
         let supported_agent = capture.supported_agent;
@@ -57,13 +74,23 @@ impl GroveApp {
                 let workspace = &mut self.state.workspaces[workspace_index];
                 workspace.status = next_status;
                 workspace.is_orphaned = false;
-                self.track_workspace_status_transition(
-                    &workspace_path,
-                    previous_status,
-                    next_status,
-                    previous_orphaned,
-                    false,
-                );
+                if defer_attention {
+                    self.track_workspace_status_transition_deferred(
+                        &workspace_path,
+                        previous_status,
+                        next_status,
+                        previous_orphaned,
+                        false,
+                    );
+                } else {
+                    self.track_workspace_status_transition(
+                        &workspace_path,
+                        previous_status,
+                        next_status,
+                        previous_orphaned,
+                        false,
+                    );
+                }
                 let process_ms = Self::duration_millis(
                     Instant::now().saturating_duration_since(processing_started_at),
                 );
@@ -124,13 +151,23 @@ impl GroveApp {
                     };
                     workspace.status = next_status;
                     workspace.is_orphaned = next_orphaned;
-                    self.track_workspace_status_transition(
-                        &capture.workspace_path,
-                        previous_status,
-                        next_status,
-                        previous_orphaned,
-                        next_orphaned,
-                    );
+                    if defer_attention {
+                        self.track_workspace_status_transition_deferred(
+                            &capture.workspace_path,
+                            previous_status,
+                            next_status,
+                            previous_orphaned,
+                            next_orphaned,
+                        );
+                    } else {
+                        self.track_workspace_status_transition(
+                            &capture.workspace_path,
+                            previous_status,
+                            next_status,
+                            previous_orphaned,
+                            next_orphaned,
+                        );
+                    }
                 }
                 let process_ms = Self::duration_millis(
                     Instant::now().saturating_duration_since(processing_started_at),

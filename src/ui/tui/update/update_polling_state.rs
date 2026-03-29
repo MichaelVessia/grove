@@ -353,6 +353,26 @@ impl GroveApp {
         let _ = workspace_path;
     }
 
+    pub(super) fn track_workspace_status_transition_deferred(
+        &mut self,
+        _workspace_path: &Path,
+        _previous_status: WorkspaceStatus,
+        _next_status: WorkspaceStatus,
+        _previous_orphaned: bool,
+        _next_orphaned: bool,
+    ) {
+    }
+
+    pub(super) fn flush_deferred_attention_refresh(&mut self) {
+        self.refresh_attention_items();
+        if self
+            .selected_attention_item
+            .is_some_and(|index| index >= self.attention_items.len())
+        {
+            self.selected_attention_item = None;
+        }
+    }
+
     pub(super) fn reconcile_workspace_attention_tracking(&mut self) {
         let current_workspace_paths = self
             .state
@@ -456,6 +476,84 @@ impl GroveApp {
         self.polling
             .workspace_idle_polls_since_output
             .remove(workspace_path);
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) fn record_workspace_status_observation(
+        &mut self,
+        workspace_path: &Path,
+        observation: &WorkspaceStatusObservation,
+    ) {
+        if observation.status == WorkspaceStatus::Waiting {
+            if let Some(prompt) = &observation.waiting_excerpt {
+                self.polling
+                    .workspace_waiting_prompts
+                    .insert(workspace_path.to_path_buf(), prompt.clone());
+            } else {
+                self.polling
+                    .workspace_waiting_prompts
+                    .remove(workspace_path);
+            }
+        } else {
+            self.polling
+                .workspace_waiting_prompts
+                .remove(workspace_path);
+        }
+
+        self.polling
+            .workspace_output_changing
+            .insert(workspace_path.to_path_buf(), observation.recent_activity);
+
+        if observation.recent_activity {
+            self.polling
+                .workspace_idle_polls_since_output
+                .remove(workspace_path);
+            return;
+        }
+
+        if observation.status == WorkspaceStatus::Idle {
+            let idle_polls = self
+                .polling
+                .workspace_idle_polls_since_output
+                .entry(workspace_path.to_path_buf())
+                .or_insert(0);
+            *idle_polls = idle_polls.saturating_add(1);
+            return;
+        }
+
+        self.polling
+            .workspace_idle_polls_since_output
+            .remove(workspace_path);
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) fn apply_workspace_status_observation(
+        &mut self,
+        workspace_path: &Path,
+        observation: WorkspaceStatusObservation,
+    ) {
+        let Some(workspace_index) = self
+            .state
+            .workspaces
+            .iter()
+            .position(|workspace| workspace.path == workspace_path)
+        else {
+            return;
+        };
+
+        let previous_status = self.state.workspaces[workspace_index].status;
+        let previous_orphaned = self.state.workspaces[workspace_index].is_orphaned;
+        self.record_workspace_status_observation(workspace_path, &observation);
+        let workspace = &mut self.state.workspaces[workspace_index];
+        workspace.status = observation.status;
+        workspace.is_orphaned = false;
+        self.track_workspace_status_transition(
+            workspace_path,
+            previous_status,
+            observation.status,
+            previous_orphaned,
+            false,
+        );
     }
 
     pub(super) fn clear_status_tracking_for_workspace_path(&mut self, workspace_path: &Path) {
