@@ -344,15 +344,10 @@ impl GroveApp {
 
     fn preview_copy_lines_from_wrapped_raw_rows(&self) -> Option<Vec<String>> {
         let pane_width = self
-            .preview
-            .selected_terminal()
-            .map(|terminal| usize::from(terminal.width.max(1)))
-            .or_else(|| {
-                self.session
-                    .interactive
-                    .as_ref()
-                    .map(|interactive| usize::from(interactive.pane_width.max(1)))
-            })
+            .session
+            .interactive
+            .as_ref()
+            .map(|interactive| usize::from(interactive.pane_width.max(1)))
             .or_else(|| {
                 self.preview_output_dimensions()
                     .map(|(width, _)| usize::from(width.max(1)))

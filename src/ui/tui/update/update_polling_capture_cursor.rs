@@ -40,14 +40,6 @@ impl GroveApp {
                 pane_width,
             );
         }
-        if let Some(terminal) = self.preview.selected_terminal() {
-            self.preview.sync_selected_terminal_geometry(
-                pane_width,
-                pane_height,
-                terminal.cursor,
-                terminal.cursor_visible,
-            );
-        }
         if let Err(error) = self
             .tmux_input
             .resize_session(&target_session, pane_width, pane_height)
@@ -123,14 +115,6 @@ impl GroveApp {
                 metadata.pane_width,
             )
         };
-        if let Some(terminal) = self.preview.selected_terminal() {
-            self.preview.sync_selected_terminal_geometry(
-                metadata.pane_width,
-                metadata.pane_height,
-                terminal.cursor,
-                terminal.cursor_visible,
-            );
-        }
         self.verify_resize_after_cursor_capture(
             &session,
             metadata.pane_width,
