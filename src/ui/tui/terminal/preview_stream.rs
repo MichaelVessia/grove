@@ -55,6 +55,7 @@ impl Default for PreviewStreamState {
 }
 
 impl GroveApp {
+    #[allow(dead_code)]
     pub(in crate::ui::tui) fn local_preview_terminal_geometry(
         &self,
         session_name: &str,
@@ -68,6 +69,7 @@ impl GroveApp {
         })
     }
 
+    #[allow(dead_code)]
     fn latest_live_preview_raw_output_for_session(&self, session_name: &str) -> Option<String> {
         if self.polling.last_live_preview_session.as_deref() != Some(session_name) {
             return None;
@@ -200,52 +202,20 @@ impl GroveApp {
             .buffer
             .push_str(output.chunk.as_str());
 
-        let interactive_target_session =
-            self.interactive_target_session().as_deref() == Some(output.session.as_str());
-
-        if !interactive_target_session {
+        if self.interactive_target_session().as_deref() == Some(output.session.as_str()) {
+            // During interactive mode, don't maintain a selected terminal
+            // (VT parser). Inner TUI apps emit partial render chunks with
+            // relative cursor movements that leave the VT parser cursor at
+            // mid-render positions, causing characters to be placed at wrong
+            // content rows. Poll captures provide correct, complete snapshots.
             self.preview.clear_selected_terminal();
-            self.polling.preview_stream.reconciliation_pending = true;
             self.poll_preview_prioritized();
             return;
         }
 
-        if let Some((width, height)) = self.local_preview_terminal_geometry(output.session.as_str())
-        {
-            if self.polling.preview_stream.bootstrap_completed {
-                if self.preview.selected_terminal().is_some() {
-                    self.preview
-                        .apply_selected_terminal_chunk(output.chunk.as_str());
-                } else {
-                    self.preview.bootstrap_selected_terminal_from_stream(
-                        self.polling.preview_stream.buffer.as_str(),
-                        width,
-                        height,
-                    );
-                }
-            } else if let Some(raw_output) =
-                self.latest_live_preview_raw_output_for_session(output.session.as_str())
-            {
-                self.preview.bootstrap_selected_terminal_from_stream(
-                    raw_output.as_str(),
-                    width,
-                    height,
-                );
-                self.preview
-                    .apply_selected_terminal_chunk(output.chunk.as_str());
-                self.polling.preview_stream.reconciliation_pending = true;
-            } else {
-                self.polling.preview_stream.reconciliation_pending = true;
-            }
-        } else {
-            self.preview.clear_selected_terminal();
-        }
-
-        if !self.polling.preview_stream.bootstrap_completed
-            || self.polling.preview_stream.reconciliation_pending
-        {
-            self.poll_preview_prioritized();
-        }
+        self.preview.clear_selected_terminal();
+        self.polling.preview_stream.reconciliation_pending = true;
+        self.poll_preview_prioritized();
     }
 
     fn handle_preview_stream_disconnect(&mut self, disconnect: PreviewStreamDisconnected) {

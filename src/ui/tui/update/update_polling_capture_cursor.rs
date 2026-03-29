@@ -31,11 +31,7 @@ impl GroveApp {
             return;
         }
 
-        let current_selected_terminal_cursor = self
-            .preview
-            .selected_terminal()
-            .map(|terminal| (terminal.cursor, terminal.cursor_visible));
-        let interactive_cursor = if let Some(state) = self.session.interactive.as_mut() {
+        if let Some(state) = self.session.interactive.as_mut() {
             state.update_cursor(
                 state.cursor_row,
                 state.cursor_col,
@@ -43,23 +39,13 @@ impl GroveApp {
                 pane_height,
                 pane_width,
             );
-            Some((state.cursor_col, state.cursor_row, state.cursor_visible))
-        } else {
-            None
-        };
-        if let Some((cursor, cursor_visible)) = current_selected_terminal_cursor {
+        }
+        if let Some(terminal) = self.preview.selected_terminal() {
             self.preview.sync_selected_terminal_geometry(
                 pane_width,
                 pane_height,
-                cursor,
-                cursor_visible,
-            );
-        } else if let Some((cursor_col, cursor_row, cursor_visible)) = interactive_cursor {
-            self.preview.sync_selected_terminal_geometry(
-                pane_width,
-                pane_height,
-                (cursor_col, cursor_row),
-                cursor_visible,
+                terminal.cursor,
+                terminal.cursor_visible,
             );
         }
         if let Err(error) = self
@@ -125,45 +111,24 @@ impl GroveApp {
             return;
         }
 
-        let current_selected_terminal_cursor = self
-            .preview
-            .selected_terminal()
-            .map(|terminal| (terminal.cursor, terminal.cursor_visible));
         let changed = {
             let Some(state) = self.session.interactive.as_mut() else {
                 return;
             };
-            if current_selected_terminal_cursor.is_some() {
-                state.update_cursor(
-                    state.cursor_row,
-                    state.cursor_col,
-                    state.cursor_visible,
-                    metadata.pane_height,
-                    metadata.pane_width,
-                )
-            } else {
-                state.update_cursor(
-                    metadata.cursor_row,
-                    metadata.cursor_col,
-                    metadata.cursor_visible,
-                    metadata.pane_height,
-                    metadata.pane_width,
-                )
-            }
-        };
-        if let Some((cursor, cursor_visible)) = current_selected_terminal_cursor {
-            self.preview.sync_selected_terminal_geometry(
-                metadata.pane_width,
-                metadata.pane_height,
-                cursor,
-                cursor_visible,
-            );
-        } else {
-            self.preview.sync_selected_terminal_geometry(
-                metadata.pane_width,
-                metadata.pane_height,
-                (metadata.cursor_col, metadata.cursor_row),
+            state.update_cursor(
+                metadata.cursor_row,
+                metadata.cursor_col,
                 metadata.cursor_visible,
+                metadata.pane_height,
+                metadata.pane_width,
+            )
+        };
+        if let Some(terminal) = self.preview.selected_terminal() {
+            self.preview.sync_selected_terminal_geometry(
+                metadata.pane_width,
+                metadata.pane_height,
+                terminal.cursor,
+                terminal.cursor_visible,
             );
         }
         self.verify_resize_after_cursor_capture(

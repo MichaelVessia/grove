@@ -7170,7 +7170,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_stream_output_in_interactive_mode_seeds_terminal_from_latest_live_capture() {
+    fn preview_stream_output_in_interactive_mode_clears_terminal_and_polls() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -7191,7 +7191,7 @@ mod tests {
         app.sync_preview_stream_target();
         let generation = app.polling.preview_stream.generation;
 
-        ftui::Model::update(
+        let cmd = ftui::Model::update(
             &mut app,
             Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
                 session: feature_workspace_session(),
@@ -7200,21 +7200,17 @@ mod tests {
             })),
         );
 
-        let selected_terminal = app
-            .preview
-            .selected_terminal()
-            .expect("existing live capture should seed the selected terminal");
-        assert_eq!(
-            selected_terminal.raw_stream,
-            "history line\ninteractive prompt"
+        // Interactive mode does not maintain a selected terminal (VT parser)
+        // to avoid mid-render cursor artifacts from inner TUI apps. Content
+        // comes from poll captures instead.
+        assert!(
+            app.preview.selected_terminal().is_none(),
+            "selected terminal should be cleared during interactive mode"
         );
-        assert_eq!(selected_terminal.plain_lines[0], "history line");
-        assert_eq!(
-            selected_terminal.plain_lines[1].trim_start(),
-            "interactive prompt"
+        assert!(
+            cmd_contains_task(&cmd),
+            "stream output should trigger a poll for fresh content"
         );
-        assert!(!app.polling.preview_stream.bootstrap_completed);
-        assert!(app.polling.preview_stream.reconciliation_pending);
     }
 
     #[test]
@@ -7371,11 +7367,10 @@ mod tests {
             &["stale snapshot".to_string()]
         );
         assert!(!app.polling.preview_stream.bootstrap_completed);
-        assert!(app.polling.preview_stream.reconciliation_pending);
     }
 
     #[test]
-    fn healthy_preview_stream_output_updates_without_selected_poll() {
+    fn interactive_stream_output_clears_bootstrapped_terminal_and_polls() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -7413,16 +7408,18 @@ mod tests {
             })),
         );
 
-        assert!(!cmd_contains_task(&cmd));
-        let selected_terminal = app
-            .preview
-            .selected_terminal()
-            .expect("selected terminal should remain available");
-        assert_eq!(selected_terminal.plain_lines[0], "partial prompt update");
+        assert!(
+            app.preview.selected_terminal().is_none(),
+            "interactive mode stream output should clear selected terminal"
+        );
+        assert!(
+            cmd_contains_task(&cmd),
+            "interactive mode stream output should trigger a poll"
+        );
     }
 
     #[test]
-    fn healthy_preview_stream_output_updates_while_workspace_list_is_focused() {
+    fn interactive_stream_output_clears_terminal_and_polls_when_workspace_list_focused() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -7461,12 +7458,14 @@ mod tests {
             })),
         );
 
-        assert!(!cmd_contains_task(&cmd));
-        let selected_terminal = app
-            .preview
-            .selected_terminal()
-            .expect("selected terminal should remain available");
-        assert_eq!(selected_terminal.plain_lines[0], "partial prompt update");
+        assert!(
+            app.preview.selected_terminal().is_none(),
+            "interactive mode stream output should clear selected terminal even when workspace list is focused"
+        );
+        assert!(
+            cmd_contains_task(&cmd),
+            "interactive mode stream output should trigger a poll"
+        );
     }
 
     #[test]
@@ -7501,7 +7500,6 @@ mod tests {
 
         assert!(cmd_contains_task(&cmd));
         assert!(app.preview.selected_terminal().is_none());
-        assert!(app.polling.preview_stream.reconciliation_pending);
     }
 
     #[test]

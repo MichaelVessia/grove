@@ -221,6 +221,7 @@ impl PreviewState {
         ));
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn bootstrap_selected_terminal_from_stream(
         &mut self,
         raw_output: &str,
@@ -232,6 +233,7 @@ impl PreviewState {
         ));
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn apply_selected_terminal_chunk(&mut self, chunk: &str) {
         let Some(terminal) = self.selected_terminal.as_mut() else {
             return;
