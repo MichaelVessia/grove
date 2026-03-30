@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.3](https://github.com/MichaelVessia/grove/compare/grove-v0.1.2...grove-v0.1.3) (2026-03-29)
+
+
+### Features
+
+* **runtime:** replace text-based done/error heuristics with shell exit-code hook ([cdd8195](https://github.com/MichaelVessia/grove/commit/cdd819584be80c4e7829d60f74cc4e5aeb18b856))
+
+
+### Bug Fixes
+
+* **tui:** disable VT parser during interactive mode to prevent cursor artifacts ([5622f99](https://github.com/MichaelVessia/grove/commit/5622f99ddd7cc4203da3cacd89e7da2c30b28abe))
+* **tui:** preserve selected terminal cursor ([12b2a34](https://github.com/MichaelVessia/grove/commit/12b2a34342f0a7e0122c33fe9a1feed1adada490))
+
+
+### Performance Improvements
+
+* **runtime:** reduce allocations and redundant work in capture and status polling pipeline ([0a404b6](https://github.com/MichaelVessia/grove/commit/0a404b650a07d1e79be31effaa1040d71f8ee180))
+
 ## [0.1.2](https://github.com/MichaelVessia/grove/compare/grove-v0.1.1...grove-v0.1.2) (2026-03-27)
 
 
