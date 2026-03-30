@@ -49,7 +49,6 @@ pub(crate) struct PreviewState {
     pub(crate) parsed_lines: Vec<PreviewParsedLine>,
     pub(crate) render_lines: Vec<String>,
     pub(crate) recent_captures: VecDeque<CaptureRecord>,
-    selected_terminal: Option<SelectedTerminalState>,
     last_digest: Option<OutputDigest>,
 }
 
@@ -61,17 +60,6 @@ pub(crate) struct CaptureUpdate {
     pub digest: OutputDigest,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SelectedTerminalState {
-    pub(crate) raw_stream: String,
-    pub(crate) plain_lines: Vec<String>,
-    pub(crate) parsed_lines: Vec<PreviewParsedLine>,
-    pub(crate) width: u16,
-    pub(crate) height: u16,
-    pub(crate) cursor: (u16, u16),
-    pub(crate) cursor_visible: bool,
-}
-
 impl PreviewState {
     pub fn new() -> Self {
         Self {
@@ -79,7 +67,6 @@ impl PreviewState {
             parsed_lines: Vec::new(),
             render_lines: Vec::new(),
             recent_captures: VecDeque::with_capacity(CAPTURE_RING_CAPACITY),
-            selected_terminal: None,
             last_digest: None,
         }
     }
@@ -126,72 +113,16 @@ impl PreviewState {
         }
     }
 
-    pub(crate) fn selected_terminal(&self) -> Option<&SelectedTerminalState> {
-        self.selected_terminal.as_ref()
-    }
-
     pub(crate) fn active_plain_lines(&self) -> &[String] {
-        self.selected_terminal
-            .as_ref()
-            .map_or(self.lines.as_slice(), |terminal| {
-                terminal.plain_lines.as_slice()
-            })
+        &self.lines
     }
 
     pub(crate) fn active_plain_line(&self, line_idx: usize) -> Option<&String> {
-        self.active_plain_lines().get(line_idx)
+        self.lines.get(line_idx)
     }
 
     pub(crate) fn active_parsed_lines(&self) -> &[PreviewParsedLine] {
-        self.selected_terminal
-            .as_ref()
-            .map_or(self.parsed_lines.as_slice(), |terminal| {
-                terminal.parsed_lines.as_slice()
-            })
-    }
-
-    pub(crate) fn sync_selected_terminal_geometry(
-        &mut self,
-        width: u16,
-        height: u16,
-        cursor: (u16, u16),
-        cursor_visible: bool,
-    ) {
-        let Some(raw_stream) = self
-            .selected_terminal
-            .as_ref()
-            .map(|terminal| terminal.raw_stream.clone())
-        else {
-            return;
-        };
-        self.selected_terminal = Some(render_selected_terminal_state(
-            raw_stream.as_str(),
-            width,
-            height,
-            Some(cursor),
-            Some(cursor_visible),
-        ));
-    }
-
-    pub(crate) fn rerender_selected_terminal(&mut self, width: u16, height: u16) {
-        let Some(raw_stream) = self
-            .selected_terminal
-            .as_ref()
-            .map(|terminal| terminal.raw_stream.clone())
-        else {
-            return;
-        };
-        self.selected_terminal = Some(render_selected_terminal_state(
-            raw_stream.as_str(),
-            width,
-            height,
-            None,
-            None,
-        ));
-    }
-
-    pub(crate) fn clear_selected_terminal(&mut self) {
-        self.selected_terminal = None;
+        &self.parsed_lines
     }
 
     pub(crate) fn reset_selected_session_state(&mut self) {
@@ -199,53 +130,7 @@ impl PreviewState {
         self.parsed_lines.clear();
         self.render_lines.clear();
         self.recent_captures.clear();
-        self.selected_terminal = None;
         self.last_digest = None;
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn bootstrap_selected_terminal(
-        &mut self,
-        raw_output: &str,
-        width: u16,
-        height: u16,
-        cursor: (u16, u16),
-        cursor_visible: bool,
-    ) {
-        self.selected_terminal = Some(render_selected_terminal_state(
-            raw_output,
-            width,
-            height,
-            Some(cursor),
-            Some(cursor_visible),
-        ));
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn bootstrap_selected_terminal_from_stream(
-        &mut self,
-        raw_output: &str,
-        width: u16,
-        height: u16,
-    ) {
-        self.selected_terminal = Some(render_selected_terminal_state(
-            raw_output, width, height, None, None,
-        ));
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn apply_selected_terminal_chunk(&mut self, chunk: &str) {
-        let Some(terminal) = self.selected_terminal.as_mut() else {
-            return;
-        };
-        terminal.raw_stream.push_str(chunk);
-        *terminal = render_selected_terminal_state(
-            terminal.raw_stream.as_str(),
-            terminal.width,
-            terminal.height,
-            None,
-            None,
-        );
     }
 }
 
@@ -312,36 +197,6 @@ fn parse_preview_snapshot(lines: &[String]) -> PreviewSnapshot {
     }
 }
 
-fn render_selected_terminal_state(
-    raw_output: &str,
-    width: u16,
-    height: u16,
-    cursor_override: Option<(u16, u16)>,
-    cursor_visible_override: Option<bool>,
-) -> SelectedTerminalState {
-    let mut terminal = VirtualTerminal::new(width.max(1), height.max(1));
-    terminal.feed_str(raw_output);
-
-    let cursor = cursor_override.unwrap_or_else(|| terminal.cursor());
-    let cursor_visible = cursor_visible_override.unwrap_or_else(|| terminal.cursor_visible());
-    let plain_lines = (0..height.max(1))
-        .map(|row| terminal.row_text(row))
-        .collect::<Vec<_>>();
-    let parsed_lines = (0..height.max(1))
-        .map(|row| parse_preview_line(&terminal, row))
-        .collect::<Vec<_>>();
-
-    SelectedTerminalState {
-        raw_stream: raw_output.to_string(),
-        plain_lines,
-        parsed_lines,
-        width: width.max(1),
-        height: height.max(1),
-        cursor,
-        cursor_visible,
-    }
-}
-
 fn parse_preview_line(terminal: &VirtualTerminal, row: u16) -> PreviewParsedLine {
     let mut spans = Vec::new();
     let row_text = terminal.row_text(row);
@@ -402,50 +257,6 @@ fn preview_style_from_cell(style: &CellStyle) -> PreviewParsedStyle {
 #[cfg(test)]
 mod tests {
     use super::{PreviewState, split_output_lines};
-
-    #[test]
-    fn preview_state_bootstraps_selected_terminal_from_snapshot() {
-        let mut state = PreviewState::new();
-
-        state.bootstrap_selected_terminal("hello", 20, 4, (3, 1), true);
-
-        let terminal = state
-            .selected_terminal()
-            .expect("selected terminal should exist after bootstrap");
-        assert_eq!(terminal.width, 20);
-        assert_eq!(terminal.height, 4);
-        assert_eq!(terminal.cursor, (3, 1));
-        assert!(terminal.cursor_visible);
-        assert_eq!(terminal.plain_lines[0], "hello");
-    }
-
-    #[test]
-    fn preview_state_applies_incremental_chunk_to_selected_terminal() {
-        let mut state = PreviewState::new();
-        state.bootstrap_selected_terminal("hello", 20, 4, (5, 0), true);
-
-        state.apply_selected_terminal_chunk("\rxy");
-
-        let terminal = state
-            .selected_terminal()
-            .expect("selected terminal should exist after chunk apply");
-        assert_eq!(terminal.plain_lines[0], "xyllo");
-    }
-
-    #[test]
-    fn preview_state_tracks_selected_terminal_cursor_and_dimensions() {
-        let mut state = PreviewState::new();
-
-        state.bootstrap_selected_terminal("", 90, 30, (4, 5), false);
-
-        let terminal = state
-            .selected_terminal()
-            .expect("selected terminal should exist after bootstrap");
-        assert_eq!(terminal.width, 90);
-        assert_eq!(terminal.height, 30);
-        assert_eq!(terminal.cursor, (4, 5));
-        assert!(!terminal.cursor_visible);
-    }
 
     #[test]
     fn split_output_lines_preserves_trailing_blank_rows() {

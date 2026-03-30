@@ -170,22 +170,12 @@ impl GroveApp {
             return None;
         }
 
-        let (pane_height, cursor_row, cursor_col, cursor_visible) =
-            if let Some(terminal) = self.preview.selected_terminal() {
-                (
-                    usize::from(terminal.height.max(1)),
-                    usize::from(terminal.cursor.1),
-                    usize::from(terminal.cursor.0),
-                    terminal.cursor_visible,
-                )
-            } else {
-                (
-                    usize::from(interactive.pane_height.max(1)),
-                    usize::from(interactive.cursor_row),
-                    usize::from(interactive.cursor_col),
-                    interactive.cursor_visible,
-                )
-            };
+        let (pane_height, cursor_row, cursor_col, cursor_visible) = (
+            usize::from(interactive.pane_height.max(1)),
+            usize::from(interactive.cursor_row),
+            usize::from(interactive.cursor_col),
+            interactive.cursor_visible,
+        );
         if cursor_row >= pane_height {
             return None;
         }

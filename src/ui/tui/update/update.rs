@@ -50,13 +50,9 @@ impl GroveApp {
                 self.sync_main_focus_nodes();
                 self.sync_interactive_session_geometry();
                 if self.session.interactive.is_none()
-                    && let Some((pane_width, pane_height)) = self.preview_output_dimensions()
+                    && let Some(session_name) = self.polling.preview_stream.target_session.clone()
                 {
-                    self.preview
-                        .rerender_selected_terminal(pane_width, pane_height);
-                    if let Some(session_name) = self.polling.preview_stream.target_session.clone() {
-                        self.sync_live_preview_session_geometry(session_name.as_str());
-                    }
+                    self.sync_live_preview_session_geometry(session_name.as_str());
                 }
                 if self.session.interactive.is_some() {
                     self.poll_preview();

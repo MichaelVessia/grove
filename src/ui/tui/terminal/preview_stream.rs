@@ -55,31 +55,6 @@ impl Default for PreviewStreamState {
 }
 
 impl GroveApp {
-    #[allow(dead_code)]
-    pub(in crate::ui::tui) fn local_preview_terminal_geometry(
-        &self,
-        session_name: &str,
-    ) -> Option<(u16, u16)> {
-        self.preview_output_dimensions().or_else(|| {
-            self.polling
-                .preview_session_geometry
-                .as_ref()
-                .filter(|geometry| geometry.session == session_name)
-                .map(|geometry| (geometry.width, geometry.height))
-        })
-    }
-
-    #[allow(dead_code)]
-    fn latest_live_preview_raw_output_for_session(&self, session_name: &str) -> Option<String> {
-        if self.polling.last_live_preview_session.as_deref() != Some(session_name) {
-            return None;
-        }
-        self.preview
-            .recent_captures
-            .back()
-            .map(|capture| capture.raw_output.clone())
-    }
-
     fn desired_preview_stream_session(&self) -> Option<String> {
         self.interactive_target_session()
             .or_else(|| self.selected_live_preview_session_if_ready())
@@ -138,15 +113,8 @@ impl GroveApp {
         self.polling.preview_stream.reconciliation_pending = false;
         self.polling.preview_stream.last_chunk_bytes = 0;
         self.polling.preview_session_geometry = None;
-        let preserve_selected_terminal = self.preview.selected_terminal().is_some()
-            && (self.interactive_target_session().is_some()
-                || self.interactive_preview_reset_pending);
-        if !preserve_selected_terminal {
-            if previous.is_some() {
-                self.preview.reset_selected_session_state();
-            } else {
-                self.preview.clear_selected_terminal();
-            }
+        if previous.is_some() {
+            self.preview.reset_selected_session_state();
         }
         self.polling.preview_stream.source = if desired.is_some() {
             PreviewStreamSource::Connecting
@@ -203,17 +171,10 @@ impl GroveApp {
             .push_str(output.chunk.as_str());
 
         if self.interactive_target_session().as_deref() == Some(output.session.as_str()) {
-            // During interactive mode, don't maintain a selected terminal
-            // (VT parser). Inner TUI apps emit partial render chunks with
-            // relative cursor movements that leave the VT parser cursor at
-            // mid-render positions, causing characters to be placed at wrong
-            // content rows. Poll captures provide correct, complete snapshots.
-            self.preview.clear_selected_terminal();
             self.poll_preview_prioritized();
             return;
         }
 
-        self.preview.clear_selected_terminal();
         self.polling.preview_stream.reconciliation_pending = true;
         self.poll_preview_prioritized();
     }
@@ -238,7 +199,6 @@ impl GroveApp {
         self.polling.preview_stream.reconciliation_pending = false;
         self.polling.preview_stream.last_chunk_bytes = 0;
         self.polling.preview_stream.source = PreviewStreamSource::Fallback;
-        self.preview.clear_selected_terminal();
         self.polling.preview_stream.buffer.clear();
         self.session.last_tmux_error = disconnect.error.clone();
         let mut event = LogEvent::new("preview_stream", "disconnected")

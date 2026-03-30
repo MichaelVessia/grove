@@ -7013,8 +7013,6 @@ mod tests {
             .mark_ready(feature_workspace_session());
         app.sync_preview_stream_target();
         let generation = app.polling.preview_stream.generation;
-        app.preview
-            .bootstrap_selected_terminal("stream snapshot\n", 80, 24, (0, 0), true);
 
         let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
         app.sync_preview_stream_target();
@@ -7024,7 +7022,6 @@ mod tests {
             Some(feature_workspace_session())
         );
         assert_eq!(app.polling.preview_stream.generation, generation);
-        assert!(app.preview.selected_terminal().is_some());
     }
 
     #[test]
@@ -7162,7 +7159,6 @@ mod tests {
             })),
         );
 
-        assert!(app.preview.selected_terminal().is_none());
         assert_eq!(
             app.preview.active_plain_lines(),
             &["history line".to_string()]
@@ -7170,7 +7166,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_stream_output_in_interactive_mode_clears_terminal_and_polls() {
+    fn preview_stream_output_in_interactive_mode_polls() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -7200,13 +7196,6 @@ mod tests {
             })),
         );
 
-        // Interactive mode does not maintain a selected terminal (VT parser)
-        // to avoid mid-render cursor artifacts from inner TUI apps. Content
-        // comes from poll captures instead.
-        assert!(
-            app.preview.selected_terminal().is_none(),
-            "selected terminal should be cleared during interactive mode"
-        );
         assert!(
             cmd_contains_task(&cmd),
             "stream output should trigger a poll for fresh content"
@@ -7237,7 +7226,6 @@ mod tests {
             })),
         );
 
-        assert!(app.preview.selected_terminal().is_none());
         assert_eq!(
             app.preview.active_plain_lines(),
             &["history line".to_string()]
@@ -7317,7 +7305,6 @@ mod tests {
         app.mark_preview_stream_bootstrap_completed(&feature_workspace_session());
 
         assert_eq!(app.preview.lines, vec!["snapshot line".to_string()]);
-        assert!(app.preview.selected_terminal().is_none());
         assert_eq!(
             app.polling.preview_stream.connected_session,
             Some(feature_workspace_session())
@@ -7361,111 +7348,11 @@ mod tests {
             })),
         );
 
-        assert!(app.preview.selected_terminal().is_none());
         assert_eq!(
             app.preview.active_plain_lines(),
             &["stale snapshot".to_string()]
         );
         assert!(!app.polling.preview_stream.bootstrap_completed);
-    }
-
-    #[test]
-    fn interactive_stream_output_clears_bootstrapped_terminal_and_polls() {
-        let mut app = fixture_background_app(WorkspaceStatus::Active);
-        app.state.mode = UiMode::Preview;
-        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
-        select_workspace(&mut app, 1);
-        focus_agent_preview_tab(&mut app);
-        app.session
-            .agent_sessions
-            .mark_ready(feature_workspace_session());
-        app.session.interactive = Some(InteractiveState::new(
-            "%0".to_string(),
-            feature_workspace_session(),
-            Instant::now(),
-            app.viewport_height,
-            app.viewport_width,
-        ));
-        app.sync_preview_stream_target();
-        app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
-            session: feature_workspace_session(),
-            width: 80,
-            height: 24,
-        });
-        app.polling.preview_stream.connected_session = Some(feature_workspace_session());
-        app.polling.preview_stream.source = PreviewStreamSource::Stream;
-        app.polling.preview_stream.bootstrap_completed = true;
-        app.preview
-            .bootstrap_selected_terminal("partial prompt", 80, 24, (14, 0), true);
-        let generation = app.polling.preview_stream.generation;
-
-        let cmd = ftui::Model::update(
-            &mut app,
-            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
-                session: feature_workspace_session(),
-                generation,
-                chunk: " update".to_string(),
-            })),
-        );
-
-        assert!(
-            app.preview.selected_terminal().is_none(),
-            "interactive mode stream output should clear selected terminal"
-        );
-        assert!(
-            cmd_contains_task(&cmd),
-            "interactive mode stream output should trigger a poll"
-        );
-    }
-
-    #[test]
-    fn interactive_stream_output_clears_terminal_and_polls_when_workspace_list_focused() {
-        let mut app = fixture_background_app(WorkspaceStatus::Active);
-        app.state.mode = UiMode::Preview;
-        let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
-        select_workspace(&mut app, 1);
-        focus_agent_preview_tab(&mut app);
-        app.session
-            .agent_sessions
-            .mark_ready(feature_workspace_session());
-        app.session.interactive = Some(InteractiveState::new(
-            "%0".to_string(),
-            feature_workspace_session(),
-            Instant::now(),
-            app.viewport_height,
-            app.viewport_width,
-        ));
-        app.sync_preview_stream_target();
-        app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
-            session: feature_workspace_session(),
-            width: 80,
-            height: 24,
-        });
-        app.polling.preview_stream.connected_session = Some(feature_workspace_session());
-        app.polling.preview_stream.source = PreviewStreamSource::Stream;
-        app.polling.preview_stream.bootstrap_completed = true;
-        app.preview
-            .bootstrap_selected_terminal("partial prompt", 80, 24, (14, 0), true);
-        let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
-        let generation = app.polling.preview_stream.generation;
-
-        let cmd = ftui::Model::update(
-            &mut app,
-            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
-                session: feature_workspace_session(),
-                generation,
-                chunk: " update".to_string(),
-            })),
-        );
-
-        assert!(
-            app.preview.selected_terminal().is_none(),
-            "interactive mode stream output should clear selected terminal even when workspace list is focused"
-        );
-        assert!(
-            cmd_contains_task(&cmd),
-            "interactive mode stream output should trigger a poll"
-        );
     }
 
     #[test]
@@ -7499,7 +7386,6 @@ mod tests {
         );
 
         assert!(cmd_contains_task(&cmd));
-        assert!(app.preview.selected_terminal().is_none());
     }
 
     #[test]
@@ -7578,7 +7464,6 @@ mod tests {
             Ok("history line\nnext line\n".to_string()),
         );
 
-        assert!(app.preview.selected_terminal().is_none());
         assert_eq!(
             app.preview.active_plain_lines(),
             &["history line".to_string(), "next line".to_string()]
@@ -7624,8 +7509,6 @@ mod tests {
         app.session.agent_sessions.mark_ready(first_session);
         app.session.agent_sessions.mark_ready(second_session);
         app.preview.apply_capture("claude-1 output\n");
-        app.preview
-            .bootstrap_selected_terminal("claude-1 output\n", 80, 24, (0, 0), true);
         app.sync_preview_stream_target();
 
         let switched = app.select_tab_by_id_for_selected_workspace(second_tab_id);
@@ -7635,7 +7518,6 @@ mod tests {
             app.polling.preview_stream.target_session,
             Some(feature_agent_tab_session(2))
         );
-        assert!(app.preview.selected_terminal().is_none());
         assert!(app.preview.lines.is_empty());
         assert!(app.polling.preview_stream.buffer.is_empty());
     }
@@ -7828,7 +7710,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_stream_reconnect_bootstrap_clears_stale_selected_terminal() {
+    fn preview_stream_reconnect_produces_fresh_output() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -7847,8 +7729,6 @@ mod tests {
         ));
         app.sync_preview_stream_target();
         let generation = app.polling.preview_stream.generation;
-        app.preview
-            .bootstrap_selected_terminal("stream snapshot\n", 80, 24, (0, 0), true);
 
         ftui::Model::update(
             &mut app,
@@ -7878,13 +7758,12 @@ mod tests {
             }),
         );
 
-        assert!(app.preview.selected_terminal().is_none());
         assert_eq!(app.preview.lines, vec!["fresh output".to_string()]);
         assert!(app.polling.preview_stream.bootstrap_completed);
     }
 
     #[test]
-    fn stale_preview_stream_output_does_not_corrupt_selected_terminal() {
+    fn stale_preview_stream_output_does_not_corrupt_preview() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -7903,8 +7782,6 @@ mod tests {
         ));
         app.sync_preview_stream_target();
         let stale_generation = app.polling.preview_stream.generation.saturating_sub(1);
-        app.preview
-            .bootstrap_selected_terminal("current output\n", 80, 24, (0, 0), true);
 
         ftui::Model::update(
             &mut app,
@@ -7915,13 +7792,7 @@ mod tests {
             })),
         );
 
-        assert_eq!(
-            app.preview
-                .selected_terminal()
-                .expect("selected terminal should remain available")
-                .plain_lines[0],
-            "current output"
-        );
+        assert_eq!(app.preview.lines, vec!["current output".to_string()]);
     }
 
     #[test]
@@ -10200,7 +10071,7 @@ second row\n",
             }
 
             #[test]
-            fn interactive_live_capture_clears_transient_stream_terminal_state() {
+            fn interactive_live_capture_updates_preview_lines() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 select_workspace(&mut app, 1);
@@ -10226,8 +10097,6 @@ second row\n",
                     width: 78,
                     height: 34,
                 });
-                app.preview
-                    .bootstrap_selected_terminal_from_stream("stream line\n", 78, 34);
 
                 app.apply_live_preview_capture(
                     &feature_workspace_session(),
@@ -10238,7 +10107,6 @@ second row\n",
                     Ok("stream line\npoll row\ncool".to_string()),
                 );
 
-                assert!(app.preview.selected_terminal().is_none());
                 assert_eq!(
                     app.preview.lines,
                     vec![
@@ -10286,85 +10154,6 @@ second row\n",
             }
 
             #[test]
-            fn resize_blurred_stream_preview_reflows_terminal_and_resizes_session() {
-                let (mut app, _commands, _captures, _cursor_captures, calls) =
-                    fixture_app_with_tmux_and_calls(
-                        WorkspaceStatus::Active,
-                        Vec::new(),
-                        Vec::new(),
-                    );
-                let long_line = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzab";
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-                select_workspace(&mut app, 1);
-                focus_agent_preview_tab(&mut app);
-                app.state.mode = UiMode::Preview;
-                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
-                app.session
-                    .agent_sessions
-                    .mark_ready(feature_workspace_session());
-                app.sync_preview_stream_target();
-                app.polling.preview_stream.connected_session = Some(feature_workspace_session());
-                app.polling.preview_stream.source = PreviewStreamSource::Stream;
-                app.polling.preview_stream.bootstrap_completed = true;
-                app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
-                    session: feature_workspace_session(),
-                    width: 78,
-                    height: 34,
-                });
-                app.preview
-                    .bootstrap_selected_terminal_from_stream(long_line, 78, 34);
-
-                let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
-                calls.borrow_mut().clear();
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 80,
-                        height: 40,
-                    },
-                );
-
-                let (expected_width, expected_height) = app
-                    .preview_output_dimensions()
-                    .expect("preview output dimensions should exist");
-                let terminal = app
-                    .preview
-                    .selected_terminal()
-                    .expect("selected terminal should remain available after resize");
-                assert_eq!(terminal.width, expected_width);
-                assert_eq!(terminal.height, expected_height);
-                assert_eq!(
-                    terminal.plain_lines[1].chars().count(),
-                    long_line
-                        .chars()
-                        .count()
-                        .saturating_sub(usize::from(expected_width))
-                );
-                assert_eq!(
-                    app.polling.preview_session_geometry,
-                    Some(PreviewSessionGeometry {
-                        session: feature_workspace_session(),
-                        width: expected_width,
-                        height: expected_height,
-                    })
-                );
-                assert!(calls.borrow().iter().any(|call| {
-                    call == &format!(
-                        "resize:{}:{expected_width}:{expected_height}",
-                        feature_workspace_session()
-                    )
-                }));
-            }
-
-            #[test]
             fn live_capture_uses_snapshot_rendering_outside_interactive() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
                 let long_line = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzab";
@@ -10404,7 +10193,6 @@ second row\n",
                     Ok(long_line.to_string()),
                 );
 
-                assert!(app.preview.selected_terminal().is_none());
                 assert_eq!(app.preview.lines, vec![long_line.to_string()]);
                 assert_eq!(app.preview.active_plain_lines(), &[long_line.to_string()]);
                 assert_eq!(
@@ -11213,11 +11001,8 @@ second row\n",
                 focus_agent_preview_tab(&mut app);
                 app.state.mode = UiMode::Preview;
                 let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
-                app.preview.bootstrap_selected_terminal_from_stream(
-                    "first preview row\nsecond preview row\n",
-                    40,
-                    4,
-                );
+                app.preview
+                    .apply_capture("first preview row\nsecond preview row\n");
                 app.session.interactive = Some(InteractiveState::new(
                     "%0".to_string(),
                     feature_workspace_session(),
@@ -11255,7 +11040,6 @@ second row\n",
 
                 assert!(!app.interactive_preview_reset_pending);
                 let restored_preview_lines = app.preview.active_plain_lines().to_vec();
-                let selected_terminal_present = app.preview.selected_terminal().is_some();
 
                 with_rendered_frame(&app, width, height, |frame| {
                     let restored_row = (output_y..preview_inner.bottom())
@@ -11264,7 +11048,7 @@ second row\n",
                         .unwrap_or_default();
                     assert!(
                         restored_row.contains("first preview row"),
-                        "expected queued redraw to restore preview output, got: {restored_row}, selected_terminal_present: {selected_terminal_present}, preview_lines: {restored_preview_lines:?}"
+                        "expected queued redraw to restore preview output, got: {restored_row}, preview_lines: {restored_preview_lines:?}"
                     );
                 });
             }
@@ -11429,172 +11213,6 @@ second row\n",
                 );
                 assert!(rendered.contains("second"), "{rendered}");
                 assert!(!rendered.contains("s|econd"), "{rendered}");
-            }
-
-            #[test]
-            fn interactive_cursor_prefers_selected_terminal_state_when_available() {
-                let (mut app, _commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-                select_workspace(&mut app, 1);
-                app.preview_tab = PreviewTab::Agent;
-                app.session.interactive = Some(InteractiveState::new(
-                    "%0".to_string(),
-                    feature_workspace_session(),
-                    Instant::now(),
-                    34,
-                    78,
-                ));
-                if let Some(interactive) = app.session.interactive.as_mut() {
-                    let _ = interactive.update_cursor(0, 0, true, 34, 78);
-                }
-                app.preview.bootstrap_selected_terminal(
-                    "first\nsecond\nthird\n",
-                    78,
-                    34,
-                    (2, 1),
-                    true,
-                );
-
-                let layout = app.panes.test_rects(100, 40);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
-                let output_x = preview_inner.x;
-
-                with_rendered_frame(&app, 100, 40, |frame| {
-                    assert_eq!(
-                        frame.cursor_position,
-                        Some((output_x.saturating_add(2), output_y.saturating_add(1)))
-                    );
-                    assert!(frame.cursor_visible);
-                });
-            }
-
-            #[test]
-            fn cursor_capture_does_not_override_selected_terminal_cursor() {
-                let (mut app, _commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-                select_workspace(&mut app, 1);
-                app.preview_tab = PreviewTab::Agent;
-                app.session.interactive = Some(InteractiveState::new(
-                    "%0".to_string(),
-                    feature_workspace_session(),
-                    Instant::now(),
-                    34,
-                    78,
-                ));
-                app.preview.bootstrap_selected_terminal(
-                    "first\nsecond\nthird\n",
-                    78,
-                    34,
-                    (2, 1),
-                    true,
-                );
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::PreviewPollCompleted(PreviewPollCompletion {
-                        generation: 1,
-                        live_capture: None,
-                        cursor_capture: Some(CursorCapture {
-                            session: feature_workspace_session(),
-                            capture_ms: 1,
-                            result: Ok("1 9 7 78 34".to_string()),
-                        }),
-                        workspace_status_captures: Vec::new(),
-                    }),
-                );
-
-                let layout = app.panes.test_rects(100, 40);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
-                let output_x = preview_inner.x;
-
-                with_rendered_frame(&app, 100, 40, |frame| {
-                    assert_eq!(
-                        frame.cursor_position,
-                        Some((output_x.saturating_add(2), output_y.saturating_add(1)))
-                    );
-                    assert!(frame.cursor_visible);
-                });
-            }
-
-            #[test]
-            fn interactive_selected_terminal_height_does_not_double_count_blank_tail() {
-                let (mut app, _commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-                select_workspace(&mut app, 1);
-                app.preview_tab = PreviewTab::Agent;
-                app.session.interactive = Some(InteractiveState::new(
-                    "%0".to_string(),
-                    feature_workspace_session(),
-                    Instant::now(),
-                    34,
-                    78,
-                ));
-                app.preview.lines = (0..33)
-                    .map(|row| {
-                        if row == 32 {
-                            "textbox>".to_string()
-                        } else {
-                            String::new()
-                        }
-                    })
-                    .collect();
-                app.preview.bootstrap_selected_terminal(
-                    &(0..33)
-                        .map(|row| {
-                            if row == 32 {
-                                "textbox>".to_string()
-                            } else {
-                                String::new()
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                    78,
-                    34,
-                    (0, 33),
-                    true,
-                );
-
-                let layout = app.panes.test_rects(100, 40);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
-                let x_start = layout.preview.x.saturating_add(1);
-                let x_end = layout.preview.right().saturating_sub(1);
-
-                with_rendered_frame(&app, 100, 40, |frame| {
-                    let rows = (output_y..preview_inner.bottom())
-                        .map(|row| row_text(frame, row, x_start, x_end))
-                        .collect::<Vec<_>>();
-                    assert_eq!(rows.last(), Some(&String::new()), "{}", rows.join("\n"));
-                    assert_eq!(
-                        frame.cursor_position,
-                        Some((x_start, output_y.saturating_add(33)))
-                    );
-                    assert!(frame.cursor_visible);
-                });
             }
 
             #[test]
@@ -12670,131 +12288,6 @@ second row\n",
                     assert!(
                         rendered.contains("p6"),
                         "expected first visible rendered row to fall back to plain lines, got: {rendered}"
-                    );
-                });
-            }
-
-            #[test]
-            fn preview_prefers_selected_terminal_lines_over_stale_snapshot_lines() {
-                let (mut app, _commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                select_workspace(&mut app, 0);
-                app.preview_tab = PreviewTab::Agent;
-                app.preview.lines = vec!["stale snapshot".to_string()];
-                app.preview.parsed_lines.clear();
-                app.preview
-                    .bootstrap_selected_terminal("live stream\n", 80, 24, (0, 0), true);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-
-                let layout = app.panes.test_rects(100, 40);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
-                let x_start = layout.preview.x.saturating_add(1);
-                let x_end = layout.preview.right().saturating_sub(1);
-                with_rendered_frame(&app, 100, 40, |frame| {
-                    let rendered = row_text(frame, output_y, x_start, x_end);
-                    assert!(
-                        rendered.contains("live stream"),
-                        "expected selected terminal output, got: {rendered}"
-                    );
-                });
-            }
-
-            #[test]
-            fn preview_prefers_selected_terminal_explicit_colors_over_theme_defaults() {
-                let (mut app, _commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                select_workspace(&mut app, 0);
-                app.preview_tab = PreviewTab::Agent;
-                app.preview.lines = vec!["abc".to_string()];
-                app.preview.parsed_lines.clear();
-                app.preview.bootstrap_selected_terminal(
-                    "a\u{1b}[31mb\u{1b}[0mc",
-                    80,
-                    24,
-                    (0, 0),
-                    true,
-                );
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-
-                let layout = app.panes.test_rects(100, 40);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
-                let color_x = preview_inner.x.saturating_add(1);
-                with_rendered_frame(&app, 100, 40, |frame| {
-                    let Some(cell) = frame.buffer.get(color_x, output_y) else {
-                        panic!("preview content cell should exist");
-                    };
-                    assert_eq!(cell.content.as_char(), Some('b'));
-                    assert_eq!(cell.fg, packed(ui_theme().error));
-                });
-            }
-
-            #[test]
-            fn preview_selected_terminal_rows_do_not_soft_wrap() {
-                let (mut app, _commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                select_workspace(&mut app, 0);
-                app.preview_tab = PreviewTab::Agent;
-                app.preview.lines = vec!["stale snapshot".to_string()];
-                app.preview.parsed_lines.clear();
-                app.preview.bootstrap_selected_terminal(
-                    "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nsecond row\n",
-                    80,
-                    24,
-                    (0, 0),
-                    true,
-                );
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-
-                let layout = app.panes.test_rects(100, 40);
-                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
-                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
-                let x_start = layout.preview.x.saturating_add(1);
-                let x_end = layout.preview.right().saturating_sub(1);
-                with_rendered_frame(&app, 100, 40, |frame| {
-                    let first_row = row_text(frame, output_y, x_start, x_end);
-                    let trailing_rows = [
-                        row_text(frame, output_y.saturating_add(1), x_start, x_end),
-                        row_text(frame, output_y.saturating_add(2), x_start, x_end),
-                        row_text(frame, output_y.saturating_add(3), x_start, x_end),
-                    ];
-                    assert!(
-                        first_row.contains("abcdefghijklmnopqrstuvwxyz"),
-                        "expected first terminal row to render in-place, got: {first_row}"
-                    );
-                    assert!(
-                        trailing_rows
-                            .iter()
-                            .all(|row| !row.contains("abcdefghijklmnopqrstuvwxyz")),
-                        "expected overflow text to be clipped, not wrapped into following rows: {trailing_rows:?}"
-                    );
-                    assert!(
-                        trailing_rows
-                            .iter()
-                            .any(|row| row.contains("second row") || row.contains("cond row")),
-                        "expected next terminal row to stay nearby, got: {trailing_rows:?}"
                     );
                 });
             }
@@ -16889,8 +16382,7 @@ second row\n",
                     width: 80,
                     height: 24,
                 });
-                app.preview
-                    .bootstrap_selected_terminal("partial prompt", 80, 24, (14, 0), true);
+                app.preview.apply_capture("partial prompt");
 
                 ftui::Model::update(
                     &mut app,
@@ -16910,7 +16402,6 @@ second row\n",
                     }),
                 );
 
-                assert!(app.preview.selected_terminal().is_none());
                 assert_eq!(app.preview.lines, vec!["partial prompt update".to_string()]);
                 ftui::Model::update(
                     &mut app,
@@ -17107,37 +16598,6 @@ second row\n",
             }
 
             #[test]
-            fn missing_preview_session_clears_selected_terminal_for_selected_session() {
-                let mut app = fixture_app();
-                select_workspace(&mut app, 1);
-                app.preview_tab = PreviewTab::Agent;
-                app.preview
-                    .bootstrap_selected_terminal("stale output\n", 80, 24, (0, 0), true);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::PreviewPollCompleted(PreviewPollCompletion {
-                        generation: 1,
-                        live_capture: Some(LivePreviewCapture {
-                            session: feature_workspace_session(),
-                            scrollback_lines: 600,
-                            include_escape_sequences: true,
-                            capture_ms: 1,
-                            total_ms: 1,
-                            result: Err(format!(
-                                "tmux capture-pane failed for '{}': can't find pane",
-                                feature_workspace_session()
-                            )),
-                        }),
-                        cursor_capture: None,
-                        workspace_status_captures: Vec::new(),
-                    }),
-                );
-
-                assert!(app.preview.selected_terminal().is_none());
-            }
-
-            #[test]
             fn preview_poll_missing_live_session_with_other_agent_tab_keeps_workspace_running() {
                 let mut app = fixture_app();
                 select_workspace(&mut app, 1);
@@ -17202,63 +16662,6 @@ second row\n",
                         .ready
                         .contains(&remaining_session)
                 );
-            }
-
-            #[test]
-            fn resize_updates_selected_terminal_dimensions() {
-                let (mut app, _commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 100,
-                        height: 40,
-                    },
-                );
-                select_workspace(&mut app, 1);
-                app.preview_tab = PreviewTab::Agent;
-                app.session.interactive = Some(InteractiveState::new(
-                    "%0".to_string(),
-                    feature_workspace_session(),
-                    Instant::now(),
-                    34,
-                    78,
-                ));
-                app.preview
-                    .bootstrap_selected_terminal("abcdef", 78, 34, (5, 0), true);
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Resize {
-                        width: 80,
-                        height: 40,
-                    },
-                );
-
-                let (expected_width, expected_height) = app
-                    .preview_output_dimensions()
-                    .expect("preview output dimensions should exist");
-                ftui::Model::update(
-                    &mut app,
-                    Msg::PreviewPollCompleted(PreviewPollCompletion {
-                        generation: 1,
-                        live_capture: None,
-                        cursor_capture: Some(CursorCapture {
-                            session: feature_workspace_session(),
-                            capture_ms: 1,
-                            result: Ok(format!("1 0 0 {expected_width} {expected_height}")),
-                        }),
-                        workspace_status_captures: Vec::new(),
-                    }),
-                );
-                let terminal = app
-                    .preview
-                    .selected_terminal()
-                    .expect("selected terminal should remain available after resize");
-                assert_eq!(terminal.width, expected_width);
-                assert_eq!(terminal.height, expected_height);
-                assert_eq!(terminal.cursor, (5, 0));
-                assert_eq!(terminal.plain_lines[0], "abcdef");
             }
 
             #[test]
