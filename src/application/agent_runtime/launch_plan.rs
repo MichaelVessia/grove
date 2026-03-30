@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::domain::{AgentType, PermissionMode, Workspace};
 use crate::infrastructure::config::ThemeName;
 
+use super::execution::kill_tmux_session_command;
 use super::sessions::{session_name_for_task, session_name_for_workspace_in_project};
 use super::{
     GROVE_LAUNCHER_SCRIPT_PATH, LaunchPlan, LaunchRequest, LauncherScript, ShellLaunchRequest,
@@ -178,6 +179,7 @@ fn tmux_launch_plan(
     launch_agent_cmd: String,
 ) -> LaunchPlan {
     let session_target = session_name.clone();
+    let cleanup_cmds = vec![kill_tmux_session_command(&session_name)];
     let mut pre_launch_cmds = vec![
         vec![
             "tmux".to_string(),
@@ -240,6 +242,7 @@ fn tmux_launch_plan(
         None => LaunchPlan {
             session_name,
             pane_lookup_cmd,
+            cleanup_cmds,
             pre_launch_cmds,
             launch_cmd: vec![
                 "tmux".to_string(),
@@ -258,6 +261,7 @@ fn tmux_launch_plan(
             LaunchPlan {
                 session_name,
                 pane_lookup_cmd,
+                cleanup_cmds,
                 pre_launch_cmds,
                 launch_cmd: vec![
                     "tmux".to_string(),
@@ -478,6 +482,65 @@ mod tests {
                 "codex".to_string(),
                 "Enter".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn launch_plan_cleanup_kills_stale_session_before_creating_new_one() {
+        let request = TaskLaunchRequest {
+            task_slug: "my-task".to_string(),
+            task_root: PathBuf::from("/tmp/.grove/tasks/my-task"),
+            agent: AgentType::Claude,
+            theme_name: crate::infrastructure::config::ThemeName::default(),
+            prompt: None,
+            workspace_init_command: None,
+            permission_mode: PermissionMode::Default,
+            agent_env: Vec::new(),
+            capture_cols: None,
+            capture_rows: None,
+        };
+
+        let plan = build_task_launch_plan(&request);
+
+        assert_eq!(
+            plan.cleanup_cmds,
+            vec![vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                "grove-task-my-task".to_string(),
+            ]]
+        );
+    }
+
+    #[test]
+    fn workspace_launch_plan_cleanup_kills_stale_session() {
+        let request = LaunchRequest {
+            session_name: None,
+            task_slug: None,
+            project_name: None,
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+            agent: AgentType::Claude,
+            theme_name: crate::infrastructure::config::ThemeName::default(),
+            prompt: None,
+            workspace_init_command: None,
+            permission_mode: PermissionMode::Default,
+            agent_env: Vec::new(),
+            capture_cols: None,
+            capture_rows: None,
+        };
+
+        let plan = build_launch_plan(&request);
+
+        assert_eq!(
+            plan.cleanup_cmds,
+            vec![vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                "grove-ws-auth-flow".to_string(),
+            ]]
         );
     }
 

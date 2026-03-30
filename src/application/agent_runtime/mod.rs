@@ -129,6 +129,9 @@ pub struct LauncherScript {
 pub struct LaunchPlan {
     pub session_name: String,
     pub pane_lookup_cmd: Vec<String>,
+    /// Commands run before launch whose errors are silently ignored (e.g.
+    /// killing a stale tmux session that may or may not exist).
+    pub cleanup_cmds: Vec<Vec<String>>,
     pub pre_launch_cmds: Vec<Vec<String>>,
     pub launch_cmd: Vec<String>,
     pub launcher_script: Option<LauncherScript>,

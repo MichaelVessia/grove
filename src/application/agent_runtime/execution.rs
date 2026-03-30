@@ -248,6 +248,10 @@ pub fn execute_launch_plan_with_executor(
     launch_plan: &LaunchPlan,
     executor: &mut impl CommandExecutor,
 ) -> std::io::Result<()> {
+    for cmd in &launch_plan.cleanup_cmds {
+        let _ = execute_command_with(cmd, |command| executor.execute(command));
+    }
+
     if let Some(script) = &launch_plan.launcher_script {
         executor.write_launcher_script(script)?;
     }
@@ -391,7 +395,7 @@ pub fn kill_task_session_commands_for_existing_sessions(
         .collect()
 }
 
-fn kill_tmux_session_command(session_name: &str) -> Vec<String> {
+pub(super) fn kill_tmux_session_command(session_name: &str) -> Vec<String> {
     vec![
         "tmux".to_string(),
         "kill-session".to_string(),
@@ -576,6 +580,7 @@ mod tests {
         let launch_plan = LaunchPlan {
             session_name: "grove-ws-test".to_string(),
             pane_lookup_cmd: Vec::new(),
+            cleanup_cmds: Vec::new(),
             pre_launch_cmds: vec![vec![
                 "sh".to_string(),
                 "-lc".to_string(),
@@ -632,10 +637,16 @@ mod tests {
     }
 
     #[test]
-    fn execute_launch_plan_with_executor_runs_prelaunch_then_launch() {
+    fn execute_launch_plan_with_executor_runs_cleanup_then_prelaunch_then_launch() {
         let launch_plan = LaunchPlan {
             session_name: "grove-ws-test".to_string(),
             pane_lookup_cmd: Vec::new(),
+            cleanup_cmds: vec![vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                "grove-ws-test".to_string(),
+            ]],
             pre_launch_cmds: vec![
                 vec!["echo".to_string(), "one".to_string()],
                 vec!["echo".to_string(), "two".to_string()],
@@ -654,12 +665,34 @@ mod tests {
         assert_eq!(
             executor.commands,
             vec![
+                vec![
+                    "tmux".to_string(),
+                    "kill-session".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-test".to_string(),
+                ],
                 vec!["echo".to_string(), "one".to_string()],
                 vec!["echo".to_string(), "two".to_string()],
                 vec!["echo".to_string(), "launch".to_string()],
             ]
         );
         assert_eq!(executor.launcher_scripts.len(), 1);
+    }
+
+    #[test]
+    fn execute_launch_plan_with_executor_tolerates_cleanup_cmd_failure() {
+        let launch_plan = LaunchPlan {
+            session_name: "grove-ws-test".to_string(),
+            pane_lookup_cmd: Vec::new(),
+            cleanup_cmds: vec![vec!["false".to_string()]],
+            pre_launch_cmds: vec![vec!["echo".to_string(), "one".to_string()]],
+            launch_cmd: vec!["echo".to_string(), "launch".to_string()],
+            launcher_script: None,
+        };
+
+        let result = execute_launch_plan(launch_plan);
+
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -697,6 +730,7 @@ mod tests {
         let launch_plan = LaunchPlan {
             session_name: "grove-ws-test".to_string(),
             pane_lookup_cmd: Vec::new(),
+            cleanup_cmds: Vec::new(),
             pre_launch_cmds: Vec::new(),
             launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
             launcher_script: Some(LauncherScript {
@@ -719,6 +753,7 @@ mod tests {
         let launch_plan = LaunchPlan {
             session_name: "grove-ws-test".to_string(),
             pane_lookup_cmd: Vec::new(),
+            cleanup_cmds: Vec::new(),
             pre_launch_cmds: Vec::new(),
             launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
             launcher_script: Some(LauncherScript {
@@ -744,6 +779,7 @@ mod tests {
         let launch_plan = LaunchPlan {
             session_name: "grove-ws-test".to_string(),
             pane_lookup_cmd: Vec::new(),
+            cleanup_cmds: Vec::new(),
             pre_launch_cmds: Vec::new(),
             launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
             launcher_script: Some(LauncherScript {
