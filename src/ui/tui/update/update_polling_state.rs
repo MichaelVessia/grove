@@ -439,7 +439,17 @@ impl GroveApp {
         status: WorkspaceStatus,
         cleaned_output: &str,
         changed: bool,
-    ) {
+    ) -> Option<WorkspaceStatus> {
+        let semantic_observation = self.workspace_status_observation_for_path(workspace_path);
+        if let Some(observation) = semantic_observation {
+            self.record_workspace_status_observation(workspace_path, &observation);
+            return Some(observation.status);
+        }
+
+        self.polling
+            .workspace_recent_activity
+            .remove(workspace_path);
+
         if status == WorkspaceStatus::Waiting {
             if let Some(prompt) = detect_waiting_prompt(cleaned_output) {
                 self.polling
@@ -460,7 +470,7 @@ impl GroveApp {
             self.polling
                 .workspace_idle_polls_since_output
                 .remove(workspace_path);
-            return;
+            return None;
         }
 
         if status == WorkspaceStatus::Idle {
@@ -470,12 +480,46 @@ impl GroveApp {
                 .entry(workspace_path.to_path_buf())
                 .or_insert(0);
             *idle_polls = idle_polls.saturating_add(1);
-            return;
+            return None;
         }
 
         self.polling
             .workspace_idle_polls_since_output
             .remove(workspace_path);
+        None
+    }
+
+    fn workspace_status_observation_for_path(
+        &self,
+        workspace_path: &Path,
+    ) -> Option<WorkspaceStatusObservation> {
+        #[cfg(test)]
+        if let Some(observation) = self
+            .polling
+            .workspace_status_observation_overrides
+            .get(workspace_path)
+        {
+            return Some(observation.clone());
+        }
+
+        let workspace = self
+            .state
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.path == workspace_path)?;
+        let home_dir = dirs::home_dir()?;
+        let session_name =
+            crate::application::agent_runtime::session_name_for_workspace_ref(workspace);
+
+        crate::application::agent_runtime::status::workspace_status_observation_in_home(
+            crate::application::agent_runtime::status::BackgroundStatusObservationContext {
+                agent: workspace.agent,
+                workspace_path,
+                home_dir: Some(home_dir.as_path()),
+                activity_threshold: Duration::from_secs(30),
+                session_name: session_name.as_str(),
+            },
+        )
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
@@ -501,29 +545,21 @@ impl GroveApp {
         }
 
         self.polling
-            .workspace_output_changing
+            .workspace_recent_activity
             .insert(workspace_path.to_path_buf(), observation.recent_activity);
-
-        if observation.recent_activity {
+        if observation.recent_activity || observation.status != WorkspaceStatus::Idle {
             self.polling
                 .workspace_idle_polls_since_output
                 .remove(workspace_path);
             return;
         }
 
-        if observation.status == WorkspaceStatus::Idle {
-            let idle_polls = self
-                .polling
-                .workspace_idle_polls_since_output
-                .entry(workspace_path.to_path_buf())
-                .or_insert(0);
-            *idle_polls = idle_polls.saturating_add(1);
-            return;
-        }
-
-        self.polling
+        let idle_polls = self
+            .polling
             .workspace_idle_polls_since_output
-            .remove(workspace_path);
+            .entry(workspace_path.to_path_buf())
+            .or_insert(0);
+        *idle_polls = idle_polls.saturating_add(1);
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
@@ -562,6 +598,13 @@ impl GroveApp {
             .workspace_output_changing
             .remove(workspace_path);
         self.polling
+            .workspace_recent_activity
+            .remove(workspace_path);
+        #[cfg(test)]
+        self.polling
+            .workspace_status_observation_overrides
+            .remove(workspace_path);
+        self.polling
             .workspace_waiting_prompts
             .remove(workspace_path);
         self.polling
@@ -573,6 +616,9 @@ impl GroveApp {
     pub(super) fn clear_status_tracking(&mut self) {
         self.polling.workspace_status_digests.clear();
         self.polling.workspace_output_changing.clear();
+        self.polling.workspace_recent_activity.clear();
+        #[cfg(test)]
+        self.polling.workspace_status_observation_overrides.clear();
         self.polling.workspace_waiting_prompts.clear();
         self.polling.workspace_idle_polls_since_output.clear();
         self.attention_observations.clear();
@@ -594,12 +640,20 @@ impl GroveApp {
         (change.changed_cleaned, change.cleaned_output)
     }
 
-    fn workspace_output_changing(&self, workspace_path: &Path) -> bool {
+    fn workspace_recent_activity(&self, workspace_path: &Path) -> bool {
         self.polling
-            .workspace_output_changing
+            .workspace_recent_activity
             .get(workspace_path)
             .copied()
             .unwrap_or(false)
+    }
+
+    fn workspace_status_for_path(&self, workspace_path: &Path) -> Option<WorkspaceStatus> {
+        self.state
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.path == workspace_path)
+            .map(|workspace| workspace.status)
     }
 
     pub(super) fn push_agent_activity_frame(&mut self, changed: bool) {
@@ -654,11 +708,18 @@ impl GroveApp {
         workspace_path: Option<&Path>,
         is_selected: bool,
     ) -> bool {
-        if is_selected {
-            return self.polling.agent_output_changing || self.has_recent_agent_activity();
+        if workspace_path.is_some_and(|path| {
+            self.workspace_status_for_path(path) == Some(WorkspaceStatus::Waiting)
+        }) {
+            return false;
         }
 
-        workspace_path.is_some_and(|path| self.workspace_output_changing(path))
+        if is_selected {
+            return workspace_path.is_some_and(|path| self.workspace_recent_activity(path))
+                || self.has_recent_agent_activity();
+        }
+
+        workspace_path.is_some_and(|path| self.workspace_recent_activity(path))
     }
 
     pub(super) fn is_due_with_tolerance(now: Instant, due_at: Instant) -> bool {

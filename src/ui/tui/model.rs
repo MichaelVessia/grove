@@ -285,6 +285,9 @@ struct PollingState {
     agent_idle_polls_since_output: u8,
     workspace_status_digests: HashMap<PathBuf, OutputDigest>,
     workspace_output_changing: HashMap<PathBuf, bool>,
+    workspace_recent_activity: HashMap<PathBuf, bool>,
+    #[cfg(test)]
+    workspace_status_observation_overrides: HashMap<PathBuf, WorkspaceStatusObservation>,
     workspace_waiting_prompts: HashMap<PathBuf, String>,
     workspace_idle_polls_since_output: HashMap<PathBuf, u8>,
     next_tick_due_at: Option<Instant>,

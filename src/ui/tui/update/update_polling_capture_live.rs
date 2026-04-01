@@ -234,9 +234,14 @@ impl GroveApp {
                     );
                     workspace_status_changed = changed_cleaned;
                     let status_detect_started_at = Instant::now();
+                    let session_activity = if changed_cleaned {
+                        SessionActivity::Active
+                    } else {
+                        SessionActivity::Idle
+                    };
                     let resolved_status = detect_status_with_session_override(
                         update.cleaned_output.as_str(),
-                        SessionActivity::Active,
+                        session_activity,
                         workspace_is_main,
                         true,
                         supported_agent,
@@ -247,12 +252,14 @@ impl GroveApp {
                     status_detect_ms = Self::duration_millis(
                         Instant::now().saturating_duration_since(status_detect_started_at),
                     );
-                    self.record_workspace_poll_state(
-                        workspace_path.as_path(),
-                        resolved_status,
-                        update.cleaned_output.as_str(),
-                        changed_cleaned,
-                    );
+                    let resolved_status = self
+                        .record_workspace_poll_state(
+                            workspace_path.as_path(),
+                            resolved_status,
+                            update.cleaned_output.as_str(),
+                            changed_cleaned,
+                        )
+                        .unwrap_or(resolved_status);
                     let workspace = &mut self.state.workspaces[index];
                     workspace.status = resolved_status;
                     workspace.is_orphaned = false;

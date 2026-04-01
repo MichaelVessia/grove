@@ -194,6 +194,9 @@ impl GroveApp {
                 agent_idle_polls_since_output: 0,
                 workspace_status_digests: HashMap::new(),
                 workspace_output_changing: HashMap::new(),
+                workspace_recent_activity: HashMap::new(),
+                #[cfg(test)]
+                workspace_status_observation_overrides: HashMap::new(),
                 workspace_waiting_prompts: HashMap::new(),
                 workspace_idle_polls_since_output: HashMap::new(),
                 next_tick_due_at: None,

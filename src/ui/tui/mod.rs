@@ -4069,6 +4069,10 @@ mod tests {
                 !metadata_row_text.contains("WAITING"),
                 "raw waiting status should not render WAITING label, got: {metadata_row_text}"
             );
+            assert!(
+                !metadata_row_text.contains("WORKING"),
+                "raw waiting status should not render WORKING label, got: {metadata_row_text}"
+            );
         });
     }
 
@@ -4142,12 +4146,14 @@ mod tests {
     }
 
     #[test]
-    fn working_workspace_row_shows_static_working_label() {
+    fn selected_workspace_hold_keeps_working_label() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         select_workspace(&mut app, 1);
-        app.polling.output_changing = true;
-        app.polling.agent_output_changing = true;
+        app.polling.output_changing = false;
+        app.polling.agent_output_changing = false;
+        app.polling.agent_working_until = Some(Instant::now() + Duration::from_secs(1));
+        app.polling.agent_idle_polls_since_output = 0;
 
         let layout = app.panes.test_rects(120, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -4166,13 +4172,22 @@ mod tests {
     }
 
     #[test]
-    fn selected_workspace_shows_working_from_agent_output_even_if_status_is_waiting() {
+    fn selected_workspace_recent_activity_means_working() {
         let (mut app, _commands, _captures, _cursor_captures) =
-            fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         select_workspace(&mut app, 1);
-        app.sidebar_width_pct = 120;
-        app.polling.output_changing = true;
-        app.polling.agent_output_changing = true;
+        app.polling.output_changing = false;
+        app.polling.agent_output_changing = false;
+        app.record_workspace_status_observation(
+            feature_workspace_path().as_path(),
+            &WorkspaceStatusObservation {
+                status: WorkspaceStatus::Active,
+                recent_activity: true,
+                waiting_excerpt: None,
+            },
+        );
+
+        assert!(app.status_is_visually_working(Some(app.state.workspaces[1].path.as_path()), true));
 
         let layout = app.panes.test_rects(120, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -4185,20 +4200,155 @@ mod tests {
             let metadata_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(
                 metadata_row_text.contains("WORKING"),
-                "agent output should render WORKING regardless of status, got: {metadata_row_text}"
+                "semantic recent activity should render WORKING label, got: {metadata_row_text}"
+            );
+            assert!(
+                !metadata_row_text.contains("WAITING"),
+                "semantic recent activity should not render WAITING label, got: {metadata_row_text}"
             );
         });
     }
 
     #[test]
-    fn background_workspace_shows_working_from_changed_output_even_if_status_is_waiting() {
+    fn selected_workspace_waiting_does_not_render_working() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
+        select_workspace(&mut app, 1);
+        app.sidebar_width_pct = 120;
+        app.polling.output_changing = true;
+        app.polling.agent_output_changing = true;
+
+        assert!(
+            !app.status_is_visually_working(Some(app.state.workspaces[1].path.as_path()), true)
+        );
+
+        let layout = app.panes.test_rects(120, 24);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 120, 24, |frame| {
+            let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let metadata_row_text = row_text(frame, selected_row, x_start, x_end);
+            assert!(
+                !metadata_row_text.contains("WORKING"),
+                "waiting workspace should not render WORKING, got: {metadata_row_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn background_workspace_output_change_alone_does_not_mean_working() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 0);
+        app.capture_changed_cleaned_for_workspace(feature_workspace_path().as_path(), "changed");
+        app.record_workspace_status_observation(
+            feature_workspace_path().as_path(),
+            &WorkspaceStatusObservation {
+                status: WorkspaceStatus::Active,
+                recent_activity: false,
+                waiting_excerpt: None,
+            },
+        );
+
+        assert!(!app.status_is_visually_working(Some(feature_workspace_path().as_path()), false));
+    }
+
+    #[test]
+    fn background_workspace_recent_activity_means_working() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 0);
+        app.record_workspace_status_observation(
+            feature_workspace_path().as_path(),
+            &WorkspaceStatusObservation {
+                status: WorkspaceStatus::Active,
+                recent_activity: true,
+                waiting_excerpt: None,
+            },
+        );
+
+        assert!(app.status_is_visually_working(Some(feature_workspace_path().as_path()), false));
+    }
+
+    #[test]
+    fn background_workspace_recent_activity_clears_when_observation_resolution_is_missing() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 0);
+        app.record_workspace_status_observation(
+            feature_workspace_path().as_path(),
+            &WorkspaceStatusObservation {
+                status: WorkspaceStatus::Active,
+                recent_activity: true,
+                waiting_excerpt: None,
+            },
+        );
+        app.record_workspace_poll_state(
+            feature_workspace_path().as_path(),
+            WorkspaceStatus::Active,
+            "still active",
+            false,
+        );
+
+        assert!(!app.status_is_visually_working(Some(feature_workspace_path().as_path()), false));
+    }
+
+    #[test]
+    fn background_workspace_structured_waiting_wins_over_active_text_capture() {
+        let workspace_path = feature_workspace_path();
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 0);
+        app.record_workspace_status_observation(
+            workspace_path.as_path(),
+            &WorkspaceStatusObservation {
+                status: WorkspaceStatus::Active,
+                recent_activity: true,
+                waiting_excerpt: None,
+            },
+        );
+        app.polling.workspace_status_observation_overrides.insert(
+            workspace_path.clone(),
+            WorkspaceStatusObservation {
+                status: WorkspaceStatus::Waiting,
+                recent_activity: false,
+                waiting_excerpt: Some("approve command".to_string()),
+            },
+        );
+        app.apply_workspace_status_capture(WorkspaceStatusCapture {
+            workspace_name: "feature-a".to_string(),
+            workspace_path: workspace_path.clone(),
+            session_name: feature_workspace_session(),
+            supported_agent: true,
+            include_escape_sequences: false,
+            capture_ms: 1,
+            result: Ok("plain active output".to_string()),
+        });
+
+        assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Waiting);
+        assert!(
+            !app.status_is_visually_working(Some(workspace_path.as_path()), false),
+            "structured waiting should suppress background WORKING"
+        );
+    }
+
+    #[test]
+    fn background_workspace_waiting_does_not_render_working() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
         select_workspace(&mut app, 0);
         app.sidebar_width_pct = 120;
-        app.polling
-            .workspace_output_changing
-            .insert(feature_workspace_path(), true);
+        app.record_workspace_status_observation(
+            feature_workspace_path().as_path(),
+            &WorkspaceStatusObservation {
+                status: WorkspaceStatus::Waiting,
+                recent_activity: true,
+                waiting_excerpt: Some("waiting".to_string()),
+            },
+        );
 
         let layout = app.panes.test_rects(120, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -4210,8 +4360,8 @@ mod tests {
             };
             let metadata_row_text = row_text(frame, feature_row, x_start, x_end);
             assert!(
-                metadata_row_text.contains("WORKING"),
-                "background output change should render WORKING regardless of status, got: {metadata_row_text}"
+                !metadata_row_text.contains("WORKING"),
+                "waiting workspace should not render WORKING, got: {metadata_row_text}"
             );
         });
     }
