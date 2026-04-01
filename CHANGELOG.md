@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.4](https://github.com/MichaelVessia/grove/compare/grove-v0.1.3...grove-v0.1.4) (2026-04-01)
+
+
+### Bug Fixes
+
+* **preview:** preserve wrapped shell rows in interactive mode ([8af8957](https://github.com/MichaelVessia/grove/commit/8af895782b5217533992864b1965f6207dc18a3c))
+* **runtime:** kill stale tmux session before creating new one on task launch ([b561b32](https://github.com/MichaelVessia/grove/commit/b561b329f73e118a7695bee0a0f43b03fcd8e989))
+
 ## [0.1.3](https://github.com/MichaelVessia/grove/compare/grove-v0.1.2...grove-v0.1.3) (2026-03-29)
 
 
