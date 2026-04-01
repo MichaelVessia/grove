@@ -10146,7 +10146,7 @@ second row\n",
                 }));
                 assert!(calls.borrow().iter().any(|call| {
                     call == &format!(
-                        "capture-joined:{}:{}:true",
+                        "capture:{}:{}:true",
                         feature_workspace_session(),
                         crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
                     )
