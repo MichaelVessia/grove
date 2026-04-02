@@ -5663,6 +5663,35 @@ mod tests {
     }
 
     #[test]
+    fn workspace_jump_finds_unique_worktree_basename() {
+        let mut app = fixture_app();
+        app.state = crate::ui::state::AppState::new(vec![task_with_worktrees(
+            "unique-base",
+            &[(
+                "repo-alpha",
+                &PathBuf::from("/repos/repo-alpha"),
+                &PathBuf::from("/tmp/.grove/tasks/unique-base/alpha-checkout"),
+                "topic-branch",
+            )],
+        )]);
+        app.sync_workspace_tab_maps();
+        app.refresh_preview_summary();
+
+        app.open_workspace_jump_palette();
+        app.dialogs.command_palette.set_query("checkout");
+
+        let expected_id = "workspace:/tmp/.grove/tasks/unique-base/alpha-checkout";
+        assert_eq!(app.dialogs.command_palette.result_count(), 1);
+        assert_eq!(
+            app.dialogs
+                .command_palette
+                .selected_action()
+                .map(|action| action.id.as_str()),
+            Some(expected_id)
+        );
+    }
+
+    #[test]
     fn workspace_jump_enter_selects_workspace_preserves_tab_and_focuses_preview() {
         let mut app = fixture_app();
         let shell_tab_id = insert_shell_tab(

@@ -76,6 +76,10 @@ impl GroveApp {
             Some(workspace.name.as_str()),
             workspace.project_name.as_deref(),
             Some(workspace.branch.as_str()),
+            workspace
+                .path
+                .file_name()
+                .and_then(|file_name| file_name.to_str()),
         ]
         .into_iter()
         .flatten()
@@ -86,7 +90,7 @@ impl GroveApp {
             }
         }
 
-        terms.join(" ")
+        terms.join(" · ")
     }
 
     fn build_workspace_jump_actions(&self) -> Vec<PaletteActionItem> {
