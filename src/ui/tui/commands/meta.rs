@@ -1,6 +1,6 @@
 use super::*;
 
-static COMMAND_META: [UiCommandMeta; 49] = [
+static COMMAND_META: [UiCommandMeta; 50] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_focus",
@@ -1357,6 +1357,34 @@ static COMMAND_META: [UiCommandMeta; 49] = [
         }],
         keybindings: &[],
     },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
+            id: "palette:open_repository",
+            title: "Open Repository",
+            description: "Open the selected repository remote in your browser (o)",
+            tags: &[
+                "open",
+                "repository",
+                "repo",
+                "remote",
+                "browser",
+                "origin",
+                "o",
+            ],
+            category: "Worktree",
+        }),
+        help_hints: &[HelpHintSpec {
+            context: HelpHintContext::Workspace,
+            label: "o open repository",
+            key: "o",
+            action: "open repository",
+        }],
+        keybindings: &[KeybindingSpec {
+            scope: KeybindingScope::NonInteractive,
+            code: KeyCodeMatch::Char('o'),
+            modifiers: KeyModifiersMatch::Any,
+        }],
+    },
 ];
 
 impl UiCommand {
@@ -1411,6 +1439,7 @@ impl UiCommand {
             UiCommand::OpenCommandPalette => &COMMAND_META[46],
             UiCommand::Quit => &COMMAND_META[47],
             UiCommand::OpenPerformance => &COMMAND_META[48],
+            UiCommand::OpenRepository => &COMMAND_META[49],
         }
     }
 }

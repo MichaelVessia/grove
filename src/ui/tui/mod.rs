@@ -6144,6 +6144,59 @@ mod tests {
     }
 
     #[test]
+    fn command_palette_lists_open_repository_in_workspace_list() {
+        let mut app = fixture_app();
+        select_workspace(&mut app, 1);
+
+        let list_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        let open_repository_id = UiCommand::OpenRepository
+            .palette_spec()
+            .map(|spec| spec.id)
+            .expect("open repository should be palette discoverable");
+        assert!(list_ids.iter().any(|id| id == open_repository_id));
+
+        focus_agent_preview_tab(&mut app);
+        let preview_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        assert!(!preview_ids.iter().any(|id| id == open_repository_id));
+    }
+
+    #[test]
+    fn open_repository_normalizes_common_remote_forms() {
+        let cases = [
+            (
+                "https://github.com/flocasts/grove.git",
+                "https://github.com/flocasts/grove",
+            ),
+            (
+                "ssh://git@github.com/flocasts/grove.git",
+                "https://github.com/flocasts/grove",
+            ),
+            (
+                "git@github.com:flocasts/grove.git",
+                "https://github.com/flocasts/grove",
+            ),
+            ("file:///tmp/remotes/grove.git", "file:///tmp/remotes/grove"),
+            ("/tmp/remotes/grove.git", "file:///tmp/remotes/grove"),
+        ];
+
+        for (remote, expected) in cases {
+            assert_eq!(
+                GroveApp::browser_url_for_git_remote(remote).as_deref(),
+                Ok(expected),
+                "remote should normalize: {remote}"
+            );
+        }
+    }
+
+    #[test]
     fn command_palette_exposes_rename_active_tab_action_when_preview_tab_selected() {
         let mut app = fixture_app();
         focus_agent_preview_tab(&mut app);
@@ -6901,6 +6954,23 @@ mod tests {
             assert!(
                 text.contains("a add worktree"),
                 "help overlay missing add worktree entry: {text}"
+            );
+        });
+    }
+
+    #[test]
+    fn keybind_help_lists_open_repository_in_workspace_list() {
+        let mut app = fixture_app();
+        app.dialogs.keybind_help_open = true;
+
+        with_rendered_frame(&app, 160, 28, |frame| {
+            let text = (0..frame.height())
+                .map(|row| row_text(frame, row, 0, frame.width()))
+                .collect::<Vec<String>>()
+                .join("\n");
+            assert!(
+                text.contains("o open repository"),
+                "help overlay missing open repository entry: {text}"
             );
         });
     }
@@ -9619,6 +9689,58 @@ second row\n",
                     Some(CreateDialogField::Project)
                 );
                 assert!(commands.borrow().is_empty());
+            }
+
+            #[test]
+            fn open_repository_key_in_workspace_list_opens_selected_origin_in_browser() {
+                let mut app = fixture_app();
+                let repo_root = init_git_repo("open-repository-origin", "main");
+                assert!(
+                    std::process::Command::new("git")
+                        .current_dir(&repo_root)
+                        .args([
+                            "remote",
+                            "add",
+                            "origin",
+                            "git@github.com:flocasts/grove.git"
+                        ])
+                        .status()
+                        .expect("git remote add origin should run")
+                        .success()
+                );
+                select_workspace(&mut app, 1);
+                app.state.workspaces[1].project_path = Some(repo_root);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('o')).with_kind(KeyEventKind::Press)),
+                );
+
+                assert_eq!(
+                    app.opened_urls,
+                    vec!["https://github.com/flocasts/grove".to_string()]
+                );
+            }
+
+            #[test]
+            fn open_repository_key_shows_error_toast_when_origin_is_missing() {
+                let mut app = fixture_app();
+                let repo_root = init_git_repo("open-repository-missing-origin", "main");
+                select_workspace(&mut app, 1);
+                app.state.workspaces[1].project_path = Some(repo_root);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('o')).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(app.opened_urls.is_empty());
+                let toast = app
+                    .notifications
+                    .visible()
+                    .last()
+                    .expect("missing origin should show an error toast");
+                assert!(matches!(toast.config.style_variant, ToastStyle::Error));
             }
 
             #[test]

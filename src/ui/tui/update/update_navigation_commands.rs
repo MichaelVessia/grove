@@ -222,6 +222,9 @@ impl GroveApp {
             UiCommand::AddWorktree => {
                 self.open_add_worktree_dialog();
             }
+            UiCommand::OpenRepository => {
+                self.open_selected_workspace_repository();
+            }
             UiCommand::EditWorkspace => {
                 self.open_edit_dialog();
             }

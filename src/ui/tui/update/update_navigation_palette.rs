@@ -158,6 +158,9 @@ impl GroveApp {
                         .selected_task()
                         .is_some_and(|task| !task.has_base_worktree())
             }
+            UiCommand::OpenRepository => {
+                self.workspace_list_focused() && self.state.selected_workspace().is_some()
+            }
             UiCommand::StartAgent => {
                 !self.dialogs.start_in_flight
                     && !self.dialogs.restart_in_flight

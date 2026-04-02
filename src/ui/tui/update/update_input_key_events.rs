@@ -255,6 +255,9 @@ impl GroveApp {
             UiCommand::AddWorktree | UiCommand::DeleteWorkspace | UiCommand::DeleteWorktree => {
                 self.workspace_list_focused()
             }
+            UiCommand::OpenRepository => {
+                self.workspace_list_focused() && self.state.selected_workspace().is_some()
+            }
             UiCommand::OpenDiffTab => in_preview_focus,
             UiCommand::RenameActiveTab
             | UiCommand::StopAgent

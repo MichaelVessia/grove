@@ -1,4 +1,5 @@
 use super::update_prelude::*;
+use crate::infrastructure::process::stderr_trimmed;
 
 impl GroveApp {
     const PREVIEW_MOUSE_SCROLL_LINES: i32 = 3;
@@ -263,10 +264,87 @@ impl GroveApp {
         self.poll_preview();
     }
 
-    fn open_url_in_browser(&self, url: &str) -> Result<(), String> {
+    pub(super) fn browser_url_for_git_remote(remote: &str) -> Result<String, String> {
+        let trimmed = remote.trim().trim_end_matches('/');
+        let trimmed = trimmed.strip_suffix(".git").unwrap_or(trimmed);
+        if trimmed.is_empty() {
+            return Err("origin remote URL is empty".to_string());
+        }
+
+        if trimmed.starts_with("https://")
+            || trimmed.starts_with("http://")
+            || trimmed.starts_with("file://")
+        {
+            return Ok(trimmed.to_string());
+        }
+
+        if let Some(without_scheme) = trimmed.strip_prefix("ssh://") {
+            let without_user = without_scheme
+                .split_once('@')
+                .map_or(without_scheme, |(_, value)| value);
+            if let Some((host, path)) = without_user.split_once('/') {
+                let path = path.trim_start_matches('/');
+                if !host.is_empty() && !path.is_empty() {
+                    return Ok(format!("https://{host}/{path}"));
+                }
+            }
+        }
+
+        if let Some((_, host_and_path)) = trimmed.rsplit_once('@')
+            && let Some((host, path)) = host_and_path.split_once(':')
+        {
+            let path = path.trim_start_matches('/');
+            if !host.is_empty() && !path.is_empty() {
+                return Ok(format!("https://{host}/{path}"));
+            }
+        }
+
+        if Path::new(trimmed).is_absolute() {
+            return Ok(format!("file://{trimmed}"));
+        }
+
+        Err("origin remote URL is unsupported".to_string())
+    }
+
+    fn selected_workspace_repository_browser_url(&self) -> Result<String, String> {
+        let Some(workspace) = self.state.selected_workspace() else {
+            return Err("no workspace selected".to_string());
+        };
+        let repo_root = workspace
+            .project_path
+            .as_deref()
+            .unwrap_or(workspace.path.as_path());
+        let output = Command::new("git")
+            .current_dir(repo_root)
+            .args(["remote", "get-url", "origin"])
+            .output()
+            .map_err(|error| format!("git remote get-url origin failed: {error}"))?;
+        if !output.status.success() {
+            return Err(stderr_trimmed(&output));
+        }
+
+        let remote = String::from_utf8(output.stdout)
+            .map_err(|error| format!("origin URL was invalid UTF-8: {error}"))?;
+        Self::browser_url_for_git_remote(remote.as_str())
+    }
+
+    pub(super) fn open_selected_workspace_repository(&mut self) {
+        let url = match self.selected_workspace_repository_browser_url() {
+            Ok(url) => url,
+            Err(error) => {
+                self.show_error_toast(error);
+                return;
+            }
+        };
+        if let Err(error) = self.open_url_in_browser(url.as_str()) {
+            self.show_error_toast(error);
+        }
+    }
+
+    fn open_url_in_browser(&mut self, url: &str) -> Result<(), String> {
         #[cfg(test)]
         {
-            let _ = url;
+            self.opened_urls.push(url.to_string());
             Ok(())
         }
 
@@ -308,8 +386,9 @@ impl GroveApp {
         let Some(pull_request) = workspace.pull_requests.get(pull_request_index) else {
             return;
         };
+        let url = pull_request.url.clone();
 
-        if let Err(error) = self.open_url_in_browser(pull_request.url.as_str()) {
+        if let Err(error) = self.open_url_in_browser(url.as_str()) {
             self.show_error_toast(error);
         }
     }

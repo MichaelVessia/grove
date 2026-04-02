@@ -241,6 +241,8 @@ impl GroveApp {
             divider_resize_event_seq: 1,
             preview_selection: TextSelectionState::default(),
             copied_text: None,
+            #[cfg(test)]
+            opened_urls: Vec::new(),
             telemetry: TelemetryState {
                 event_log,
                 debug_record_start_ts,

@@ -399,6 +399,8 @@ struct GroveApp {
     divider_resize_event_seq: u64,
     preview_selection: TextSelectionState,
     copied_text: Option<String>,
+    #[cfg(test)]
+    opened_urls: Vec<String>,
     telemetry: TelemetryState,
     performance: PerformanceState,
     last_hit_grid: RefCell<Option<HitGrid>>,
