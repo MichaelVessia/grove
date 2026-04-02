@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.5](https://github.com/MichaelVessia/grove/compare/grove-v0.1.4...grove-v0.1.5) (2026-04-02)
+
+
+### Features
+
+* **tui:** open repository remote from workspace list ([41e1303](https://github.com/MichaelVessia/grove/commit/41e130321a0aa624c6d8f5b8a3e6e4e9755079ca))
+
+
+### Bug Fixes
+
+* **tui:** derive working status from semantic activity ([6f0d049](https://github.com/MichaelVessia/grove/commit/6f0d049ef7be9d9d06a453cdeb4bcfce1619c974))
+* **tui:** prevent startup attention poll recursion ([fc9fb13](https://github.com/MichaelVessia/grove/commit/fc9fb1313d61d3c9b22c7a37da78ff01139d67c8))
+
 ## [0.1.4](https://github.com/MichaelVessia/grove/compare/grove-v0.1.3...grove-v0.1.4) (2026-04-01)
 
 
