@@ -5816,19 +5816,78 @@ mod tests {
     }
 
     #[test]
-    fn workspace_jump_task_and_project_terms_remain_searchable_after_row_split() {
-        let mut app = fixture_task_app();
+    fn workspace_jump_finds_workspace_by_unique_basename() {
+        let mut app = fixture_app();
+        let visible_workspace_path = PathBuf::from("/tmp/.grove/tasks/search-suite/unique-basename");
+        let other_workspace_path = PathBuf::from("/tmp/.grove/tasks/search-suite/other");
+
+        app.state = crate::ui::state::AppState::new(vec![task_with_worktrees(
+            "search-suite",
+            &[
+                (
+                    "visible-alpha",
+                    &PathBuf::from("/repos/visible-alpha"),
+                    &visible_workspace_path,
+                    "main",
+                ),
+                (
+                    "other-alpha",
+                    &PathBuf::from("/repos/other-alpha"),
+                    &other_workspace_path,
+                    "feature",
+                ),
+            ],
+        )]);
+        app.sync_workspace_tab_maps();
+        app.refresh_preview_summary();
 
         app.open_workspace_jump_palette();
-        app.dialogs.command_palette.set_query("terraform-fastly");
+        app.dialogs.command_palette.set_query("unique-basename");
 
-        let expected_project_path = app
-            .state
-            .workspaces
-            .iter()
-            .find(|workspace| workspace.project_name.as_deref() == Some("terraform-fastly"))
-            .map(|workspace| workspace.path.clone())
-            .expect("project workspace should exist");
+        let selected = app
+            .dialogs
+            .command_palette
+            .selected_action()
+            .expect("basename search should match");
+        let selected_path = app
+            .dialogs
+            .workspace_jump_action_targets
+            .get(selected.id.as_str())
+            .expect("basename path should exist");
+
+        assert_eq!(app.dialogs.command_palette.result_count(), 1);
+        assert_eq!(selected_path, &visible_workspace_path);
+    }
+
+    #[test]
+    fn workspace_jump_hidden_suffix_terms_remain_searchable_after_row_split() {
+        let mut app = fixture_app();
+        let workspace_path = PathBuf::from("/tmp/.grove/tasks/visible-alpha/visible-alpha");
+        let mut workspace = crate::domain::Workspace::try_new(
+            "visible-alpha".to_string(),
+            workspace_path.clone(),
+            "main".to_string(),
+            None,
+            AgentType::Codex,
+            WorkspaceStatus::Idle,
+            false,
+        )
+        .expect("workspace should be valid")
+        .with_task_slug(Some("hidden-task-term".to_string()));
+        workspace.project_name = Some("hidden-project-term".to_string());
+        workspace.project_path = Some(PathBuf::from("/repos/visible-alpha"));
+        app.state = crate::ui::state::AppState {
+            tasks: Vec::new(),
+            workspaces: vec![workspace],
+            selected_task_index: 0,
+            selected_worktree_index: 0,
+            selected_index: 0,
+            mode: UiMode::List,
+        };
+
+        app.open_workspace_jump_palette();
+        app.dialogs.command_palette.set_query("hidden-project-term");
+
         let selected = app
             .dialogs
             .command_palette
@@ -5841,20 +5900,23 @@ mod tests {
             .expect("project path should exist");
 
         assert_eq!(app.dialogs.command_palette.result_count(), 1);
-        assert_eq!(selected_path, &expected_project_path);
+        assert_eq!(selected_path, &workspace_path);
 
-        app.dialogs.command_palette.set_query("flohome-launch");
+        app.dialogs.command_palette.set_query("hidden-task-term");
         let selected = app
             .dialogs
             .command_palette
             .selected_action()
             .expect("task search should match");
+        let selected_path = app
+            .dialogs
+            .workspace_jump_action_targets
+            .get(selected.id.as_str())
+            .expect("task path should exist");
 
-        assert!(
-            selected.title.contains("flohome-launch"),
-            "task slug should stay searchable in the title: {}",
-            selected.title
-        );
+        assert_eq!(app.dialogs.command_palette.result_count(), 1);
+        assert_eq!(selected_path, &workspace_path);
+        assert!(selected.title.starts_with("visible-alpha · main"));
     }
 
     #[test]

@@ -134,29 +134,6 @@ impl GroveApp {
             .unwrap_or_else(|| workspace.path.display().to_string())
     }
 
-    fn workspace_jump_search_tags<'a>(&'a self, workspace: &'a Workspace) -> Vec<&'a str> {
-        let task = self.workspace_jump_task(workspace);
-        let mut tags = Vec::new();
-        for tag in [
-            Some(workspace.name.as_str()),
-            workspace.project_name.as_deref(),
-            workspace.task_slug.as_deref(),
-            task.map(|task| task.name.as_str()),
-            workspace
-                .path
-                .file_name()
-                .and_then(|file_name| file_name.to_str()),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            if !tags.iter().any(|existing| existing == &tag) {
-                tags.push(tag);
-            }
-        }
-        tags
-    }
-
     fn build_workspace_jump_actions(&mut self) -> Vec<PaletteActionItem> {
         let mut actions = Vec::with_capacity(self.state.workspaces.len());
         let mut action_targets = HashMap::new();
@@ -175,12 +152,11 @@ impl GroveApp {
             action_targets.insert(id.clone(), workspace.path.clone());
             let title = self.workspace_jump_visible_title(workspace);
             let description = self.workspace_jump_visible_description(workspace);
-            let tags = self.workspace_jump_search_tags(workspace);
             actions.push(Self::palette_action(
                 id,
                 title,
                 description,
-                tags.as_slice(),
+                &[],
                 "Workspace",
             ));
         }
