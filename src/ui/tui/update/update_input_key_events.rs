@@ -388,7 +388,6 @@ impl GroveApp {
 
         if UiCommand::OpenCommandPalette
             .matches_keybinding(&key_event, KeybindingScope::NonInteractive)
-            && self.can_open_palette()
         {
             return (
                 self.execute_ui_command(UiCommand::OpenCommandPalette),
@@ -398,7 +397,6 @@ impl GroveApp {
 
         if UiCommand::OpenWorkspaceJump
             .matches_keybinding(&key_event, KeybindingScope::NonInteractive)
-            && self.can_open_palette()
         {
             return (
                 self.execute_ui_command(UiCommand::OpenWorkspaceJump),
