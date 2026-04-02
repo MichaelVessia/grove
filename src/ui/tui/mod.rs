@@ -5805,16 +5805,7 @@ mod tests {
             .selected_action()
             .expect("selected result");
 
-        assert!(selected.title.contains("alpha"), "row should show repo name");
-        assert!(
-            selected.title.contains("core-branch"),
-            "row should show branch text"
-        );
-        assert!(
-            !selected.title.contains("launch-core"),
-            "task slug should move out of the visible title: {}",
-            selected.title
-        );
+        assert!(selected.title.starts_with("alpha · core-branch"));
         assert!(
             selected
                 .description
@@ -5825,33 +5816,44 @@ mod tests {
     }
 
     #[test]
-    fn workspace_jump_finds_unique_worktree_basename() {
-        let mut app = fixture_app();
-        app.state = crate::ui::state::AppState::new(vec![task_with_worktrees(
-            "unique-base",
-            &[(
-                "repo-alpha",
-                &PathBuf::from("/repos/repo-alpha"),
-                &PathBuf::from("/tmp/.grove/tasks/unique-base/alpha-checkout"),
-                "topic-branch",
-            )],
-        )]);
-        app.sync_workspace_tab_maps();
-        app.refresh_preview_summary();
+    fn workspace_jump_task_and_project_terms_remain_searchable_after_row_split() {
+        let mut app = fixture_task_app();
 
         app.open_workspace_jump_palette();
-        app.dialogs.command_palette.set_query("checkout");
+        app.dialogs.command_palette.set_query("terraform-fastly");
 
-        let expected_path = PathBuf::from("/tmp/.grove/tasks/unique-base/alpha-checkout");
+        let expected_project_path = app
+            .state
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.project_name.as_deref() == Some("terraform-fastly"))
+            .map(|workspace| workspace.path.clone())
+            .expect("project workspace should exist");
         let selected = app
             .dialogs
             .command_palette
             .selected_action()
-            .expect("unique basename workspace should match");
+            .expect("project search should match");
+        let selected_path = app
+            .dialogs
+            .workspace_jump_action_targets
+            .get(selected.id.as_str())
+            .expect("project path should exist");
+
         assert_eq!(app.dialogs.command_palette.result_count(), 1);
-        assert_eq!(
-            workspace_jump_action_id_for_path(&app, &expected_path).as_deref(),
-            Some(selected.id.as_str())
+        assert_eq!(selected_path, &expected_project_path);
+
+        app.dialogs.command_palette.set_query("flohome-launch");
+        let selected = app
+            .dialogs
+            .command_palette
+            .selected_action()
+            .expect("task search should match");
+
+        assert!(
+            selected.title.contains("flohome-launch"),
+            "task slug should stay searchable in the title: {}",
+            selected.title
         );
     }
 

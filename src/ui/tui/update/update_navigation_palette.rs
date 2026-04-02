@@ -81,9 +81,9 @@ impl GroveApp {
     }
 
     fn workspace_jump_visible_title(&self, workspace: &Workspace) -> String {
-        let mut parts = vec![workspace.name.clone()];
+        let mut visible_parts = vec![workspace.name.clone()];
         if workspace.branch != workspace.name {
-            parts.push(workspace.branch.clone());
+            visible_parts.push(workspace.branch.clone());
         }
 
         if let Some(basename) = workspace
@@ -93,10 +93,33 @@ impl GroveApp {
             && basename != workspace.name
             && basename != workspace.branch
         {
-            parts.push(basename.to_string());
+            visible_parts.push(basename.to_string());
         }
 
-        parts.join(" · ")
+        let mut title = visible_parts.join(" · ");
+        let mut searchable_terms = Vec::new();
+        for term in [
+            workspace.task_slug.as_deref(),
+            self.workspace_jump_task(workspace)
+                .map(|task| task.name.as_str()),
+            workspace.project_name.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if !visible_parts.iter().any(|existing| existing == term)
+                && !searchable_terms.iter().any(|existing| existing == term)
+            {
+                searchable_terms.push(term.to_string());
+            }
+        }
+
+        if !searchable_terms.is_empty() {
+            title.push_str(" · ");
+            title.push_str(searchable_terms.as_slice().join(" · ").as_str());
+        }
+
+        title
     }
 
     fn workspace_jump_visible_description(&self, workspace: &Workspace) -> String {
