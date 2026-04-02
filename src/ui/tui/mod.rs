@@ -5638,6 +5638,31 @@ mod tests {
     }
 
     #[test]
+    fn workspace_jump_finds_repo_worktree_by_name() {
+        let mut app = fixture_task_app();
+        app.open_workspace_jump_palette();
+        app.dialogs.command_palette.set_query("fastly");
+
+        let expected_path = app
+            .state
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.project_name.as_deref() == Some("terraform-fastly"))
+            .map(|workspace| workspace.path.clone())
+            .expect("worktree workspace should exist");
+        let expected_id = format!("workspace:{}", expected_path.display());
+
+        assert_eq!(app.dialogs.command_palette.result_count(), 1);
+        assert_eq!(
+            app.dialogs
+                .command_palette
+                .selected_action()
+                .map(|action| action.id.as_str()),
+            Some(expected_id.as_str())
+        );
+    }
+
+    #[test]
     fn workspace_jump_enter_selects_workspace_preserves_tab_and_focuses_preview() {
         let mut app = fixture_app();
         let shell_tab_id = insert_shell_tab(
@@ -5670,6 +5695,28 @@ mod tests {
         );
         assert!(app.preview_focused());
         assert_eq!(app.state.mode, UiMode::Preview);
+    }
+
+    #[test]
+    fn workspace_jump_from_attention_selected_state_clears_attention_selection() {
+        let mut app = fixture_app();
+        app.attention_items = vec![fixture_attention_item(
+            feature_workspace_path(),
+            "feature-a",
+            AttentionReason::BlockedOnQuestion,
+        )];
+        app.select_attention_item(0);
+        assert!(app.selected_attention_item().is_some());
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
+        app.dialogs.command_palette.set_query("feature");
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
+
+        assert!(app.selected_attention_item().is_none());
+        assert_eq!(
+            app.state.selected_workspace().map(|workspace| workspace.path.clone()),
+            Some(feature_workspace_path())
+        );
     }
 
     #[test]

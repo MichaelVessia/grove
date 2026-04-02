@@ -75,10 +75,6 @@ impl GroveApp {
             task.map(|task| task.name.as_str()),
             Some(workspace.name.as_str()),
             workspace.project_name.as_deref(),
-            workspace
-                .path
-                .file_name()
-                .and_then(|file_name| file_name.to_str()),
             Some(workspace.branch.as_str()),
         ]
         .into_iter()
@@ -309,6 +305,7 @@ impl GroveApp {
             return false;
         }
 
+        self.selected_attention_item = None;
         self.handle_workspace_selection_changed();
         let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
         true
