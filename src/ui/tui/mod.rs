@@ -5636,6 +5636,7 @@ mod tests {
     fn slash_opens_workspace_jump_palette() {
         let mut app = fixture_app();
         select_workspace(&mut app, 1);
+        app.handle_workspace_selection_changed();
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
 
@@ -5856,6 +5857,120 @@ mod tests {
     }
 
     #[test]
+    fn workspace_jump_empty_query_enter_is_noop() {
+        let mut app = fixture_app();
+        let selected_before = app
+            .state
+            .selected_workspace()
+            .map(|workspace| workspace.path.clone());
+        let mode_before = app.state.mode;
+        let focus_before = app.focus_manager.current();
+
+        app.open_workspace_jump_palette();
+
+        let (quit, _) = app.handle_key(key_press(KeyCode::Enter));
+
+        assert!(!quit);
+        assert!(!app.dialogs.command_palette.is_visible());
+        assert_eq!(app.dialogs.palette_mode, None);
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.path.clone()),
+            selected_before
+        );
+        assert_eq!(app.state.mode, mode_before);
+        assert_eq!(app.focus_manager.current(), focus_before);
+    }
+
+    #[test]
+    fn workspace_jump_orders_non_current_results_by_mru() {
+        let mut app = fixture_app();
+        let repo_a_path = PathBuf::from("/repos/repo-a");
+        let repo_b_path = PathBuf::from("/repos/repo-b");
+        let repo_c_path = PathBuf::from("/repos/repo-c");
+        let path_a = PathBuf::from("/tasks/mru-a/repo-a");
+        let path_b = PathBuf::from("/tasks/mru-a/repo-b");
+        let path_c = PathBuf::from("/tasks/mru-a/repo-c");
+
+        app.state = crate::ui::state::AppState::new(vec![task_with_worktrees(
+            "mru-a",
+            &[
+                ("repo-a", &repo_a_path, &path_a, "branch-a"),
+                ("repo-b", &repo_b_path, &path_b, "branch-b"),
+                ("repo-c", &repo_c_path, &path_c, "branch-c"),
+            ],
+        )]);
+        app.sync_workspace_tab_maps();
+        app.refresh_preview_summary();
+
+        let _ = app.state.select_workspace_path(path_c.as_path());
+        app.handle_workspace_selection_changed();
+        let _ = app.state.select_workspace_path(path_b.as_path());
+        app.handle_workspace_selection_changed();
+
+        app.open_workspace_jump_palette();
+
+        let visible_ids: Vec<String> = app
+            .dialogs
+            .command_palette
+            .results()
+            .map(|item| item.action.id.clone())
+            .collect();
+
+        assert_eq!(
+            visible_ids
+                .first()
+                .and_then(|id| app.dialogs.workspace_jump_action_targets.get(id)),
+            Some(&path_b)
+        );
+        assert_eq!(
+            visible_ids
+                .get(1)
+                .and_then(|id| app.dialogs.workspace_jump_action_targets.get(id)),
+            Some(&path_c)
+        );
+        assert_eq!(
+            visible_ids
+                .get(2)
+                .and_then(|id| app.dialogs.workspace_jump_action_targets.get(id)),
+            Some(&path_a)
+        );
+    }
+
+    #[test]
+    fn workspace_jump_visit_order_is_seeded_and_pruned_on_refresh() {
+        let mut app = fixture_app();
+        assert_eq!(app.workspace_visit_order, vec![main_workspace_path()]);
+
+        let repo_path = PathBuf::from("/repos/refresh-only");
+        let workspace_path = PathBuf::from("/tmp/.grove/tasks/refresh-only/refresh-only");
+        let removed_path = PathBuf::from("/tmp/.grove/tasks/removed/removed");
+        app.workspace_visit_order = vec![
+            feature_workspace_path(),
+            removed_path.clone(),
+            main_workspace_path(),
+        ];
+
+        app.apply_refresh_workspaces_completion(RefreshWorkspacesCompletion {
+            preferred_workspace_path: Some(workspace_path.clone()),
+            repo_name: "1 tasks".to_string(),
+            discovery_state: DiscoveryState::Ready,
+            tasks: vec![task_with_worktrees(
+                "refresh-only",
+                &[(
+                    "refresh-only",
+                    &repo_path,
+                    &workspace_path,
+                    "refresh-only",
+                )],
+            )],
+        });
+
+        assert_eq!(app.workspace_visit_order, vec![workspace_path]);
+    }
+
+    #[test]
     fn workspace_jump_to_selected_workspace_from_list_refreshes_preview_without_resetting_context()
     {
         let mut app = fixture_app();
@@ -5863,6 +5978,7 @@ mod tests {
         app.state.mode = UiMode::List;
         let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
         select_workspace(&mut app, 1);
+        app.handle_workspace_selection_changed();
         let shell_tab_id = insert_shell_tab(
             &mut app,
             1,
@@ -5903,6 +6019,7 @@ mod tests {
         app.polling.agent_output_changing = true;
 
         app.open_workspace_jump_palette();
+        app.dialogs.command_palette.set_query("feature");
         let selected_action = app
             .dialogs
             .command_palette

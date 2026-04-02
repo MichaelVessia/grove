@@ -125,6 +125,10 @@ impl GroveApp {
         );
         let (workspace_tabs, last_agent_selection) =
             Self::default_workspace_tabs_and_last_agent(&state.workspaces);
+        let initial_visit_order = state
+            .selected_workspace()
+            .map(|workspace| vec![workspace.path.clone()])
+            .unwrap_or_default();
         let mut app = Self {
             repo_name,
             projects,
@@ -138,6 +142,7 @@ impl GroveApp {
             preview_tab: PreviewTab::Agent,
             workspace_tabs,
             last_agent_selection,
+            workspace_visit_order: initial_visit_order,
             preview: PreviewState::new(),
             notifications: NotificationQueue::new(
                 QueueConfig::new()

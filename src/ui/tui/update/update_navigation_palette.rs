@@ -109,20 +109,18 @@ impl GroveApp {
     fn build_workspace_jump_actions(&mut self) -> Vec<PaletteActionItem> {
         let mut actions = Vec::with_capacity(self.state.workspaces.len());
         let mut action_targets = HashMap::new();
-
-        let mut next_id = 0usize;
-        let selected_workspace_path = self
+        let workspace_by_path = self
             .state
-            .selected_workspace()
-            .map(|workspace| workspace.path.clone());
+            .workspaces
+            .iter()
+            .map(|workspace| (workspace.path.clone(), workspace))
+            .collect::<HashMap<PathBuf, &Workspace>>();
 
-        if let Some(selected_workspace_path) = selected_workspace_path.as_ref()
-            && let Some(workspace) = self.state.workspaces.iter().find(|workspace| {
-                refer_to_same_location(workspace.path.as_path(), selected_workspace_path.as_path())
-            })
-        {
+        for (next_id, workspace_path) in self.workspace_jump_order().into_iter().enumerate() {
+            let Some(workspace) = workspace_by_path.get(&workspace_path).copied() else {
+                continue;
+            };
             let id = format!("workspace-jump-{next_id}");
-            next_id = next_id.saturating_add(1);
             action_targets.insert(id.clone(), workspace.path.clone());
             let title = self.workspace_jump_action_title(workspace);
             actions.push(Self::palette_action(
@@ -134,44 +132,11 @@ impl GroveApp {
             ));
         }
 
-        let current_title_len = actions
-            .first()
-            .map(|action| action.title.len())
-            .unwrap_or(0);
-
-        for workspace in &self.state.workspaces {
-            if selected_workspace_path
-                .as_ref()
-                .is_some_and(|selected_workspace_path| {
-                    refer_to_same_location(
-                        workspace.path.as_path(),
-                        selected_workspace_path.as_path(),
-                    )
-                })
-            {
-                continue;
+        let title_width = actions.iter().map(|action| action.title.len()).max().unwrap_or(0);
+        for action in &mut actions {
+            if action.title.len() < title_width {
+                action.title.push_str(" ".repeat(title_width - action.title.len()).as_str());
             }
-            let id = format!("workspace-jump-{next_id}");
-            next_id = next_id.saturating_add(1);
-            action_targets.insert(id.clone(), workspace.path.clone());
-            let title = self.workspace_jump_action_title(workspace);
-            let title = if title.len() <= current_title_len {
-                let mut padded_title = title;
-                padded_title.push_str(
-                    " ".repeat(current_title_len + 1 - padded_title.len())
-                        .as_str(),
-                );
-                padded_title
-            } else {
-                title
-            };
-            actions.push(Self::palette_action(
-                id,
-                title,
-                workspace.path.display().to_string(),
-                &["jump", "workspace", "switch", "path", "branch"],
-                "Workspace",
-            ));
         }
 
         self.dialogs.workspace_jump_action_targets = action_targets;
@@ -369,6 +334,12 @@ impl GroveApp {
         let already_selected = self.state.selected_workspace().is_some_and(|workspace| {
             refer_to_same_location(workspace.path.as_path(), workspace_path.as_path())
         });
+        if already_selected && self.dialogs.command_palette.query().trim().is_empty() {
+            self.dialogs.command_palette.close();
+            self.dialogs.palette_mode = None;
+            return false;
+        }
+
         self.selected_attention_item = None;
         if already_selected {
             let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);

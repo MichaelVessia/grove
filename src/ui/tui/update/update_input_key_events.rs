@@ -395,6 +395,8 @@ impl GroveApp {
         }
 
         if self.dialogs.command_palette.is_visible() {
+            let palette_mode = self.dialogs.palette_mode;
+            let workspace_jump_query_is_empty = self.dialogs.command_palette.query().trim().is_empty();
             let event = Event::Key(Self::normalize_command_palette_key_event(
                 Self::remap_command_palette_nav_key(key_event),
             ));
@@ -406,6 +408,11 @@ impl GroveApp {
                     }
                     PaletteAction::Execute(id) => {
                         let handled = self.execute_visible_palette_action(id.as_str());
+                        if matches!(palette_mode, Some(PaletteMode::WorkspaceJump))
+                            && !workspace_jump_query_is_empty
+                        {
+                            self.selected_attention_item = None;
+                        }
                         self.dialogs.palette_mode = None;
                         (handled, Cmd::None)
                     }
@@ -564,6 +571,7 @@ impl GroveApp {
     }
 
     pub(super) fn handle_workspace_selection_changed(&mut self) {
+        self.record_selected_workspace_visit();
         if self.session.interactive.is_some() {
             self.exit_interactive_to_list();
         }

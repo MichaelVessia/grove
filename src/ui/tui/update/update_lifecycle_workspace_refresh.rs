@@ -143,6 +143,8 @@ impl GroveApp {
         if let Some(path) = target_path
             && self.state.select_workspace_path(path)
         {}
+        self.prune_workspace_visit_order();
+        self.record_selected_workspace_visit();
         self.reconcile_task_order();
         self.reorder_tasks_for_task_order();
         self.state.mode = previous_mode;
@@ -166,6 +168,8 @@ impl GroveApp {
         if let Some(path) = completion.preferred_workspace_path
             && self.state.select_workspace_path(path)
         {}
+        self.prune_workspace_visit_order();
+        self.record_selected_workspace_visit();
         self.reconcile_task_order();
         self.reorder_tasks_for_task_order();
         self.state.mode = previous_mode;

@@ -376,6 +376,7 @@ struct GroveApp {
     preview_tab: PreviewTab,
     workspace_tabs: HashMap<PathBuf, WorkspaceTabsState>,
     last_agent_selection: HashMap<PathBuf, AgentType>,
+    workspace_visit_order: Vec<PathBuf>,
     preview: PreviewState,
     notifications: NotificationQueue,
     action_mapper: ActionMapper,
@@ -469,6 +470,64 @@ impl GroveApp {
         );
         let _ = focus_manager.focus(FOCUS_ID_WORKSPACE_LIST);
         focus_manager
+    }
+
+    fn record_selected_workspace_visit(&mut self) {
+        let Some(workspace_path) = self.selected_workspace_path() else {
+            return;
+        };
+
+        self.workspace_visit_order.retain(|existing| existing != &workspace_path);
+        self.workspace_visit_order.insert(0, workspace_path);
+    }
+
+    fn prune_workspace_visit_order(&mut self) {
+        let workspace_paths = self
+            .state
+            .workspaces
+            .iter()
+            .map(|workspace| workspace.path.clone())
+            .collect::<HashSet<PathBuf>>();
+        self.workspace_visit_order
+            .retain(|path| workspace_paths.contains(path));
+    }
+
+    fn workspace_jump_order(&self) -> Vec<PathBuf> {
+        let mut ordered_paths = Vec::with_capacity(self.state.workspaces.len());
+
+        let Some(selected_workspace_path) = self.selected_workspace_path() else {
+            return self
+                .state
+                .workspaces
+                .iter()
+                .map(|workspace| workspace.path.clone())
+                .collect();
+        };
+
+        let mut remaining_paths = self
+            .state
+            .workspaces
+            .iter()
+            .map(|workspace| workspace.path.clone())
+            .collect::<HashSet<PathBuf>>();
+
+        if remaining_paths.remove(&selected_workspace_path) {
+            ordered_paths.push(selected_workspace_path);
+        }
+
+        for workspace_path in &self.workspace_visit_order {
+            if remaining_paths.remove(workspace_path) {
+                ordered_paths.push(workspace_path.clone());
+            }
+        }
+
+        for workspace in &self.state.workspaces {
+            if remaining_paths.remove(&workspace.path) {
+                ordered_paths.push(workspace.path.clone());
+            }
+        }
+
+        ordered_paths
     }
 
     fn sync_main_pane_state_from_focus_manager(&mut self) {
