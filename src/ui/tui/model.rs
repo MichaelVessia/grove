@@ -337,6 +337,7 @@ struct DialogState {
     keybind_help_open: bool,
     palette_mode: Option<PaletteMode>,
     command_palette: CommandPalette,
+    workspace_jump_action_targets: HashMap<String, PathBuf>,
     refresh_in_flight: bool,
     last_manual_refresh_requested_at: Option<Instant>,
     manual_refresh_feedback_pending: bool,

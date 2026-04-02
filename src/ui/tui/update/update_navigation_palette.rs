@@ -74,10 +74,6 @@ impl GroveApp {
             .with_category(category)
     }
 
-    fn workspace_jump_action_id(workspace: &Workspace) -> String {
-        format!("workspace:{}", workspace.path.display())
-    }
-
     fn workspace_jump_action_title(&self, workspace: &Workspace) -> String {
         let task = workspace
             .task_slug
@@ -110,21 +106,76 @@ impl GroveApp {
         terms.join(" · ")
     }
 
-    fn build_workspace_jump_actions(&self) -> Vec<PaletteActionItem> {
-        self.state
-            .workspaces
-            .iter()
-            .map(|workspace| {
-                let title = self.workspace_jump_action_title(workspace);
-                Self::palette_action(
-                    Self::workspace_jump_action_id(workspace),
-                    title,
-                    workspace.path.display().to_string(),
-                    &["jump", "workspace", "switch", "path", "branch"],
-                    "Workspace",
-                )
+    fn build_workspace_jump_actions(&mut self) -> Vec<PaletteActionItem> {
+        let mut actions = Vec::with_capacity(self.state.workspaces.len());
+        let mut action_targets = HashMap::new();
+
+        let mut next_id = 0usize;
+        let selected_workspace_path = self
+            .state
+            .selected_workspace()
+            .map(|workspace| workspace.path.clone());
+
+        if let Some(selected_workspace_path) = selected_workspace_path.as_ref()
+            && let Some(workspace) = self.state.workspaces.iter().find(|workspace| {
+                refer_to_same_location(workspace.path.as_path(), selected_workspace_path.as_path())
             })
-            .collect()
+        {
+            let id = format!("workspace-jump-{next_id}");
+            next_id = next_id.saturating_add(1);
+            action_targets.insert(id.clone(), workspace.path.clone());
+            let title = self.workspace_jump_action_title(workspace);
+            actions.push(Self::palette_action(
+                id,
+                title,
+                workspace.path.display().to_string(),
+                &["jump", "workspace", "switch", "path", "branch"],
+                "Workspace",
+            ));
+        }
+
+        let current_title_len = actions
+            .first()
+            .map(|action| action.title.len())
+            .unwrap_or(0);
+
+        for workspace in &self.state.workspaces {
+            if selected_workspace_path
+                .as_ref()
+                .is_some_and(|selected_workspace_path| {
+                    refer_to_same_location(
+                        workspace.path.as_path(),
+                        selected_workspace_path.as_path(),
+                    )
+                })
+            {
+                continue;
+            }
+            let id = format!("workspace-jump-{next_id}");
+            next_id = next_id.saturating_add(1);
+            action_targets.insert(id.clone(), workspace.path.clone());
+            let title = self.workspace_jump_action_title(workspace);
+            let title = if title.len() <= current_title_len {
+                let mut padded_title = title;
+                padded_title.push_str(
+                    " ".repeat(current_title_len + 1 - padded_title.len())
+                        .as_str(),
+                );
+                padded_title
+            } else {
+                title
+            };
+            actions.push(Self::palette_action(
+                id,
+                title,
+                workspace.path.display().to_string(),
+                &["jump", "workspace", "switch", "path", "branch"],
+                "Workspace",
+            ));
+        }
+
+        self.dialogs.workspace_jump_action_targets = action_targets;
+        actions
     }
 
     pub(super) fn build_command_palette_actions(&self) -> Vec<PaletteActionItem> {
@@ -180,10 +231,8 @@ impl GroveApp {
     }
 
     pub(super) fn open_workspace_jump_palette(&mut self) {
-        self.open_shared_palette(
-            PaletteMode::WorkspaceJump,
-            self.build_workspace_jump_actions(),
-        );
+        let actions = self.build_workspace_jump_actions();
+        self.open_shared_palette(PaletteMode::WorkspaceJump, actions);
     }
 
     fn palette_command_enabled(&self, command: UiCommand) -> bool {
@@ -314,10 +363,9 @@ impl GroveApp {
     }
 
     pub(super) fn execute_workspace_jump_action(&mut self, id: &str) -> bool {
-        let Some(workspace_path) = id.strip_prefix("workspace:") else {
+        let Some(workspace_path) = self.dialogs.workspace_jump_action_targets.get(id) else {
             return false;
         };
-        let workspace_path = PathBuf::from(workspace_path);
         let already_selected = self.state.selected_workspace().is_some_and(|workspace| {
             refer_to_same_location(workspace.path.as_path(), workspace_path.as_path())
         });

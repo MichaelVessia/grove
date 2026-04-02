@@ -153,6 +153,7 @@ impl GroveApp {
                 keybind_help_open: false,
                 palette_mode: None,
                 command_palette: CommandPalette::new().with_max_visible(12),
+                workspace_jump_action_targets: HashMap::new(),
                 refresh_in_flight: false,
                 last_manual_refresh_requested_at: None,
                 manual_refresh_feedback_pending: false,

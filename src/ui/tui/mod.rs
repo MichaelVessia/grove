@@ -867,6 +867,19 @@ mod tests {
         app.sync_preview_tab_from_active_workspace_tab();
     }
 
+    fn workspace_jump_action_id_for_path(app: &GroveApp, path: &PathBuf) -> Option<String> {
+        app.dialogs
+            .workspace_jump_action_targets
+            .iter()
+            .find_map(|(id, target_path)| {
+                if target_path == path {
+                    Some(id.clone())
+                } else {
+                    None
+                }
+            })
+    }
+
     fn focus_agent_preview_tab(app: &mut GroveApp) {
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -5622,14 +5635,30 @@ mod tests {
     #[test]
     fn slash_opens_workspace_jump_palette() {
         let mut app = fixture_app();
+        select_workspace(&mut app, 1);
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
+
+        let selected_workspace = app
+            .state
+            .selected_workspace()
+            .map(|workspace| workspace.path.clone())
+            .expect("selected workspace should exist");
+        let selected_action = app
+            .dialogs
+            .command_palette
+            .selected_action()
+            .expect("workspace jump should preselect a workspace");
 
         assert!(app.dialogs.command_palette.is_visible());
         assert_eq!(app.dialogs.palette_mode, Some(PaletteMode::WorkspaceJump));
         assert_eq!(
             app.dialogs.command_palette.action_count(),
             app.state.workspaces.len()
+        );
+        assert_eq!(
+            workspace_jump_action_id_for_path(&app, &selected_workspace).as_deref(),
+            Some(selected_action.id.as_str())
         );
     }
 
@@ -5644,14 +5673,16 @@ mod tests {
 
         app.dialogs.command_palette.set_query("feature");
 
-        let expected_id = format!("workspace:{}", feature_workspace_path().display());
+        let expected_path = feature_workspace_path();
+        let selected = app
+            .dialogs
+            .command_palette
+            .selected_action()
+            .expect("feature workspace should match");
         assert_eq!(app.dialogs.command_palette.result_count(), 1);
         assert_eq!(
-            app.dialogs
-                .command_palette
-                .selected_action()
-                .map(|action| action.id.as_str()),
-            Some(expected_id.as_str())
+            workspace_jump_action_id_for_path(&app, &expected_path).as_deref(),
+            Some(selected.id.as_str())
         );
     }
 
@@ -5661,14 +5692,16 @@ mod tests {
         app.open_workspace_jump_palette();
         app.dialogs.command_palette.set_query("mai");
 
-        let expected_id = format!("workspace:{}", main_workspace_path().display());
+        let expected_path = main_workspace_path();
+        let selected = app
+            .dialogs
+            .command_palette
+            .selected_action()
+            .expect("main workspace should match");
         assert_eq!(app.dialogs.command_palette.result_count(), 1);
         assert_eq!(
-            app.dialogs
-                .command_palette
-                .selected_action()
-                .map(|action| action.id.as_str()),
-            Some(expected_id.as_str())
+            workspace_jump_action_id_for_path(&app, &expected_path).as_deref(),
+            Some(selected.id.as_str())
         );
     }
 
@@ -5685,15 +5718,16 @@ mod tests {
             .find(|workspace| workspace.project_name.as_deref() == Some("terraform-fastly"))
             .map(|workspace| workspace.path.clone())
             .expect("worktree workspace should exist");
-        let expected_id = format!("workspace:{}", expected_path.display());
+        let selected = app
+            .dialogs
+            .command_palette
+            .selected_action()
+            .expect("worktree workspace should match");
 
         assert_eq!(app.dialogs.command_palette.result_count(), 1);
         assert_eq!(
-            app.dialogs
-                .command_palette
-                .selected_action()
-                .map(|action| action.id.as_str()),
-            Some(expected_id.as_str())
+            workspace_jump_action_id_for_path(&app, &expected_path).as_deref(),
+            Some(selected.id.as_str())
         );
     }
 
@@ -5739,14 +5773,16 @@ mod tests {
         app.open_workspace_jump_palette();
         app.dialogs.command_palette.set_query("checkout");
 
-        let expected_id = "workspace:/tmp/.grove/tasks/unique-base/alpha-checkout";
+        let expected_path = PathBuf::from("/tmp/.grove/tasks/unique-base/alpha-checkout");
+        let selected = app
+            .dialogs
+            .command_palette
+            .selected_action()
+            .expect("unique basename workspace should match");
         assert_eq!(app.dialogs.command_palette.result_count(), 1);
         assert_eq!(
-            app.dialogs
-                .command_palette
-                .selected_action()
-                .map(|action| action.id.as_str()),
-            Some(expected_id)
+            workspace_jump_action_id_for_path(&app, &expected_path).as_deref(),
+            Some(selected.id.as_str())
         );
     }
 
@@ -5789,6 +5825,32 @@ mod tests {
         );
         assert!(app.preview_focused());
         assert_eq!(app.state.mode, UiMode::Preview);
+    }
+
+    #[test]
+    fn workspace_jump_executes_opaque_id_for_search_result() {
+        let mut app = fixture_app();
+        select_workspace(&mut app, 1);
+
+        app.open_workspace_jump_palette();
+        app.dialogs.command_palette.set_query("mai");
+        let selected_action = app
+            .dialogs
+            .command_palette
+            .selected_action()
+            .expect("main workspace should match");
+        let selected_action_id = selected_action.id.clone();
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.path.clone()),
+            Some(main_workspace_path())
+        );
+        assert!(app.preview_focused());
+        assert!(app.dialogs.palette_mode.is_none());
+        assert!(selected_action_id.starts_with("workspace-jump-"));
     }
 
     #[test]
@@ -5839,9 +5901,13 @@ mod tests {
         app.polling.agent_output_changing = true;
 
         app.open_workspace_jump_palette();
-        assert!(app.execute_visible_palette_action(
-            format!("workspace:{}", feature_workspace_path().display()).as_str()
-        ));
+        let selected_action = app
+            .dialogs
+            .command_palette
+            .selected_action()
+            .expect("feature workspace should match");
+        let selected_action_id = selected_action.id.clone();
+        assert!(app.execute_visible_palette_action(selected_action_id.as_str()));
 
         assert_eq!(
             app.state
