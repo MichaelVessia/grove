@@ -1387,7 +1387,12 @@ static COMMAND_META: [UiCommandMeta; 51] = [
     },
     UiCommandMeta {
         palette: None,
-        help_hints: &[],
+        help_hints: &[HelpHintSpec {
+            context: HelpHintContext::Global,
+            label: "/ open workspace jump",
+            key: "/",
+            action: "open workspace jump",
+        }],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
             code: KeyCodeMatch::Char('/'),

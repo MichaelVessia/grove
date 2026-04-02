@@ -251,7 +251,7 @@ mod tests {
         WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind, WorkspaceTabRuntimeState,
         decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data, packed,
         parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
-        PaletteMode,
+        PaletteMode, CreateDialogMode, CreateDialogState,
     };
     use crate::application::agent_runtime::status::WorkspaceStatusObservation;
     use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
@@ -5613,16 +5613,40 @@ mod tests {
     }
 
     #[test]
-    fn slash_does_not_open_workspace_jump_while_create_dialog_is_active() {
+    fn slash_appends_into_create_dialog_pr_url() {
         let mut app = fixture_app();
-        app.open_create_dialog();
-        assert!(app.create_dialog().is_some());
+        app.set_create_dialog(CreateDialogState {
+            mode: CreateDialogMode::NewTask,
+            tab: CreateDialogTab::PullRequest,
+            task_name: String::new(),
+            pr_url: "https://github.com/flocasts/flohome/pull/123".to_string(),
+            register_as_base: false,
+            project_index: 0,
+            selected_repository_indices: vec![0],
+            project_picker: None,
+        });
+        app.focus_dialog_field(crate::ui::tui::FOCUS_ID_CREATE_PULL_REQUEST_URL);
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
 
-        assert!(app.create_dialog().is_some());
+        assert_eq!(
+            app.create_dialog().map(|dialog| dialog.pr_url.clone()),
+            Some("https://github.com/flocasts/flohome/pull/123/".to_string())
+        );
         assert!(!app.dialogs.command_palette.is_visible());
         assert!(app.dialogs.palette_mode.is_none());
+    }
+
+    #[test]
+    fn slash_appends_into_open_command_palette_query() {
+        let mut app = fixture_app();
+        app.open_command_palette();
+        app.dialogs.command_palette.set_query("abc");
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
+
+        assert_eq!(app.dialogs.command_palette.query(), "abc/");
+        assert_eq!(app.dialogs.palette_mode, Some(PaletteMode::Command));
     }
 
     #[test]
@@ -6549,10 +6573,10 @@ mod tests {
             UiCommand::all()
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
-                .count(),
+            .count(),
             47
         );
-        assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 15);
+        assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 16);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::Workspace).len(),
             18
@@ -6573,6 +6597,14 @@ mod tests {
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewDiff).len(),
             10
+        );
+    }
+
+    #[test]
+    fn ui_command_workspace_jump_is_discoverable_in_global_help() {
+        assert!(
+            UiCommand::help_hints_for(HelpHintContext::Global)
+                .contains(&UiCommand::OpenWorkspaceJump)
         );
     }
 

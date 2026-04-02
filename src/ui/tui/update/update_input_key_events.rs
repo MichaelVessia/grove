@@ -282,8 +282,7 @@ impl GroveApp {
             | UiCommand::ResizeSidebarWider
             | UiCommand::FocusPreview
             | UiCommand::DeleteProject
-            | UiCommand::OpenCommandPalette
-            | UiCommand::OpenWorkspaceJump => false,
+            | UiCommand::OpenCommandPalette => false,
             UiCommand::FocusAttentionInbox => !in_preview_focus,
             UiCommand::ReorderTasks => self.workspace_list_focused(),
             _ => true,
@@ -391,15 +390,6 @@ impl GroveApp {
         {
             return (
                 self.execute_ui_command(UiCommand::OpenCommandPalette),
-                Cmd::None,
-            );
-        }
-
-        if UiCommand::OpenWorkspaceJump
-            .matches_keybinding(&key_event, KeybindingScope::NonInteractive)
-        {
-            return (
-                self.execute_ui_command(UiCommand::OpenWorkspaceJump),
                 Cmd::None,
             );
         }
