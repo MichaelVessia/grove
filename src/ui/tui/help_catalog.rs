@@ -120,7 +120,11 @@ impl GroveApp {
             HelpCatalogEntry::new(
                 HelpSection::Global,
                 "System",
-                Self::join_help_labels(&global, &[14]),
+                self.command_help_labels_for(
+                    HelpHintContext::Global,
+                    &[UiCommand::ToggleMouseCapture, UiCommand::OpenPerformance],
+                )
+                .join(", "),
             ),
             HelpCatalogEntry::new(
                 HelpSection::Workspace,
