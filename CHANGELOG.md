@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.1.6](https://github.com/MichaelVessia/grove/compare/grove-v0.1.5...grove-v0.1.6) (2026-04-03)
+
+
+### Features
+
+* **tui:** add fuzzy workspace jump palette ([8a562bf](https://github.com/MichaelVessia/grove/commit/8a562bf4b8a249d13cd8a30d1b695bcc5022f2d2))
+* **tui:** add workspace jump palette mode ([a113a20](https://github.com/MichaelVessia/grove/commit/a113a203ac77674994caf57383471a8c0a0e4339))
+* **tui:** surface workspace jump discoverability ([d080a93](https://github.com/MichaelVessia/grove/commit/d080a934dcbbb8988ea8549251ef5c7050fe3d1e))
+
+
+### Bug Fixes
+
+* **help:** restore system discoverability entries ([2d5f656](https://github.com/MichaelVessia/grove/commit/2d5f6565d67880b11fab1a63ad1b3f5da0c903c0))
+* **tui:** add mru state for workspace jump ([d5bdc21](https://github.com/MichaelVessia/grove/commit/d5bdc21999f7a185cf36176c8cd7033a0f926aa1))
+* **tui:** intercept palette hotkeys early ([712cb68](https://github.com/MichaelVessia/grove/commit/712cb68f36916e1a52479cac461ddbdac4b981b7))
+* **tui:** let slash flow through open inputs ([d5681ba](https://github.com/MichaelVessia/grove/commit/d5681ba9a844ce60183c680391f555795c308255))
+* **tui:** preselect current workspace and use opaque jump ids ([16c9c39](https://github.com/MichaelVessia/grove/commit/16c9c399e7d9807e7a3cfe688a05716de8f7defc))
+* **tui:** preserve preview context on same-workspace jump ([49492ce](https://github.com/MichaelVessia/grove/commit/49492ceaa6134065aa8a61cbd0ffbf06b63050cb))
+* **tui:** preserve workspace jump preview context ([77fe267](https://github.com/MichaelVessia/grove/commit/77fe267d2a6d52ce0b2967996a8cac87863ef767))
+* **tui:** prevent workspace jump enter from quitting ([6e75ee7](https://github.com/MichaelVessia/grove/commit/6e75ee7a553b8d54f0858cabe5bebd59e138927c))
+* **tui:** refine workspace jump palette ([b7f7778](https://github.com/MichaelVessia/grove/commit/b7f7778374c1deca06f58c0c1ce55bdbf5975bb0))
+* **tui:** require palette mode for visible actions ([fbb4614](https://github.com/MichaelVessia/grove/commit/fbb4614a7315c6c74d95f4dd7026d4fb6e8e59b0))
+* **tui:** restore workspace basename search ([987263b](https://github.com/MichaelVessia/grove/commit/987263b450a8cbcadbd4dce3330b8451dac550ad))
+* **tui:** restore workspace jump search terms ([ea64188](https://github.com/MichaelVessia/grove/commit/ea64188cb6dcf5fb67236506e06ec0179f1f9aad))
+* **tui:** tune workspace jump for fast switching ([8cd0b77](https://github.com/MichaelVessia/grove/commit/8cd0b775ac4561bea58f660bfefb07c841748a53))
+
 ## [0.1.5](https://github.com/MichaelVessia/grove/compare/grove-v0.1.4...grove-v0.1.5) (2026-04-02)
 
 
